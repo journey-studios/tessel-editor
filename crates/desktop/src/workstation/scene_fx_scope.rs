@@ -18,29 +18,28 @@
 //! * `scene.fx`: one action `add_in_shot:<effect>` per effect of the catalog, which adds the clip at
 //!   the frame the monitor shows with the scope of the shot that holds that frame (disabled, with
 //!   its reason, when the monitor shows no frame of the edit), and `shots`/`shot_here` in the
-//!   state. The clip lasts the effect's typical duration, cut at the end of the shot: the window
-//!   picks that length, the core never does.
+//!   state. The clip lasts what the core gives a clip with no duration: the effect's typical
+//!   length, cut where the shot ends; the window picks nothing.
 
 use std::collections::HashMap;
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::searchable_list::SearchableVec;
-use gpui_kit::component::select::{Select, SelectEvent, SelectState};
+use gpui_kit::component::select::{Select, SelectEvent, SelectItem, SelectState};
 use gpui_kit::component::{Sizable, h_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use serde_json::{Value, json};
 use tessel_editor_core::directed_scene::Shot;
 use tessel_editor_core::directed_scene::fx::{
-    self, FX_SCOPE_MISMATCH, FX_SCOPE_NOT_YET, FxClip, FxScope, UNKNOWN_SHOT, shot_at, shots_json,
+    EffectSpec, FX_SCOPE_MISMATCH, FX_SCOPE_NOT_YET, FxClip, FxScope, UNKNOWN_SHOT, shot_at,
 };
 use tessel_editor_core::scene_edit::{
-    AddClip, ChoiceOption, FxOp, InspectorChoice, OUTPUT_LABEL, SHOT_LABEL, inspector_choices,
-    offers, scopes,
+    AddClip, ChoiceOption, FxOp, InspectorChoice, offers, scope_choice, scopes,
 };
 
 use super::controls::{disabled_tool_button, tool_button};
-use super::scene_fx::{CLIP_PREFIX, ClipView, FxView, LOCALE, SECTION_ID};
+use super::scene_fx::{ADD_PREFIX, CLIP_PREFIX, ClipView, FxView, LOCALE, SECTION_ID};
 use super::tokens::Tokens;
 use super::{Source, Workstation};
 use crate::state::{CommandError, Raw};
@@ -57,14 +56,6 @@ const OUTSIDE_THE_EDIT: &str = "O monitor não mostra um quadro da edição dest
 const NOT_IN_A_SHOT: &str = "O quadro exibido está fora da edição: nenhum plano o contém";
 
 // ---- the model: what the window shows, with no GPUI ----
-
-/// The words of a scope in the title of a clip: `Saída`, `Plano s1`.
-pub(super) fn scope_title(scope: &FxScope) -> String {
-    match scope {
-        FxScope::Output => OUTPUT_LABEL.get(LOCALE).to_string(),
-        FxScope::Shot(id) => format!("{} {id}", SHOT_LABEL.get(LOCALE)),
-    }
-}
 
 /// The text of an option in the selector: `Saída`, `Plano s1 · 0–47` (a shot adds the frames it
 /// covers, so two shots are never told apart by the id alone).
@@ -100,25 +91,16 @@ pub(super) fn drawn_scopes() -> Vec<&'static str> {
         .collect()
 }
 
-/// The scope choice of `clip` against the shots of the view.
-fn choice_of(view: &FxView, clip: &FxClip) -> InspectorChoice {
-    inspector_choices(clip, &view.shots).remove(0)
-}
-
-/// The names of the `set_scope:<scope>` actions of a clip node, in the order of its options: what an
-/// `unknown_action` hint advertises beyond the base actions, so it lists what the node lists.
-pub(super) fn scope_action_names(view: &FxView, clip: &FxClip) -> Vec<String> {
-    choice_of(view, clip)
-        .options
-        .iter()
-        .map(|option| format!("{SET_SCOPE_PREFIX}{}", option.value))
-        .collect()
-}
-
-/// The shot the monitor shows, or why none: where `add_in_shot` lands.
-fn shot_here(view: &FxView) -> Result<&Shot, &'static str> {
+/// The frame the monitor shows and the shot that holds it, or why none: where `add_in_shot` lands.
+fn shot_here(view: &FxView) -> Result<(i64, &Shot), &'static str> {
     let frame = view.frame_here.ok_or(OUTSIDE_THE_EDIT)?;
-    shot_at(&view.shots, frame).ok_or(NOT_IN_A_SHOT)
+    let shot = shot_at(&view.shots, frame).ok_or(NOT_IN_A_SHOT)?;
+    Ok((frame, shot))
+}
+
+/// The id of the shot the monitor shows: the state of the section.
+pub(super) fn shot_here_id(view: &FxView) -> Option<String> {
+    shot_here(view).ok().map(|(_, shot)| shot.id.clone())
 }
 
 /// What the catalog offers on the shot the monitor shows: enabled when the effect can be added and
@@ -137,12 +119,10 @@ fn in_shot_state(
     }
 }
 
-/// Adds the scope to a clip node built by `fx_nodes`: the `scope` choice field, one `set_scope:`
-/// action per option and the scope in the state. The options are the very JSON `scene.fx.inspect`
-/// answers (one model, so the window and the library cannot disagree).
-pub(super) fn decorate_clip_node(node: &mut Value, view: &FxView, entry: &ClipView) {
-    let clip = &entry.clip;
-    let choice = choice_of(view, clip);
+/// The `scope` field of a clip node: the choice with the very JSON `scene.fx.inspect` answers (one
+/// model, so the window and the library cannot disagree), put where the node lists its fields.
+pub(super) fn scope_field(view: &FxView, clip: &FxClip) -> Value {
+    let choice = scope_choice(clip, &view.shots);
     let mut field = choice.to_json(&clip.id, LOCALE);
     field["field"] = json!(SCOPE_FIELD);
     field["label"] = json!(format!(
@@ -152,11 +132,17 @@ pub(super) fn decorate_clip_node(node: &mut Value, view: &FxView, entry: &ClipVi
     ));
     field["enabled"] = json!(true);
     field["disabled_reason"] = Value::Null;
-    if let Some(fields) = node["fields"].as_array_mut() {
-        fields.push(field);
-    }
-    if let Some(actions) = node["actions"].as_array_mut() {
-        for option in &choice.options {
+    field
+}
+
+/// The `set_scope:<scope>` actions of a clip node, one per option of its choice: disabled, with
+/// the reason, for the scope the clip holds and for a shot that does not hold the clip.
+pub(super) fn scope_actions(view: &FxView, clip: &FxClip) -> Vec<Value> {
+    let choice = scope_choice(clip, &view.shots);
+    choice
+        .options
+        .iter()
+        .map(|option| {
             let selected = option.value == choice.value;
             let enabled = option.applicable && !selected;
             let reason = if selected {
@@ -164,38 +150,58 @@ pub(super) fn decorate_clip_node(node: &mut Value, view: &FxView, entry: &ClipVi
             } else {
                 option.reason.map(reason_text)
             };
-            actions.push(json!({
+            json!({
                 "action": format!("{SET_SCOPE_PREFIX}{}", option.value),
                 "label": format!("Mover para {}", option_text(option)),
                 "enabled": enabled,
                 "disabled_reason": reason.filter(|_| !enabled),
-            }));
-        }
-    }
-    node["state"]["scope"] = json!(clip.scope.to_text());
-    node["state"]["scope_label"] = json!(scope_title(&clip.scope));
-    node["state"]["shot"] = json!(clip.scope.shot_id());
+            })
+        })
+        .collect()
 }
 
-/// Adds the shots and the `add_in_shot:<effect>` actions to the `scene.fx` section node.
-pub(super) fn decorate_section_node(node: &mut Value, view: &FxView) {
-    if let Some(actions) = node["actions"].as_array_mut() {
-        for offer in offers() {
+/// The words of the action that adds `spec` on the shot the monitor shows.
+fn add_in_shot_label(spec: &EffectSpec) -> String {
+    format!(
+        "Adicionar {} no plano exibido",
+        spec.label.get(LOCALE).to_lowercase()
+    )
+}
+
+/// The `add_in_shot:<effect>` actions of the section node, one per effect of the catalog.
+pub(super) fn add_in_shot_actions(view: &FxView) -> Vec<Value> {
+    offers()
+        .iter()
+        .map(|offer| {
             let spec = offer.effect;
             let (enabled, reason) = in_shot_state(view, offer.applicable, offer.reason);
-            actions.push(json!({
+            json!({
                 "action": format!("{ADD_IN_SHOT_PREFIX}{}", spec.id),
-                "label": format!(
-                    "Adicionar {} no plano exibido",
-                    spec.label.get(LOCALE).to_lowercase()
-                ),
+                "label": add_in_shot_label(spec),
                 "enabled": enabled,
                 "disabled_reason": reason,
-            }));
-        }
-    }
-    node["state"]["shots"] = shots_json(&view.shots);
-    node["state"]["shot_here"] = json!(shot_here(view).ok().map(|shot| shot.id.clone()));
+            })
+        })
+        .collect()
+}
+
+/// The actions of the section node: add each effect on the output, then on the shot the monitor
+/// shows (F062).
+pub(super) fn section_actions(view: &FxView) -> Vec<Value> {
+    let mut actions: Vec<Value> = offers()
+        .iter()
+        .map(|offer| {
+            let spec = offer.effect;
+            json!({
+                "action": format!("{ADD_PREFIX}{}", spec.id),
+                "label": format!("Adicionar {}", spec.label.get(LOCALE).to_lowercase()),
+                "enabled": offer.applicable,
+                "disabled_reason": offer.reason,
+            })
+        })
+        .collect();
+    actions.extend(add_in_shot_actions(view));
+    actions
 }
 
 // ---- the selector: Kit state per clip ----
@@ -207,16 +213,33 @@ pub(super) struct ScopeKey {
     clip: String,
 }
 
+/// One option of a scope selector: the text of the scope (what a pick carries) and the words it is
+/// listed with.
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct ScopeItem {
+    pub(super) value: String,
+    pub(super) title: SharedString,
+}
+
+impl SelectItem for ScopeItem {
+    type Value = String;
+
+    fn title(&self) -> SharedString {
+        self.title.clone()
+    }
+
+    fn value(&self) -> &String {
+        &self.value
+    }
+}
+
 /// The Kit state of one scope `Select`.
-type ScopeSelect = Entity<SelectState<SearchableVec<String>>>;
+type ScopeSelect = Entity<SelectState<SearchableVec<ScopeItem>>>;
 
-/// The `(scope, text)` pairs a selector lists.
-type ScopeOptions = Vec<(String, String)>;
-
-/// A Kit `Select` with the `(scope, text)` pairs it was last given.
+/// A Kit `Select` with the options it was last given.
 pub(super) struct ScopePick {
     select: ScopeSelect,
-    options: ScopeOptions,
+    items: Vec<ScopeItem>,
 }
 
 /// The selectors of the section, by clip.
@@ -228,17 +251,17 @@ fn no_scene() -> CommandError {
 
 #[cfg(test)]
 impl Workstation {
-    /// The select of `clip` and the `(scope, text)` pairs it lists: what the tests pick through.
+    /// The select of `clip` and the options it lists: what the tests pick through.
     pub(super) fn scope_select_of(
         &self,
         scene: &str,
         clip: &str,
-    ) -> Option<(ScopeSelect, ScopeOptions)> {
+    ) -> Option<(ScopeSelect, Vec<ScopeItem>)> {
         let pick = self.scene_ui.fx.scopes.get(&ScopeKey {
             scene: scene.to_string(),
             clip: clip.to_string(),
         })?;
-        Some((pick.select.clone(), pick.options.clone()))
+        Some((pick.select.clone(), pick.items.clone()))
     }
 }
 
@@ -264,10 +287,23 @@ impl Workstation {
         cx: &mut Context<Self>,
     ) -> Result<Value, CommandError> {
         let view = self.fx_view().ok_or_else(no_scene)?;
+        self.fx_set_scope_in(&view, clip, scope, source, cx)
+    }
+
+    /// The same, on a view the caller already checked is the scene the pick was made in, so a pick
+    /// never lands on another scene that has a clip of the same id (BL082.49).
+    fn fx_set_scope_in(
+        &mut self,
+        view: &FxView,
+        clip: &str,
+        scope: &str,
+        source: Source,
+        cx: &mut Context<Self>,
+    ) -> Result<Value, CommandError> {
         let found = view
             .clip(clip)
             .ok_or_else(|| CommandError::unknown_element("effect clip", clip))?;
-        let op = match choice_of(&view, &found.clip).op(&found.clip, scope) {
+        let op = match InspectorChoice::set_scope_op(&found.clip, scope) {
             Ok(op) => op,
             Err(error) => {
                 // It never reached a command: the notice is ours to show.
@@ -279,9 +315,9 @@ impl Workstation {
     }
 
     /// Adds a clip of `effect` at the frame the monitor shows, on the shot that holds it: ONE
-    /// `scene.fx.edit`. The clip lasts the effect's typical duration, cut at the end of the shot (a
-    /// clip must lie inside its shot and the core never shortens one). A monitor outside the edit
-    /// is a typed `disabled_element` with nothing written.
+    /// `scene.fx.edit`. It carries no duration, so the core gives the clip the effect's typical
+    /// length cut where the shot ends. A monitor outside the edit is a typed `disabled_element`
+    /// with nothing written.
     pub(super) fn fx_add_in_shot(
         &mut self,
         effect: &str,
@@ -289,27 +325,24 @@ impl Workstation {
         cx: &mut Context<Self>,
     ) -> Result<Value, CommandError> {
         let view = self.fx_view().ok_or_else(no_scene)?;
-        let shot = match shot_here(&view) {
-            Ok(shot) => shot.clone(),
+        let (frame, shot) = match shot_here(&view) {
+            Ok((frame, shot)) => (frame, shot.id.clone()),
             Err(reason) => {
                 let error = CommandError::disabled(reason).target(SECTION_ID);
                 self.scene_report(error.clone(), cx);
                 return Err(error);
             }
         };
-        let frame = view.frame_here.unwrap_or_default();
-        let end = i64::try_from(shot.end_frame_exclusive).unwrap_or(i64::MAX);
         // An effect the catalog does not have is the core's to refuse (`unknown_effect`).
-        let duration = fx::effect(effect).map(|spec| spec.typical_duration_frames.min(end - frame));
         let op = FxOp::AddClip(AddClip {
             track: None,
             clip: None,
             effect: effect.to_string(),
             start_frame: frame,
             start_time: None,
-            duration_frames: duration,
+            duration_frames: None,
             params: Vec::new(),
-            scope: FxScope::Shot(shot.id),
+            scope: FxScope::Shot(shot),
         });
         self.fx_run(&view.scene, op, source, cx)
     }
@@ -365,27 +398,18 @@ impl Workstation {
         })
     }
 
-    /// The selector of the clip was used: the option with `label` was confirmed.
-    fn fx_scope_picked(&mut self, key: &ScopeKey, label: &str, cx: &mut Context<Self>) {
-        let Some(value) = self
-            .scene_ui
-            .fx
-            .scopes
-            .get(key)
-            .and_then(|pick| pick.options.iter().find(|(_, text)| text == label))
-            .map(|(value, _)| value.clone())
-        else {
-            return;
-        };
-        let current = self
-            .fx_view()
-            .filter(|view| view.scene == key.scene)
-            .and_then(|view| view.clip(&key.clip).map(|entry| entry.clip.scope.to_text()));
-        // The same option again is not an edit. A refusal is already the panel's notice (shown by
-        // the command, or by `fx_set_scope` for a text that never reached one); the selector goes
-        // back to the scope the document holds on the next paint.
-        if current.as_deref() != Some(value.as_str()) {
-            let _ = self.fx_set_scope(&key.clip, &value, Source::Gesture, cx);
+    /// The selector of the clip was used: the option `value` (the text of a scope) was confirmed.
+    fn fx_scope_picked(&mut self, key: &ScopeKey, value: &str, cx: &mut Context<Self>) {
+        // A selector of another scene, or of a clip that is gone, writes nothing (BL082.49): the
+        // pick belongs to the scene it was made in, and never edits one that happens to have a clip
+        // of the same id. The same option again is not an edit either. A refusal is already the
+        // panel's notice (shown by the command, or by `fx_set_scope_in` for a text that never
+        // reached one); the selector goes back to the scope the document holds on the next paint.
+        if let Ok(view) = self.fx_view_of(&key.scene)
+            && let Some(entry) = view.clip(&key.clip)
+            && entry.clip.scope.to_text() != value
+        {
+            let _ = self.fx_set_scope_in(&view, &key.clip, value, Source::Gesture, cx);
         }
         cx.notify();
     }
@@ -410,58 +434,53 @@ impl Workstation {
         clip: &FxClip,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) -> Entity<SelectState<SearchableVec<String>>> {
-        let choice = choice_of(view, clip);
-        let options: Vec<(String, String)> = choice
+    ) -> ScopeSelect {
+        let choice = scope_choice(clip, &view.shots);
+        let items: Vec<ScopeItem> = choice
             .options
             .iter()
-            .map(|option| (option.value.clone(), option_text(option)))
+            .map(|option| ScopeItem {
+                value: option.value.clone(),
+                title: option_text(option).into(),
+            })
             .collect();
-        let labels: Vec<String> = options.iter().map(|(_, text)| text.clone()).collect();
-        let current = options
-            .iter()
-            .find(|(value, _)| *value == choice.value)
-            .map(|(_, text)| text.clone())
-            .unwrap_or_default();
         let key = ScopeKey {
             scene: view.scene.clone(),
             clip: clip.id.clone(),
         };
-        if !self.scene_ui.fx.scopes.contains_key(&key) {
-            let select =
-                cx.new(|cx| SelectState::new(SearchableVec::new(labels.clone()), None, window, cx));
-            let bound = key.clone();
-            cx.subscribe(
-                &select,
-                move |this, _, event: &SelectEvent<SearchableVec<String>>, cx| {
-                    let SelectEvent::Confirm(Some(label)) = event else {
-                        return;
-                    };
-                    this.fx_scope_picked(&bound, label, cx);
-                },
-            )
-            .detach();
-            self.scene_ui.fx.scopes.insert(
-                key.clone(),
+        let pick = self
+            .scene_ui
+            .fx
+            .scopes
+            .entry(key.clone())
+            .or_insert_with(|| {
+                let select = cx.new(|cx| {
+                    SelectState::new(SearchableVec::new(items.clone()), None, window, cx)
+                });
+                cx.subscribe(
+                    &select,
+                    move |this, _, event: &SelectEvent<SearchableVec<ScopeItem>>, cx| {
+                        if let SelectEvent::Confirm(Some(value)) = event {
+                            this.fx_scope_picked(&key, value, cx);
+                        }
+                    },
+                )
+                .detach();
                 ScopePick {
                     select,
-                    options: Vec::new(),
-                },
-            );
-        }
-        let Some(pick) = self.scene_ui.fx.scopes.get_mut(&key) else {
-            return cx.new(|cx| SelectState::new(SearchableVec::new(labels), None, window, cx));
-        };
+                    items: items.clone(),
+                }
+            });
         let select = pick.select.clone();
-        if pick.options != options {
-            pick.options = options;
+        if pick.items != items {
+            pick.items = items.clone();
             select.update(cx, |select, cx| {
-                select.set_items(SearchableVec::new(labels), window, cx)
+                select.set_items(SearchableVec::new(items), window, cx)
             });
         }
-        if select.read(cx).selected_value() != Some(&current) {
+        if select.read(cx).selected_value() != Some(&choice.value) {
             select.update(cx, |select, cx| {
-                select.set_selected_value(&current, window, cx)
+                select.set_selected_value(&choice.value, window, cx)
             });
         }
         select
@@ -511,16 +530,13 @@ impl Workstation {
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         let caption = match shot_here(view) {
-            Ok(shot) => format!("No plano exibido ({})", shot.id),
+            Ok((_, shot)) => format!("No plano exibido ({})", shot.id),
             Err(_) => "No plano exibido".to_string(),
         };
         let mut adds = h_flex().gap(px(2.));
         for offer in offers() {
             let spec = offer.effect;
-            let label = format!(
-                "Adicionar {} no plano exibido",
-                spec.label.get(LOCALE).to_lowercase()
-            );
+            let label = add_in_shot_label(spec);
             let id = SharedString::from(format!("fx-add-shot:{}", spec.id));
             let effect = spec.id;
             let probe = self.geometry.probe(format!("control:fx-add-shot:{effect}"));

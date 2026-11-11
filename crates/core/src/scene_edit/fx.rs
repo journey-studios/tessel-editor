@@ -22,6 +22,7 @@ use crate::time::Ratio;
 use super::batch::rejected;
 use super::error::{DOCUMENT_MISMATCH, EditError, INVALID_OP};
 use super::fx_keys::{self, Batch, FxWork, clip_key_total};
+use super::fx_scope::{scope_refusal, set_scope};
 
 /// The most ops one `scene.fx.edit` batch (or one gesture update) may hold. WHY a budget: each op
 /// locates its clip and copies at most one curve, so the work of a batch is bounded only when its
@@ -100,7 +101,9 @@ impl ClipField {
 
 /// A new clip. Everything but the effect and the start is optional: no track means the first
 /// track where it fits (or a new one), no ID means `fx-<n>`, no duration means the effect's
-/// typical length cut at the end of the edit, no `params` means the catalog defaults.
+/// typical length cut where its scope ends ([`fx::default_duration`]: the shot's end or the
+/// edit's), no `params` means the catalog defaults. A duration that is given is never cut: it is
+/// judged as it is and refused when it does not fit.
 ///
 /// The start is a frame of the edit (`start_frame`) **or** an exact time in seconds
 /// (`start_time`), which the core turns into the edit frame that contains it
@@ -595,7 +598,7 @@ pub(super) fn tracks_mut(work: &mut Value) -> Result<&mut Vec<Value>, EditError>
         .ok_or_else(|| mismatch("`/fx/tracks` is not an array"))
 }
 
-fn tracks(work: &Value) -> &[Value] {
+pub(super) fn tracks(work: &Value) -> &[Value] {
     work.pointer("/fx/tracks")
         .and_then(Value::as_array)
         .map_or(&[], Vec::as_slice)
@@ -605,14 +608,14 @@ pub(super) fn text_of<'a>(value: &'a Value, key: &str) -> &'a str {
     value.get(key).and_then(Value::as_str).unwrap_or_default()
 }
 
-fn clips_of(track: &Value) -> &[Value] {
+pub(super) fn clips_of(track: &Value) -> &[Value] {
     track
         .get("clips")
         .and_then(Value::as_array)
         .map_or(&[], Vec::as_slice)
 }
 
-fn frame_of(clip: &Value, key: &str) -> i64 {
+pub(super) fn frame_of(clip: &Value, key: &str) -> i64 {
     clip.get(key)
         .and_then(|value| value.as_i64().or_else(|| value.as_f64().map(|f| f as i64)))
         .unwrap_or(0)
@@ -713,10 +716,12 @@ fn run_batch(
     batch: &mut Batch,
 ) -> Result<FxOutcome, EditError> {
     let mut work = scene.document().clone();
-    let edit_length = i64::try_from(scene.bundle().edit_duration_frames).unwrap_or(i64::MAX);
     // The shots of the edit, for the ops that place a clip in one (`add_clip`, `set_scope`): the
     // same rule the importer judges the candidate with (`directed_scene::fx::scope_fault`).
-    let shots = scene.bundle().shots.as_slice();
+    let span = EditSpan {
+        frames: i64::try_from(scene.bundle().edit_duration_frames).unwrap_or(i64::MAX),
+        shots: scene.bundle().shots.as_slice(),
+    };
     let mut changes = Vec::with_capacity(ops.len());
     // The clip each op touched: resolved to a pointer at the end, when slots are final.
     let mut touched: Vec<(usize, String)> = Vec::new();
@@ -729,7 +734,7 @@ fn run_batch(
             batch,
             resolved.as_ref().unwrap_or(op),
             index,
-            (edit_length, shots),
+            span,
         )
         .map_err(fail)?;
         if !change.noop {
@@ -816,16 +821,24 @@ pub fn dry_run_fx(scene: &DirectedScene, ops: &[FxOp]) -> Result<FxSummary, Edit
     apply_fx(scene, ops).map(|outcome| outcome.summary)
 }
 
+/// What an op is judged against besides the document: the length of the edit and its shots (an op
+/// that places a clip in a shot needs both, and so does the default duration of a new one).
+#[derive(Debug, Clone, Copy)]
+pub(super) struct EditSpan<'a> {
+    pub frames: i64,
+    pub shots: &'a [Shot],
+}
+
 fn run_op(
     work: &mut Value,
     batch: &mut Batch,
     op: &FxOp,
     index: usize,
-    (edit_length, shots): (i64, &[Shot]),
+    span: EditSpan<'_>,
 ) -> Result<FxChange, EditError> {
     match op {
-        FxOp::AddClip(add) => add_clip(work, add, index, (edit_length, shots)),
-        FxOp::SetScope { clip, scope } => set_scope(work, clip, scope, index, shots),
+        FxOp::AddClip(add) => add_clip(work, add, index, span),
+        FxOp::SetScope { clip, scope } => set_scope(work, clip, scope, index, span),
         FxOp::RemoveClip { clip } => {
             let (track_slot, clip_slot) = clip_ref(work, clip)?;
             let tracks = tracks_mut(work)?;
@@ -955,7 +968,7 @@ fn add_clip(
     work: &mut Value,
     add: &AddClip,
     index: usize,
-    (edit_length, shots): (i64, &[Shot]),
+    span: EditSpan<'_>,
 ) -> Result<FxChange, EditError> {
     let spec = fx::effect(&add.effect).ok_or_else(|| {
         EditError::new(
@@ -972,12 +985,12 @@ fn add_clip(
         )
         .with_id(add.effect.as_str())
     })?;
-    if add.start_frame < 0 || add.start_frame >= edit_length {
+    if add.start_frame < 0 || add.start_frame >= span.frames {
         return Err(EditError::new(
             FX_CLIP_OUT_OF_RANGE,
             format!(
                 "an effect starts inside the edit (frames 0 to {}), not at {}",
-                edit_length - 1,
+                span.frames - 1,
                 add.start_frame
             ),
         ));
@@ -990,9 +1003,7 @@ fn add_clip(
             ));
         }
         Some(duration) => duration,
-        None => spec
-            .typical_duration_frames
-            .min(edit_length - add.start_frame),
+        None => fx::default_duration(spec, &add.scope, add.start_frame, span.shots, span.frames),
     };
     let mut ids = every_id(work);
     let clip_id = match &add.clip {
@@ -1016,7 +1027,9 @@ fn add_clip(
     ids.push(clip_id.clone());
     // A clip that does not fit its shot is refused here, with the shot's legal interval, instead
     // of being written for the importer to refuse at the end of the batch.
-    if let Some(fault) = fx::scope_fault(&add.scope, &clip_id, add.start_frame, duration, shots) {
+    if let Some(fault) =
+        fx::scope_fault(&add.scope, &clip_id, add.start_frame, duration, span.shots)
+    {
         return Err(scope_refusal(fault, &add.scope));
     }
     let mut params = Map::new();
@@ -1219,72 +1232,4 @@ fn set_field(
         after: Some(json!(value)),
         noop,
     })
-}
-
-/// Moves a clip to the output or to a shot (F062). The shot must exist and hold the whole clip
-/// as it is now: a clip that does not fit is refused with the shot's legal interval, never
-/// clamped (retime it first, in the same batch if both are meant). The same scope is a no-op that
-/// leaves the document as written, a hand-written `{ "kind": "output" }` included; going back to
-/// the output leaves the `scope` key out, the canonical spelling.
-fn set_scope(
-    work: &mut Value,
-    clip: &str,
-    scope: &FxScope,
-    index: usize,
-    shots: &[Shot],
-) -> Result<FxChange, EditError> {
-    let (track_slot, clip_slot) = clip_ref(work, clip)?;
-    let (start, duration) = {
-        let found = &clips_of(&tracks(work)[track_slot])[clip_slot];
-        (
-            frame_of(found, "startFrame"),
-            frame_of(found, "durationFrames"),
-        )
-    };
-    let tracks = tracks_mut(work)?;
-    let track_id = text_of(&tracks[track_slot], "id").to_string();
-    let target = clip_object(&mut tracks[track_slot], clip_slot)?;
-    // No key, or a hand-written `{ "kind": "output" }`, is the output.
-    let before = target
-        .get("scope")
-        .and_then(|raw| FxScope::from_op_json(raw).ok())
-        .unwrap_or_default();
-    let noop = before == *scope;
-    if !noop {
-        if let Some(fault) = fx::scope_fault(scope, clip, start, duration, shots) {
-            return Err(scope_refusal(fault, scope));
-        }
-        match scope.to_document() {
-            Some(document) => {
-                target.insert("scope".to_string(), document);
-            }
-            None => {
-                target.remove("scope");
-            }
-        }
-    }
-    Ok(FxChange {
-        index,
-        warnings: Vec::new(),
-        action: "set_scope",
-        track: track_id,
-        clip: clip.to_string(),
-        target: Some("scope".to_string()),
-        before: Some(json!(before.to_text())),
-        after: Some(json!(scope.to_text())),
-        noop,
-    })
-}
-
-/// The refusal of a clip that does not belong to the scope it was given: the importer's own code
-/// and words, the path of the op's field, the shot that does not exist as the missing id, and the
-/// facts an adapter can act on (the shot's legal interval, the ids there are) in `details`.
-fn scope_refusal(fault: fx::ScopeFault, scope: &FxScope) -> EditError {
-    let error = EditError::new(fault.code, fault.message)
-        .with_path("scope")
-        .with_details(fault.details);
-    match scope.shot_id() {
-        Some(shot) if fault.code == fx::UNKNOWN_SHOT => error.with_id(shot),
-        _ => error,
-    }
 }

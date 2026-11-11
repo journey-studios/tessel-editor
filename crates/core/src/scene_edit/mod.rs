@@ -38,9 +38,11 @@ mod catalog;
 mod error;
 mod fx;
 mod fx_animation;
+mod fx_choice;
 mod fx_inspector;
 mod fx_intent;
 mod fx_keys;
+mod fx_scope;
 mod op;
 mod reference;
 mod value;
@@ -67,11 +69,14 @@ pub use fx_animation::{
     ClipAnimation, ParamAnimation, REASON_FRAME_OUTSIDE_CLIP, REASON_NEEDS_TWO_KEYS,
     REASON_NO_FRAME, REASON_NO_KEYS, SeedAnimation,
 };
+pub use fx_choice::{
+    ChoiceOption, InspectorChoice, OUTPUT_LABEL, SCOPE_LABEL, SHOT_LABEL, inspector_choices,
+    scope_choice, scope_label, scopes,
+};
 pub use fx_inspector::{
-    ChoiceOption, ClipInspector, Component, DURATION_LABEL, FADE_IN_LABEL, FADE_OUT_LABEL,
-    FieldGroup, FieldKind, InspectorChoice, InspectorField, OUTPUT_LABEL, Offer, REASON_ANIMATED,
-    REASON_FAMILY_NOT_YET, REASON_SINGLE_VALUE, SCOPE_LABEL, SHOT_LABEL, START_LABEL, Target,
-    has_reset, inspector_choices, inspector_fields, layer_inspector, offers, reset_ops, scopes,
+    ClipInspector, Component, DURATION_LABEL, FADE_IN_LABEL, FADE_OUT_LABEL, FieldGroup, FieldKind,
+    InspectorField, Offer, REASON_ANIMATED, REASON_FAMILY_NOT_YET, REASON_SINGLE_VALUE,
+    START_LABEL, Target, has_reset, inspector_fields, layer_inspector, offers, reset_ops,
 };
 pub use fx_intent::{FxIntent, GESTURE_INTENT_MISMATCH, GESTURE_TARGET_MISMATCH, IntentRefusal};
 pub use fx_keys::FxWork;

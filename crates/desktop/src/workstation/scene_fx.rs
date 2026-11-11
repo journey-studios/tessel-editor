@@ -34,10 +34,12 @@ use gpui_kit::*;
 use serde_json::{Value, json};
 use tessel_editor_core::directed_scene::Shot;
 use tessel_editor_core::directed_scene::fx::PassBudget;
-use tessel_editor_core::directed_scene::fx::{self, EffectSpec, FxClip, FxScope, Locale};
+use tessel_editor_core::directed_scene::fx::{
+    self, EffectSpec, FxClip, FxScope, Locale, shots_json,
+};
 use tessel_editor_core::scene_edit::{
     AddClip, ClipAnimation, FieldKind, FxOp, InspectorField, REASON_SINGLE_VALUE, has_reset,
-    inspector_fields, offers, reset_ops,
+    inspector_fields, offers, reset_ops, scope_label,
 };
 use tessel_editor_core::scene_interaction::{FxGestureCommand, Gesture, GestureCommand};
 use tessel_editor_core::scene_project::SceneCommand;
@@ -45,7 +47,7 @@ use tessel_editor_core::scene_project::SceneCommand;
 use super::controls::{disabled_tool_button, glyph, tool_button, value_after_key};
 use super::scene_fx_keys::{animation_actions, animation_at, animation_fields};
 use super::scene_fx_scope::{
-    decorate_clip_node, decorate_section_node, drawn_scopes, scope_action_names, scope_title,
+    drawn_scopes, scope_actions, scope_field, section_actions, shot_here_id,
 };
 use super::scene_model::{PanelFit, format_number};
 use super::scene_panel::SliderRow;
@@ -155,9 +157,10 @@ fn effect_label(spec: &EffectSpec) -> &'static str {
 /// The sliders of `clip`: the core's fields, parameters first (strength ahead), then its frames.
 /// `edit_frames` bounds the frame fields; the core still refuses what the layer rules refuse
 /// (overlap, envelope), with a typed code on screen, so these bounds only keep the thumb inside
-/// what can ever be valid.
-pub fn controls_of(clip: &FxClip, edit_frames: i64) -> Vec<FxControl> {
-    inspector_fields(clip, edit_frames)
+/// what can ever be valid; `shots` are the edit's, for the duration a reset restores (cut where the
+/// clip's scope ends).
+pub fn controls_of(clip: &FxClip, edit_frames: i64, shots: &[Shot]) -> Vec<FxControl> {
+    inspector_fields(clip, edit_frames, shots)
 }
 
 /// What the slider prints beside the value: frames show `q`; ratios no unit.
@@ -205,11 +208,17 @@ impl FxView {
     }
 }
 
+/// The controls of `clip` in the edit of `view`: its frames bound by the edit, and its duration
+/// reset to what its scope holds.
+pub fn controls_in(view: &FxView, clip: &FxClip) -> Vec<FxControl> {
+    controls_of(clip, view.edit_frames, &view.shots)
+}
+
 pub const CLIP_PREFIX: &str = "scene.fx.clip:";
 /// The node of the pass-budget warning: always present, `visible` only past the budget.
 pub const BUDGET_ID: &str = "scene.fx.budget";
 pub const SECTION_ID: &str = "scene.fx";
-const ADD_PREFIX: &str = "add:";
+pub(super) const ADD_PREFIX: &str = "add:";
 /// `reset:<field>` on a clip node restores one field to its default; `reset` the whole look.
 const RESET_PREFIX: &str = "reset:";
 
@@ -225,10 +234,11 @@ fn reason_text(reason: &str) -> &'static str {
 }
 
 /// The actions of a clip node: remove, hide, and the resets the inspector model says make sense
-/// (the whole look, then every field away from its default). A reset with nothing to restore is
-/// listed disabled with its reason, never as a callback that does nothing.
-fn clip_actions(clip: &FxClip, edit_frames: i64, frame: Option<i64>) -> Vec<Value> {
-    let controls = controls_of(clip, edit_frames);
+/// (the whole look, then every field away from its default), the keys, and where the clip can be
+/// laid (`set_scope:<scope>`). A reset with nothing to restore is listed disabled with its reason,
+/// never as a callback that does nothing.
+fn clip_actions(clip: &FxClip, view: &FxView) -> Vec<Value> {
+    let controls = controls_in(view, clip);
     let looks_changed = has_reset(&controls);
     let mut actions = vec![
         json!({ "action": "remove", "label": "Remover efeito" }),
@@ -251,8 +261,18 @@ fn clip_actions(clip: &FxClip, edit_frames: i64, frame: Option<i64>) -> Vec<Valu
             "disabled_reason": (!away).then_some(ALREADY_DEFAULT),
         }));
     }
-    actions.extend(animation_actions(&ClipAnimation::of(clip, frame)));
+    actions.extend(animation_actions(&ClipAnimation::of(clip, view.frame_here)));
+    actions.extend(scope_actions(view, clip));
     actions
+}
+
+/// The names of the actions a node lists: what an `unknown_action` hint advertises, so a hint
+/// cannot say less (or more) than the node it is about.
+fn action_names(actions: &[Value]) -> Vec<String> {
+    actions
+        .iter()
+        .filter_map(|action| action["action"].as_str().map(str::to_string))
+        .collect()
 }
 
 const ALREADY_DEFAULT: &str = "Já está no padrão";
@@ -432,7 +452,7 @@ impl Workstation {
     ) -> Result<Value, CommandError> {
         let view = self.fx_document_view().ok_or_else(no_scene)?;
         let found = self.fx_known(&view, clip)?;
-        let controls = controls_of(&found.clip, view.edit_frames);
+        let controls = controls_in(&view, &found.clip);
         let ops: Vec<FxOp> = match field {
             Some(id) => {
                 let control = controls
@@ -440,16 +460,10 @@ impl Workstation {
                     .find(|control| control.id == id)
                     .ok_or_else(|| unknown_control(clip, id))?;
                 if control.default.is_none() {
-                    let mut advertised =
-                        clip_actions(&found.clip, view.edit_frames, view.frame_here)
-                            .iter()
-                            .filter_map(|action| action["action"].as_str().map(str::to_string))
-                            .collect::<Vec<_>>();
-                    advertised.extend(scope_action_names(&view, &found.clip));
                     return Err(unknown_action(
                         &clip_node_id(clip),
                         &format!("reset:{id}"),
-                        &advertised,
+                        &action_names(&clip_actions(&found.clip, &view)),
                     ));
                 }
                 control.reset_op(&found.clip).into_iter().collect()
@@ -486,7 +500,7 @@ impl Workstation {
 
     /// The view of `scene`, only while it is the scene the panel shows: a gesture belongs to the scene
     /// it began on and never edits another one that happens to have a clip of the same id.
-    fn fx_view_of(&self, scene: &str) -> Result<FxView, CommandError> {
+    pub(super) fn fx_view_of(&self, scene: &str) -> Result<FxView, CommandError> {
         let view = self.fx_view().ok_or_else(no_scene)?;
         if view.scene != scene {
             return Err(stale_scene(scene, &view.scene));
@@ -512,7 +526,7 @@ impl Workstation {
         // never the uncommitted candidate of a gesture that happens to be open on the same clip.
         let view = self.fx_document_view().ok_or_else(no_scene)?;
         let found = self.fx_known(&view, clip)?;
-        let controls = controls_of(&found.clip, view.edit_frames);
+        let controls = controls_in(&view, &found.clip);
         let Some(target) = controls.iter().find(|candidate| candidate.id == control) else {
             return Err(CommandError::new(
                 "unknown_field",
@@ -649,7 +663,7 @@ impl Workstation {
             return Err(stale_scene(&key.scene, &view.scene));
         }
         let found = self.fx_known(&view, &key.clip)?;
-        let controls = controls_of(&found.clip, view.edit_frames);
+        let controls = controls_in(&view, &found.clip);
         let control = controls
             .iter()
             .find(|candidate| candidate.id == key.control)
@@ -816,7 +830,7 @@ impl Workstation {
         let clip = &view.clip(&key.clip)?.clip;
         // Keys prevail over an animated parameter's base: its control edits nothing, so a key press
         // on it is not a step either.
-        controls_of(clip, view.edit_frames)
+        controls_in(&view, clip)
             .into_iter()
             .find(|control| control.id == key.control && !control.animated)
             .map(|control| (control.value, control))
@@ -835,7 +849,7 @@ impl Workstation {
             let clip = &entry.clip;
             children.push(json!(clip_node_id(&clip.id)));
             let animation = animation_at(&view, clip);
-            let controls = controls_of(clip, view.edit_frames);
+            let controls = controls_in(&view, clip);
             let mut fields: Vec<Value> = controls
                 .iter()
                 .map(|control| {
@@ -892,6 +906,7 @@ impl Workstation {
             fields.push(json!({
                 "field": "hidden", "label": "Oculto", "type": "boolean", "value": clip.hidden,
             }));
+            fields.push(scope_field(&view, clip));
             let params: serde_json::Map<String, Value> = clip
                 .effect
                 .params
@@ -904,7 +919,7 @@ impl Workstation {
                 "label": format!("{} {}", effect_label(clip.effect), clip.id),
                 "parent": SECTION_ID, "children": [], "enabled": true, "visible": true,
                 "fields": fields,
-                "actions": clip_actions(clip, view.edit_frames, view.frame_here),
+                "actions": clip_actions(clip, &view),
                 "state": {
                     "clip": clip.id, "track": entry.track_id, "track_label": entry.track_label,
                     "effect": clip.effect.id, "start_frame": clip.start_frame,
@@ -913,12 +928,11 @@ impl Workstation {
                     "fade_in_frames": clip.fade_in_frames, "fade_out_frames": clip.fade_out_frames,
                     "hidden": clip.hidden, "params": params,
                     "animation": animation.to_json(LOCALE),
+                    "scope": clip.scope.to_text(),
+                    "scope_label": scope_label(&clip.scope, LOCALE),
+                    "shot": clip.scope.shot_id(),
                 },
             }));
-            // The scope field, its `set_scope:<scope>` actions and its state (F062).
-            if let Some(node) = nodes.last_mut() {
-                decorate_clip_node(node, &view, entry);
-            }
         }
         children.push(json!(BUDGET_ID));
         nodes.push(budget_node(&view));
@@ -929,27 +943,16 @@ impl Workstation {
             .filter(|open| open.scene() == view.scene && open.fx_clip().is_some());
         let gesture_state =
             gesture.map(|open| open.to_json(&self.state.scenes, self.state.project.revision));
-        let actions: Vec<Value> = offers()
-            .iter()
-            .map(|offer| {
-                let spec = offer.effect;
-                json!({
-                    "action": format!("{ADD_PREFIX}{}", spec.id),
-                    "label": format!("Adicionar {}", spec.label.get(LOCALE).to_lowercase()),
-                    "enabled": offer.applicable,
-                    "disabled_reason": offer.reason,
-                })
-            })
-            .collect();
         nodes.insert(
             0,
             json!({
                 "id": SECTION_ID, "kind": "section", "label": "Efeitos",
                 "parent": "scene.panel", "children": children, "enabled": true, "visible": true,
-                "fields": [], "actions": actions,
+                "fields": [], "actions": section_actions(&view),
                 "state": {
                     "scene": view.scene, "catalog_version": fx::FX_CATALOG_VERSION,
                     "clip_count": view.clips.len(), "scope": drawn_scopes(),
+                    "shots": shots_json(&view.shots), "shot_here": shot_here_id(&view),
                     "effects": fx::catalog().iter().map(|spec| spec.id).collect::<Vec<_>>(),
                     "edit_duration_frames": view.edit_frames,
                     "playhead_frame": view.frame_here,
@@ -959,8 +962,6 @@ impl Workstation {
                 },
             }),
         );
-        // The shots and the actions that add on the shot the monitor shows (F062).
-        decorate_section_node(&mut nodes[0], &view);
         nodes
     }
 
@@ -983,10 +984,15 @@ impl Workstation {
                 other => Err(unknown_action(
                     target,
                     other.unwrap_or(""),
-                    &fx::catalog()
-                        .iter()
-                        .map(|spec| format!("{ADD_PREFIX}{}", spec.id))
-                        .collect::<Vec<_>>(),
+                    &self.fx_view().map_or_else(
+                        || {
+                            fx::catalog()
+                                .iter()
+                                .map(|spec| format!("{ADD_PREFIX}{}", spec.id))
+                                .collect()
+                        },
+                        |view| action_names(&section_actions(&view)),
+                    ),
                 )),
             };
             return Some(result);
@@ -1017,17 +1023,8 @@ impl Workstation {
                 &self
                     .fx_view()
                     .and_then(|view| {
-                        view.clip(clip).map(|entry| {
-                            let mut advertised =
-                                clip_actions(&entry.clip, view.edit_frames, view.frame_here)
-                                    .iter()
-                                    .filter_map(|action| {
-                                        action["action"].as_str().map(str::to_string)
-                                    })
-                                    .collect::<Vec<_>>();
-                            advertised.extend(scope_action_names(&view, &entry.clip));
-                            advertised
-                        })
+                        view.clip(clip)
+                            .map(|entry| action_names(&clip_actions(&entry.clip, &view)))
                     })
                     .unwrap_or_else(|| vec!["remove".to_string(), "toggle_hidden".to_string()]),
             )),
@@ -1058,7 +1055,7 @@ impl Workstation {
             // A switch takes true or false, never a number.
             let is_switch = self.fx_view().and_then(|view| {
                 let found = view.clip(clip)?;
-                controls_of(&found.clip, view.edit_frames)
+                controls_in(&view, &found.clip)
                     .into_iter()
                     .find(|control| control.id == field)
                     .map(|control| control.kind == FieldKind::Boolean)
@@ -1224,7 +1221,7 @@ impl Workstation {
                 .child(button)
         };
         let reset = {
-            let looks_changed = has_reset(&controls_of(clip, view.edit_frames));
+            let looks_changed = has_reset(&controls_in(view, clip));
             let label = format!("Redefinir parâmetros de {}", clip.id);
             let button_id = SharedString::from(format!("fx-reset:{id}"));
             let button = if looks_changed {
@@ -1261,7 +1258,7 @@ impl Workstation {
                         "{} · {} · {} ({})",
                         effect_label(clip.effect),
                         clip.id,
-                        scope_title(&clip.scope),
+                        scope_label(&clip.scope, LOCALE),
                         entry.track_label
                     )),
             )
@@ -1270,7 +1267,7 @@ impl Workstation {
             .child(remove);
         let mut block = v_flex().w_full().child(title);
         block = block.child(self.fx_scope_row(t, view, entry, window, cx));
-        for control in controls_of(clip, view.edit_frames) {
+        for control in controls_in(view, clip) {
             // A field whose range is one value has nothing to move: it stays out of the panel (the
             // semantic node still lists it, disabled, with the reason).
             if !control.applicable {

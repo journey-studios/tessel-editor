@@ -181,7 +181,8 @@ fn the_section_adds_a_vignette_as_one_undo_entry_and_the_nodes_describe_it(
             .unwrap()
             .scene
             .bundle()
-            .fx_passes(10)
+            .fx
+            .resolve(10)
             .len()
     });
     assert_eq!(passes, 1);
@@ -287,11 +288,8 @@ fn hide_toggle_and_remove_go_through_the_same_command_and_undo_restores_them(
     set(&view, cx, CLIP, "hidden", Raw::Bool(true)).unwrap();
     assert_eq!(field_value(&node(&view, cx, CLIP), "hidden"), json!(true));
     view.read_with(cx, |view, _| {
-        let bundle = view.state.scenes.get("street").unwrap().scene.bundle();
-        assert!(
-            bundle.fx_passes(10).is_empty(),
-            "a hidden clip draws nothing"
-        );
+        let fx = &view.state.scenes.get("street").unwrap().scene.bundle().fx;
+        assert!(fx.resolve(10).is_empty(), "a hidden clip draws nothing");
     });
     invoke(&view, cx, CLIP, "toggle_hidden").unwrap();
     assert_eq!(field_value(&node(&view, cx, CLIP), "hidden"), json!(false));
@@ -455,7 +453,7 @@ fn the_add_and_remove_buttons_run_the_shared_handlers_when_clicked(cx: &mut Test
 
 use super::scene_fx::{FxKey, controls_of};
 
-fn attach_yard(view: &Entity<Workstation>, cx: &mut VisualTestContext) {
+pub(super) fn attach_yard(view: &Entity<Workstation>, cx: &mut VisualTestContext) {
     view.update(cx, |view, cx| {
         view.execute(
             Command::Scene(SceneCommand::Attach {
@@ -471,14 +469,14 @@ fn attach_yard(view: &Entity<Workstation>, cx: &mut VisualTestContext) {
     cx.run_until_parked();
 }
 
-fn choose(view: &Entity<Workstation>, cx: &mut VisualTestContext, scene: &str) {
+pub(super) fn choose(view: &Entity<Workstation>, cx: &mut VisualTestContext, scene: &str) {
     view.update(cx, |view, cx| view.scene_choose(scene, cx))
         .expect("an attached scene");
     cx.run_until_parked();
 }
 
 /// Every entry of the history, the attaches included: a test that compares two moments needs no offset.
-fn total_depth(view: &Entity<Workstation>, cx: &mut VisualTestContext) -> u64 {
+pub(super) fn total_depth(view: &Entity<Workstation>, cx: &mut VisualTestContext) -> u64 {
     view.read_with(cx, |view, _| {
         view.state.history.to_json()["undo_depth"].as_u64().unwrap()
     })
@@ -686,7 +684,7 @@ fn control_value_after(
     view.read_with(cx, |view, _| {
         let fx = view.fx_view().expect("a scene with effects");
         let found = fx.clip("fx-1").expect("fx-1");
-        controls_of(&found.clip, fx.edit_frames)
+        controls_of(&found.clip, fx.edit_frames, &fx.shots)
             .iter()
             .find(|control| control.id == id)
             .unwrap_or_else(|| panic!("no control `{id}`"))
@@ -1097,7 +1095,8 @@ fn more_than_eight_passes_warns_visibly_and_on_a_node_and_never_drops_a_pass(
             .unwrap()
             .scene
             .bundle()
-            .fx_passes(0)
+            .fx
+            .resolve(0)
             .len()
     });
     assert_eq!(passes, 9);
@@ -2131,7 +2130,8 @@ fn the_reset_button_runs_the_shared_handler_and_a_vignette_and_a_fade_compose_in
             .unwrap()
             .scene
             .bundle()
-            .fx_passes(10)
+            .fx
+            .resolve(10)
             .iter()
             .map(|pass| pass.effect.clone())
             .collect::<Vec<_>>()

@@ -14,7 +14,9 @@
 //! the select's own `Confirm` event, which the Kit emits on a click).
 use gpui_kit::component::select::SelectEvent;
 
-use super::scene_fx_tests::{center_of, clips, invoke, mounted, node, set, undo_depth};
+use super::scene_fx_tests::{
+    attach_yard, center_of, choose, clips, invoke, mounted, node, set, total_depth, undo_depth,
+};
 use super::*;
 // The Kit's test macro expands to `#[test]`; the glob import above would resolve it to the Kit macro again.
 use core::prelude::v1::test;
@@ -77,10 +79,19 @@ fn playhead_outside_the_edit(view: &Entity<Workstation>, cx: &mut VisualTestCont
 }
 
 fn scope_of(view: &Entity<Workstation>, cx: &mut VisualTestContext, clip: &str) -> FxScope {
+    scope_in(view, cx, "street", clip)
+}
+
+fn scope_in(
+    view: &Entity<Workstation>,
+    cx: &mut VisualTestContext,
+    scene: &str,
+    clip: &str,
+) -> FxScope {
     view.read_with(cx, |view, _| {
         view.state
             .scenes
-            .get("street")
+            .get(scene)
             .unwrap()
             .scene
             .bundle()
@@ -241,7 +252,8 @@ fn add_in_shot_lays_the_clip_inside_the_shot_the_monitor_shows_as_one_entry(
         let bundle = view.state.scenes.get("street").unwrap().scene.bundle();
         let at = |frame: i64| {
             bundle
-                .fx_passes(frame)
+                .fx
+                .resolve(frame)
                 .into_iter()
                 .map(|pass| pass.scope)
                 .collect::<Vec<_>>()
@@ -368,14 +380,15 @@ fn a_refused_scope_is_typed_on_the_panel_and_writes_nothing(cx: &mut TestAppCont
 fn the_selector_is_a_kit_select_whose_pick_is_the_same_command(cx: &mut TestAppContext) {
     let (view, cx) = mounted(cx);
     invoke(&view, cx, SECTION, "add_in_shot:vignette").unwrap();
-    let (select, options) = view
+    let (select, items) = view
         .read_with(cx, |view, _| view.scope_select_of("street", "fx-1"))
         .expect("the panel paints a selector for the clip");
-    // The words: the output, then each shot with the frames it covers.
+    // The values are the texts of the scopes; the words are the output, then each shot with the
+    // frames it covers.
     assert_eq!(
-        options
+        items
             .iter()
-            .map(|(value, text)| (value.as_str(), text.as_str()))
+            .map(|item| (item.value.as_str(), item.title.as_ref()))
             .collect::<Vec<_>>(),
         [
             ("output", "Saída"),
@@ -383,65 +396,49 @@ fn the_selector_is_a_kit_select_whose_pick_is_the_same_command(cx: &mut TestAppC
             ("shot:shot-2", "Plano shot-2 · 48–95"),
         ]
     );
-    let text_of = |scope: &str| {
-        options
-            .iter()
-            .find(|(value, _)| value == scope)
-            .unwrap()
-            .1
-            .clone()
-    };
     let shown = |cx: &mut VisualTestContext| {
         select.read_with(cx, |select, _| select.selected_value().cloned())
     };
+    let pick = |cx: &mut VisualTestContext, value: Option<&str>| {
+        select.update(cx, |_, cx| {
+            cx.emit(SelectEvent::Confirm(value.map(str::to_string)))
+        });
+        cx.run_until_parked();
+    };
     assert_eq!(
-        shown(cx),
-        Some(text_of("shot:shot-1")),
+        shown(cx).as_deref(),
+        Some("shot:shot-1"),
         "it shows the scope the clip holds"
     );
     center_of(&view, cx, "control:fx-scope:fx-1");
 
     // The pick is the same `scene.fx.edit` a script sends: one entry.
     let depth = undo_depth(&view, cx);
-    select.update(cx, |_, cx| {
-        cx.emit(SelectEvent::Confirm(Some(text_of("output"))))
-    });
-    cx.run_until_parked();
+    pick(cx, Some("output"));
     assert_eq!(scope_of(&view, cx, "fx-1"), FxScope::Output);
     assert_eq!(undo_depth(&view, cx), depth + 1);
-    assert_eq!(shown(cx), Some(text_of("output")));
+    assert_eq!(shown(cx).as_deref(), Some("output"));
     assert_eq!(notice_code(&view, cx), None);
 
-    // Picking what the clip holds is not an edit.
-    select.update(cx, |_, cx| {
-        cx.emit(SelectEvent::Confirm(Some(text_of("output"))))
-    });
-    cx.run_until_parked();
+    // Picking what the clip holds is not an edit, and a cleared selection is no pick at all.
+    pick(cx, Some("output"));
+    pick(cx, None);
     assert_eq!(undo_depth(&view, cx), depth + 1);
+    assert_eq!(notice_code(&view, cx), None);
 
     // A shot that does not hold the clip is refused: the typed notice, nothing written, and the
     // selector is back on the scope the document holds.
-    select.update(cx, |_, cx| {
-        cx.emit(SelectEvent::Confirm(Some(text_of("shot:shot-2"))))
-    });
-    cx.run_until_parked();
+    pick(cx, Some("shot:shot-2"));
     assert_eq!(notice_code(&view, cx).as_deref(), Some("fx_scope_mismatch"));
     assert_eq!(undo_depth(&view, cx), depth + 1);
     assert_eq!(scope_of(&view, cx, "fx-1"), FxScope::Output);
     view.update(cx, |_, cx| cx.notify());
     cx.run_until_parked();
     assert_eq!(
-        shown(cx),
-        Some(text_of("output")),
+        shown(cx).as_deref(),
+        Some("output"),
         "the select follows the document"
     );
-
-    // A label the selector never listed does nothing.
-    select.update(cx, |_, cx| {
-        cx.emit(SelectEvent::Confirm(Some("Plano fantasma".to_string())))
-    });
-    cx.run_until_parked();
-    assert_eq!(undo_depth(&view, cx), depth + 1);
 
     // The selector goes with its clip.
     invoke(&view, cx, FIRST, "remove").unwrap();
@@ -451,6 +448,138 @@ fn the_selector_is_a_kit_select_whose_pick_is_the_same_command(cx: &mut TestAppC
         view.read_with(cx, |view, _| view.scope_select_of("street", "fx-1"))
             .is_none()
     );
+}
+
+/// The panel on `street`, with a vignette of the first shot in it and in `yard`: `fx-1` is on
+/// `shot:shot-1` in both scenes.
+fn a_shot_clip_in_each_of_two_scenes(
+    cx: &mut TestAppContext,
+) -> (Entity<Workstation>, &mut VisualTestContext) {
+    let (view, cx) = mounted(cx);
+    invoke(&view, cx, SECTION, "add_in_shot:vignette").unwrap();
+    attach_yard(&view, cx);
+    choose(&view, cx, "yard");
+    invoke(&view, cx, SECTION, "add_in_shot:vignette").unwrap();
+    choose(&view, cx, "street");
+    (view, cx)
+}
+
+#[gpui_kit::test]
+fn a_pick_of_another_scene_writes_nothing_even_before_the_selector_is_dropped(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = a_shot_clip_in_each_of_two_scenes(cx);
+    let (select, _) = view
+        .read_with(cx, |view, _| view.scope_select_of("street", "fx-1"))
+        .expect("the panel paints a selector for the clip");
+    let depth = total_depth(&view, cx);
+
+    // The pick is delivered in the update that switches the panel to `yard`: no paint has dropped
+    // the selector of `street` yet, and `yard` has a clip of the same id.
+    view.update(cx, |view, cx| {
+        view.scene_choose("yard", cx).expect("an attached scene");
+        select.update(cx, |_, cx| {
+            cx.emit(SelectEvent::Confirm(Some("output".to_string())))
+        });
+    });
+    cx.run_until_parked();
+    assert_eq!(
+        scope_in(&view, cx, "yard", "fx-1"),
+        FxScope::Shot("shot-1".into()),
+        "the clip of the scene the panel shows is not the one that was picked on"
+    );
+    assert_eq!(
+        scope_in(&view, cx, "street", "fx-1"),
+        FxScope::Shot("shot-1".into())
+    );
+    assert_eq!(total_depth(&view, cx), depth, "nothing was written");
+    assert_eq!(notice_code(&view, cx), None);
+
+    // The same pick on the scene it belongs to is an edit of that scene, and only of it.
+    choose(&view, cx, "street");
+    let (select, _) = view
+        .read_with(cx, |view, _| view.scope_select_of("street", "fx-1"))
+        .expect("the panel paints a selector for the clip");
+    select.update(cx, |_, cx| {
+        cx.emit(SelectEvent::Confirm(Some("output".to_string())))
+    });
+    cx.run_until_parked();
+    assert_eq!(scope_in(&view, cx, "street", "fx-1"), FxScope::Output);
+    assert_eq!(
+        scope_in(&view, cx, "yard", "fx-1"),
+        FxScope::Shot("shot-1".into())
+    );
+    assert_eq!(total_depth(&view, cx), depth + 1);
+}
+
+#[gpui_kit::test]
+fn a_pick_of_a_clip_that_is_gone_writes_nothing_and_says_nothing(cx: &mut TestAppContext) {
+    let (view, cx) = mounted(cx);
+    invoke(&view, cx, SECTION, "add_in_shot:vignette").unwrap();
+    let (select, _) = view
+        .read_with(cx, |view, _| view.scope_select_of("street", "fx-1"))
+        .expect("the panel paints a selector for the clip");
+    let depth = undo_depth(&view, cx);
+
+    // The clip is removed and the pick arrives in the same update, before the paint drops the select.
+    view.update(cx, |view, cx| {
+        view.scene_invoke(FIRST, Some("remove"), cx)
+            .expect("a scene node")
+            .unwrap();
+        select.update(cx, |_, cx| {
+            cx.emit(SelectEvent::Confirm(Some("output".to_string())))
+        });
+    });
+    cx.run_until_parked();
+    assert_eq!(clips(&view, cx), 0);
+    assert_eq!(undo_depth(&view, cx), depth + 1, "only the removal");
+    assert_eq!(notice_code(&view, cx), None);
+}
+
+#[gpui_kit::test]
+fn an_unknown_action_lists_what_the_section_node_lists(cx: &mut TestAppContext) {
+    let (view, cx) = mounted(cx);
+    let error = invoke(&view, cx, SECTION, "explode").unwrap_err();
+    assert_eq!(error.code, "unknown_action");
+    let advertised = error.details.unwrap()["actions"].clone();
+    let listed = node(&view, cx, SECTION)["actions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|action| action["action"].clone())
+        .collect::<Vec<_>>();
+    assert_eq!(advertised, json!(listed));
+    assert!(
+        listed.contains(&json!("add_in_shot:vignette")),
+        "the hint says what lays a clip on the shot: {listed:?}"
+    );
+}
+
+#[gpui_kit::test]
+fn the_duration_reset_of_a_clip_in_a_shot_is_what_the_shot_holds(cx: &mut TestAppContext) {
+    let (view, cx) = mounted(cx);
+    // The vignette lasts 96 frames; the shot holds 48 of them.
+    invoke(&view, cx, SECTION, "add_in_shot:vignette").unwrap();
+    assert_eq!(clip_span(&view, cx, "fx-1"), (0, 48));
+    let at_rest = field(&node(&view, cx, FIRST), "duration_frames");
+    assert_eq!(at_rest["default"], json!(48.0), "{at_rest}");
+    assert_eq!(at_rest["at_default"], json!(true));
+
+    set(&view, cx, FIRST, "duration_frames", Raw::Number(30.0)).unwrap();
+    assert_eq!(clip_span(&view, cx, "fx-1"), (0, 30));
+    let moved = node(&view, cx, FIRST);
+    assert_eq!(field(&moved, "duration_frames")["at_default"], json!(false));
+    assert_eq!(
+        action(&moved, "reset:duration_frames")["enabled"],
+        json!(true)
+    );
+
+    // The reset is an op the edit accepts, and it restores what the add gave.
+    let depth = undo_depth(&view, cx);
+    invoke(&view, cx, FIRST, "reset:duration_frames").unwrap();
+    assert_eq!(clip_span(&view, cx, "fx-1"), (0, 48));
+    assert_eq!(undo_depth(&view, cx), depth + 1);
+    assert_eq!(notice_code(&view, cx), None);
 }
 
 #[gpui_kit::test]

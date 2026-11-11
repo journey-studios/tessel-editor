@@ -8,7 +8,7 @@ use crate::directed_scene::fx::Fx;
 use crate::directed_scene::lighting::{Lighting, LightingRefusal};
 use crate::directed_scene::{
     AssetAlpha, Bundle, CameraState, DirectedScene, FrameEvaluation, NodeKind, Parent, SceneGraph,
-    Shot, Vec3,
+    Vec3,
 };
 
 use super::model::{
@@ -398,7 +398,7 @@ impl<'a> Prepared<'a> {
             &resources,
             self.definition,
         );
-        let fx = bundle.fx_passes(edit_frame_i64(frame));
+        let fx = bundle.fx.resolve(edit_frame_i64(frame));
         let lights = self.lights_at(frame);
         let requires = derive_requires(
             &nodes,
@@ -513,12 +513,7 @@ impl ScenePlan {
     /// The nodes of a shot's frames are the same list in the same order (they come from one scene
     /// definition), so a frame that does not line up with this plan is a bug, reported as the node
     /// that does not resolve instead of a plan with some other frame's nodes in it.
-    pub(super) fn at_frame(
-        &self,
-        frame: &FrameEvaluation<'_>,
-        fx: &Fx,
-        shots: &[Shot],
-    ) -> Result<Self, PlanError> {
+    pub(super) fn at_frame(&self, frame: &FrameEvaluation<'_>, fx: &Fx) -> Result<Self, PlanError> {
         let states = frame.nodes.nodes();
         // The first position where the two lists stop agreeing (one list may simply be longer).
         let misaligned = (0..states.len().max(self.nodes.len())).find_map(|at| {
@@ -548,10 +543,9 @@ impl ScenePlan {
         for (splat, slot) in plan.splats.iter_mut().zip(slots) {
             splat.after_layers = slot;
         }
-        // The effects are a function of the edit frame and the shots alone, so they are resolved
-        // again here (the template holds the first frame's: a shot's passes of the first frame
-        // are not the next frame's), and `requires` follows them.
-        plan.fx = fx.resolve(edit_frame_i64(frame), shots);
+        // The effects are a function of the edit frame alone, so they are resolved again here
+        // (the template holds the first frame's), and `requires` follows them.
+        plan.fx = fx.resolve(edit_frame_i64(frame));
         plan.requires = derive_requires(
             &plan.nodes,
             &plan.layers,

@@ -24,7 +24,7 @@
 //! * **refused for now**: scope `node` (`FX_SCOPE_NOT_YET`) and any `transitions` entry
 //!   (`FX_TRANSITION_NOT_YET`).
 //!
-//! Evaluation is a pure function of the document, the shots of the edit and an integer edit frame
+//! Evaluation is a pure function of the document and an integer edit frame
 //! ([`Fx::resolve`]); the plan (`scene_plan`) carries the result to a runtime, which only draws.
 
 mod catalog;
@@ -36,8 +36,6 @@ mod reference;
 mod scope;
 
 use serde_json::{Value, json};
-
-use super::Shot;
 
 pub use catalog::{
     EffectSpec, FADE, FADE_AMOUNT, FADE_COLOR, FADE_INTENSITY, FILM_GRAIN, FILM_GRAIN_AMOUNT,
@@ -61,8 +59,8 @@ pub use reference::{
     grain_encoded_delta, linear_to_srgb, pass_strength, smoothstep, srgb_to_linear, vignette_shade,
 };
 pub use scope::{
-    FxScope, FxStage, SCOPE_OUTPUT, SCOPE_SHOT_PREFIX, ScopeFault, ScopeSyntax, scope_fault,
-    shot_at, shot_json, shots_json,
+    FxScope, FxStage, SCOPE_OUTPUT, SCOPE_SHOT_PREFIX, ScopeFault, ScopeSyntax, default_duration,
+    scope_end, scope_fault, shot_at, shot_holds, shot_json, shots_json,
 };
 
 /// The catalog this build draws. It goes up whenever the *result* of an existing effect changes
@@ -447,41 +445,34 @@ impl Fx {
     }
 
     /// The passes at an edit frame, in the order of composition: **by stage first, then by track**.
-    /// The passes of the clips with scope `shot` that belong to the frame's shot (the shot's own
-    /// picture, the *deck*) come first and the passes of the output after them, each stage in the
-    /// order of the tracks; so a `shot` clip on a later track is still drawn before an `output` clip
-    /// on an earlier one (the pilot's `decks -> deck passes -> output passes`). A hidden track or
-    /// clip draws nothing; a clip draws on `start_frame <= frame < end`, and a `shot` clip only
-    /// while the frame is in its shot. Pure and deterministic: `shots` are the intervals of the
-    /// edit (`Bundle::shots`), no clock and no state carried from another frame, so a seek to any
-    /// frame answers what linear playback answered there.
-    pub fn resolve(&self, edit_frame: i64, shots: &[Shot]) -> Vec<FxPass> {
-        let mut deck: Vec<FxPass> = Vec::new();
-        let mut output: Vec<FxPass> = Vec::new();
-        // The shot of the frame, looked up once and only when a `shot` clip needs it.
-        let mut frame_shot: Option<Option<&str>> = None;
-        for track in self.tracks.iter().filter(|track| !track.hidden) {
-            for clip in track.clips.iter().filter(|clip| !clip.hidden) {
-                if edit_frame < clip.start_frame || edit_frame >= clip.end_frame_exclusive() {
-                    continue;
-                }
-                let stage = match &clip.scope {
-                    FxScope::Output => &mut output,
-                    FxScope::Shot(id) => {
-                        let current = *frame_shot.get_or_insert_with(|| {
-                            shot_at(shots, edit_frame).map(|shot| shot.id.as_str())
-                        });
-                        if current != Some(id.as_str()) {
-                            continue;
-                        }
-                        &mut deck
-                    }
-                };
-                stage.push(pass_of(track, clip, edit_frame));
-            }
-        }
-        deck.extend(output);
-        deck
+    /// The passes of the clips with scope `shot` (the shot's own picture, the *deck*) come first and
+    /// the passes of the output after them, each stage in the order of the tracks; so a `shot` clip
+    /// on a later track is still drawn before an `output` clip on an earlier one (the pilot's
+    /// `decks -> deck passes -> output passes`). A hidden track or clip draws nothing; a clip draws
+    /// on `start_frame <= frame < end`. The importer guarantees a `shot` clip lies inside its shot,
+    /// so the frames of its interval are the shot's: the resolver does not consult the shots. Pure
+    /// and deterministic: no clock, no state carried from another frame, so a seek to any frame
+    /// answers what linear playback answered there.
+    pub fn resolve(&self, edit_frame: i64) -> Vec<FxPass> {
+        let mut passes: Vec<FxPass> = self
+            .tracks
+            .iter()
+            .filter(|track| !track.hidden)
+            .flat_map(|track| {
+                track
+                    .clips
+                    .iter()
+                    .filter(move |clip| {
+                        !clip.hidden
+                            && clip.start_frame <= edit_frame
+                            && edit_frame < clip.end_frame_exclusive()
+                    })
+                    .map(move |clip| pass_of(track, clip, edit_frame))
+            })
+            .collect();
+        // `sort_by_key` is stable: each stage keeps the order of the tracks.
+        passes.sort_by_key(|pass| pass.scope.stage());
+        passes
     }
 
     /// The layer as the importer reads it back from a document: used by queries.

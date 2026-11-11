@@ -19,7 +19,7 @@
 
 use serde_json::{Value, json};
 
-use super::{FX_SCOPE_MISMATCH, FX_SCOPE_NOT_YET, UNKNOWN_SHOT};
+use super::{EffectSpec, FX_SCOPE_MISMATCH, FX_SCOPE_NOT_YET, UNKNOWN_SHOT};
 use crate::directed_scene::{INVALID_VALUE, Shot};
 
 /// The text of the scope `output`.
@@ -178,13 +178,13 @@ pub struct ScopeFault {
     pub details: Value,
 }
 
-/// The shot an edit frame plays in: the first whose `[start, end)` holds it. The importer
-/// guarantees the shots tile the edit, so there is one; a frame outside the edit has none.
+/// The shot an edit frame plays in: the first whose interval holds it ([`Shot::holds_frame`], the
+/// same predicate as `Bundle::shot_at_frame`). The importer guarantees the shots tile the edit, so
+/// there is one; a frame outside the edit (or a negative one) has none. The slice form is for
+/// adapters that hold the shots a view lists, not a bundle.
 pub fn shot_at(shots: &[Shot], edit_frame: i64) -> Option<&Shot> {
     let frame = u64::try_from(edit_frame).ok()?;
-    shots
-        .iter()
-        .find(|shot| shot.start_frame <= frame && frame < shot.end_frame_exclusive)
+    shots.iter().find(|shot| shot.holds_frame(frame))
 }
 
 /// A shot as the effect reads list it (`id`, `start_frame`, `end_frame_exclusive`, `intent`): where
@@ -203,10 +203,56 @@ pub fn shots_json(shots: &[Shot]) -> Value {
     Value::Array(shots.iter().map(shot_json).collect())
 }
 
+/// A shot's limits in the signed frames a clip is judged in: the shot's limits are unsigned
+/// frames of the edit, so an end past `i64` is the largest signed frame (a clip is outside it
+/// either way).
+fn shot_limits(shot: &Shot) -> (i64, i64) {
+    (
+        i64::try_from(shot.start_frame).unwrap_or(i64::MAX),
+        i64::try_from(shot.end_frame_exclusive).unwrap_or(i64::MAX),
+    )
+}
+
+/// The containment half of the scope rule: does the clip `start_frame..start_frame +
+/// duration_frames` lie entirely inside `shot`? A negative start or an end past the shot is not.
+/// [`scope_fault`] is the one place that judges a clip and it asks this; an adapter that only
+/// needs the yes or the no (the inspector's list of shots a clip could move to) asks it directly,
+/// without building a refusal.
+pub fn shot_holds(shot: &Shot, start_frame: i64, duration_frames: i64) -> bool {
+    let (first, last) = shot_limits(shot);
+    start_frame >= first && start_frame.saturating_add(duration_frames) <= last
+}
+
+/// The first frame a clip of this scope cannot reach: the end of its shot (never past the edit),
+/// or the end of the edit for the output, and for a shot the edit does not have (that clip is
+/// refused by [`scope_fault`] anyway).
+pub fn scope_end(scope: &FxScope, shots: &[Shot], edit_frames: i64) -> i64 {
+    scope
+        .shot_id()
+        .and_then(|id| shots.iter().find(|shot| shot.id == id))
+        .map_or(edit_frames, |shot| shot_limits(shot).1.min(edit_frames))
+}
+
+/// The duration a new clip of `spec` gets when none is given (`add_clip`), and the one the
+/// inspector restores (`reset`): the typical one, cut where the scope ends so the clip fits, and
+/// never below one frame. A duration that is **given** is never cut: it is judged as it is and
+/// refused when it does not fit.
+pub fn default_duration(
+    spec: &EffectSpec,
+    scope: &FxScope,
+    start_frame: i64,
+    shots: &[Shot],
+    edit_frames: i64,
+) -> i64 {
+    spec.typical_duration_frames
+        .min(scope_end(scope, shots, edit_frames).saturating_sub(start_frame))
+        .max(1)
+}
+
 /// The one rule of the scope against the shots of the edit, for a clip that runs
 /// `start_frame..start_frame + duration_frames`: the shot must exist (`UNKNOWN_SHOT`) and hold the
-/// whole clip (`FX_SCOPE_MISMATCH`: the clip starts before the shot or ends after it). The output
-/// scope has no rule here. `None` means the clip belongs to its scope.
+/// whole clip (`FX_SCOPE_MISMATCH`: the clip starts before the shot or ends after it, see
+/// [`shot_holds`]). The output scope has no rule here. `None` means the clip belongs to its scope.
 pub fn scope_fault(
     scope: &FxScope,
     clip: &str,
@@ -232,16 +278,11 @@ pub fn scope_fault(
             details: json!({ "shot": id, "shots": listed }),
         });
     };
-    let end = start_frame.saturating_add(duration_frames);
-    // The shot's limits are unsigned frames of the edit; a clip is judged in signed frames, so a
-    // negative start or an end past `i64` is outside either way.
-    let (first, last) = (
-        i64::try_from(shot.start_frame).unwrap_or(i64::MAX),
-        i64::try_from(shot.end_frame_exclusive).unwrap_or(i64::MAX),
-    );
-    if start_frame >= first && end <= last {
+    if shot_holds(shot, start_frame, duration_frames) {
         return None;
     }
+    let end = start_frame.saturating_add(duration_frames);
+    let (first, last) = shot_limits(shot);
     Some(ScopeFault {
         code: FX_SCOPE_MISMATCH,
         message: format!(
@@ -260,6 +301,7 @@ pub fn scope_fault(
 mod tests {
     use core::prelude::v1::test;
 
+    use super::super::{FADE, VIGNETTE};
     use super::*;
 
     #[test]
@@ -449,6 +491,69 @@ mod tests {
         assert_eq!(fault("s1", i64::MAX, 10).unwrap().code, FX_SCOPE_MISMATCH);
         assert_eq!(fault("s1", -1, 5).unwrap().code, FX_SCOPE_MISMATCH);
         assert_eq!(fault("s1", 0, i64::MAX).unwrap().code, FX_SCOPE_MISMATCH);
+    }
+
+    #[test]
+    fn a_shot_holds_a_clip_exactly_when_the_rule_does_not_refuse_it() {
+        // `shot_holds` is the containment half `scope_fault` asks: they never disagree.
+        let shots = pilot_shots();
+        for shot in &shots {
+            for start in [-1, 0, 40, 47, 48, 95, 96, 143, 144] {
+                for duration in [0, 1, 8, 24, 48, 49, 200] {
+                    let scope = FxScope::Shot(shot.id.clone());
+                    let refused = scope_fault(&scope, "c1", start, duration, &shots).is_some();
+                    assert_eq!(
+                        shot_holds(shot, start, duration),
+                        !refused,
+                        "{} {start}+{duration}",
+                        shot.id
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_scope_ends_where_its_shot_ends_and_never_past_the_edit() {
+        let shots = pilot_shots();
+        let end = |scope: &FxScope, edit| scope_end(scope, &shots, edit);
+        let s2 = FxScope::Shot("s2".into());
+        assert_eq!(end(&s2, 144), 96, "the end of the shot");
+        assert_eq!(end(&s2, 70), 70, "a shot the edit is too short for");
+        assert_eq!(
+            end(&FxScope::Output, 144),
+            144,
+            "the output ends with the edit"
+        );
+        // A shot the edit does not have ends with the edit: that clip is refused by the rule.
+        assert_eq!(end(&FxScope::Shot("ghost".into()), 144), 144);
+    }
+
+    #[test]
+    fn a_new_clip_gets_the_typical_length_cut_where_its_scope_ends_and_never_less_than_a_frame() {
+        let shots = pilot_shots();
+        let s1 = FxScope::Shot("s1".into());
+        // The fade's typical length is 24 frames, the vignette's 96.
+        let fade = |scope: &FxScope, start| default_duration(&FADE, scope, start, &shots, 144);
+        assert_eq!(fade(&s1, 0), 24, "it fits");
+        assert_eq!(fade(&s1, 40), 8, "cut at the end of s1 (48)");
+        assert_eq!(
+            fade(&FxScope::Output, 130),
+            14,
+            "cut at the end of the edit"
+        );
+        assert_eq!(fade(&FxScope::Output, 0), 24);
+        assert_eq!(
+            fade(&s1, 60),
+            1,
+            "no room left is still one frame, which the rule then refuses"
+        );
+        assert_eq!(default_duration(&VIGNETTE, &s1, 0, &shots, 144), 48);
+        // Whatever it returns, the clip it makes starts where it was asked to.
+        for start in 0..48 {
+            let duration = fade(&s1, start);
+            assert_eq!(fault("s1", start, duration), None, "start {start}");
+        }
     }
 
     #[test]

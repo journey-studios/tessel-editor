@@ -724,7 +724,7 @@ fn no_effect_and_intensity_zero_keep_the_baseline_and_intensity_changes_the_edge
     let scene = scene_of(&state);
     let apply = |scene: &DirectedScene, frame: i64| {
         let mut rgba = baseline.clone();
-        for pass in scene.bundle().fx_passes(frame) {
+        for pass in scene.bundle().fx.resolve(frame) {
             assert!(fx::apply_pass_to_rgba8(&pass, &mut rgba, width, height));
         }
         rgba
@@ -767,7 +767,7 @@ fn no_effect_and_intensity_zero_keep_the_baseline_and_intensity_changes_the_edge
     );
     assert_ne!(moved, shaded);
     // And the reference agrees with the plan's own number for number: the resolved param.
-    let pass = &scene.bundle().fx_passes(12)[0];
+    let pass = &scene.bundle().fx.resolve(12)[0];
     assert_eq!(
         pass.param("center"),
         Some(FxValue::Point { x: 1.0, y: 1.0 })

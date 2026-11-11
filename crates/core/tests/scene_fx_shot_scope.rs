@@ -38,7 +38,7 @@ use std::process::{Command as Process, Stdio};
 
 use serde_json::{Value, json};
 use tessel_editor_core::directed_scene::DirectedScene;
-use tessel_editor_core::directed_scene::fx::{self, FxScope};
+use tessel_editor_core::directed_scene::fx::FxScope;
 use tessel_editor_core::scene_plan::{Capability, PlanTimeline, ScenePlan};
 use tessel_editor_core::state::ProjectSettings;
 use tessel_editor_core::{CommandError, EditorState, headless, persist};
@@ -300,6 +300,35 @@ fn pilot_case_2_a_clip_that_leaves_the_shot_is_refused_with_the_legal_interval()
     assert_eq!(error.details.as_ref().unwrap()["start_frame"], 48);
     assert_eq!(error.details.as_ref().unwrap()["end_frame_exclusive"], 96);
     assert_eq!(document(&state), before);
+}
+
+#[test]
+fn an_add_without_a_duration_is_cut_where_the_scope_ends_and_a_given_one_is_never_cut() {
+    let mut state = session();
+    let bare = |id: &str, start: i64, scope: &str| json!({"op":"add_clip","effect":"vignette","start_frame":start,"id":id,"scope":scope});
+    let duration_of =
+        |state: &EditorState, id: &str| clip_of(&document(state), id)["durationFrames"].clone();
+    // The vignette's typical length is 96 frames: cut at the end of its shot (48), or of the edit (96).
+    edit(
+        &mut state,
+        json!([
+            bare("in-shot", 40, "shot:shot-1"),
+            bare("on-output", 40, "output")
+        ]),
+    );
+    assert_eq!(duration_of(&state, "in-shot"), 8);
+    assert_eq!(duration_of(&state, "on-output"), 56);
+    // A duration that is given is judged as it is: refused, nothing written, never cut to fit.
+    let (before, depth) = (document(&state), undo_depth(&state));
+    let error = edit_err(
+        &mut state,
+        json!([add_scoped("given", 40, 20, "shot:shot-1")]),
+    );
+    assert_eq!(error.code, "fx_scope_mismatch", "{error:?}");
+    assert_eq!((document(&state), undo_depth(&state)), (before, depth));
+    // Past the end of its shot there is no room to cut: a one-frame clip that still does not fit.
+    let error = edit_err(&mut state, json!([bare("late", 60, "shot:shot-1")]));
+    assert_eq!(error.code, "fx_scope_mismatch", "{error:?}");
 }
 
 #[test]
@@ -843,24 +872,6 @@ fn composition_is_a_function_of_the_frame_alone() {
 }
 
 #[test]
-fn resolve_takes_the_shots_it_is_given_and_without_them_a_shot_clip_draws_nothing() {
-    let state = session_with_layer(layer_in_stages());
-    let scene = scene_of(&state);
-    let bundle = scene.bundle();
-    let ids = |passes: Vec<fx::FxPass>| -> Vec<String> {
-        passes.into_iter().map(|pass| pass.clip_id).collect()
-    };
-    assert_eq!(
-        ids(bundle.fx.resolve(10, &bundle.shots)),
-        ["a1", "b1", "o1"]
-    );
-    // No shot to put the frame in: only the output draws (the function does not guess a shot).
-    assert_eq!(ids(bundle.fx.resolve(10, &[])), ["o1"]);
-    // The frame's passes of the bundle are exactly that call.
-    assert_eq!(bundle.fx_passes(10), bundle.fx.resolve(10, &bundle.shots));
-}
-
-#[test]
 fn hidden_clips_and_tracks_draw_nothing_in_either_stage() {
     let mut state = session_with_layer(layer_in_stages());
     edit(
@@ -1301,6 +1312,53 @@ fn the_inspector_offers_the_scope_as_a_choice_in_three_languages_with_the_op_tha
         inspect(&mut state, "es")["clips"][0]["choices"][0]["label"],
         "Alcance"
     );
+}
+
+#[test]
+fn the_duration_reset_the_inspector_hands_out_is_an_op_the_edit_accepts() {
+    let mut state = session();
+    // Frame 40 of `shot-1` ([0, 48)) and of the output: the room that is left is 8 and 56 frames.
+    edit(
+        &mut state,
+        json!([
+            add_scoped("in-shot", 40, 8, "shot:shot-1"),
+            add("on-output", 40, 56)
+        ]),
+    );
+    for (clip, room) in [("in-shot", 8.0), ("on-output", 56.0)] {
+        let field = |state: &mut EditorState| -> Value {
+            let answer = ok(
+                state,
+                json!({"op":"scene.fx.inspect","scene":"street","clip":clip}),
+            );
+            let fields = answer["clips"][0]["fields"].as_array().unwrap().clone();
+            fields
+                .into_iter()
+                .find(|field| field["id"] == "duration_frames")
+                .unwrap()
+        };
+        // The default is the typical length cut where the scope ends, so a clip of that length has
+        // nothing to reset, and a shorter one is offered exactly that.
+        let at_room = field(&mut state);
+        assert_eq!(at_room["default"], json!(room), "{clip}");
+        assert_eq!(at_room["reset"]["needed"], false, "{clip}");
+        let retime = |value: f64| json!({"op":"set_field","clip":clip,"field":"duration_frames","value":value as i64});
+        edit(&mut state, json!([retime(5.0)]));
+        let reset = field(&mut state)["reset"].clone();
+        assert_eq!(
+            (reset["needed"].clone(), reset["to"].clone()),
+            (json!(true), json!(room))
+        );
+        // The op the inspector hands out is the op that works: the importer accepts it and the
+        // clip fills the room.
+        assert_eq!(reset["op"], retime(room), "{clip}");
+        edit(&mut state, json!([reset["op"].clone()]));
+        assert_eq!(
+            clip_of(&document(&state), clip)["durationFrames"],
+            room as i64,
+            "{clip}"
+        );
+    }
 }
 
 // ---- persistence ---------------------------------------------------------------------------------------

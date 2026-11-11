@@ -439,7 +439,7 @@ fn pilot_fade(rgba: &[u8], colour: [f64; 3], weight: f64) -> Vec<u8> {
 
 fn render(scene: &DirectedScene, frame: i64, base: &[u8]) -> Vec<u8> {
     let mut rgba = base.to_vec();
-    for pass in scene.bundle().fx_passes(frame) {
+    for pass in scene.bundle().fx.resolve(frame) {
         assert!(fx::apply_pass_to_rgba8(&pass, &mut rgba, WIDTH, HEIGHT));
     }
     rgba
@@ -549,7 +549,8 @@ fn stacking_order_is_discriminating_and_the_plan_order_is_the_drawing_order() {
         let scene = scene_of(&state);
         let order: Vec<String> = scene
             .bundle()
-            .fx_passes(10)
+            .fx
+            .resolve(10)
             .iter()
             .map(|pass| pass.effect.clone())
             .collect();
@@ -969,7 +970,7 @@ fn a_fade_param_reads_back_as_the_typed_value() {
         json!([add_fade("f1", 0, 40, json!({"amount": 0.3}))]),
     );
     let scene = scene_of(&state);
-    let pass = &scene.bundle().fx_passes(10)[0];
+    let pass = &scene.bundle().fx.resolve(10)[0];
     assert_eq!(pass.param("amount"), Some(FxValue::Number(0.3)));
     assert_eq!(
         pass.param("color"),

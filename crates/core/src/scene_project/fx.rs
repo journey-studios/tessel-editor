@@ -119,7 +119,7 @@ pub(super) fn frame_answer(
     // The order is the composition: the shot's passes first, then the output's. The passes are
     // the plan's own (`scope` says where each is drawn); `stages` counts them so the order
     // explains itself.
-    let resolved = scene.bundle().fx_passes(frame);
+    let resolved = scene.bundle().fx.resolve(frame);
     let deck = resolved
         .iter()
         .filter(|pass| pass.scope.stage() == fx::FxStage::Deck)

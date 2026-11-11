@@ -21,11 +21,12 @@ use serde_json::{Value, json};
 
 use crate::directed_scene::Shot;
 use crate::directed_scene::fx::{
-    EffectSpec, FX_SCOPE_NOT_YET, Fx, FxClip, FxScope, FxTrack, FxValue, Labels, Locale, ParamKind,
-    catalog, quantize_control, scope_fault,
+    EffectSpec, Fx, FxClip, FxTrack, FxValue, Labels, Locale, ParamKind, catalog, default_duration,
+    quantize_control,
 };
 use crate::state::CommandError;
 
+use super::fx_choice::{InspectorChoice, scope_choice};
 use super::{ClipField, FxOp};
 
 /// The words of the timing fields, which every effect clip has and the catalog does not list.
@@ -407,13 +408,9 @@ impl ClipInspector {
             track_label: track.label.clone(),
             effect: clip.effect,
             hidden: clip.hidden,
-            fields: fields_of(clip, edit_frames),
-            choices: inspector_choices(clip, shots),
+            fields: fields_of(clip, edit_frames, shots),
+            choices: vec![scope_choice(clip, shots)],
         }
-    }
-
-    pub fn choice(&self, id: &str) -> Option<&InspectorChoice> {
-        self.choices.iter().find(|choice| choice.id == id)
     }
 
     pub fn field(&self, id: &str) -> Option<&InspectorField> {
@@ -567,7 +564,7 @@ fn scalar(draft: Draft) -> InspectorField {
 }
 
 /// The fields of `clip`, in the order of [`ClipInspector::fields`].
-fn fields_of(clip: &FxClip, edit_frames: i64) -> Vec<InspectorField> {
+fn fields_of(clip: &FxClip, edit_frames: i64, shots: &[Shot]) -> Vec<InspectorField> {
     let mut fields = Vec::new();
     for (index, spec) in clip.effect.params.iter().enumerate() {
         let Some(value) = clip.params.get(index).copied() else {
@@ -663,7 +660,8 @@ fn fields_of(clip: &FxClip, edit_frames: i64) -> Vec<InspectorField> {
     }
     // The strength of the effect first: it is the control people reach for.
     fields.sort_by_key(|field| field.id != "intensity");
-    let typical = clip.effect.typical_duration_frames.min(edit_frames).max(1);
+    let start = clip.start_frame;
+    let typical = default_duration(clip.effect, &clip.scope, start, shots, edit_frames);
     let frames =
         |field: ClipField, base: Labels, min: i64, max: i64, value: i64, default: Option<i64>| {
             let mut built = scalar(Draft {
@@ -715,177 +713,6 @@ fn fields_of(clip: &FxClip, edit_frames: i64) -> Vec<InspectorField> {
     fields
 }
 
-/// The scopes an effect can be laid on and whether this build draws them: the output and (F062) a
-/// shot; `node` is refused, with its code, until a node target exists.
-pub fn scopes() -> Vec<(&'static str, bool, Option<&'static str>)> {
-    vec![
-        ("output", true, None),
-        ("shot", true, None),
-        ("node", false, Some(FX_SCOPE_NOT_YET)),
-    ]
-}
-
-/// The words of the scope choice (the model's first setting that is one of a few named options
-/// rather than a number) and of its options.
-pub const SCOPE_LABEL: Labels = Labels::new("Escopo", "Scope", "Alcance");
-pub const OUTPUT_LABEL: Labels = Labels::new("Saída", "Output", "Salida");
-/// The word before a shot's id in its option (`Plano s1`, `Shot s1`).
-pub const SHOT_LABEL: Labels = Labels::new("Plano", "Shot", "Plano");
-
-/// One option of an [`InspectorChoice`]: where a clip can be laid.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ChoiceOption {
-    /// What an op carries for it ([`FxScope::to_text`]): `output`, `shot:<id>`.
-    pub value: String,
-    pub scope: FxScope,
-    /// A shot's own note about what it is for (`intent`): the edit's text, not translated.
-    pub intent: Option<String>,
-    /// The frames `[start, end)` of a shot, in the edit.
-    pub frames: Option<(u64, u64)>,
-    /// Whether the clip may go there as it stands. A shot that does not hold the whole clip is
-    /// listed with the code the edit would refuse with, never left out and never enabled.
-    pub applicable: bool,
-    pub reason: Option<&'static str>,
-}
-
-impl ChoiceOption {
-    /// The text of the option in `locale`: `Saída`, `Plano s1`.
-    pub fn label(&self, locale: Locale) -> String {
-        match &self.scope {
-            FxScope::Output => OUTPUT_LABEL.get(locale).to_string(),
-            FxScope::Shot(id) => format!("{} {id}", SHOT_LABEL.get(locale)),
-        }
-    }
-
-    fn to_json(&self, locale: Locale, selected: bool, clip: &str) -> Value {
-        let labels = json!({
-            "pt-br": self.label(Locale::PtBr), "en": self.label(Locale::En),
-            "es": self.label(Locale::Es),
-        });
-        json!({
-            "value": self.value, "kind": self.scope.kind(), "shot": self.scope.shot_id(),
-            "label": self.label(locale), "labels": labels,
-            "intent": self.intent,
-            "start_frame": self.frames.map(|(start, _)| start),
-            "end_frame_exclusive": self.frames.map(|(_, end)| end),
-            "selected": selected, "applicable": self.applicable, "reason": self.reason,
-            // The very op a `scene.fx.edit` would run to choose it (nothing to do when it is
-            // the one the clip holds already, or when it cannot be chosen).
-            "op": (self.applicable && !selected)
-                .then(|| json!({ "op": "set_scope", "clip": clip, "scope": self.value })),
-        })
-    }
-}
-
-/// A setting of a clip that is one of a few named options, not a number (F062: the scope). The
-/// neutral model carries it like a field: the id, three languages, the value, the options and the
-/// op, so a window, a script and a test read one list.
-#[derive(Debug, Clone, PartialEq)]
-pub struct InspectorChoice {
-    /// The node field name: `scope`.
-    pub id: &'static str,
-    pub base: Labels,
-    /// The `value` of the option the clip holds.
-    pub value: String,
-    /// The option a reset restores (`output`).
-    pub default: String,
-    /// The output first, then the shots in document order.
-    pub options: Vec<ChoiceOption>,
-}
-
-impl InspectorChoice {
-    pub fn label(&self, locale: Locale) -> &'static str {
-        self.base.get(locale)
-    }
-
-    pub fn at_default(&self) -> bool {
-        self.value == self.default
-    }
-
-    pub fn option(&self, value: &str) -> Option<&ChoiceOption> {
-        self.options.iter().find(|option| option.value == value)
-    }
-
-    /// The edit op that moves `clip` to the option `value` (the text of a scope). Refuses, with a
-    /// typed code, text that is no scope, and a `node` scope (`fx_scope_not_yet`); whether the
-    /// shot exists and holds the clip is the core's, which judges the op when it runs.
-    pub fn op(&self, clip: &FxClip, value: &str) -> Result<FxOp, CommandError> {
-        let scope = FxScope::parse_text(value).map_err(|(code, message)| {
-            if code == FX_SCOPE_NOT_YET {
-                CommandError::new("fx_scope_not_yet", message)
-            } else {
-                CommandError::invalid_value(message, json!("output | shot:<id>"))
-            }
-        })?;
-        Ok(FxOp::SetScope {
-            clip: clip.id.clone(),
-            scope,
-        })
-    }
-
-    pub fn to_json(&self, clip: &str, locale: Locale) -> Value {
-        json!({
-            "id": self.id, "group": "scope", "type": "choice",
-            "label": self.label(locale), "labels": self.base.to_json(),
-            "value": self.value, "default": self.default, "at_default": self.at_default(),
-            "options": self.options.iter()
-                .map(|option| option.to_json(locale, option.value == self.value, clip))
-                .collect::<Vec<_>>(),
-            "applicable": true, "reason": Value::Null,
-        })
-    }
-}
-
-/// The choices of a clip against the shots of the edit: the scope. The same list
-/// [`ClipInspector::of`] returns, for a window that already holds the clip.
-pub fn inspector_choices(clip: &FxClip, shots: &[Shot]) -> Vec<InspectorChoice> {
-    let mut options = vec![ChoiceOption {
-        value: FxScope::Output.to_text(),
-        scope: FxScope::Output,
-        intent: None,
-        frames: None,
-        applicable: true,
-        reason: None,
-    }];
-    for shot in shots {
-        let scope = FxScope::Shot(shot.id.clone());
-        let fault = scope_fault(
-            &scope,
-            &clip.id,
-            clip.start_frame,
-            clip.duration_frames,
-            shots,
-        );
-        options.push(ChoiceOption {
-            value: scope.to_text(),
-            scope,
-            intent: Some(shot.intent.clone()),
-            frames: Some((shot.start_frame, shot.end_frame_exclusive)),
-            applicable: fault.is_none(),
-            reason: fault.map(|fault| fault.code),
-        });
-    }
-    // The scope the clip holds is always among the options, even when the shots given do not
-    // list it (a layer read without its edit): there, it is shown, and not offered.
-    if !options.iter().any(|option| option.scope == clip.scope) {
-        options.push(ChoiceOption {
-            value: clip.scope.to_text(),
-            scope: clip.scope.clone(),
-            intent: None,
-            frames: None,
-            applicable: false,
-            reason: Some(crate::directed_scene::fx::UNKNOWN_SHOT),
-        });
-    }
-    vec![InspectorChoice {
-        id: "scope",
-        base: SCOPE_LABEL,
-        value: clip.scope.to_text(),
-        default: FxScope::Output.to_text(),
-        options,
-    }]
-}
-
 /// One effect an author may add (the catalog entry as the inspector offers it).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Offer {
@@ -930,8 +757,8 @@ impl Offer {
 
 /// The fields of a clip without the track around it (a window that already holds the clip): the
 /// same list [`ClipInspector::of`] returns.
-pub fn inspector_fields(clip: &FxClip, edit_frames: i64) -> Vec<InspectorField> {
-    fields_of(clip, edit_frames)
+pub fn inspector_fields(clip: &FxClip, edit_frames: i64, shots: &[Shot]) -> Vec<InspectorField> {
+    fields_of(clip, edit_frames, shots)
 }
 
 /// The inspector of a whole layer: the offers and one [`ClipInspector`] per clip. The data of
@@ -954,7 +781,7 @@ mod tests {
     use core::prelude::v1::test;
 
     use super::*;
-    use crate::directed_scene::fx::{FADE, VIGNETTE};
+    use crate::directed_scene::fx::{FADE, FxScope, VIGNETTE};
 
     fn clip_of(spec: &'static EffectSpec) -> (FxTrack, FxClip) {
         let clip = FxClip {
@@ -981,24 +808,6 @@ mod tests {
             clips: vec![clip.clone()],
         };
         (track, clip)
-    }
-
-    /// Two shots, `a` `[0, 15)` and `b` `[15, 96)`, the second with a note.
-    fn two_shots() -> Vec<Shot> {
-        [("a", 0, 15, ""), ("b", 15, 96, "close on the lamp")]
-            .into_iter()
-            .map(|(id, start, end, intent)| Shot {
-                id: id.to_string(),
-                scene_instance_id: "i1".to_string(),
-                start_frame: start,
-                end_frame_exclusive: end,
-                instance_start_frame: 0,
-                camera_clip_id: "cam".to_string(),
-                camera_in_frame: 0,
-                transition_into: None,
-                intent: intent.to_string(),
-            })
-            .collect()
     }
 
     #[test]
@@ -1117,8 +926,10 @@ mod tests {
             inspector.field("start_frame").unwrap().reset_op(&clip),
             None
         );
-        // The duration of 20 is not the typical 24 of the vignette's cut (96 is its typical).
-        assert!(!inspector.field("duration_frames").unwrap().at_default());
+        // The typical 96 is cut where the edit ends, 86 from frame 10; the duration of 20 is not it.
+        let duration = inspector.field("duration_frames").unwrap();
+        assert_eq!(duration.default, Some(86.0));
+        assert!(!duration.at_default());
     }
 
     #[test]
@@ -1215,120 +1026,11 @@ mod tests {
     }
 
     #[test]
-    fn offers_cover_the_catalog_and_the_scopes_say_what_is_not_drawn() {
+    fn offers_cover_the_catalog() {
         let listed: Vec<&str> = offers().iter().map(|offer| offer.effect.id).collect();
         let catalog_ids: Vec<&str> = catalog().iter().map(|effect| effect.id).collect();
         assert_eq!(listed, catalog_ids);
         assert!(offers().iter().all(|offer| offer.applicable));
-        // F062: the output and a shot are drawn; a node target does not exist yet and is listed
-        // with the code that refuses it, never left out and never enabled.
-        assert_eq!(
-            scopes(),
-            [
-                ("output", true, None),
-                ("shot", true, None),
-                ("node", false, Some(FX_SCOPE_NOT_YET)),
-            ]
-        );
-    }
-
-    #[test]
-    fn the_scope_choice_lists_the_output_then_the_shots_that_hold_the_clip() {
-        // The clip is frames 10..30: it crosses the cut at frame 15, so neither shot holds it.
-        let (track, clip) = clip_of(&VIGNETTE);
-        let inspector = ClipInspector::of(&track, &clip, 96, &two_shots());
-        let choice = inspector.choice("scope").expect("the scope choice");
-        assert_eq!(choice.value, "output");
-        assert_eq!(choice.default, "output");
-        assert!(choice.at_default());
-        let options: Vec<(&str, bool, Option<&str>)> = choice
-            .options
-            .iter()
-            .map(|option| (option.value.as_str(), option.applicable, option.reason))
-            .collect();
-        assert_eq!(
-            options,
-            [
-                ("output", true, None),
-                ("shot:a", false, Some("FX_SCOPE_MISMATCH")),
-                ("shot:b", false, Some("FX_SCOPE_MISMATCH")),
-            ]
-        );
-        // Frames 20..40 are inside `b` only, and `b` carries its note and its interval.
-        let mut inside = clip.clone();
-        inside.start_frame = 20;
-        let choice = &inspector_choices(&inside, &two_shots())[0];
-        let b = choice.option("shot:b").unwrap();
-        assert!(b.applicable, "{b:?}");
-        assert_eq!(b.intent.as_deref(), Some("close on the lamp"));
-        assert_eq!(b.frames, Some((15, 96)));
-        assert!(!choice.option("shot:a").unwrap().applicable);
-    }
-
-    #[test]
-    fn the_scope_choice_has_every_text_in_three_languages_and_the_op_it_runs() {
-        let (_, mut clip) = clip_of(&VIGNETTE);
-        clip.start_frame = 20;
-        clip.scope = FxScope::Shot("b".into());
-        let choice = &inspector_choices(&clip, &two_shots())[0];
-        assert_eq!(choice.value, "shot:b");
-        assert!(!choice.at_default());
-        for locale in Locale::ALL {
-            assert!(!choice.label(locale).is_empty());
-            let json = choice.to_json("c1", locale);
-            assert_eq!(json["type"], "choice");
-            assert_eq!(json["value"], "shot:b");
-            for option in json["options"].as_array().unwrap() {
-                assert!(!option["label"].as_str().unwrap().is_empty());
-            }
-        }
-        let json = choice.to_json("c1", Locale::PtBr);
-        let options = json["options"].as_array().unwrap();
-        assert_eq!(options[0]["labels"]["pt-br"], "Saída");
-        assert_eq!(options[0]["labels"]["en"], "Output");
-        assert_eq!(options[0]["labels"]["es"], "Salida");
-        assert_eq!(options[2]["labels"]["pt-br"], "Plano b");
-        assert_eq!(options[2]["labels"]["en"], "Shot b");
-        assert_eq!(options[2]["selected"], true);
-        // Choosing the shot the clip holds is nothing to do; choosing the output is the op.
-        assert_eq!(options[2]["op"], Value::Null);
-        assert_eq!(
-            options[0]["op"],
-            json!({ "op": "set_scope", "clip": "c1", "scope": "output" })
-        );
-        // The shot `a` does not hold the clip (frames 20..40): listed, never offered.
-        assert_eq!(options[1]["applicable"], false);
-        assert_eq!(options[1]["reason"], "FX_SCOPE_MISMATCH");
-        assert_eq!(options[1]["op"], Value::Null);
-    }
-
-    #[test]
-    fn the_scope_choice_builds_the_edit_op_and_refuses_what_is_not_a_scope() {
-        let (_, clip) = clip_of(&VIGNETTE);
-        let choice = &inspector_choices(&clip, &two_shots())[0];
-        assert_eq!(
-            choice.op(&clip, "shot:b").unwrap(),
-            FxOp::SetScope {
-                clip: "c1".into(),
-                scope: FxScope::Shot("b".into()),
-            }
-        );
-        assert_eq!(
-            choice.op(&clip, "node:n1").unwrap_err().code,
-            "fx_scope_not_yet"
-        );
-        assert_eq!(choice.op(&clip, "frame").unwrap_err().code, "invalid_value");
-    }
-
-    #[test]
-    fn a_scope_the_shots_given_do_not_list_is_shown_and_not_offered() {
-        let (_, mut clip) = clip_of(&VIGNETTE);
-        clip.scope = FxScope::Shot("ghost".into());
-        let choice = &inspector_choices(&clip, &[])[0];
-        assert_eq!(choice.value, "shot:ghost");
-        let ghost = choice.option("shot:ghost").unwrap();
-        assert!(!ghost.applicable);
-        assert_eq!(ghost.reason, Some("UNKNOWN_SHOT"));
     }
 
     #[test]
