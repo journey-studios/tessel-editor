@@ -224,6 +224,8 @@ pub(super) fn run(book: &SceneBook, command: SceneCommand) -> Result<Value, Comm
                 "scene.translate",
                 // BL015.1 (same contract): the rotate tool, its semantic equivalent and the selector.
                 "scene.rotate", "scene.gizmo.tool",
+                // BL015.1 (G1.2): the scale tool's semantic equivalent.
+                "scene.scale",
                 // F016 (docs/features/effects.md): the effects layer, additive.
                 "scene.fx.edit", "scene.fx.list", "scene.fx.catalog", "scene.fx.frame",
                 "scene.fx.inspect", "scene.fx.seek",

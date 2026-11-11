@@ -32,11 +32,13 @@
 use serde_json::{Value, json};
 
 mod rotation;
+mod scaling;
 
 pub use rotation::{
     GizmoSpace, GizmoTool, RING_RADIUS, RING_SEGMENTS, RingAnchor, RotationFrame, quat_json,
     refusal,
 };
+pub use scaling::{MAX_SCALE, MIN_SCALE, ScaleAnchor, ScaleFrame, UNIFORM_OFFSET, scale_refusal};
 
 use crate::directed_scene::{Mat4, NodeKind, Vec3};
 use crate::scene_plan::{PlanNode, ScenePlan};
@@ -105,6 +107,10 @@ pub enum Handle {
     Z,
     /// The plane through the node that faces the camera: free movement on the picture.
     Screen,
+    /// The scale tool's fourth handle: one factor for the three axes (BL015.1, G1.2). It is
+    /// neither an axis nor a translation plane, so it is not in [`Handle::ALL`] (the translate
+    /// handles) and no rotation or translation command accepts it.
+    Uniform,
 }
 
 impl Handle {
@@ -116,11 +122,15 @@ impl Handle {
             Self::Y => "y",
             Self::Z => "z",
             Self::Screen => "screen",
+            Self::Uniform => "uniform",
         }
     }
 
     pub fn parse(text: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|handle| handle.as_str() == text)
+        Self::ALL
+            .into_iter()
+            .chain([Self::Uniform])
+            .find(|handle| handle.as_str() == text)
     }
 
     fn axis(self) -> Option<V3> {
@@ -128,7 +138,7 @@ impl Handle {
             Self::X => Some([1.0, 0.0, 0.0]),
             Self::Y => Some([0.0, 1.0, 0.0]),
             Self::Z => Some([0.0, 0.0, 1.0]),
-            Self::Screen => None,
+            Self::Screen | Self::Uniform => None,
         }
     }
 }
@@ -330,6 +340,10 @@ pub struct Layout {
     pub world_origin: V3,
     pub origin: Point,
     pub handles: Vec<HandleGeometry>,
+    /// Handles of the active tool that exist but cannot be used on this node, each with the
+    /// typed reason (the scale tool: `splat_non_uniform`, `world_axis_shear`). They are not drawn
+    /// and cannot be pressed; the overlay lists them so nothing is silently missing.
+    pub disabled: Vec<(Handle, &'static str)>,
 }
 
 impl Layout {
@@ -359,20 +373,23 @@ impl Layout {
             world_origin,
             origin,
             handles,
+            disabled: Vec::new(),
         })
     }
 
     /// The handle under `point`: the centre wins inside its radius, then the nearest axis within
     /// `HIT_RADIUS` (ties go to X, Y, Z in that order).
     pub fn hit(&self, view: &View, point: Point) -> Option<Handle> {
-        if self.tool == GizmoTool::Rotate {
-            return self.hit_ring(view, point);
+        match self.tool {
+            GizmoTool::Rotate => return self.hit_ring(view, point),
+            GizmoTool::Scale => return self.hit_scale(view, point),
+            GizmoTool::Translate => {}
         }
         if view.distance(point, self.origin) <= CENTER_RADIUS {
             return Some(Handle::Screen);
         }
         let mut best: Option<(f64, Handle)> = None;
-        for geometry in self.handles.iter().filter(|g| g.handle != Handle::Screen) {
+        for geometry in self.handles.iter().filter(|g| g.handle.axis().is_some()) {
             let distance = view.segment_distance(point, geometry.from, geometry.to);
             if distance <= HIT_RADIUS && best.is_none_or(|(nearest, _)| distance < nearest) {
                 best = Some((distance, geometry.handle));
@@ -451,6 +468,10 @@ impl Anchor {
     /// `origin`. `None` when the press does not determine a position (the pointer is parallel
     /// to the axis, or the plane is edge-on).
     pub fn begin(view: &View, origin: V3, handle: Handle, point: Point) -> Option<Self> {
+        // The scale tool's handle is not a place to move along or across.
+        if handle == Handle::Uniform {
+            return None;
+        }
         let ray = view.ray(point);
         let start = match handle.axis() {
             Some(axis) => Start::Axis(axis_parameter(origin, axis, ray)?),
@@ -529,6 +550,8 @@ pub enum Hidden {
     NotMovable(&'static str),
     /// The rotate tool is active and this node cannot be turned (`refusal::*`).
     NotRotatable(&'static str),
+    /// The scale tool is active and this node cannot be scaled (`scale_refusal::*`).
+    NotScalable(&'static str),
     BehindCamera,
 }
 
@@ -539,7 +562,9 @@ impl Hidden {
             Self::MultipleSelection => "multiple_selection",
             Self::NotANode => "not_a_node",
             Self::NotInFrame => "not_in_frame",
-            Self::NotMovable(reason) | Self::NotRotatable(reason) => reason,
+            Self::NotMovable(reason) | Self::NotRotatable(reason) | Self::NotScalable(reason) => {
+                reason
+            }
             Self::BehindCamera => "behind_camera",
         }
     }
@@ -575,6 +600,8 @@ impl Overlay {
                     "id": geometry.handle.as_str(),
                     "kind": match (self.tool, geometry.handle) {
                         (GizmoTool::Rotate, _) => "ring",
+                        (GizmoTool::Scale, Handle::Uniform) => "scale_uniform",
+                        (GizmoTool::Scale, _) => "scale_axis",
                         (_, Handle::Screen) => "center",
                         _ => "axis",
                     },
@@ -595,6 +622,10 @@ impl Overlay {
             "entity": self.entity,
             "origin": self.layout.as_ref().map(|layout| layout.origin.to_json()),
             "handles": handles,
+            // BL015.1 (G1.2), additive: handles of the tool that exist but are off for this node.
+            "disabled_handles": self.layout.iter().flat_map(|layout| layout.disabled.iter())
+                .map(|(handle, reason)| json!({ "id": handle.as_str(), "reason": reason }))
+                .collect::<Vec<_>>(),
             "outlines": self.outlines.iter().map(|(entity, quad)| json!({
                 "entity": entity,
                 "quad": quad.iter().map(|point| point.to_json()).collect::<Vec<_>>(),
@@ -607,6 +638,8 @@ impl Overlay {
             "metrics": {
                 "handle_length": HANDLE_LENGTH, "hit_radius": HIT_RADIUS,
                 "center_radius": CENTER_RADIUS, "ring_radius": RING_RADIUS,
+                "uniform_offset": UNIFORM_OFFSET,
+                "scale_limits": { "min": MIN_SCALE, "max": MAX_SCALE },
                 "unit": "picture_height",
             },
         })

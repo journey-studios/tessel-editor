@@ -1,4 +1,4 @@
-// The gizmo overlay of the directed-scene monitor (F055, BL015/BL042/BL015.1): drawn and hit on a 2D canvas
+// The gizmo overlay of the directed-scene monitor (F055, BL015/BL042/BL015.1, G1.2): drawn and hit on a 2D canvas
 // that sits over the viewport canvas INSIDE the page, so it composes with the picture and can never
 // be an element of the host UI laid over a native WebView.
 //
@@ -34,6 +34,7 @@ export const PALETTE = {
   y: '#30a46c',
   z: '#3e63dd',
   screen: '#f5f5f5',
+  uniform: '#f5f5f5',
   active: '#ffd60a',
   outline: '#4cc2ff',
   shadow: 'rgba(0, 0, 0, 0.55)',
@@ -96,7 +97,7 @@ export const parseOverlay = (raw) => {
   const metrics = isObject(raw.metrics) ? raw.metrics : {};
   const handles = (Array.isArray(raw.handles) ? raw.handles : []).map((handle, index) => {
     if (!isObject(handle) || typeof handle.id !== 'string') throw new Error(`handles[${index}] needs an id`);
-    const kind = handle.kind === 'center' || handle.kind === 'ring' ? handle.kind : 'axis';
+    const kind = ['center', 'ring', 'scale_axis', 'scale_uniform'].includes(handle.kind) ? handle.kind : 'axis';
     const parsed = { id: handle.id, kind, from: point(handle.from, `handles[${index}].from`), to: point(handle.to, `handles[${index}].to`) };
     if (kind === 'ring') {
       // The polygon of a rotation ring: a point, or `null` where the ring is behind the camera.
@@ -111,14 +112,20 @@ export const parseOverlay = (raw) => {
     return { entity: String(outline.entity ?? ''), quad };
   });
   return {
-    // `translate` (arrows and a centre) or `rotate` (one ring per axis); an overlay of the first
-    // slice, which has no `tool`, is the translate one.
-    tool: raw.tool === 'rotate' ? 'rotate' : 'translate',
+    // `translate` (arrows and a centre), `rotate` (one ring per axis) or `scale` (axis handles
+    // ending in a box, and the uniform box); an overlay of the first slice, which has no `tool`,
+    // is the translate one.
+    tool: raw.tool === 'rotate' || raw.tool === 'scale' ? raw.tool : 'translate',
     space: raw.space === 'local' ? 'local' : 'world',
     visible: raw.visible === true,
     entity: typeof raw.entity === 'string' ? raw.entity : null,
     origin: raw.origin ? point(raw.origin, 'origin') : null,
     handles,
+    // Handles of the tool the core did not offer on this node, each with its typed reason: not
+    // drawn and not hit, kept so a probe or a test sees what is missing and why.
+    disabledHandles: (Array.isArray(raw.disabled_handles) ? raw.disabled_handles : [])
+      .filter((entry) => isObject(entry) && typeof entry.id === 'string')
+      .map((entry) => ({ id: entry.id, reason: String(entry.reason ?? '') })),
     outlines,
     active: isObject(raw.active) && typeof raw.active.handle === 'string' ? { handle: raw.active.handle, gesture: raw.active.gesture ?? null } : null,
     aspect: raw.aspect,
@@ -152,9 +159,14 @@ export const hoverHandle = (overlay, point) => {
   if (!overlay?.visible || !overlay.origin) return null;
   const toHeights = (p) => ({ x: p.u * overlay.aspect, y: p.v });
   const here = toHeights(point);
-  if (overlay.tool !== 'rotate' && Math.hypot(here.x - overlay.origin.u * overlay.aspect, here.y - overlay.origin.v) <= overlay.centerRadius) return 'screen';
+  if (overlay.tool === 'translate' && Math.hypot(here.x - overlay.origin.u * overlay.aspect, here.y - overlay.origin.v) <= overlay.centerRadius) return 'screen';
+  // The scale tool's uniform box wins inside its radius, like the translate centre.
+  if (overlay.tool === 'scale') {
+    const uniform = overlay.handles.find((candidate) => candidate.kind === 'scale_uniform');
+    if (uniform && Math.hypot(here.x - uniform.to.u * overlay.aspect, here.y - uniform.to.v) <= overlay.centerRadius) return uniform.id;
+  }
   let best = null;
-  for (const handle of overlay.handles.filter((candidate) => candidate.kind === 'axis' || candidate.kind === 'ring')) {
+  for (const handle of overlay.handles.filter((candidate) => ['axis', 'ring', 'scale_axis'].includes(candidate.kind))) {
     const distance =
       handle.kind === 'ring'
         ? distanceToRing(here, handle.points, overlay.aspect)
@@ -292,6 +304,29 @@ const drawArrow = (context, from, to, color, width) => {
   context.fill();
 };
 
+/** A scale handle: the shaft, and a filled box at its end (the uniform one has a dashed shaft). */
+const drawScaleHandle = (context, from, to, color, width, boxRadius, dashed) => {
+  context.lineCap = 'round';
+  context.setLineDash(dashed ? [4, 4] : []);
+  context.strokeStyle = PALETTE.shadow;
+  context.lineWidth = width + 2;
+  context.beginPath();
+  context.moveTo(from.x, from.y);
+  context.lineTo(to.x, to.y);
+  context.stroke();
+  context.strokeStyle = color;
+  context.lineWidth = width;
+  context.beginPath();
+  context.moveTo(from.x, from.y);
+  context.lineTo(to.x, to.y);
+  context.stroke();
+  context.setLineDash([]);
+  context.fillStyle = PALETTE.shadow;
+  context.fillRect(to.x - boxRadius - 1.5, to.y - boxRadius - 1.5, 2 * boxRadius + 3, 2 * boxRadius + 3);
+  context.fillStyle = color;
+  context.fillRect(to.x - boxRadius, to.y - boxRadius, 2 * boxRadius, 2 * boxRadius);
+};
+
 /** One ring: its polygon in the pane, shadowed, with the gaps (behind the camera) left open. */
 const drawRing = (context, rect, points, color, width) => {
   const path = () => {
@@ -361,6 +396,12 @@ export const drawOverlay = (context, rect, overlay, hover = null) => {
     }
     if (handle.kind === 'ring') {
       drawRing(context, rect, handle.points, color, width);
+      continue;
+    }
+    if (handle.kind === 'scale_axis' || handle.kind === 'scale_uniform') {
+      // The box is smaller than the uniform handle's hit radius on purpose: it is where to grab.
+      const box = handle.kind === 'scale_uniform' ? 6 : 5;
+      drawScaleHandle(context, from, toPane(rect, handle.to), color, width, box, handle.kind === 'scale_uniform');
       continue;
     }
     drawArrow(context, from, toPane(rect, handle.to), color, width);
@@ -443,12 +484,15 @@ export const attachOverlay = ({ canvas, post, win = window, doc = document }) =>
       overlay?.visible && picture
         ? overlay.handles.map((handle) => {
             // A ring is probed on one of its own vertices (the middle of a chord is not on the
-            // stroke); an arrow at the middle of its shaft; the centre at its centre.
+            // stroke); an arrow at the middle of its shaft; the centre at its centre; the box of
+            // a scale handle at the box.
             const vertex = handle.kind === 'ring' ? handle.points[Math.floor(handle.points.length / 8)] ?? handle.points.find((value) => value !== null) : null;
             const middle =
               handle.kind === 'center'
                 ? handle.from
-                : vertex ?? { u: (handle.from.u + handle.to.u) / 2, v: (handle.from.v + handle.to.v) / 2 };
+                : handle.kind === 'scale_uniform'
+                  ? handle.to
+                  : vertex ?? { u: (handle.from.u + handle.to.u) / 2, v: (handle.from.v + handle.to.v) / 2 };
             const at = toPane(picture, middle);
             const pixel = context.getImageData(Math.round(at.x * ratio), Math.round(at.y * ratio), 1, 1).data;
             return { id: handle.id, rgba: [...pixel] };
@@ -465,6 +509,7 @@ export const attachOverlay = ({ canvas, post, win = window, doc = document }) =>
       entity: overlay?.entity ?? null,
       active: overlay?.active?.handle ?? null,
       outlines: overlay?.outlines.length ?? 0,
+      disabled: overlay?.disabledHandles ?? [],
       probes,
     });
   };

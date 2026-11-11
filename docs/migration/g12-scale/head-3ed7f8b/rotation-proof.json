@@ -1,0 +1,574 @@
+{
+  "ok": true,
+  "final_evidence": true,
+  "input": "semantic requests only (JSONL for headless; the direct binary's socket for native); picture coordinates (u, v), no screen coordinates, no physical pointer",
+  "not_proven": [
+    "a PHYSICAL pointer or a native drag on the WKWebView (BL015.2, BL043/BL044)",
+    "the page's own mouse handling (runtime/test/gizmo-overlay.test.mjs)"
+  ],
+  "surfaces": [
+    "headless",
+    "native"
+  ],
+  "head": "3ed7f8bc2b1b53d190248ae947317599cd60538e",
+  "tree_clean": true,
+  "binaries": {
+    "tessel-editor": {
+      "path": "/Users/wallyssonnunes/Library/Caches/mbx/targets/v1/8c25292bfd1df8784039cd85285c144d433122134655dad9f6acf94d6728cef4/debug/tessel-editor",
+      "sha256": "6506c53712f7de4e6a7329b0f80c33bc4b68473850781a3ac3ccb4559b4d6d30"
+    },
+    "tessel-headless": {
+      "path": "/Users/wallyssonnunes/Library/Caches/mbx/targets/v1/8c25292bfd1df8784039cd85285c144d433122134655dad9f6acf94d6728cef4/debug/tessel-headless",
+      "sha256": "cb2b4e6b7de35ebfe7caa1069e0fa6823b9199adc3273e2200436732c8f76043"
+    }
+  },
+  "min_free_gib_seen": 13.8,
+  "headless": {
+    "checks": [
+      {
+        "name": "the corpus bundle loads",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the rotate tool is chosen and is not an edit",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a selected node has three rings of 65 points each",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the contract's ring radius is the one the overlay reports",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "every ring vertex un-projects onto its ring plane at one distance from the origin",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a press on a ring opens a drag and writes nothing",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a move is a candidate: the saved document and the history are untouched",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the tool cannot change under an open drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a ring drag is one undo entry and leaves W' = G \u00b7 W",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "one undo restores the saved document exactly",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "scene.rotate with the drag's axis, angle and space leaves the same saved document",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "undo of the local turn leaves the quarter turn",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the local space turns about the node's own axis, not the world's",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "0 degrees is a no-op",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "0 degrees: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "360 degrees is a no-op",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "360 degrees: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "-360 degrees is a no-op",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "-360 degrees: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "720 degrees is a no-op",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "720 degrees: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `escape` ends the ring drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `escape`: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `blur` ends the ring drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `blur`: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `pointer_cancel` ends the ring drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `pointer_cancel`: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `hidden` ends the ring drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `hidden`: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `unavailable` ends the ring drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `unavailable`: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `api` ends the ring drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `api`: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "refused: a screen axis (invalid_value)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a screen axis: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "refused: an angle that is not a number (invalid_request)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "an angle that is not a number: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "refused: an unknown node (unknown_entity)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "an unknown node: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "refused: a camera clip (not_rotatable)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a camera clip: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "refused: an unknown tool (invalid_value)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "an unknown tool: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a rotation channel on the node is refused as `animated_rotation` and nothing is keyed",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the animated node: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a parent that scales unevenly is refused as `non_uniform_parent_scale`",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "and one undo takes the parent edit back",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the translate tool is what it was",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "work": "/tmp/te-g1-53e1th7w",
+    "retained": false,
+    "record": {
+      "rotation": {
+        "w": 0.9396926207859082,
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.34202014332566927
+      },
+      "degrees": 40.00000000000007
+    },
+    "passed": 48
+  },
+  "native": {
+    "checks": [
+      {
+        "name": "the corpus bundle loads",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the resources are resolved and applied",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the monitor converged on the animating frame",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the monitor has a picture at the animating frame",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the rotate tool is chosen and is not an edit",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a selected node has three rings of 65 points each",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the contract's ring radius is the one the overlay reports",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "every ring vertex un-projects onto its ring plane at one distance from the origin",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a press on a ring opens a drag and writes nothing",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a move is a candidate: the saved document and the history are untouched",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the page announced `overlay.gizmo` and drew the rings",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the page painted each ring in its axis colour",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the tool cannot change under an open drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a ring drag is one undo entry and leaves W' = G \u00b7 W",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "one undo restores the saved document exactly",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the monitor's picture follows the candidate and returns to the initial one after undo",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "scene.rotate with the drag's axis, angle and space leaves the same saved document",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "undo of the local turn leaves the quarter turn",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the local space turns about the node's own axis, not the world's",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "0 degrees is a no-op",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "0 degrees: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "360 degrees is a no-op",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "360 degrees: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "-360 degrees is a no-op",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "-360 degrees: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "720 degrees is a no-op",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "720 degrees: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `escape` ends the ring drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `escape`: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `blur` ends the ring drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `blur`: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `pointer_cancel` ends the ring drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `pointer_cancel`: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `hidden` ends the ring drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `hidden`: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `unavailable` ends the ring drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `unavailable`: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `api` ends the ring drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `api`: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "refused: a screen axis (invalid_value)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a screen axis: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "refused: an angle that is not a number (invalid_request)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "an angle that is not a number: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "refused: an unknown node (unknown_entity)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "an unknown node: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "refused: a camera clip (not_rotatable)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a camera clip: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "refused: an unknown tool (invalid_value)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "an unknown tool: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a rotation channel on the node is refused as `animated_rotation` and nothing is keyed",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the animated node: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a parent that scales unevenly is refused as `non_uniform_parent_scale`",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "and one undo takes the parent edit back",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the translate tool is what it was",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "work": "/tmp/te-g1-7e7517u3",
+    "retained": false,
+    "record": {
+      "initial_hash": "8d4c865fafc56fcc",
+      "picture_followed": true,
+      "candidate_hash": "613ebda429f85349",
+      "committed_hash": "613ebda429f85349",
+      "rotation": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.34202014332566927,
+        "w": 0.9396926207859082
+      },
+      "degrees": 40.00000000000007
+    },
+    "passed": 54
+  },
+  "surfaces_agree_on_the_drag": true,
+  "final_evidence_blockers": []
+}

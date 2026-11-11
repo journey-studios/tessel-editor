@@ -1,0 +1,209 @@
+{
+  "code_head": "e19b7e7ecd99657b4ffb1740570cf2181bf132d8",
+  "note": "M05/M13/M14 anchors re-applied after clippy (exactly one match each); M26/M27 guard the uniform far side and its aspect; M28 the unit-volume basis. The 29-mutant report of 2193452 and the M15 rerun are kept untouched beside this directory.",
+  "runs": [
+    {
+      "run": "1 (before the compensating-scale fix; scaling.rs sha256 2ac5ed9b\u2026)",
+      "report": {
+        "restored": true,
+        "hashes": {
+          "crates/core/src/scene_interaction/gizmo/scaling.rs": "2ac5ed9b51106d14786a0383ed871c2eb1cddb02767c567e0357cd962cb73129",
+          "crates/core/src/scene_project/gizmo.rs": "c0e1052c9932b77f2e16e5ef853bddccdfc9ca50a698d994318f00473fade171",
+          "runtime/src/overlay.js": "d5c1b717ff38b08fd4cad7415b1aa1864c1add73c8031ad4b90a241b8a02b069"
+        },
+        "mutants": [
+          {
+            "mutant": "M05 alignment never refused",
+            "result": "KILLED",
+            "failed": [
+              "scene_interaction::gizmo::scaling::tests::a_world_axis_counts_as_aligned_only_within_numeric_noise",
+              "the_world_handles_the_node_cannot_hold_are_disabled_with_the_reason_and_not_drawn"
+            ],
+            "seconds": 19
+          },
+          {
+            "mutant": "M13 press at the origin allowed (axis)",
+            "result": "KILLED",
+            "failed": [
+              "a_press_too_close_to_the_origin_does_not_open_a_drag",
+              "scene_interaction::gizmo::scaling::tests::a_press_that_does_not_fix_a_ratio_does_not_open_a_drag"
+            ],
+            "seconds": 5
+          },
+          {
+            "mutant": "M14 press at the origin allowed (uniform)",
+            "result": "KILLED",
+            "failed": [
+              "scene_interaction::gizmo::scaling::tests::a_press_that_does_not_fix_a_ratio_does_not_open_a_drag"
+            ],
+            "seconds": 5
+          },
+          {
+            "mutant": "M26 uniform far side counts as the press side",
+            "result": "KILLED",
+            "failed": [
+              "a_position_past_the_origin_or_past_a_limit_is_refused_and_the_last_legal_candidate_stays",
+              "a_uniform_drag_across_the_origin_is_refused_then_recovers_and_releases_the_last_legal",
+              "scene_interaction::gizmo::scaling::tests::the_uniform_side_is_judged_in_picture_space_not_in_normalised_coordinates",
+              "scene_interaction::gizmo::scaling::tests::uniform_scaling_refuses_the_opposite_side_without_changing_valid_ratios"
+            ],
+            "seconds": 5
+          },
+          {
+            "mutant": "M27 uniform side judged without the aspect",
+            "result": "KILLED",
+            "failed": [
+              "scene_interaction::gizmo::scaling::tests::the_uniform_side_is_judged_in_picture_space_not_in_normalised_coordinates"
+            ],
+            "seconds": 5
+          }
+        ]
+      },
+      "summary": {
+        "M05": "KILLED",
+        "M13": "KILLED",
+        "M14": "KILLED",
+        "M26": "KILLED",
+        "M27": "KILLED"
+      },
+      "restored": true
+    },
+    {
+      "run": "2 (final production source, scaling.rs sha256 75534abd\u2026, the committed one)",
+      "report": {
+        "restored": true,
+        "hashes": {
+          "crates/core/src/scene_interaction/gizmo/scaling.rs": "75534abd06bdc49ed63f5c9d811e7a9d2920490b2a0c18991d7800b6e9e59788",
+          "crates/core/src/scene_project/gizmo.rs": "c0e1052c9932b77f2e16e5ef853bddccdfc9ca50a698d994318f00473fade171",
+          "runtime/src/overlay.js": "d5c1b717ff38b08fd4cad7415b1aa1864c1add73c8031ad4b90a241b8a02b069"
+        },
+        "mutants": [
+          {
+            "mutant": "M05 alignment never refused",
+            "result": "KILLED",
+            "failed": [
+              "scene_interaction::gizmo::scaling::tests::a_world_axis_counts_as_aligned_only_within_numeric_noise",
+              "the_world_handles_the_node_cannot_hold_are_disabled_with_the_reason_and_not_drawn"
+            ],
+            "seconds": 11
+          },
+          {
+            "mutant": "M08 determinant bound off",
+            "result": "KILLED",
+            "failed": [
+              "a_result_whose_world_matrix_would_not_be_invertible_is_refused_even_inside_the_range",
+              "scene_interaction::gizmo::scaling::tests::the_world_determinant_bound_is_on_the_world_matrix_not_on_the_components"
+            ],
+            "seconds": 9
+          },
+          {
+            "mutant": "M12 local axes read as rows",
+            "result": "KILLED",
+            "failed": [
+              "a_handle_drag_and_scene_scale_leave_the_same_document_in_both_spaces",
+              "dragging_a_handle_scales_by_the_ratio_the_pointer_swept_in_both_spaces",
+              "the_scale_overlay_has_three_axis_handles_and_the_uniform_one_where_the_oracle_puts_them"
+            ],
+            "seconds": 5
+          },
+          {
+            "mutant": "M13 press at the origin allowed (axis)",
+            "result": "KILLED",
+            "failed": [
+              "a_press_too_close_to_the_origin_does_not_open_a_drag",
+              "scene_interaction::gizmo::scaling::tests::a_press_that_does_not_fix_a_ratio_does_not_open_a_drag"
+            ],
+            "seconds": 4
+          },
+          {
+            "mutant": "M14 press at the origin allowed (uniform)",
+            "result": "KILLED",
+            "failed": [
+              "scene_interaction::gizmo::scaling::tests::a_press_that_does_not_fix_a_ratio_does_not_open_a_drag"
+            ],
+            "seconds": 4
+          },
+          {
+            "mutant": "M16 component picked by the smallest diagonal",
+            "result": "KILLED",
+            "failed": [
+              "a_factor_multiplies_the_authored_component_and_touches_nothing_else",
+              "a_handle_drag_and_scene_scale_leave_the_same_document_in_both_spaces",
+              "a_world_axis_along_a_node_axis_scales_that_component_and_the_matrix_is_g_times_w",
+              "a_world_axis_through_an_unevenly_scaled_parent_is_legal_when_it_runs_along_a_node_axis",
+              "dragging_a_handle_scales_by_the_ratio_the_pointer_swept_in_both_spaces",
+              "scene_interaction::gizmo::scaling::tests::a_world_axis_counts_as_aligned_only_within_numeric_noise"
+            ],
+            "seconds": 4
+          },
+          {
+            "mutant": "M26 uniform far side counts as the press side",
+            "result": "KILLED",
+            "failed": [
+              "a_position_past_the_origin_or_past_a_limit_is_refused_and_the_last_legal_candidate_stays",
+              "a_uniform_drag_across_the_origin_is_refused_then_recovers_and_releases_the_last_legal",
+              "scene_interaction::gizmo::scaling::tests::the_uniform_side_is_judged_in_picture_space_not_in_normalised_coordinates",
+              "scene_interaction::gizmo::scaling::tests::uniform_scaling_refuses_the_opposite_side_without_changing_valid_ratios"
+            ],
+            "seconds": 5
+          },
+          {
+            "mutant": "M27 uniform side judged without the aspect",
+            "result": "KILLED",
+            "failed": [
+              "scene_interaction::gizmo::scaling::tests::the_uniform_side_is_judged_in_picture_space_not_in_normalised_coordinates"
+            ],
+            "seconds": 6
+          },
+          {
+            "mutant": "M28 the basis is inverted at its own size",
+            "result": "KILLED",
+            "failed": [
+              "scene_interaction::gizmo::scaling::tests::compensating_scales_of_a_child_and_its_parent_do_not_hide_the_handles"
+            ],
+            "seconds": 7
+          }
+        ]
+      },
+      "summary": {
+        "M05": "KILLED",
+        "M08": "KILLED",
+        "M12": "KILLED",
+        "M13": "KILLED",
+        "M14": "KILLED",
+        "M16": "KILLED",
+        "M26": "KILLED",
+        "M27": "KILLED",
+        "M28": "KILLED"
+      },
+      "restored": true
+    },
+    {
+      "run": "3 (M28 again, now also covered by the public-API test)",
+      "report": {
+        "restored": true,
+        "hashes": {
+          "crates/core/src/scene_interaction/gizmo/scaling.rs": "75534abd06bdc49ed63f5c9d811e7a9d2920490b2a0c18991d7800b6e9e59788",
+          "crates/core/src/scene_project/gizmo.rs": "c0e1052c9932b77f2e16e5ef853bddccdfc9ca50a698d994318f00473fade171",
+          "runtime/src/overlay.js": "d5c1b717ff38b08fd4cad7415b1aa1864c1add73c8031ad4b90a241b8a02b069"
+        },
+        "mutants": [
+          {
+            "mutant": "M28 the basis is inverted at its own size",
+            "result": "KILLED",
+            "failed": [
+              "compensating_scales_of_a_parent_and_its_child_stay_scalable_in_every_space",
+              "scene_interaction::gizmo::scaling::tests::compensating_scales_of_a_child_and_its_parent_do_not_hide_the_handles"
+            ],
+            "seconds": 11
+          }
+        ]
+      },
+      "summary": {
+        "M28": "KILLED"
+      },
+      "restored": true
+    }
+  ],
+  "equivalent_not_run": "`dot <= 0.0` -> `dot < 0.0`: at the exact origin the dot is 0 and the ratio 0/d is 0 too, the same observable result."
+}

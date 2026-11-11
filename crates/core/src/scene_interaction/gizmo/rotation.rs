@@ -57,15 +57,18 @@ pub enum GizmoTool {
     #[default]
     Translate,
     Rotate,
+    /// BL015.1 (G1.2): scale of one node, see `scaling.rs`.
+    Scale,
 }
 
 impl GizmoTool {
-    pub const ALL: [GizmoTool; 2] = [Self::Translate, Self::Rotate];
+    pub const ALL: [GizmoTool; 3] = [Self::Translate, Self::Rotate, Self::Scale];
 
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Translate => "translate",
             Self::Rotate => "rotate",
+            Self::Scale => "scale",
         }
     }
 
@@ -74,9 +77,9 @@ impl GizmoTool {
     }
 }
 
-/// The orientation of the axes of a rotation: the scene's or the node's own. Translation always
-/// moves along the scene's axes (this slice does not change it), so the space only matters to
-/// the rotate tool and to `scene.rotate`.
+/// The orientation of the axes of a rotation or a scale: the scene's or the node's own.
+/// Translation always moves along the scene's axes (this slice does not change it), so the space
+/// only matters to the rotate and scale tools and to `scene.rotate` / `scene.scale`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum GizmoSpace {
     #[default]
@@ -117,7 +120,7 @@ pub mod refusal {
     pub const ANIMATED_ROTATION: &str = "animated_rotation";
 }
 
-type M3 = [[f64; 3]; 3];
+pub(super) type M3 = [[f64; 3]; 3];
 
 fn transpose(m: &M3) -> M3 {
     [
@@ -137,7 +140,7 @@ fn multiply(a: &M3, b: &M3) -> M3 {
     out
 }
 
-fn determinant(m: &M3) -> f64 {
+pub(super) fn determinant(m: &M3) -> f64 {
     m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
         - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
         + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0])
@@ -280,7 +283,7 @@ impl RotationFrame {
             Handle::X => Some(self.axes[0]),
             Handle::Y => Some(self.axes[1]),
             Handle::Z => Some(self.axes[2]),
-            Handle::Screen => None,
+            Handle::Screen | Handle::Uniform => None,
         }
     }
 
@@ -351,6 +354,7 @@ impl Layout {
             world_origin,
             origin,
             handles,
+            disabled: Vec::new(),
         })
     }
 

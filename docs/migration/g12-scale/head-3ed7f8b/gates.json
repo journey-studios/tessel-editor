@@ -1,0 +1,129 @@
+{
+  "code_head": "3ed7f8bc2b1b53d190248ae947317599cd60538e",
+  "kind": "local merge commit (unpublished) of origin/main bf4347d5bd5404e3c8b01007b2d9b259071b3150 into PR 43 head 8a18811c0d5316ee7d480977b78e3c967eb47d0a (no rebase, no force)",
+  "tree": "clean before and after the batch (git status --porcelain = 0 in the manifest start and end lines)",
+  "checkout": "/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-2b5276ea",
+  "branch": "t3/integrate-main-validate-pr43",
+  "env": "MBX default target (symlink), no CARGO_TARGET_DIR/--target-dir/TESSEL_CARGO_LANE; TESSEL_REQUIRE_RUNTIME=1 for the test run; no performance lock taken (functional gates only); no benchmark",
+  "driver": "one finite batch script, awaited, with scripts/disk-guard.sh <need> 12 before every stage; no sleep/poll/nohup/daemon",
+  "disk": {
+    "free_gib_before_heavy": 21.61,
+    "free_gib_after_test": 14.25,
+    "free_gib_end": 13.81,
+    "reserve_gib": 16,
+    "floor_gib": 12,
+    "note": "A first df -g read of the data volume in this task said 12 GiB; df -k seconds later (and four more times) said 21.6-21.8 GiB (other processes on the shared machine were writing and freeing). The heavy batch started only after a fresh 21.61 GiB measurement (>= 16 reserve). The test stage grew the managed target by about 6 GiB, ending below the 16 GiB reserve but above the 12 GiB floor; every later stage passed its guard (min free seen by the proofs 13.8). mbx printed 'savings: 1.3 TiB logical of abandoned target directories removed' by itself during check/clippy/test (the wrapper's automatic policy, not an mbx clean/gc run by this task)."
+  },
+  "gates": [
+    {
+      "cmd": "cargo fmt --all -- --check",
+      "exit": 0,
+      "note": "run on the committed merge before the batch"
+    },
+    {
+      "cmd": "./scripts/cargo check --workspace --locked",
+      "exit": 0,
+      "start": "2026-11-11T00:32:31Z",
+      "end": "2026-11-11T00:33:44Z"
+    },
+    {
+      "cmd": "./scripts/cargo clippy --workspace --all-targets --locked -- -D warnings",
+      "exit": 0,
+      "start": "2026-11-11T00:33:44Z",
+      "end": "2026-11-11T00:34:13Z"
+    },
+    {
+      "cmd": "./scripts/runtime setup",
+      "exit": 0
+    },
+    {
+      "cmd": "TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test --workspace --locked",
+      "exit": 0,
+      "passed": 2275,
+      "failed": 0,
+      "ignored": 13,
+      "binaries": 114,
+      "skipped_markers": 0,
+      "start": "2026-11-11T00:34:17Z",
+      "end": "2026-11-11T00:46:04Z",
+      "note": "main alone was 2208/0/13 (113 binaries) at 74dc1b9; PR 43 added 67 tests and 1 binary (2190-2123; 111-110): 2208+67=2275 and 113+1=114"
+    },
+    {
+      "cmd": "./scripts/cargo build -p tessel-editor --locked",
+      "exit": 0
+    },
+    {
+      "cmd": "./scripts/cargo build -p tessel-editor-core --bin tessel-headless --locked",
+      "exit": 0
+    },
+    {
+      "cmd": "./scripts/cargo tree -p tessel-editor-core --locked | rg -i 'gpui|wry'",
+      "matches": 0,
+      "direct_deps": [
+        "flate2",
+        "serde",
+        "serde_json"
+      ],
+      "note": "the batch's own count line was empty because rg -c prints nothing for zero matches; counted again with grep -ci on the saved tree: 0"
+    },
+    {
+      "cmd": "./scripts/runtime test",
+      "exit": 0,
+      "tests": 243,
+      "pass": 243,
+      "fail": 0,
+      "skipped": 0,
+      "start": "2026-11-11T00:46:42Z",
+      "end": "2026-11-11T00:53:40Z",
+      "note": "231 at e19b7e7 plus 12 runtime tests that came from main"
+    },
+    {
+      "cmd": "python3 scripts/scene-gizmo-scale-proof.py --out ...",
+      "exit": 0,
+      "headless": 53,
+      "native": 61,
+      "final_evidence": true,
+      "agree": true
+    },
+    {
+      "cmd": "python3 scripts/scene-gizmo-rotation-proof.py --out ...",
+      "exit": 0,
+      "headless": 48,
+      "native": 54,
+      "final_evidence": true,
+      "agree": true
+    },
+    {
+      "cmd": "python3 scripts/scene-gizmo-proof.py --out ...",
+      "exit": 0,
+      "headless": 56,
+      "native": 84,
+      "final_evidence": true,
+      "agree": true
+    },
+    {
+      "cmd": "python3 scripts/scene-fx-grain-ui-proof.py --json ... (own instance, op/get/set/invoke only, functional, no lock)",
+      "exit": 0,
+      "checks": 104,
+      "passed": 104
+    }
+  ],
+  "python_specs_before_batch": {
+    "scene-gizmo-scale-proof": "3/3 normal and -O",
+    "scene-gizmo-scale-measure": "5/5 normal and -O",
+    "scene-fx-grain-ui-proof": "5/5 normal and -O",
+    "pilot-grain-corpus": "24/24 normal and -O",
+    "scene-gizmo-proof": "34/34 normal and -O",
+    "proof-surface": "29/29 normal and -O"
+  },
+  "binaries_sha256": {
+    "tessel-editor": "6506c53712f7de4e6a7329b0f80c33bc4b68473850781a3ac3ccb4559b4d6d30",
+    "tessel-headless": "cb2b4e6b7de35ebfe7caa1069e0fa6823b9199adc3273e2200436732c8f76043"
+  },
+  "not_repeated": "the 29 mutants: git diff e19b7e7 3ed7f8b is empty for every file they mutate (crates/core/src/scene_interaction/gizmo/scaling.rs, crates/core/src/scene_project/gizmo.rs, runtime/src/overlay.js) and for crates/core/tests/scene_gizmo_scale.rs, scripts/scene-gizmo-scale-proof.py/.spec.py, scripts/scene-gizmo-scale-measure.py/.spec.py and docs/migration/g12-scale/mutate.py; the only change under scene_interaction is gesture.rs (+15/-1, the FX gesture intent from main, not read by the scale path); head-e19b7e7/mutation-report-fixes.json stays valid by that diff, and the tests that kill the mutants all passed in the 2275",
+  "not_measured": "no benchmark, no perf lock (BL015.18 open); physical WKWebView pointer BL015.2/BL043/BL044 open",
+  "published_equivalent": {
+    "merge": "5906713 (published by another agent while this batch ran; PR head then aae8747)",
+    "tree_diff": "git diff --stat 3ed7f8b 5906713 = docs/backlog.md only (block order); code is identical, so these gates stand for the published code by that diff"
+  }
+}

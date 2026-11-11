@@ -1,0 +1,86 @@
+{
+  "measured": true,
+  "binary": "/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-3902d1d1/target/debug/tessel-headless",
+  "n": 1500,
+  "rounds": [
+    {
+      "hidden": {
+        "p50_us": 365.7,
+        "p95_us": 1142.9,
+        "min_us": 137.4,
+        "n": 1500
+      },
+      "translate": {
+        "p50_us": 478.6,
+        "p95_us": 1287.4,
+        "min_us": 225.0,
+        "n": 1500
+      },
+      "rotate": {
+        "p50_us": 1586.3,
+        "p95_us": 3229.7,
+        "min_us": 959.7,
+        "n": 1500
+      },
+      "scale": {
+        "p50_us": 653.0,
+        "p95_us": 1676.1,
+        "min_us": 286.7,
+        "n": 1500
+      }
+    },
+    {
+      "hidden": {
+        "p50_us": 432.1,
+        "p95_us": 1235.7,
+        "min_us": 135.7,
+        "n": 1500
+      },
+      "translate": {
+        "p50_us": 519.3,
+        "p95_us": 1416.7,
+        "min_us": 222.1,
+        "n": 1500
+      },
+      "rotate": {
+        "p50_us": 1793.1,
+        "p95_us": 3492.0,
+        "min_us": 955.6,
+        "n": 1500
+      },
+      "scale": {
+        "p50_us": 747.3,
+        "p95_us": 1807.3,
+        "min_us": 286.7,
+        "n": 1500
+      }
+    },
+    {
+      "hidden": {
+        "p50_us": 327.0,
+        "p95_us": 904.5,
+        "min_us": 143.4,
+        "n": 1500
+      },
+      "translate": {
+        "p50_us": 444.8,
+        "p95_us": 1171.3,
+        "min_us": 230.9,
+        "n": 1500
+      },
+      "rotate": {
+        "p50_us": 1531.5,
+        "p95_us": 3178.3,
+        "min_us": 960.3,
+        "n": 1500
+      },
+      "scale": {
+        "p50_us": 609.9,
+        "p95_us": 1488.0,
+        "min_us": 289.5,
+        "n": 1500
+      }
+    }
+  ],
+  "unit": "microseconds per scene.gizmo.state round trip"
+}

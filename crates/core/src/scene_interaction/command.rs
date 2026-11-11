@@ -171,7 +171,8 @@ pub enum PointerCommand {
     Cancel { reason: CancelReason },
 }
 
-/// The gizmo vocabulary (`scene.gizmo.*`, `scene.pointer.*`, `scene.translate`, `scene.rotate`).
+/// The gizmo vocabulary (`scene.gizmo.*`, `scene.pointer.*`, `scene.translate`, `scene.rotate`,
+/// `scene.scale`).
 #[derive(Debug, Clone, PartialEq)]
 pub enum GizmoCommand {
     /// The overlay of the scene at a frame: what a runtime draws for the current selection (the
@@ -207,9 +208,22 @@ pub enum GizmoCommand {
         degrees: f64,
         space: Option<GizmoSpace>,
     },
-    /// Reads or sets the tool (translate/rotate) and the space of the rotate axes. With neither
-    /// field it is a read. Presentation state, not an edit: no history, no revision. Refused
-    /// while a drag is open (a ring cannot turn into an arrow under the pointer).
+    /// The semantic scale (BL015.1, G1.2): scales one node by the multiplicative `factor` along
+    /// the `axis` handle (`x`, `y`, `z` or `uniform`; never `screen`) in `space` (the session's
+    /// when `None`), in one `scene.edit`. The same result as the drag that reported that
+    /// `factor`, `axis` and `space`.
+    Scale {
+        scene: String,
+        entity: String,
+        at: FrameAt,
+        axis: Handle,
+        factor: f64,
+        space: Option<GizmoSpace>,
+    },
+    /// Reads or sets the tool (translate/rotate/scale) and the space of the rotate and scale
+    /// axes. With neither field it is a read. Presentation state, not an edit: no history, no
+    /// revision. Refused while a drag is open (a ring cannot turn into an arrow under the
+    /// pointer).
     Tool {
         tool: Option<GizmoTool>,
         space: Option<GizmoSpace>,

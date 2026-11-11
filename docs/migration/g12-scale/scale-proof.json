@@ -1,0 +1,689 @@
+{
+  "ok": true,
+  "final_evidence": true,
+  "input": "semantic requests only (JSONL for headless; the direct binary's socket for native); picture coordinates (u, v), no screen coordinates, no physical pointer",
+  "not_proven": [
+    "a PHYSICAL pointer or a native drag on the WKWebView (BL015.2, BL043/BL044)",
+    "the page's own mouse handling (runtime/test/gizmo-overlay.test.mjs)",
+    "a splat (no splat in the corpus; crates/core/tests/scene_gizmo_scale.rs)",
+    "performance (BL015.1)"
+  ],
+  "surfaces": [
+    "headless",
+    "native"
+  ],
+  "head": "2193452c0beb84a0dacaa705ce8e26077e0ed11e",
+  "tree_clean": true,
+  "binaries": {
+    "tessel-editor": {
+      "path": "/Users/wallyssonnunes/Library/Caches/mbx/targets/v1/59e22e1e43aca34466b29b53156d580e2ea02bc3cd0a28513679b9123239cc2f/debug/tessel-editor",
+      "sha256": "7127fb494017e330e38eb15cda22238de24d073f2c77fc08cf398b415dfbdfc5"
+    },
+    "tessel-headless": {
+      "path": "/Users/wallyssonnunes/Library/Caches/mbx/targets/v1/59e22e1e43aca34466b29b53156d580e2ea02bc3cd0a28513679b9123239cc2f/debug/tessel-headless",
+      "sha256": "323578b2be5a04da9ecfecd31d9480c75c9d52db3d2263c9a8461e7d573ab58d"
+    }
+  },
+  "min_free_gib_seen": 25.1,
+  "headless": {
+    "checks": [
+      {
+        "name": "the corpus bundle loads",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the scale tool is chosen and is not an edit",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a selected node has three scale handles and the uniform box",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "every axis handle ends where the pinhole puts it and the box is at the contract's picture offset",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a press on a handle opens a drag and writes nothing",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a move is a candidate: the saved document and the history are untouched",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the tool cannot change under an open drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a local axis drag is one undo entry and leaves W' = W \u00b7 diag(d)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "one undo restores the saved document exactly",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "scene.scale with the drag's axis, factor and space leaves the same saved document",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the uniform handle leaves W' = f \u00b7 W and the origin where it was",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "and one undo takes it back",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a world axis no node axis runs along is disabled as `world_axis_shear` and refused typed",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a world axis drag is one undo entry and leaves W' = G \u00b7 W",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "and the turn and the scale are both taken back",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a rotated, unevenly scaled and mirroring parent keep every local axis scalable, with the oracle's matrix",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a node under a sliding parent that sways is scaled about its own origin",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a factor of one is a no-op: same bytes, no history, no revision",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "factor 0 is refused as `factor_not_positive`",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "factor 0: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "factor -1 is refused as `factor_not_positive`",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "factor -1: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "factor 5000 is refused as `above_maximum_scale`",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "factor 5000: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "factor 0.0001 is refused as `below_minimum_scale`",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "factor 0.0001: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `escape` ends the scale drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `escape`: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `blur` ends the scale drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `blur`: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `pointer_cancel` ends the scale drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `pointer_cancel`: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `hidden` ends the scale drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `hidden`: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `unavailable` ends the scale drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `unavailable`: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `api` ends the scale drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `api`: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a position past the origin keeps the last legal candidate",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "refused: the screen handle (invalid_value)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the screen handle: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "refused: a missing factor (invalid_request)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a missing factor: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "refused: an unknown node (unknown_entity)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "an unknown node: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "refused: a camera clip (not_scalable)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a camera clip: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "refused: an unknown tool (invalid_value)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "an unknown tool: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a scale channel on the node is refused as `animated_scale` and nothing is keyed",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the animated node: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the translate tool is what it was",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "and so is the rotate tool",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "work": "/tmp/te-g12-smnqv9fw",
+    "retained": false,
+    "record": {
+      "scale": {
+        "x": 1.7000000000000002,
+        "y": 1.0,
+        "z": 1.0
+      },
+      "factor": 1.7000000000000002
+    },
+    "passed": 53
+  },
+  "native": {
+    "checks": [
+      {
+        "name": "the corpus bundle loads",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the resources are resolved and applied",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the monitor converged on the animating frame",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the monitor has a picture at the animating frame",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the scale tool is chosen and is not an edit",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a selected node has three scale handles and the uniform box",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "every axis handle ends where the pinhole puts it and the box is at the contract's picture offset",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the page announced `overlay.gizmo` and drew the scale handles",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the page painted each handle in its colour",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a press on a handle opens a drag and writes nothing",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a move is a candidate: the saved document and the history are untouched",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the tool cannot change under an open drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a local axis drag is one undo entry and leaves W' = W \u00b7 diag(d)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "one undo restores the saved document exactly",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the monitor's picture follows the candidate and returns to the initial one after undo",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "scene.scale with the drag's axis, factor and space leaves the same saved document",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the uniform handle leaves W' = f \u00b7 W and the origin where it was",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "and one undo takes it back",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a world axis no node axis runs along is disabled as `world_axis_shear` and refused typed",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a world axis drag is one undo entry and leaves W' = G \u00b7 W",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "and the turn and the scale are both taken back",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a rotated, unevenly scaled and mirroring parent keep every local axis scalable, with the oracle's matrix",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a node under a sliding parent that sways is scaled about its own origin",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a factor of one is a no-op: same bytes, no history, no revision",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "factor 0 is refused as `factor_not_positive`",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "factor 0: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "factor -1 is refused as `factor_not_positive`",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "factor -1: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "factor 5000 is refused as `above_maximum_scale`",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "factor 5000: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "factor 0.0001 is refused as `below_minimum_scale`",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "factor 0.0001: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `escape` ends the scale drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `escape`: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `blur` ends the scale drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `blur`: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `pointer_cancel` ends the scale drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `pointer_cancel`: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `hidden` ends the scale drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `hidden`: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `unavailable` ends the scale drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `unavailable`: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `api` ends the scale drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `api`: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a position past the origin keeps the last legal candidate",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "refused: the screen handle (invalid_value)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the screen handle: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "refused: a missing factor (invalid_request)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a missing factor: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "refused: an unknown node (unknown_entity)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "an unknown node: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "refused: a camera clip (not_scalable)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a camera clip: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "refused: an unknown tool (invalid_value)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "an unknown tool: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a scale channel on the node is refused as `animated_scale` and nothing is keyed",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the animated node: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the translate tool is what it was",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "and so is the rotate tool",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "an explicit render with the gizmo on screen is the render with nothing selected",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "an FFmpeg export with the gizmo on screen decodes to the same pixels as with nothing selected",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "work": "/tmp/te-g12-dccej137",
+    "retained": false,
+    "record": {
+      "initial_hash": "8d4c865fafc56fcc",
+      "drawn_probes": {
+        "x": [
+          229,
+          72,
+          77,
+          255
+        ],
+        "y": [
+          48,
+          164,
+          108,
+          255
+        ],
+        "z": [
+          62,
+          99,
+          221,
+          255
+        ],
+        "uniform": [
+          245,
+          245,
+          245,
+          255
+        ]
+      },
+      "active_drawn": true,
+      "picture_followed": true,
+      "candidate_hash": "598199ed57138c1e",
+      "scale": {
+        "x": 1.7000000000000002,
+        "y": 1.0,
+        "z": 1.0
+      },
+      "factor": 1.7000000000000002,
+      "committed_hash": "598199ed57138c1e",
+      "render_probes": [
+        [
+          98,
+          60,
+          102,
+          255
+        ],
+        [
+          105,
+          177,
+          130,
+          255
+        ],
+        [
+          28,
+          66,
+          66,
+          255
+        ],
+        [
+          28,
+          66,
+          66,
+          255
+        ]
+      ],
+      "render_hash": "8d4c865fafc56fcc",
+      "export_digest": "a8419b9080f44deec867582dc2d0031c54d32b5919f3a34e7c8db6e25d48ef7d"
+    },
+    "passed": 61
+  },
+  "surfaces_agree_on_the_drag": true,
+  "final_evidence_blockers": []
+}

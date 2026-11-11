@@ -1,0 +1,75 @@
+{
+  "code_head": "0ee2d14039b6758a9226eb3be557dfb06335ae61",
+  "code_tree": "1da28318c001d341dbabacc97771b4ee34de582f",
+  "parent": "78f8994bc7790ff9bd2e5520174d99fd421fb32d",
+  "main_checked": "bf4347d5bd5404e3c8b01007b2d9b259071b3150 (origin/main live at 2026-11-11T01:09Z, unchanged)",
+  "cwd": "/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-02ba3f94",
+  "branch_local": "t3/scale-frame-math-fixes (fast-forwarded to origin/t3/gizmo-node-scaling 78f8994; pushed to that branch without force)",
+  "env": "default MBX target (no CARGO_TARGET_DIR, --target-dir, build.target-dir or TESSEL_CARGO_LANE); scripts/cargo -> scripts/mbx; no performance lock, no benchmark, no measurement",
+  "disk_policy": "entry reserve 16 GiB, floor 12 GiB; readings by df -k: 13.75 GiB at 2026-11-11T00:59Z (stable over 3 reads), 13.74 before the first test, 12.30 after the mutation run, 12.13 at the end (the volume is shared; my own target is 289 MB; mbx printed its own automatic eviction, I never ran clean/gc)",
+  "scaling_rs_sha256": "a923d2ab894e57b50e05996e327bd128d446bc789992b02a35fbceebaa0cc93d",
+  "executed_light_core_only": [
+    {
+      "cmd": "cargo fmt --all -- --check",
+      "exit": 0
+    },
+    {
+      "cmd": "./scripts/cargo test -p tessel-editor-core --locked --lib -- gizmo::scaling",
+      "utc": "2026-11-11T01:04:45Z",
+      "note": "first run: 16 passed 1 failed (my oracle at an exact quarter turn, test design, fixed before commit); second run 17/17"
+    },
+    {
+      "cmd": "./scripts/cargo test -p tessel-editor-core --locked --test scene_gizmo_scale",
+      "note": "first run 52/1 failed (world axes with a rotation BETWEEN anisotropic parents; the refusal is the correct behaviour, the test was rewritten and a refusal test added); after: 54/54"
+    },
+    {
+      "cmd": "./scripts/cargo test -p tessel-editor-core --locked --lib --test scene_gizmo_scale --test scene_gizmo_rotation --test scene_gizmo --test scene_gizmo_fx",
+      "utc": "2026-11-11T01:09:55Z",
+      "tree": "clean, 0ee2d14",
+      "exit": 0,
+      "results": {
+        "lib": "524/0",
+        "scene_gizmo": "42/0",
+        "scene_gizmo_fx": "5/0",
+        "scene_gizmo_rotation": "46/0",
+        "scene_gizmo_scale": "54/0 (49 before this fix + 5 new)"
+      }
+    },
+    {
+      "cmd": "./scripts/cargo clippy -p tessel-editor-core --all-targets --locked -- -D warnings",
+      "utc": "2026-11-11T01:09:36Z",
+      "exit": 0
+    },
+    {
+      "cmd": "./scripts/cargo tree -p tessel-editor-core --locked",
+      "result": "flate2, serde, serde_json only: no gpui, no wry"
+    },
+    {
+      "cmd": "python3 [-O] scripts/scene-gizmo-scale-proof.spec.py and scene-gizmo-scale-measure.spec.py",
+      "exit": 0,
+      "results": "3 + 5 tests, normal and -O (pure: no binary, no lock)"
+    },
+    {
+      "cmd": "TESSEL_MUTATION_OUT=... python3 docs/migration/g12-scale/mutate.py M05 M08 M12 M13 M14 M16 M26 M27 M28 M29 M30 M31",
+      "utc": "2026-11-11T01:06:50Z..01:07:47Z",
+      "result": "12/12 KILLED, restored:true, scaling.rs hash before = after = a923d2ab...",
+      "report": "mutation-report-math.json"
+    }
+  ],
+  "blocked_not_run": [
+    "cargo check --workspace --locked",
+    "cargo clippy --workspace --all-targets --locked -- -D warnings (only the core crate ran)",
+    "TESSEL_REQUIRE_RUNTIME=1 cargo test --workspace --locked (only 5 core binaries + lib ran)",
+    "./scripts/runtime test",
+    "cargo build -p tessel-editor and -p tessel-editor-core --bin tessel-headless (no new binaries, so no sha256)",
+    "scripts/scene-gizmo-scale-proof.py (process: headless + native window) with the head hash",
+    "scripts/scene-fx-grain-ui-proof.py",
+    "rotation and S8 regression proofs"
+  ],
+  "blocked_reason": "free disk 13.75 GiB at entry, below the 16 GiB entry reserve of this round (floor 12): no heavy step was started; the light core-only steps above were measured and stayed above the floor",
+  "history_kept_untouched": {
+    "e19b7e7": "workspace 2190/0/12, runtime 231/231, proofs scale 53+61, rotation 48+54, S8 56+84",
+    "3ed7f8b (same production code as 5906713)": "workspace 2275/0/13, runtime 243/243, proofs scale 53+61, rotation 48+54, S8 56+84, FX grain 104/104"
+  },
+  "note": "These old gates belong to the code BEFORE this fix (scaling.rs changed) and are not attributed to 0ee2d14."
+}
