@@ -1184,3 +1184,6 @@ de diagnóstico. Os gates completos continuam ancorados em74dc1b9; não foram re
 após esses nits. Sem GPU real/Windows/ponteiro físico/motor original executado.
 
 Nits finais P3: fmt/diff-check e check workspace locked passaram após os ajustes documentais e a remoção do ramo morto de diagnóstico; sem mudança no processamento.
+
+PR #43 (BL015.1): `main` com o P3 (PR #42, merge `bf4347d`) integrada ao ramo da escala; os gates do head `8a18811` são anteriores a essa integração e precisam ser repetidos no head integrado.
+Gates no head integrado (merge de `main` bf4347d sobre `8a18811`, com `runtime/dist` reconstruído): fmt, clippy `--workspace --all-targets -D warnings`, `test --workspace` com `TESSEL_REQUIRE_RUNTIME=1` 2275 passaram/0 falharam/13 ignorados, build desktop, core sem gpui/wry e `overlay.test.mjs` 17/17. As provas headless/janela da escala seguem ancoradas em `e19b7e7`; não repetidas após a integração.
