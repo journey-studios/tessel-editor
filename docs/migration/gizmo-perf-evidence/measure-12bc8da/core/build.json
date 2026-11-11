@@ -1,7 +1,0 @@
-{
- "binary_sha256": "9f81ee1f4571d8fd5008ccb67b8501c1e9fac3de916e99c3d2f9f0d08fd05f38",
- "dirty": false,
- "exe": "exes/candidate.exe",
- "head": "12bc8da6fa564b3d740fa51da29dd203e63392ae",
- "tree": "85cfb1038626dd68c2ef2252e14e5d276f0596ac"
-}
