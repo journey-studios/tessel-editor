@@ -247,10 +247,10 @@ test('a draw asked on a context that was just lost (its event not delivered yet,
     await watchRenders(runtime);
     // Keep the item the runtime hands to its scheduler, so the test can ask for the same draw again on a lost context.
     await runtime.page.evaluate(() => {
-      const compositor = window.TesselRuntime.debug.compositor();
-      const take = compositor.takeWarmDraws.bind(compositor);
+      const { warmDraws } = window.TesselRuntime.debug;
+      const take = warmDraws.take.bind(warmDraws);
       window.__items = [];
-      compositor.takeWarmDraws = () => {
+      warmDraws.take = () => {
         const items = take();
         window.__items.push(...items);
         return items;
@@ -265,7 +265,7 @@ test('a draw asked on a context that was just lost (its event not delivered yet,
       debug.loseContext();
       const compositor = debug.compositor();
       const known = compositor.stages.entries.has(window.__items[0].lineage);
-      return { known, outcome: await compositor.warmDraw(window.__items[0], debug.assets) };
+      return { known, outcome: await debug.drawWarmed(window.__items[0]) };
     });
     assert.equal(outcome.known, true, 'the stage was still known: nothing but the context check can refuse this draw');
     assert.equal(outcome.outcome, 'lost');

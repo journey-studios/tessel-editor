@@ -1,10 +1,11 @@
 // Fixtures of the Node tests of the page orchestrator (`src/index.js`), with no browser and no GPU.
 //
-// `createRuntime` is the real one: its serial queue, its `AssetStore`, `TexturePreupload`, spans and messages. Only the compositor is
-// replaced (the `createCompositor` seam of index.js) by `FakeCompositor`, which records what it was asked instead of drawing, and the
-// canvas by one that can lose its context. So these tests prove what index.js DECIDES (what runs before what, what a lost context or a
-// dispose drops, which span the host hears); what a real compositor does with WebGL (a pixel, a texture on the GPU, a sort, how long any
-// of it takes) stays in the Chrome tests and in the native A/B. Not a test file (no `.test.` in the name).
+// `createRuntime` is the real one: its serial queue, its `AssetStore`, `TexturePreupload`, `WarmDraws`, spans and messages. Only the
+// compositor is replaced (the `createCompositor` seam of index.js) by `FakeCompositor`, which records what it was asked instead of
+// drawing, the canvas by one that can lose its context, and the draw of a warm (the `warmDraw` seam) by one that records too. So these
+// tests prove what index.js DECIDES (what runs before what, what a lost context or a dispose drops, which span the host hears); what a
+// real compositor does with WebGL (a pixel, a texture on the GPU, a sort, how long any of it takes) stays in the Chrome tests and in
+// the native A/B. Not a test file (no `.test.` in the name).
 import { createRuntime } from '../src/index.js';
 import { RuntimeError } from '../src/protocol.js';
 import { imageLayer, plan, sceneLayer } from './support.mjs';
@@ -61,8 +62,9 @@ export const fakeClock = () => {
 /**
  * What index.js needs of a Compositor and nothing more. It does not draw: `log` keeps the order in which the page asked it for things
  * (`draw`, `upload`, `warm_scenes`, `warm_draw`, `dispose`), and a few knobs make the world misbehave on purpose (`failUploads`,
- * `warmDrawOutcome`, `warmScenesError`, `lost`, `onUpload`). A still layer goes through the REAL store (`stillTexture`: reused or created,
- * pinned, counted), so what a frame finds is what the real compositor would find. The GPU is a set of textures (`onGpu`); one that a frame
+ * `warmDrawOutcome`, `warmScenesError`, `lost`, `onUpload`) or hold it still (`drawGate`, `warmGate`: a promise `draw` / `warmScenes`
+ * waits for). A still layer goes through the REAL store (`stillTexture`: reused or created, pinned, counted), so what a frame finds
+ * is what the real compositor would find. The GPU is a set of textures (`onGpu`); one that a frame
  * had to put there is a `frameUpload`: exactly the cost the pre-upload moves out of the frame.
  */
 export class FakeCompositor {
@@ -80,9 +82,9 @@ export class FakeCompositor {
     this.frameUploads = 0;
     this.failUploads = 0;
     this.onUpload = null;
+    this.drawGate = null;
+    this.warmGate = null;
     this.warming = new Map();
-    this.warmDrawEnabled = false;
-    this.warmDraws = [];
     this.sorts = [];
     this.warmDrawOutcome = 'drawn';
     this.warmScenesError = null;
@@ -90,7 +92,7 @@ export class FakeCompositor {
   }
 
   get renderer() {
-    return { info: { memory: { textures: this.onGpu.size, geometries: 0 }, programs: [] } };
+    return { info: { memory: { textures: this.onGpu.size, geometries: 0 }, programs: [] }, initTexture: (texture) => this.initTexture(texture) };
   }
 
   rendererName() {
@@ -129,7 +131,6 @@ export class FakeCompositor {
 
   dropSplatStage() {
     this.warming.clear();
-    this.warmDraws = [];
   }
 
   dispose() {
@@ -137,8 +138,8 @@ export class FakeCompositor {
     this.log.push('dispose');
   }
 
-  /** The GPU upload of a texture made ahead of its frame (`renderer.initTexture` in the real one). */
-  uploadTexture(texture) {
+  /** The GPU upload of a texture made ahead of its frame (`renderer.initTexture`, which index.js calls). */
+  initTexture(texture) {
     if (this.lost) throw new RuntimeError('context_lost', 'The graphics context is lost');
     if (this.failUploads > 0) {
       this.failUploads -= 1;
@@ -155,6 +156,7 @@ export class FakeCompositor {
     try {
       if (aborted()) throw new RuntimeError('cancelled', 'The frame was superseded');
       this.log.push('draw');
+      if (this.drawGate) await this.drawGate;
       for (const layer of framePlan.layers) {
         if (layer.kind !== 'image') continue;
         if (!this.retain) {
@@ -174,8 +176,9 @@ export class FakeCompositor {
   }
 
   /** Starts a sort per scene layer; the test decides when it ends (`sorts[i].resolve()`). */
-  async warmScenes({ plan: warmPlan }) {
+  async warmScenes({ plan: warmPlan, onWarmed }) {
     this.log.push('warm_scenes');
+    if (this.warmGate) await this.warmGate;
     if (this.warmScenesError) throw this.warmScenesError;
     if (!this.retain || this.lost) return 0;
     let started = 0;
@@ -187,26 +190,10 @@ export class FakeCompositor {
       this.sorts.push(sort);
       this.warming.set(lineage, sort.promise);
       sort.promise.then(() => this.warming.delete(lineage));
-      if (this.warmDrawEnabled) this.warmDraws.push({ lineage, layer, sorted: sort.promise, at: performance.now() });
+      onWarmed?.({ lineage, layer, sorted: sort.promise });
       started += 1;
     }
     return started;
-  }
-
-  setWarmDraw(enabled) {
-    this.warmDrawEnabled = enabled === true;
-    if (!this.warmDrawEnabled) this.warmDraws = [];
-  }
-
-  takeWarmDraws() {
-    const taken = this.warmDraws;
-    this.warmDraws = [];
-    return taken;
-  }
-
-  async warmDraw() {
-    this.log.push('warm_draw');
-    return this.warmDrawOutcome;
   }
 }
 
@@ -271,6 +258,11 @@ export const openFake = () => {
       const compositor = new FakeCompositor(target, options);
       compositors.push(compositor);
       return compositor;
+    },
+    // The warm draw of the page, without WebGL: what it was asked, in the order the compositor's other calls happened, and an outcome.
+    warmDraw: async (compositor) => {
+      compositor.log.push('warm_draw');
+      return compositor.warmDrawOutcome;
     },
   });
   const { debug } = runtime;

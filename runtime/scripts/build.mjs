@@ -8,10 +8,9 @@ import { build } from 'esbuild';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const dist = join(root, 'dist');
-mkdirSync(dist, { recursive: true });
 
 /**
- * The call Spark's decoder worker makes after the last chunk of a file (BL157.4). WebKit can deadlock a worker inside
+ * The call Spark's decoder worker makes after the last chunk of a file (BL157.4), which the OPT-IN patch below removes. WebKit can deadlock a worker inside
  * `ReadableStreamDefaultReader.releaseLock()`: the call allocates, the garbage collector runs in that very thread, and the
  * collector waits for a lock of the same reader that `releaseLock` still holds (a sample of the stuck thread shows
  * releaseLock -> allocation -> collection -> visitOutputConstraints -> lock -> parked for good). The decode never answers, so
@@ -41,20 +40,35 @@ const sparkReleaseLockPatch = {
   },
 };
 
-// Run as a script by `pnpm build`; importing this file (the test of the patch) builds nothing.
-if (process.argv[1] && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) {
-  await build({
+/**
+ * The patch is OFF unless the build is asked for it: the lab did not reproduce the deadlock in the real editor (unpatched 1 of 36
+ * hung, patched 0 of 36), so a plain `build` ships Spark as it is. Only the exact value `1` turns it on; the bundle is then
+ * shorter by what the patch removes, and the build refuses a Spark that no longer has the call.
+ */
+export const SPARK_RELEASE_LOCK_PATCH_ENV = 'TESSEL_RUNTIME_SPARK_RELEASE_LOCK_PATCH';
+/** The esbuild plugins of a bundle built with `env`: the release-lock patch only when `env` asks for it, none otherwise. */
+export const runtimePlugins = (env) => (env[SPARK_RELEASE_LOCK_PATCH_ENV] === '1' ? [sparkReleaseLockPatch] : []);
+
+/** The runtime bundle as esbuild builds it for `env`; `extra` overrides esbuild options (the test of the patch builds in memory). */
+export const bundleRuntime = (env, extra = {}) =>
+  build({
     entryPoints: [join(root, 'src/boot.js')],
-    outfile: join(dist, 'runtime.js'),
     bundle: true,
     format: 'iife',
     target: ['chrome120', 'safari17'],
-    minify: process.env.TESSEL_RUNTIME_MINIFY === '1',
+    minify: env.TESSEL_RUNTIME_MINIFY === '1',
     sourcemap: false,
     legalComments: 'none',
     logLevel: 'info',
-    plugins: [sparkReleaseLockPatch],
+    plugins: runtimePlugins(env),
+    ...extra,
   });
+
+// Run as a script by `pnpm build`; importing this file (the test of the patch) builds nothing.
+if (process.argv[1] && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) {
+  mkdirSync(dist, { recursive: true });
+  await bundleRuntime(process.env, { outfile: join(dist, 'runtime.js') });
   cpSync(join(root, 'host/index.html'), join(dist, 'index.html'));
+  console.log(`spark release-lock patch: ${runtimePlugins(process.env).length > 0 ? 'ON' : `off (${SPARK_RELEASE_LOCK_PATCH_ENV}=1 turns it on)`}`);
   console.log(`runtime.js ${(statSync(join(dist, 'runtime.js')).size / 1024).toFixed(0)} KiB`);
 }

@@ -105,6 +105,25 @@ test('a frame that arrives in the middle of the queue waits for the step in flig
   assert.equal(page.debug.preupload().resident, 1);
 });
 
+test('a frame the host sends while uploads are pending is a task of the page, and it starts before the second upload', async () => {
+  const page = openFake();
+  page.hello(ON);
+  await page.loadAll('a', 'b', 'c', 'd');
+  // A message of the host reaches the page by a task of its own, never from inside an upload (the test above does that, which no page can:
+  // it passes with or without a pause between the steps). `setTimeout` is such a task, queued before the first step makes its own.
+  setTimeout(() => page.send(frameMessage(stills('d'), 7)), 0);
+  await page.warm(textureWarm(stills('a', 'b', 'c', 'd')));
+
+  assert.deepEqual(
+    page.compositor.log,
+    ['upload', 'draw', 'upload', 'upload'],
+    'the picture started after the first upload and before the second: the steps are not one run of microtasks (d was made by the frame)',
+  );
+  assert.equal(page.debug.preupload().uploaded, 3);
+  assert.equal(page.debug.preupload().resident, 1);
+  assert.equal(page.debug.preupload().pending, 0, 'the queue still ran to its end behind the frame');
+});
+
 test('an asset reloaded before its upload is stale and its replacement is not touched; one released is missing', async () => {
   const page = openFake();
   page.hello(ON);

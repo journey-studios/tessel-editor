@@ -6,7 +6,7 @@
 // the trace; `first-use-ab.spec.py` has the harness judge an arm by them. A name changed on one side only breaks the others.
 //
 // The runs below use the fake compositor, so they cannot say what the REAL compositor returns for a warm draw: the source scans at the end
-// pin the outcome names of the real code (`Compositor.warmDraw`, `AssetStore.preuploadStill`, the queue and the page) to the contract.
+// pin the outcome names of the real code (`drawWarmed`, `AssetStore.preuploadStill`, the queue and the page) to the contract.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
@@ -154,20 +154,20 @@ const literals = (code, signature, pattern, closing = '\n  }\n') => {
   const body = code.slice(start, code.indexOf(closing, start));
   return [...new Set([...body.matchAll(pattern)].map((match) => match[1]))].sort();
 };
-const returnedWords = (code, signature) => {
+const returnedWords = (code, signature, closing = '\n  }\n') => {
   const start = code.indexOf(signature);
   assert.notEqual(start, -1, `${signature} is not in the source any more: update this scan with the code`);
-  const body = code.slice(start, code.indexOf('\n  }\n', start));
+  const body = code.slice(start, code.indexOf(closing, start));
   const words = [...body.matchAll(/return[^;]*;/g)].flatMap(([statement]) => [...statement.matchAll(/'([a-z_]+)'/g)].map((match) => match[1]));
   return [...new Set(words)].sort();
 };
 
-test('the real compositor and the page can report exactly the warm draw outcomes of the contract', () => {
-  const compositor = returnedWords(source('compositor.js'), 'async warmDraw(item, assets) {');
+test('the real warm draw and the page can report exactly the warm draw outcomes of the contract', () => {
+  const warmDraw = returnedWords(source('warm-draw.js'), 'export const drawWarmed = async (compositor, item, assets) => {', '\n};\n');
   const page = literals(source('index.js'), 'const runWarmDraw = async (item) => {', /note\('([a-z_]+)'\)/g, '\n  };\n');
-  assert.deepEqual(compositor, ['drawn', 'failed', 'gone', 'lost', 'no_order', 'taken'], 'what Compositor.warmDraw can return');
+  assert.deepEqual(warmDraw, ['drawn', 'failed', 'gone', 'lost', 'no_order', 'taken'], 'what drawWarmed can return');
   assert.deepEqual(page, ['dropped', 'expired'], 'what the page decides itself');
-  assert.deepEqual([...new Set([...compositor, ...page])].sort(), named(CONTRACT.warm_draw));
+  assert.deepEqual([...new Set([...warmDraw, ...page])].sort(), named(CONTRACT.warm_draw));
 });
 
 test('the real store and the queue can report exactly the pre-upload outcomes of the contract', () => {
