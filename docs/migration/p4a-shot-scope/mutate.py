@@ -21,6 +21,8 @@ Runners:
            (crates/render/tests/scene_fx_shot_scope.rs), and `./scripts/runtime build` AGAIN after
            the file is back: runtime/dist is git-ignored and is what those tests draw with, so a
            stale mutant there would pass for the runtime
+  browser  the same build / run / build again, with the compositor's real-browser tests of the
+           effects (runtime/test/directed-scene-fx-browser.test.mjs): what a frame reports
   desktop  ./scripts/cargo test -p tessel-editor ... scene_fx_scope (the GPUI tests of the window)
 
 Usage (from anywhere; the root is this script's checkout, never another one):
@@ -44,33 +46,41 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]  # the checkout this script lives in, never another one
 OUT = Path(os.environ.get('TESSEL_MUTATION_OUT', Path(__file__).resolve().parent))
 FLOOR_GIB = 12
-STEP_GIB = {'core': 2, 'js': 0, 'render': 2, 'desktop': 2}
+STEP_GIB = {'core': 2, 'js': 0, 'render': 2, 'browser': 0, 'desktop': 2}
+REBUILDS = ('render', 'browser')  # the runners that draw with runtime/dist
 
 SCOPE = 'crates/core/src/directed_scene/fx/scope.rs'
 FX = 'crates/core/src/directed_scene/fx/mod.rs'
 INTEGRITY = 'crates/core/src/directed_scene/integrity.rs'
 VALIDATE = 'crates/core/src/scene_plan/validate.rs'
 EDIT = 'crates/core/src/scene_edit/fx.rs'
+EDIT_SCOPE = 'crates/core/src/scene_edit/fx_scope.rs'
 INSPECTOR = 'crates/core/src/scene_edit/fx_inspector.rs'
+CHOICE = 'crates/core/src/scene_edit/fx_choice.rs'
+MODEL = 'crates/core/src/directed_scene/model.rs'
 OUTPUT_FX = 'runtime/src/output-fx.js'
 DIRECTED = 'runtime/src/directed-scene.js'
+COMPOSITOR = 'runtime/src/compositor.js'
 WINDOW = 'crates/desktop/src/workstation/scene_fx_scope.rs'
+WINDOW_PANEL = 'crates/desktop/src/workstation/scene_fx.rs'
 
 # (id, what the mutant breaks, file, text to replace (exactly once), replacement, runner)
 MUTANTS = [
     # -- the one rule of the scope: where a shot clip may lie --
     ('C01', 'a clip that fills its shot to the last frame is refused (end bound off by one)', SCOPE,
-     'if start_frame >= first && end <= last {', 'if start_frame >= first && end < last {', 'core'),
+     '    start_frame >= first && start_frame.saturating_add(duration_frames) <= last',
+     '    start_frame >= first && start_frame.saturating_add(duration_frames) < last', 'core'),
     ('C02', 'a clip that starts on the first frame of its shot is refused (start bound off by one)', SCOPE,
-     'if start_frame >= first && end <= last {', 'if start_frame > first && end <= last {', 'core'),
+     '    start_frame >= first && start_frame.saturating_add(duration_frames) <= last',
+     '    start_frame > first && start_frame.saturating_add(duration_frames) <= last', 'core'),
     ('C03', 'a shot that does not exist is read as the first shot (UNKNOWN_SHOT never raised)', SCOPE,
      'let Some(shot) = shots.iter().find(|shot| &shot.id == id) else {', 'let Some(shot) = shots.first() else {', 'core'),
-    ('C04', 'the first frame of the next shot still belongs to the shot that ends there', SCOPE,
-     '.find(|shot| shot.start_frame <= frame && frame < shot.end_frame_exclusive)',
-     '.find(|shot| shot.start_frame <= frame && frame <= shot.end_frame_exclusive)', 'core'),
-    ('C05', 'the first frame of a shot belongs to no shot', SCOPE,
-     '.find(|shot| shot.start_frame <= frame && frame < shot.end_frame_exclusive)',
-     '.find(|shot| shot.start_frame < frame && frame < shot.end_frame_exclusive)', 'core'),
+    ('C04', 'the first frame of the next shot still belongs to the shot that ends there', MODEL,
+     'self.start_frame <= frame && frame < self.end_frame_exclusive',
+     'self.start_frame <= frame && frame <= self.end_frame_exclusive', 'core'),
+    ('C05', 'the first frame of a shot belongs to no shot', MODEL,
+     'self.start_frame <= frame && frame < self.end_frame_exclusive',
+     'self.start_frame < frame && frame < self.end_frame_exclusive', 'core'),
     # -- the spelling --
     ('C06', 'the output scope is written to the document (the canonical spelling leaves the key out)', SCOPE,
      '            Self::Output => None,\n            Self::Shot(id) => Some(json!({ "kind": "shot", "shotId": id })),',
@@ -84,9 +94,8 @@ MUTANTS = [
      '        if text == "node" || text.starts_with("node:") {', '        if text == "node" {', 'core'),
     # -- the composition --
     ('C10', 'the output passes come before the passes of the shot (stages flipped)', FX,
-     '        deck.extend(output);\n        deck\n', '        output.extend(deck);\n        output\n', 'core'),
-    ('C11', 'a shot pass is drawn in every frame of its interval, whatever shot the frame is in', FX,
-     '                        if current != Some(id.as_str()) {', '                        if false && current != Some(id.as_str()) {', 'core'),
+     '        passes.sort_by_key(|pass| pass.scope.stage());',
+     '        passes.sort_by_key(|pass| std::cmp::Reverse(pass.scope.stage()));', 'core'),
     ('C12', 'the pass budget counts only the output clips', FX,
      '            for clip in track.clips.iter().filter(|clip| !clip.hidden) {\n                let start = clip.start_frame.max(0);',
      '            for clip in track.clips.iter().filter(|clip| !clip.hidden && clip.scope.is_output()) {\n                let start = clip.start_frame.max(0);', 'core'),
@@ -102,58 +111,76 @@ MUTANTS = [
      '    fx_scopes(draft, &mut issues);', '    let _ = fx_scopes as fn(&Draft, &mut Vec<Issue>);', 'core'),
     # -- the edits --
     ('C17', 'add_clip does not judge the scope itself (the importer refuses it later, with another code)', EDIT,
-     '    if let Some(fault) = fx::scope_fault(&add.scope, &clip_id, add.start_frame, duration, shots) {',
-     '    if let Some(fault) = fx::scope_fault(&add.scope, &clip_id, add.start_frame, duration, shots).filter(|_| false) {', 'core'),
-    ('C18', 'set_scope to the scope the clip already holds is an edit', EDIT,
+     '        fx::scope_fault(&add.scope, &clip_id, add.start_frame, duration, span.shots)\n    {',
+     '        fx::scope_fault(&add.scope, &clip_id, add.start_frame, duration, span.shots).filter(|_| false)\n    {', 'core'),
+    ('C18', 'set_scope to the scope the clip already holds is an edit', EDIT_SCOPE,
      '    let noop = before == *scope;', '    let noop = false;', 'core'),
-    ('C19', 'going back to the output writes {kind: output} instead of leaving the key out', EDIT,
+    ('C19', 'going back to the output writes {kind: output} instead of leaving the key out', EDIT_SCOPE,
      '            None => {\n                target.remove("scope");\n            }',
      '            None => {\n                target.insert("scope".to_string(), json!({ "kind": "output" }));\n            }', 'core'),
-    ('C20', 'set_scope does not judge whether the clip fits the shot', EDIT,
-     '        if let Some(fault) = fx::scope_fault(scope, clip, start, duration, shots) {',
-     '        if let Some(fault) = fx::scope_fault(scope, clip, start, duration, shots).filter(|_| false) {', 'core'),
+    ('C20', 'set_scope does not judge whether the clip fits the shot', EDIT_SCOPE,
+     '        if let Some(fault) = fx::scope_fault(scope, clip, start, duration, span.shots) {',
+     '        if let Some(fault) = fx::scope_fault(scope, clip, start, duration, span.shots).filter(|_| false) {', 'core'),
     ('C21', 'the mismatch is reported to commands with another code', EDIT,
      '        fx::FX_SCOPE_MISMATCH => "fx_scope_mismatch",', '        fx::FX_SCOPE_MISMATCH => "invalid_value",', 'core'),
+    # -- the duration a clip gets when none is given (core.R1, core.R3) --
+    ('C23', 'a clip added without a duration is not cut at the end of its shot', SCOPE,
+     '.map_or(edit_frames, |shot| shot_limits(shot).1.min(edit_frames))',
+     '.map_or(edit_frames, |_| edit_frames)', 'core'),
+    ('C24', 'the default duration ignores where the edit ends', SCOPE,
+     '.map_or(edit_frames, |shot| shot_limits(shot).1.min(edit_frames))',
+     '.map_or(i64::MAX, |shot| shot_limits(shot).1)', 'core'),
+    ('C25', 'a duration that is given is cut to what the scope holds (the core never clamps one)', EDIT,
+     '        Some(duration) => duration,\n        None => fx::default_duration(',
+     '        Some(duration) => duration.min(fx::default_duration(spec, &add.scope, add.start_frame, span.shots, span.frames)),\n        None => fx::default_duration(', 'core'),
+    ('C26', 'the inspector restores the duration to the effect\'s typical one, whatever the scope holds', INSPECTOR,
+     '    let typical = default_duration(clip.effect, &clip.scope, start, shots, edit_frames);',
+     '    let typical = clip.effect.typical_duration_frames;', 'core'),
     # -- the inspector --
-    ('C22', 'the inspector offers a shot the clip does not fit', INSPECTOR,
-     '            applicable: fault.is_none(),', '            applicable: true,', 'core'),
+    ('C22', 'the inspector offers a shot the clip does not fit', CHOICE,
+     '        let applicable = shot_holds(shot, clip.start_frame, clip.duration_frames);', '        let applicable = true;', 'core'),
     # -- the runtime, pure --
     ('J01', 'a pass of a shot is accepted by a plan that does not require fxShotScope', OUTPUT_FX,
      "if (!requires.includes('fxShotScope'))", "if (false && !requires.includes('fxShotScope'))", 'js'),
     ('J02', 'a pass of another shot than the frame\'s is accepted', OUTPUT_FX,
      'if (raw.shotId !== frameShot) {', 'if (false && raw.shotId !== frameShot) {', 'js'),
     ('J03', 'the passes of the shot are accepted after the passes of the output', OUTPUT_FX,
-     'if (position < stage) throw', 'if (false && position < stage) throw', 'js'),
-    ('J04', 'the output is drawn before the deck', OUTPUT_FX,
-     "      this.drawDeck(frame, passes.filter((pass) => pass.stage === 'deck'));\n"
-     "      // A later delivery composes the second deck of a transition here, between the two stages.\n"
-     "      this.drawOutput(frame, passes.filter((pass) => pass.stage !== 'deck'));",
-     "      this.drawOutput(frame, passes.filter((pass) => pass.stage !== 'deck'));\n"
-     "      this.drawDeck(frame, passes.filter((pass) => pass.stage === 'deck'));", 'js'),
+     'if (position < lastPosition) throw', 'if (false && position < lastPosition) throw', 'js'),
+    ('J04', 'the passes are drawn last first (the output before the deck)', OUTPUT_FX,
+     '      passes.forEach((pass, index) => {', '      [...passes].reverse().forEach((pass, index) => {', 'js'),
     ('J05', 'the runtime does not advertise fxShotScope', DIRECTED,
      "  'fxShotScope',\n", '', 'js'),
-    ('J06', 'the deck stage draws nothing', OUTPUT_FX,
-     '  drawDeck(frame, passes) {\n    this.drawStage(frame, passes);\n  }', '  drawDeck(frame, passes) {}', 'js'),
-    # -- the runtime, drawn: the same places, judged by the images --
-    ('R01', 'the output is drawn before the deck (images)', OUTPUT_FX,
-     "      this.drawDeck(frame, passes.filter((pass) => pass.stage === 'deck'));\n"
-     "      // A later delivery composes the second deck of a transition here, between the two stages.\n"
-     "      this.drawOutput(frame, passes.filter((pass) => pass.stage !== 'deck'));",
-     "      this.drawOutput(frame, passes.filter((pass) => pass.stage !== 'deck'));\n"
-     "      this.drawDeck(frame, passes.filter((pass) => pass.stage === 'deck'));", 'render'),
-    ('R02', 'the deck stage draws nothing (images)', OUTPUT_FX,
-     '  drawDeck(frame, passes) {\n    this.drawStage(frame, passes);\n  }', '  drawDeck(frame, passes) {}', 'render'),
+    ('J06', 'the passes of a shot are never drawn', OUTPUT_FX,
+     '      passes.forEach((pass, index) => {',
+     "      passes.filter((pass) => pass.stage !== 'deck').forEach((pass, index) => {", 'js'),
+    # -- the runtime, drawn: the same places, judged by the images and by what a frame reports --
+    ('R01', 'the passes are drawn last first (images)', OUTPUT_FX,
+     '      passes.forEach((pass, index) => {', '      [...passes].reverse().forEach((pass, index) => {', 'render'),
+    ('R02', 'the passes of a shot are never drawn (images)', OUTPUT_FX,
+     '      passes.forEach((pass, index) => {',
+     "      passes.filter((pass) => pass.stage !== 'deck').forEach((pass, index) => {", 'render'),
     ('R03', 'the passes of the deck are drawn twice (images)', OUTPUT_FX,
-     "this.drawOutput(frame, passes.filter((pass) => pass.stage !== 'deck'));", 'this.drawOutput(frame, passes);', 'render'),
+     '      passes.forEach((pass, index) => {',
+     "      [...passes, ...passes.filter((pass) => pass.stage === 'deck')].forEach((pass, index) => {", 'render'),
+    ('J07', 'the frame counts one pass of a shot too many (telemetry)', COMPOSITOR,
+     '(frame.sources.directed_scene_fx_shot ?? 0) + deckPasses;',
+     '(frame.sources.directed_scene_fx_shot ?? 0) + deckPasses + 1;', 'browser'),
     # -- the window --
     ('W01', 'the option the clip already holds is offered as a move', WINDOW,
      '            let enabled = option.applicable && !selected;', '            let enabled = option.applicable;', 'desktop'),
-    ('W02', 'add on the shot does not cut the clip at the end of the shot', WINDOW,
-     'spec.typical_duration_frames.min(end - frame)', 'spec.typical_duration_frames', 'desktop'),
     ('W03', 'the shot of the monitor is the first one', WINDOW,
-     '    shot_at(&view.shots, frame).ok_or(NOT_IN_A_SHOT)', '    view.shots.first().ok_or(NOT_IN_A_SHOT)', 'desktop'),
+     '    let shot = shot_at(&view.shots, frame).ok_or(NOT_IN_A_SHOT)?;',
+     '    let shot = view.shots.first().ok_or(NOT_IN_A_SHOT)?;', 'desktop'),
     ('W04', 'add on the shot is enabled outside the edit', WINDOW,
      '        Err(reason) => (false, Some(reason.to_string())),', '        Err(_) => (true, None),', 'desktop'),
+    ('W05', 'a pick of another scene edits the scene the panel shows now', WINDOW,
+     'if let Ok(view) = self.fx_view_of(&key.scene)', 'if let Some(view) = self.fx_view()', 'desktop'),
+    ('W06', 'the selector of a clip that is gone is kept', WINDOW,
+     '.retain(|key, _| key.scene == view.scene && view.clip(&key.clip).is_some());',
+     '.retain(|key, _| key.scene == view.scene);', 'desktop'),
+    ('W07', 'the hint of the section lists the adds on the output only', WINDOW_PANEL,
+     '|view| action_names(&section_actions(&view)),',
+     '|view| action_names(&section_actions(&view)).into_iter().filter(|name| name.starts_with(ADD_PREFIX)).collect::<Vec<_>>(),', 'desktop'),
 ]
 
 COMMANDS = {
@@ -162,6 +189,7 @@ COMMANDS = {
     'js': (['node', '--test', '--test-reporter=tap', 'test/output-fx.test.mjs', 'test/directed-scene.test.mjs'], ROOT / 'runtime'),
     'render': (['./scripts/cargo', 'test', '-p', 'tessel-editor-render', '--locked', '--no-fail-fast',
                 '--test', 'scene_fx_shot_scope'], ROOT),
+    'browser': (['node', '--test', '--test-reporter=tap', 'test/directed-scene-fx-browser.test.mjs'], ROOT / 'runtime'),
     'desktop': (['./scripts/cargo', 'test', '-p', 'tessel-editor', '--locked', '--no-fail-fast', 'scene_fx_scope'], ROOT),
 }
 
@@ -211,7 +239,7 @@ def judge(code, out):
 
 def run_suite(kind):
     command, cwd = COMMANDS[kind]
-    env = dict(os.environ, TESSEL_REQUIRE_RUNTIME='1') if kind == 'render' else None
+    env = dict(os.environ, TESSEL_REQUIRE_RUNTIME='1') if kind in REBUILDS else None
     return run(command, cwd, env)
 
 
@@ -305,7 +333,7 @@ def main(argv):
                     record(ident, what, path, kind, 'REFUSED_DISK', message=message)
                     print(ident, entry['stopped'], flush=True)
                     break
-                if kind == 'render':
+                if kind in REBUILDS:
                     built, tail = rebuild_runtime()
                     if not built:
                         entry['stopped'] = f'the runtime does not build without a mutant: {tail}'
@@ -328,14 +356,14 @@ def main(argv):
             started = time.time()
             try:
                 file.write_text(original.replace(old, new))
-                if kind == 'render':
+                if kind in REBUILDS:
                     built_mutant, tail = rebuild_runtime()
                     code, out = run_suite(kind) if built_mutant else (1, tail)
                 else:
                     code, out = run_suite(kind)
             finally:
                 file.write_text(original)
-                if kind == 'render':
+                if kind in REBUILDS:
                     restored_dist, tail = rebuild_runtime()  # the dist must be the sound runtime again
                     if not restored_dist:
                         entry['note'] += f' runtime/dist could NOT be rebuilt after {ident}: {tail}'

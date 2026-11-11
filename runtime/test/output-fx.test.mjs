@@ -402,10 +402,6 @@ test('without the capability a pass of a shot is refused by name, never drawn as
   assert.equal(layer.details.pointer, '/requires');
   // A plan of the output alone does not need it: a runtime that predates F062 would serve it.
   assert.equal(parseInFrame([pass()], [...BASE, 'outputFx']).fx.length, 1);
-  // And a runtime that does not LIST the capability refuses the plan that asks for it, by name.
-  const without = SCENE_CAPABILITIES.filter((name) => name !== 'fxShotScope');
-  const missing = [...BASE, 'outputFx', 'fxShotScope'].filter((name) => !without.includes(name));
-  assert.deepEqual(missing, ['fxShotScope']);
 });
 
 test('a pass of another shot than the frame\'s is unsupported, typed, and says which shot is which', () => {
@@ -468,12 +464,15 @@ const stageOf = (stage, clipId, amount, shotId = 's1') =>
   parseOutputFx([stage === 'deck' ? shotPass({ clipId, amount }, shotId) : pass({ clipId, amount })], SHOT, FRAME)[0];
 const drawsOf = (renderer) => renderer.log.filter((entry) => !Array.isArray(entry));
 
-test('the deck is drawn before the output and the ping-pong goes on across the stages', () => {
+test('the passes of the shot and of the output the parser lists are drawn in that order, the ping-pong going on across them', () => {
   const pipeline = new OutputFxPipeline();
   const renderer = fakeRenderer();
   const { targetOf, asked } = targetsOf();
-  // Handed over with the output's pass FIRST: a stage never interleaves with the other.
-  const passes = [stageOf('output', 'o0', 0.3), stageOf('deck', 'd0', 0.1), stageOf('deck', 'd1', 0.2), stageOf('output', 'o1', 0.4)];
+  const passes = parseOutputFx(
+    [shotPass({ clipId: 'd0', amount: 0.1 }), shotPass({ clipId: 'd1', amount: 0.2 }), pass({ clipId: 'o0', amount: 0.3 }), pass({ clipId: 'o1', amount: 0.4 })],
+    SHOT,
+    FRAME,
+  );
   const result = pipeline.draw(renderer, fakeTarget('src'), passes, { targetOf, size: sizeOf });
   assert.deepEqual(drawsOf(renderer).map((draw) => [draw.amount, draw.from, draw.into]), [
     [0.1, 'src.texture', 'a'],
@@ -497,26 +496,6 @@ test('one deck pass and one output pass need no more than the two targets and th
   assert.deepEqual(seen, [true, false], 'the vignette is linked once for the shot\'s pass and the output\'s');
   assert.equal(pipeline.materials.size, 1);
   assert.deepEqual([...new Set(asked)].sort(), [0, 1]);
-  pipeline.dispose();
-});
-
-test('the deck and the output are two loops of their own, the seam between them is where a transition will go', () => {
-  const pipeline = new OutputFxPipeline();
-  const calls = [];
-  for (const stage of ['drawDeck', 'drawOutput']) {
-    const original = pipeline[stage].bind(pipeline);
-    pipeline[stage] = (frame, passes) => {
-      calls.push([stage, passes.map((item) => item.clipId), frame.drawn]);
-      original(frame, passes);
-    };
-  }
-  const renderer = fakeRenderer();
-  pipeline.draw(renderer, fakeTarget('src'), [stageOf('deck', 'd0', 0.1), stageOf('deck', 'd1', 0.2), stageOf('output', 'o0', 0.3)], { targetOf: targetsOf().targetOf, size: sizeOf });
-  assert.deepEqual(calls, [['drawDeck', ['d0', 'd1'], 0], ['drawOutput', ['o0'], 2]], 'the output stage starts where the deck stage left off');
-  calls.length = 0;
-  // Output passes alone (every plan before F062): the deck stage is called, and has nothing to draw.
-  pipeline.draw(renderer, fakeTarget('src'), [stageOf('output', 'o0', 0.3)], { targetOf: targetsOf().targetOf, size: sizeOf });
-  assert.deepEqual(calls, [['drawDeck', [], 0], ['drawOutput', ['o0'], 0]]);
   pipeline.dispose();
 });
 

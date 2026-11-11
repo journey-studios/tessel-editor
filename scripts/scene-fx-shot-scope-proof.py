@@ -258,10 +258,10 @@ def run(args, surfaces):
         check("scene.fx.frame at 60: the other shot, no pass", ok and (read.get("shot") or {}).get("id") == SECOND and read.get("count") == 0, read)
         win.repaint(FRAME)
         frame_report = win.viewport().get("last_frame") or {}
-        check("the monitor's own frame at 12 counted the shot pass", "directed_scene_fx_shot" in json.dumps(frame_report), sorted(frame_report))
+        check("the monitor's own frame at 12 counted the one shot pass", (frame_report.get("source") or {}).get("directed_scene_fx_shot") == 1, frame_report.get("source"))
         win.repaint(IN_SECOND)
         frame_report = win.viewport().get("last_frame") or {}
-        check("the monitor's own frame at 60 counted no shot pass", "directed_scene_fx_shot" not in json.dumps(frame_report), sorted(frame_report))
+        check("the monitor's own frame at 60 counted no shot pass", "directed_scene_fx_shot" not in (frame_report.get("source") or {}), frame_report.get("source"))
 
         # ---- the output scope draws the same picture inside the clip ----
         depth = win.undo_depth()

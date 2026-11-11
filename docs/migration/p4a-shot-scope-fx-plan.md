@@ -18,8 +18,8 @@ para a **P4b** (`crossDissolve`, dois decks). Esta entrega **não** inclui trans
 
 ## O que o escopo `shot` significa (regras do piloto, lidas somente leitura)
 
-Origem: repositório `tesselapp`, branch `t3/scene-engine-pilot`, commit fixado `d40ac3f7c0`, worktree
-`/Users/wallyssonnunes/.t3/worktrees/tesselapp/t3-5de3852f` (**ler com `git show`/leitura, nunca editar, instalar ou executar o JS**; o que for lido
+Origem: repositório `tesselapp`, branch `t3/scene-engine-pilot`, commit fixado `d40ac3f7c0`, no worktree
+de leitura da origem (**ler com `git show`/leitura, nunca editar, instalar ou executar o JS**; o que for lido
 fica registrado como `ORIGIN_NOT_EXECUTED`, sem inventar golden). Arquivos: `packages/scene-engine/src/fx/fx-explain-clips.ts` (validação),
 `fx-frame-decks.ts` e `fx-frame-state.ts` (resolução por deck), `fx-scope-text.ts` (grafia textual), `fx-command-clips.ts` (`addClip`, `setScope`),
 `fx-commands-params.spec.ts` (~173–200) e `fx-commands-clips.spec.ts` (~280–310) (casos de equivalência).
