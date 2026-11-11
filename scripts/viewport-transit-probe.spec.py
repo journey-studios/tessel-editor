@@ -1,9 +1,11 @@
 """Pure-logic tests of the BL157.2 transit probe; no editor, GPU, runtime page or private media is started."""
 import importlib.util
 import json
+import os
 import unittest
 import tempfile
 from types import SimpleNamespace
+from unittest import mock
 from unittest.mock import patch
 from pathlib import Path
 
@@ -142,6 +144,15 @@ class IterationTests(unittest.TestCase):
                                                        "runtime_sha256": "b" * 64, "document_sha256": "c" * 64, "io": "async", "window": [1, 2]})
         json.dumps(report)
         self.assertIn("page_queue", probe.markdown(report))
+
+
+class ArmsAreDistinctTests(unittest.TestCase):
+    def test_the_two_arms_differ_even_when_the_shell_exports_the_switch_the_probe_turns_on(self):
+        proof = probe.warm_proof()
+        with mock.patch.dict(os.environ, {probe.GPU_FINISH: "1"}):
+            made = {arm: proof.lab_environment(os.environ, "/lab/h", probe.session_env("async", probe.AB_ENV[arm])) for arm in ("A", "B")}
+        self.assertEqual((made["A"][probe.GPU_FINISH], made["B"][probe.GPU_FINISH]), ("0", "1"), "arm A says 0 itself, nothing inherited can turn it on")
+        self.assertNotEqual(made["A"], made["B"])
 
 
 if __name__ == "__main__":

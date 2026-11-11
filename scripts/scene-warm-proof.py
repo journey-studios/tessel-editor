@@ -287,8 +287,15 @@ class MemorySampler:
 
 
 # ----------------------------------------------------------------------------------------------- the editor
+def lab_environment(inherited, home, env):
+    """What a lab editor starts with: the shell's environment WITHOUT any `TESSEL_*` it carries (a switch left over in the shell would turn a factor on
+    in both arms and the experiment would compare nothing), the lab's own HOME and exactly `env`, the arm's."""
+    kept = {key: value for key, value in inherited.items() if not key.startswith("TESSEL_")}
+    return {**kept, "HOME": home, **env}
+
+
 class Lab:
-    """One isolated editor (own HOME, socket and runtime page)."""
+    """One isolated editor (own HOME, socket and runtime page) whose `TESSEL_*` environment is exactly `env`."""
 
     def __init__(self, binary, work, env):
         self.home = os.path.join(work, "h")
@@ -298,7 +305,7 @@ class Lab:
             raise SystemExit("socket path too long for a unix socket; use a shorter TMPDIR")
         self.log_path = os.path.join(self.home, "editor.log")
         self.log = open(self.log_path, "w")
-        self.process = subprocess.Popen([binary], env={**os.environ, "HOME": self.home, **env}, stdout=self.log, stderr=self.log,
+        self.process = subprocess.Popen([binary], env=lab_environment(os.environ, self.home, env), stdout=self.log, stderr=self.log,
                                         start_new_session=True)
 
     def send(self, request, timeout=60):
