@@ -460,9 +460,32 @@ class ServedBundleTests(unittest.TestCase):
         wrong = ab.served_bundle_check(rows, {"unpatched": UNPATCHED_BYTES, "patched": 4281000})
         self.assertIn(f"patched sessions were served {PATCHED_BYTES} bytes, the arm's bundle has 4281000", wrong["findings"][0])
 
-    def test_a_session_without_the_record_is_unverified_not_a_finding(self):
+    def test_a_session_that_ran_without_the_record_is_a_finding_because_its_bundle_is_not_verified(self):
         check = ab.served_bundle_check([served(ab.UNPATCHED, UNPATCHED_BYTES), served(ab.PATCHED, PATCHED_BYTES), served(ab.PATCHED, None)])
+        self.assertEqual(check["unverified"], 1)
+        self.assertEqual(check["findings"], ["1 session(s) that ran have no record of the runtime.js the host served: the bundle of their arm is not verified"])
+
+    def test_a_failed_session_without_the_record_is_only_unverified_it_may_have_died_before_the_page(self):
+        died = {**served(ab.PATCHED, None), "failed": True}
+        check = ab.served_bundle_check([served(ab.UNPATCHED, UNPATCHED_BYTES), served(ab.PATCHED, PATCHED_BYTES), died])
         self.assertEqual((check["findings"], check["unverified"]), ([], 1))
+
+    def test_unverified_arms_never_confirm_the_patch_and_the_sessions_stay_listed(self):
+        # Three hung unpatched sessions and no hung patched one is CONFIRMED by the rules, unless the arms' bundles were not seen to be served.
+        records = [record(ab.UNPATCHED, first=pictures(1, 1000.0, 20)) for _ in range(3)] + [record(ab.PATCHED) for _ in range(3)]
+        manifest = {"git": {"sha": "0" * 40, "dirty_files": 0}, "binary_sha256": "b", "document_sha256": "d", "stress_cpu": 0, "order": [],
+                    "bundle_sha256": {"unpatched": "u", "patched": "p"}}
+        bare = ab.build_report(records, PROJECT, manifest)
+        self.assertTrue(bare["verdict"].startswith("INVALID ARMS"), bare["verdict"])
+        self.assertIn("the rules alone would say: CONFIRMED", bare["verdict"])
+        self.assertFalse(bare["all_ran"])
+        self.assertEqual(len(bare["rows"]), 6, "every session keeps its row")
+        for session in records:  # the same sessions with the host's own record of what it served
+            size = UNPATCHED_BYTES if session["arm"] == ab.UNPATCHED else PATCHED_BYTES
+            session["events"] = [host_event("/runtime.js", 200, size)] + session["events"]
+        seen = ab.build_report(records, PROJECT, manifest)
+        self.assertTrue(seen["verdict"].startswith("CONFIRMED"), seen["verdict"])
+        self.assertTrue(seen["all_ran"])
 
     def test_the_report_calls_the_run_invalid_when_the_arms_are_not_what_they_say(self):
         records = [record(ab.UNPATCHED), record(ab.PATCHED)]

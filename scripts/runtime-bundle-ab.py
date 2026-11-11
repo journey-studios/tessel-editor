@@ -100,8 +100,9 @@ def served_runtime_bytes(events):
 
 def served_bundle_check(rows, expected=None):
     """Did every session load the bundle of its arm? Within an arm all sessions were served the same number of bytes (the size of the arm's file, when the
-    manifest has it), and the unpatched bundle is exactly what the patch removes longer than the patched one. A session whose record has no such event is
-    `unverified` (counted, not a finding)."""
+    manifest has it), and the unpatched bundle is exactly what the patch removes longer than the patched one. A session that ran but whose record has no
+    such event cannot say which bundle its page loaded: that is a finding (INVALID ARMS, so no verdict about the patch, `CONFIRMED` included) and the
+    session stays in its row. A FAILED session may have died before it loaded the page: it is only `unverified`, counted, and its own row says why."""
     sizes = {arm: sorted({r["served_runtime_bytes"] for r in rows if r["arm"] == arm and r.get("served_runtime_bytes") is not None}) for arm in ARMS}
     findings = [f"the {arm} sessions were served {len(sizes[arm])} different runtime.js sizes: {sizes[arm]}" for arm in ARMS if len(sizes[arm]) > 1]
     for arm in ARMS:
@@ -111,7 +112,11 @@ def served_bundle_check(rows, expected=None):
         difference, removed = sizes[UNPATCHED][0] - sizes[PATCHED][0], len(DECODER_CALL) - len(PATCH_REPLACEMENT)
         if difference != removed:
             findings.append(f"the served bundles differ by {difference} bytes, the patch removes {removed}")
-    return {"bytes": sizes, "unverified": sum(1 for r in rows if r.get("served_runtime_bytes") is None), "findings": findings}
+    missing = [r for r in rows if r.get("served_runtime_bytes") is None]
+    ran = [r for r in missing if not r.get("failed")]
+    if ran:
+        findings.append(f"{len(ran)} session(s) that ran have no record of the runtime.js the host served: the bundle of their arm is not verified")
+    return {"bytes": sizes, "unverified": len(missing), "findings": findings}
 
 
 def deadlock_signature(text):
