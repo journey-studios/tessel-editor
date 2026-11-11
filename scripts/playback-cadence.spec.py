@@ -21,8 +21,19 @@ def tick(t, before, after, late=1.3):
             "fields": {"due_ms": t - late, "ran_ms": t, "late_ms": late, "body_ms": 0.1, "frame_before": before, "frame_after": after, "continues": True}}
 
 
-def clock_started(t, fps=24.0):
-    return {"seq": int(t), "t_ms": t, "kind": "play_clock_started", "fields": {"from": 0, "fps": fps}}
+def clock_started(t, fps=24.0, poll=None):
+    fields = {"from": 0, "fps": fps}
+    if poll is not None:
+        fields["poll"] = poll
+    return {"seq": int(t), "t_ms": t, "kind": "play_clock_started", "fields": fields}
+
+
+def clocked(t, before, after, clock, next_ms=None, late=1.3):
+    """A `tick` event of a host that traces the clock it read (fractional frames) and the wait it armed next (BL157.6's switch)."""
+    event = tick(t, before, after, late)
+    event["fields"]["clock"] = clock
+    event["fields"]["next_ms"] = next_ms
+    return event
 
 
 def picture(done):
@@ -36,6 +47,28 @@ def polled_play(start, seconds=10.0, poll=POLL_MS, fps=24.0, offset=0.0):
         now += poll
         named = int((now - start) / (1000.0 / fps))
         events.append(tick(now, frame, named))
+        frame = named
+    return events
+
+
+GUARD_MS = 1.0
+LATE_MS = 1.46
+
+
+def scheduled_play(start, schedule, seconds=20.0, fps=24.0):
+    """A play whose perfect clock is read when the schedule says: `fixed` waits half a frame after each answer, `deadline` waits for the next
+    frame boundary plus a guard (never more than half a frame). Every tick carries the clock it read, as the host traces it."""
+    frame_ms = 1000.0 / fps
+    cap, events, now, frame = frame_ms / 2, [clock_started(start, fps, schedule)], start, 0
+    while now - start < seconds * 1000.0:
+        wait = cap
+        if schedule == "deadline" and events[-1]["kind"] == "tick":
+            into = ((now - start) / frame_ms) % 1.0
+            wait = min(cap, (1.0 - into) * frame_ms + GUARD_MS)
+        now += wait + LATE_MS
+        clock = (now - start) / frame_ms
+        named = int(clock)
+        events.append(clocked(now, frame, named, clock, next_ms=wait))
         frame = named
     return events
 
@@ -185,6 +218,224 @@ class SummaryTests(unittest.TestCase):
         self.assertEqual(pc.summarize([("a", record("x", events))])["skipped_frames"], 2)
 
 
+class ChangeLagTests(unittest.TestCase):
+    """How long after its boundary a frame change was seen: the fraction of a frame the clock had already run when the poll read it."""
+
+    def fields(self, *events):
+        return [e["fields"] for e in events]
+
+    def test_a_change_is_seen_after_the_part_of_the_frame_the_clock_had_run(self):
+        ticks = self.fields(clocked(100.0, 9, 10, 10.25))
+        self.assertAlmostEqual(pc.change_lags(ticks, 24.0)[0], 0.25 * FRAME_MS, places=6)
+
+    def test_a_poll_that_did_not_change_the_frame_is_not_a_lag(self):
+        self.assertEqual(pc.change_lags(self.fields(clocked(100.0, 10, 10, 10.9)), 24.0), [])
+
+    def test_a_trace_that_does_not_carry_the_clock_is_not_guessed(self):
+        self.assertEqual(pc.change_lags(self.fields(tick(100.0, 9, 10)), 24.0), [])
+
+    def test_a_jump_counts_the_age_of_the_frame_that_was_reached(self):
+        ticks = self.fields(clocked(100.0, 5, 8, 8.5))
+        self.assertAlmostEqual(pc.change_lags(ticks, 24.0)[0], 0.5 * FRAME_MS, places=6)
+
+    def test_a_clock_that_is_not_a_number_is_skipped(self):
+        ticks = self.fields(clocked(1.0, 0, 1, None), clocked(2.0, 1, 2, float("nan")), clocked(3.0, 2, 3, "x"), clocked(4.0, 3, 4, float("inf")))
+        self.assertEqual(pc.change_lags(ticks, 24.0), [])
+
+    def test_without_a_frame_rate_there_is_no_lag(self):
+        ticks = self.fields(clocked(100.0, 9, 10, 10.25))
+        self.assertEqual(pc.change_lags(ticks, None), [])
+        self.assertEqual(pc.change_lags(ticks, 0), [])
+
+    def test_the_rate_scales_the_lag(self):
+        ticks = self.fields(clocked(100.0, 9, 10, 10.5))
+        self.assertAlmostEqual(pc.change_lags(ticks, 60.0)[0], 0.5 * 1000.0 / 60.0, places=6)
+
+
+class PlayWindowTests(unittest.TestCase):
+    def test_a_window_carries_the_rate_and_the_poll_mode_of_its_clock_start(self):
+        events = [clock_started(100.0, 24.0, "deadline"), clocked(120.0, 0, 0, 0.5), clock_started(5000.0, 30.0, "fixed")]
+        self.assertEqual(pc.play_windows(events), [
+            {"start": 100.0, "end": 5000.0, "fps": 24.0, "poll": "deadline"},
+            {"start": 5000.0, "end": float("inf"), "fps": 30.0, "poll": "fixed"}])
+
+    def test_a_trace_from_before_the_switch_has_no_mode(self):
+        self.assertEqual(pc.play_windows([clock_started(1.0)])[0]["poll"], None)
+
+    def test_windows_are_the_same_spans_as_before(self):
+        events = [clock_started(100.0), clock_started(5000.0)]
+        self.assertEqual(pc.windows(events), [(100.0, 5000.0), (5000.0, float("inf"))])
+
+
+class ScheduleSummaryTests(unittest.TestCase):
+    """The two schedules, on traces made by a model of each, read through the same reader: the pattern of the fixed one, the landing of the
+    deadline one, and the lag the reader measures from the clock the host traced."""
+
+    def summary(self, schedule):
+        events = scheduled_play(1000.0, schedule) + scheduled_play(60000.0, schedule)
+        return pc.summarize([("a", record(schedule, events))])
+
+    def test_the_fixed_schedule_sees_a_change_about_eleven_milliseconds_late(self):
+        found = self.summary("fixed")
+        self.assertAlmostEqual(found["change_lag_ms"]["mean"], 11.2, delta=1.0)
+        self.assertGreater(found["change_lag_ms"]["max"], 20.0)
+        self.assertAlmostEqual(found["polls_per_frame_change"], 1.87, delta=0.03)
+
+    def test_the_deadline_schedule_sees_it_just_after_the_boundary(self):
+        found = self.summary("deadline")
+        landing = GUARD_MS + LATE_MS
+        self.assertAlmostEqual(found["change_lag_ms"]["mean"], landing, delta=0.3)
+        self.assertLess(found["change_lag_ms"]["max"], landing + 0.5)
+        self.assertAlmostEqual(found["polls_per_frame_change"], 2.0, delta=0.05)
+
+    def test_the_deadline_schedule_has_no_short_delivery_step(self):
+        found = self.summary("deadline")
+        self.assertEqual(found["polls_per_change_share"], {"2": 1.0})
+
+    def test_the_mode_of_the_plays_is_reported(self):
+        self.assertEqual(self.summary("deadline")["poll_modes"], ["deadline"])
+        self.assertEqual(self.summary("fixed")["poll_modes"], ["fixed"])
+
+    def test_a_trace_without_the_mode_says_so(self):
+        found = pc.summarize([("a", record("x", polled_play(1000.0)))])
+        self.assertEqual(found["poll_modes"], ["unknown"])
+        self.assertEqual(found["change_lag_ms"]["n"], 0)
+
+    def test_a_group_with_two_modes_names_both(self):
+        events = scheduled_play(1000.0, "fixed") + scheduled_play(60000.0, "deadline")
+        self.assertEqual(pc.summarize([("a", record("x", events))])["poll_modes"], ["deadline", "fixed"])
+
+
+class EachPlayTests(unittest.TestCase):
+    def frames(self, start, gaps):
+        done, found = start, []
+        for gap in gaps:
+            done += gap
+            found.append(picture(done))
+        return found
+
+    def test_every_play_has_its_own_numbers(self):
+        events = scheduled_play(1000.0, "deadline", 5.0) + scheduled_play(60000.0, "fixed", 5.0)
+        frames = self.frames(1500.0, [41.7] * 20 + [80.0, 120.0]) + self.frames(60500.0, [22.0, 44.0, 22.0, 44.0, 66.0])
+        plays = pc.each_play([("a", record("x", events, frames))])
+        self.assertEqual([p["poll"] for p in plays], ["deadline", "fixed"])
+        first, second = plays
+        # 22 pictures are 21 gaps (the first has nothing before it); 5 pictures are 4 gaps: 44, 22, 44 and 66 ms.
+        self.assertEqual((first["delivered"], first["under_30_ms"], first["over_62_5_ms"], first["over_100_ms"]), (21, 0, 2, 1))
+        self.assertEqual((second["delivered"], second["under_30_ms"], second["over_62_5_ms"], second["over_100_ms"]), (4, 1, 1, 0))
+        self.assertAlmostEqual(first["change_lag_ms"]["mean"], GUARD_MS + LATE_MS, delta=0.3)
+        self.assertGreater(second["change_lag_ms"]["mean"], 8.0)
+        self.assertEqual(first["session"], "a")
+
+    def test_a_play_without_ticks_is_not_a_play(self):
+        self.assertEqual(pc.each_play([("a", record("x", [clock_started(0.0)]))]), [])
+
+    def test_the_plays_add_up_to_the_group(self):
+        events = scheduled_play(1000.0, "fixed", 6.0) + scheduled_play(60000.0, "fixed", 6.0)
+        frames = self.frames(1200.0, [22.0, 44.0] * 30) + self.frames(60200.0, [22.0, 44.0, 66.0] * 20)
+        sessions = [("a", record("x", events, frames))]
+        plays, group = pc.each_play(sessions), pc.summarize(sessions)
+        self.assertEqual(sum(p["delivered"] for p in plays), group["delivered_ms"]["n"])
+        self.assertEqual(sum(p["under_30_ms"] for p in plays), round(group["delivered_share_under_30_ms"] * group["delivered_ms"]["n"]))
+        self.assertEqual(sum(p["skipped_frames"] for p in plays), group["skipped_frames"])
+
+
+class MarksAndEdgesTests(unittest.TestCase):
+    """The marks (30, 62.5 and 100 ms) are the rule's own and the spans are half open: a gap exactly on a mark is not past it, a tick exactly at the start of a play
+    is in it and one exactly at the start of the next is not."""
+
+    def played(self, gaps):
+        """One play with a poll that saw a frame and pictures `gaps` apart (the first picture has nothing before it)."""
+        done, frames = 1100.0, [picture(1100.0)]
+        for gap in gaps:
+            done += gap
+            frames.append(picture(done))
+        return [("a", record("x", [clock_started(1000.0), tick(1022.0, 0, 0)], frames))]
+
+    def test_a_picture_is_short_under_thirty_ms_and_not_at_thirty(self):
+        sessions = self.played([27.0, 30.0, 33.0])
+        self.assertEqual(pc.each_play(sessions)[0]["under_30_ms"], 1)
+        self.assertEqual(pc.summarize(sessions)["delivered_share_under_30_ms"], round(1 / 3, 4))
+
+    def test_a_picture_is_slow_over_sixty_two_and_a_half_ms_and_not_at_it(self):
+        sessions = self.played([61.0, 62.5, 64.0])
+        self.assertEqual(pc.each_play(sessions)[0]["over_62_5_ms"], 1)
+        self.assertEqual(pc.summarize(sessions)["delivered_share_over_62_5_ms"], round(1 / 3, 4))
+
+    def test_a_picture_is_very_slow_over_a_hundred_ms_and_not_at_it(self):
+        sessions = self.played([95.0, 100.0, 105.0])
+        self.assertEqual(pc.each_play(sessions)[0]["over_100_ms"], 1)
+
+    def test_the_longest_wait_of_a_play_is_its_largest_gap_and_a_play_without_gaps_has_none(self):
+        self.assertEqual(pc.each_play(self.played([30.0, 80.0, 50.0]))[0]["max_delivered_ms"], 80.0)
+        self.assertIsNone(pc.each_play(self.played([]))[0]["max_delivered_ms"])
+
+    def test_a_tick_at_the_start_of_a_play_is_in_it_and_one_at_the_start_of_the_next_is_not(self):
+        events = [clock_started(100.0), tick(100.0, 0, 1), tick(5000.0, 1, 2), clock_started(5000.0)]
+        self.assertEqual([t["ran_ms"] for t in pc.ticks_of(events, (100.0, 5000.0))], [100.0])
+
+    def test_a_picture_at_the_start_of_the_next_play_is_not_in_this_one(self):
+        frames = [picture(100.0), picture(200.0), picture(500.0)]
+        self.assertEqual(pc.delivered_gaps(frames, (100.0, 500.0)), [100.0])
+
+    def test_a_play_is_placed_by_the_host_clock_not_by_the_sequence_number(self):
+        first = {"seq": 7, "t_ms": 1234.5, "kind": "play_clock_started", "fields": {"from": 0, "fps": 24.0}}
+        second = {"seq": 99, "t_ms": 9000.5, "kind": "play_clock_started", "fields": {"from": 0, "fps": 24.0}}
+        self.assertEqual([(w["start"], w["end"]) for w in pc.play_windows([first, second])], [(1234.5, 9000.5), (9000.5, float("inf"))])
+
+
+class ReadingEdgesTests(unittest.TestCase):
+    def test_a_play_that_names_no_rate_does_not_hide_the_rate_of_the_others(self):
+        nameless = {"seq": 1, "t_ms": 0.0, "kind": "play_clock_started", "fields": {"from": 0}}
+        self.assertEqual(pc.frames_per_second([nameless, clock_started(9.0, 24.0)]), {24.0})
+        self.assertEqual(pc.frames_per_second([nameless]), set())
+
+    def test_two_sessions_at_two_frame_rates_make_no_prediction(self):
+        sessions = [("a", record("x", polled_play(1000.0, fps=24.0))), ("b", record("x", polled_play(1000.0, fps=30.0)))]
+        found = pc.summarize(sessions)
+        self.assertIsNone(found["fps"])
+        self.assertIsNone(found["model"])
+
+    def test_a_rate_that_is_not_a_plain_positive_number_gives_no_lag(self):
+        ticks = [clocked(100.0, 9, 10, 10.25)["fields"]]
+        for rate in (True, float("inf"), float("nan"), -24.0, "24"):
+            self.assertEqual(pc.change_lags(ticks, rate), [], rate)
+
+    def test_a_clock_that_is_a_boolean_gives_no_lag(self):
+        self.assertEqual(pc.change_lags([clocked(1.0, 0, 1, True)["fields"]], 24.0), [])
+
+    def test_how_late_each_poll_ran_is_summarised(self):
+        found = pc.summarize([("a", record("x", polled_play(1000.0, seconds=4.0)))])
+        self.assertEqual(found["late_ms"]["n"], found["poll_ms"]["n"] + 1)
+        self.assertEqual(found["late_ms"]["mean"], 1.3)
+
+    def test_a_group_without_a_frame_change_says_so(self):
+        self.assertEqual(pc.shares({}), "no frame change")
+        self.assertEqual(pc.shares({"1": 0.125, "2": 0.875}), "1 poll: 12.5%, 2 polls: 87.5%")
+
+
+class EachPlayFieldTests(unittest.TestCase):
+    def test_a_play_is_summarised_field_by_field(self):
+        events = [clock_started(1000.0, 24.0, "fixed"), clocked(1020.0, 0, 0, 0.9), clocked(1040.0, 0, 1, 1.25), clocked(1060.0, 1, 1, 1.7),
+                  clocked(1080.0, 1, 3, 3.5), clocked(1100.0, 3, 4, 4.0)]
+        frames = [picture(1100.0), picture(1130.0), picture(1200.0), picture(1310.0)]
+        found = pc.each_play([("run-00.json", record("x", events, frames))])
+        self.assertEqual(len(found), 1)
+        play = found[0]
+        lag = play.pop("change_lag_ms")
+        # Five polls; the changes at the second, fourth and fifth (the first has nothing before it, so two steps: 2 polls and 1 poll); one frame jumped over.
+        self.assertEqual(play, {"session": "run-00.json", "poll": "fixed", "fps": 24.0, "ticks": 5, "frame_changes": 2, "polls_per_frame_change": 1.5,
+                                "delivered": 3, "under_30_ms": 0, "over_62_5_ms": 2, "over_100_ms": 1, "max_delivered_ms": 110.0,
+                                "poll_ms": pc.stats([20.0, 20.0, 20.0, 20.0]), "skipped_frames": 1})
+        self.assertEqual(lag["n"], 3)
+        self.assertAlmostEqual(lag["mean"], (0.25 + 0.5 + 0.0) / 3 * FRAME_MS, places=3)
+        self.assertAlmostEqual(lag["max"], 0.5 * FRAME_MS, places=3)
+
+    def test_the_mean_polls_per_frame_change_weighs_each_step_by_its_count(self):
+        self.assertEqual(pc.mean_polls({2: 3, 1: 1}), 1.75)
+        self.assertIsNone(pc.mean_polls({}))
+
+
 class GroupTests(unittest.TestCase):
     def test_a_session_belongs_to_its_arm_then_its_mode(self):
         self.assertEqual(pc.group_of({"arm": "patched", "mode": "async"}, "auto"), "patched")
@@ -225,6 +476,17 @@ class ReadAndOutputTests(unittest.TestCase):
         root = self.folder()
         names = [name for name, _ in pc.read_sessions([str(root / "manifest.json")])]
         self.assertEqual(names, ["manifest.json"])
+
+    def test_the_markdown_shows_the_lag_and_the_mode_when_the_trace_has_them(self):
+        events = scheduled_play(1000.0, "deadline", 5.0)
+        text = pc.markdown(pc.build_report([("1", record("deadline", events))]))
+        self.assertIn("change lag ms mean / p95 / max", text)
+        self.assertIn("| deadline | 1 | 1 |", text)
+        self.assertIn("poll deadline", text)
+
+    def test_the_markdown_of_an_old_trace_says_the_lag_is_unknown(self):
+        text = pc.markdown(pc.build_report([("1", record("x", polled_play(1000.0, seconds=4.0)))]))
+        self.assertIn("n/a", text)
 
     def test_the_markdown_has_each_group_and_its_prediction(self):
         root = self.folder()
