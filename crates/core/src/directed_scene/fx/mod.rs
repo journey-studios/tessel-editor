@@ -27,6 +27,7 @@
 
 mod catalog;
 mod control;
+mod handles;
 mod hash;
 mod keys;
 mod read;
@@ -41,6 +42,10 @@ pub use catalog::{
     VIGNETTE_RADIUS, VIGNETTE_ROUNDNESS, VIGNETTE_SOFTNESS, catalog, catalog_json, effect,
 };
 pub use control::quantize_control;
+pub use handles::{
+    CENTER_STEP, HIT_RADIUS as HANDLE_HIT_RADIUS, HandleValue, VignetteHandle, VignetteParams,
+    VignetteShape, hit as hit_handle, on_picture, params_at as vignette_params_at,
+};
 pub use hash::{
     Reseed, base_seed, colored_triangular, fnv1a32, hash_pixel, lowbias32, seed_for, triangular,
     unit_float,
