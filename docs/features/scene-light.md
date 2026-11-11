@@ -124,6 +124,14 @@ nem Windows). Executado no macOS com Chrome/SwiftShader:
   da atenuação, iluminar por trás, ordem de cor, espaço sRGB, luz oculta ocupando slot, sinal do alcance, guarda de canal
   com chaves, luz oculta exigindo a capacidade — **8/8 mortas** (a última sobreviveu aos testes do core e ganhou uma asserção).
 
+### Gates no código `945b9f8` (macOS, SwiftShader, árvore limpa)
+
+`cargo fmt --all -- --check`, `./scripts/cargo check --workspace --locked`, `./scripts/cargo clippy --workspace --all-targets --locked -- -D warnings`
+e `./scripts/cargo build -p tessel-editor --locked` passaram; `TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test --workspace --locked --no-fail-fast`:
+118 suítes, **2327 passaram, 0 falharam, 13 ignorados**, nenhum `SKIPPED`; runtime JS (`node --test`, runtime obrigatório) 255/255;
+`cargo tree -p tessel-editor-core` sem gpui/wry. As provas `scripts/point-light-*-proof.py` passaram. Medição de desempenho **não** feita
+(BL023.6, pendente).
+
 ### Não provado
 
 Ponteiro físico, WKWebView nativa pintando o overlay, popover/foco de teclado, **desempenho** (medição separada sob o lock
