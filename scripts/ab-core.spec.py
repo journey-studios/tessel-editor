@@ -1,6 +1,7 @@
 """Tests of the shared core of the A/B runners (`scripts/ab/`): project reading, stats, plays and gaps, validity, charts and the batch loop.
 Pure logic; no editor, GPU, runtime page or private media is started."""
 import hashlib
+import inspect
 import itertools
 import json
 import os
@@ -51,6 +52,15 @@ class SchedulingTests(unittest.TestCase):
         self.assertEqual(ST.stats([])["max"], None)
         self.assertEqual(ST.stats([None, 5.0])["n"], 1)
 
+    def test_stats_returns_what_it_always_did_unless_the_playback_reader_asks_for_the_mean_and_the_p99(self):
+        small, large = [3.2, None, 10.0, 7.5, 7.5, 1.0, 22.25, 44.4444, 0.0005, 16.7], [round(((i * 37) % 101) * 0.731 + (i % 7) * 0.0123, 4) for i in range(1, 201)]
+        self.assertEqual(ST.stats(small), {"n": 9, "p50": 7.5, "p95": 44.444, "max": 44.444})
+        self.assertEqual(ST.stats(large), {"n": 200, "p50": 36.562, "p95": 69.507, "max": 73.162})
+        self.assertEqual(ST.stats([]), {"n": 0, "p50": None, "p95": None, "max": None})
+        self.assertEqual(ST.stats(large, detail=True), {"n": 200, "mean": 36.718, "p50": 36.562, "p95": 69.507, "p99": 72.418, "max": 73.162})
+        self.assertEqual(list(ST.stats(small, detail=True)), ["n", "mean", "p50", "p95", "p99", "max"])
+        self.assertEqual(ST.stats([None], detail=True), {"n": 0, "mean": None, "p50": None, "p95": None, "p99": None, "max": None})
+
 
 class ProjectTests(unittest.TestCase):
     def document(self):
@@ -80,6 +90,69 @@ class ProjectTests(unittest.TestCase):
             checked = PR.check_sources([{"kind": "splat", "path": path}])
             self.assertEqual(checked[0]["size"], 10)
             self.assertEqual(len(checked[0]["head_tail_sha256"]), 64)
+
+
+class RelativeSourceTests(unittest.TestCase):
+    """The document stores the media inside its own folder relative to it (`encode_path`); the editor reads them there (`decode_path`), never from the cwd."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.folder = self.root / "project-folder"
+        (self.folder / "managed-media" / "frames").mkdir(parents=True)
+        (self.folder / "managed-media" / "clip-0.ply").write_bytes(b"x" * 10)
+        for number in (1, 2):
+            (self.folder / "managed-media" / "frames" / f"frame_{number:04d}.png").write_bytes(b"png")
+        (self.root / "outside.ply").write_bytes(b"y")
+        self.absolute_media = self.root / "elsewhere.ply"
+        self.absolute_media.write_bytes(b"z")
+
+    def document(self, *extra):
+        sources = [("splat", {"type": "file", "path": "managed-media/clip-0.ply"}),
+                   ("video", {"type": "frame_sequence", "pattern": "managed-media/frames/frame_%04d.png"}),
+                   ("splat", {"type": "file", "path": str(self.absolute_media)}), *extra]
+        return {"active_sequence": "main", "sequences": [{"id": "main", "length": 10, "rate": {"num": 24, "den": 1}, "clips": []}],
+                "library": {"assets": [{"kind": kind, "asset": {"source": source}} for kind, source in sources]}}
+
+    def test_relative_paths_and_patterns_are_looked_up_under_the_documents_folder_not_the_working_directory(self):
+        checked = PR.check_sources(PR.parse_project(self.document(), base=self.folder)["sources"])
+        self.assertEqual([(c["kind"], c["present"]) for c in checked], [("splat", True), ("video", True), ("splat", True)])
+        self.assertEqual((checked[0]["size"], checked[1]["frames"]), (10, 2))
+        self.assertNotIn("managed-media", json.dumps(checked), "still labels, never names")
+
+    def test_a_relative_path_without_a_document_folder_or_leaving_it_is_missing_as_the_editor_refuses_it(self):
+        here = os.getcwd()
+        os.chdir(self.folder)  # the working directory IS the document's folder: only the rule can keep a path from being found there by luck
+        self.addCleanup(os.chdir, here)
+        leaving = ("splat", {"type": "file", "path": "../outside.ply"})
+        checked = PR.check_sources(PR.parse_project(self.document(leaving), base=self.folder)["sources"])
+        self.assertEqual([c["present"] for c in checked], [True, True, True, False], "the file is there, the editor will not read it")
+        unknown = PR.check_sources(PR.parse_project(self.document())["sources"])
+        self.assertEqual([c["present"] for c in unknown], [False, False, True], "relative with no folder to be relative to: not found by luck in the cwd")
+
+    def test_the_copy_the_editor_opens_still_reaches_the_original_media(self):
+        document = self.folder / "project.tessel.json"
+        document.write_text(json.dumps(self.document()))
+        copy = Path(PR.new_workspace_copy(document, str(self.root / "work" / "copy")))
+        self.assertNotEqual(copy.parent, self.folder)
+        saved = json.loads(copy.read_text())
+        self.assertEqual([c["present"] for c in PR.check_sources(PR.parse_project(saved, base=copy.parent)["sources"])], [True, True, True],
+                         "read from the copy's own folder, every source is where it was")
+        sources = [entry["asset"]["source"] for entry in saved["library"]["assets"]]
+        self.assertEqual(sources[0]["path"], str(self.folder / "managed-media" / "clip-0.ply"))
+        self.assertEqual(sources[1]["pattern"], str(self.folder / "managed-media" / "frames" / "frame_%04d.png"))
+        self.assertEqual(sources[2]["path"], str(self.absolute_media))
+
+    def test_a_document_with_no_relative_path_is_copied_byte_for_byte_and_a_refused_one_is_left_to_be_refused(self):
+        plain = self.folder / "plain.tessel.json"
+        plain.write_text(json.dumps({**self.document(), "library": {"assets": [{"kind": "splat", "asset": {"source": {"type": "file", "path": str(self.absolute_media)}}}]}}, indent=1))
+        copied = Path(PR.new_workspace_copy(plain, str(self.root / "w1")))
+        self.assertEqual(copied.read_bytes(), plain.read_bytes())
+        refused = self.folder / "refused.tessel.json"
+        refused.write_text(json.dumps(self.document(("splat", {"type": "file", "path": "../outside.ply"}))))
+        saved = json.loads(Path(PR.new_workspace_copy(refused, str(self.root / "w2"))).read_text())
+        self.assertEqual(saved["library"]["assets"][3]["asset"]["source"]["path"], "../outside.ply")
 
 
 class HeadTailHashTests(unittest.TestCase):
@@ -160,6 +233,30 @@ class GapTests(unittest.TestCase):
         self.assertEqual(context["page_fetch_ms"], 0.0)
         self.assertEqual(context["page_warm_ms"], 20.0)
         self.assertEqual(P.gap_context(events, 1100, 1190)["page_fetch_ms"], 90.0)
+
+    def test_a_load_the_loader_did_not_split_is_unknown_load_work_never_fetch(self):
+        # a frame sequence (or a scene parse) reports `load_ms` alone: 400 ms of page work that ended at host 1500, kind not measured
+        events = [event("asset_state", 1500, state="ready", timings={"load_ms": 400})]
+        context = P.gap_context(events, 1100, 1190)
+        self.assertEqual((context["page_fetch_ms"], context["page_decode_ms"], context["page_load_other_ms"]), (0.0, 0.0, 90.0))
+        self.assertEqual(P.page_work_ms(context), 90.0, "still page work: a report that only counts fetch/decode/warm would call this gap idle")
+        self.assertEqual(P.gap_context(events, 1400, 1450)["page_load_other_ms"], 50.0)
+
+    def test_what_a_splitting_loader_leaves_out_of_fetch_and_decode_is_load_work_of_unknown_kind(self):
+        # load 500 ms ending at 1500: decode 300 (1200..1500), fetch 100 (1100..1200), the other 100 ms before them (1000..1100)
+        events = [event("asset_state", 1500, state="ready", timings={"load_ms": 500, "fetch_ms": 100, "decode_ms": 300})]
+        parts = lambda t0, t1: {k: P.gap_context(events, t0, t1)[k] for k in ("page_decode_ms", "page_fetch_ms", "page_load_other_ms")}  # noqa: E731
+        self.assertEqual(parts(1000, 1090), {"page_decode_ms": 0.0, "page_fetch_ms": 0.0, "page_load_other_ms": 90.0})
+        self.assertEqual(parts(1100, 1190), {"page_decode_ms": 0.0, "page_fetch_ms": 90.0, "page_load_other_ms": 0.0})
+        self.assertEqual(parts(1210, 1300), {"page_decode_ms": 90.0, "page_fetch_ms": 0.0, "page_load_other_ms": 0.0})
+        # decode measured but not fetch: nothing before the decode is called fetch
+        only_decode = [event("asset_state", 1500, state="ready", timings={"load_ms": 400, "decode_ms": 300})]
+        self.assertEqual((P.gap_context(only_decode, 1100, 1190)["page_fetch_ms"], P.gap_context(only_decode, 1100, 1190)["page_load_other_ms"]), (0.0, 90.0))
+
+    def test_the_page_work_of_a_gap_is_the_four_parts_of_its_context_and_a_context_without_some_is_still_a_sum(self):
+        self.assertEqual(P.page_work_ms({"page_decode_ms": 1.0, "page_fetch_ms": 2.0, "page_load_other_ms": 4.0, "page_warm_ms": 8.0}), 15.0)
+        self.assertEqual(P.page_work_ms({"page_warm_ms": 8.0, "page_fetch_ms": None}), 8.0)
+        self.assertEqual(P.page_work_ms({}), 0)
 
     def test_a_span_the_page_reported_late_lies_where_it_ran_not_where_its_report_arrived(self):
         # The page's warm ran for 50 ms and ended 200 ms before the report reached the host at 1300: it ran 1050..1100, not 1250..1300.
@@ -392,6 +489,7 @@ DEFECTS = {
     "a stale read": lambda r: r["status"]["asset_io"]["pool"].update(stale=2),
     "lost trace events": lambda r: r.update(events_lost=3),
     "a play that did not run to its end": lambda r: r.update(plays_ok=False),
+    "a trace poll refused after the plays were judged": lambda r: r.update(errors=["render.trace: {'ok': False, 'error': {'code': 'unavailable'}}"]),
     "an HTTP error": lambda r: r["events"].append(event("asset_io", 9, status=503)),
     "an asset that failed to load": lambda r: r["events"].append(event("asset_state", 9, state="failed", timings=None)),
 }
@@ -418,6 +516,30 @@ class OneValidityTests(unittest.TestCase):
                     self.assertFalse(valid)
                     self.assertTrue(reasons)
 
+    def test_the_errors_a_session_recorded_are_reasons_as_codes_and_kinds_once_each_never_as_text(self):
+        record = window_record(plays_ok=True)
+        record["errors"] = ["render.trace: {'ok': False, 'error': {'code': 'unavailable', 'message': 'no socket at /Users/someone/private/s.sock'}}",
+                            "render.trace: {'ok': False, 'error': {'code': 'unavailable', 'message': 'again'}}", "something odd at /Users/someone"]
+        for judge in self.JUDGES.values():
+            valid, reasons = judge(record)
+            self.assertFalse(valid)
+            self.assertEqual([r for r in reasons if "recorded" in r], ["the session recorded error(s): host_refused:unavailable, other:other"])
+            self.assertNotIn("/Users", " ".join(reasons))
+        record["errors"] = []
+        self.assertEqual(V.window_validity(record), (True, []))
+
+    def test_a_session_failed_when_it_did_not_run_as_claimed_and_its_hang_is_not_part_of_the_question(self):
+        failures = {"it died": {"error": "RuntimeError('x')"}, "it recorded an error": {"errors": ["render.trace: {'ok': False}"]},
+                    "its plays did not end": {"plays_ok": False}, "the editor ended by itself": {"editor_exit": {"alive": False, "returncode_before_stop": -11}}}
+        for name, defect in failures.items():
+            with self.subTest(failure=name):
+                self.assertTrue(V.failed_session({**window_record(), **defect}, True))
+                self.assertTrue(V.failed_session({**window_record(), **defect}, False))
+        self.assertFalse(V.failed_session(window_record(editor_exit={"alive": True}), True))
+        self.assertTrue(V.failed_session(window_record(), False), "a play that was asked for is missing")
+        self.assertFalse(V.failed_session({"events": []}, True), "a record that names none of the signals did not fail")
+        self.assertEqual(list(inspect.signature(V.failed_session).parameters), ["record", "complete"], "it knows nothing of a hang: hung is judged apart")
+
     def test_an_asset_the_page_could_not_load_is_a_reason_that_names_how_many(self):
         record = window_record()
         record["events"] += [event("asset_state", 9, state="failed"), event("asset_state", 10, state="failed"), event("asset_state", 11, state="ready")]
@@ -427,6 +549,29 @@ class OneValidityTests(unittest.TestCase):
         ready = window_record()
         ready["events"] += [event("asset_state", 9, state="loading"), event("asset_state", 10, state="ready")]
         self.assertTrue(V.session_validity(ready)[0])
+
+    def picture(self, id, done, interactive=True):
+        return {"id": id, "done_ms": done, "shown_frame": id, "interactive": interactive}
+
+    def played_window(self, accounted):
+        """A window of four pictures (the fifth is the refine after the stop): `accounted` are the ids whose page account arrived."""
+        record = window_record()
+        record["events"] = [event("play_command", 0), event("play_clock_started", 10)] + [event("frame_page", 20 + i, id=i) for i in accounted]
+        record["frames"] = [self.picture(i, 20 + i) for i in (1, 2, 3, 4)] + [self.picture(5, 900, interactive=False)]
+        return record
+
+    def test_every_picture_of_the_plays_must_carry_the_page_account_not_just_one_of_them(self):
+        self.assertEqual(V.window_validity(self.played_window([1, 2, 3, 4])), (True, []))
+        valid, reasons = V.window_validity(self.played_window([1]))
+        self.assertFalse(valid)
+        self.assertEqual(reasons, ["3 of 4 picture(s) of the plays carried no page account (a lost report)"])
+        self.assertFalse(V.window_validity(self.played_window([1, 2, 4]))[0], "one lost report among the others is enough")
+        self.assertEqual(V.window_validity(self.played_window([])), (False, ["no frame carried the page account (the page timing was not on)"]))
+
+    def test_the_refine_after_the_stop_is_not_a_picture_of_the_play_that_needs_an_account(self):
+        record = self.played_window([1, 2, 3, 4])
+        self.assertTrue(record["frames"][-1]["id"] == 5 and 5 not in {e["fields"]["id"] for e in record["events"] if e["kind"] == "frame_page"})
+        self.assertTrue(V.window_validity(record)[0])
 
     def test_what_is_the_experiments_own_stays_with_it(self):
         no_warm = window_record()
@@ -443,10 +588,12 @@ class FakeLab:
 
     def __init__(self, statuses, report=None):
         self.statuses, self.report, self.stopped = list(statuses), report or {"ticks": 10, "skipped_frames": 0, "max_gap_frames": 1}, 0
+        self.polled = []
 
     def op(self, request):
         if request["op"] == "playback.status":
-            return {"ok": True, "data": self.statuses.pop(0) if len(self.statuses) > 1 else self.statuses[0]}
+            self.polled.append(self.statuses.pop(0) if len(self.statuses) > 1 else self.statuses[0])
+            return {"ok": True, "data": self.polled[-1]}
         if request["op"] == "playback.stop":
             self.stopped += 1
             return {"ok": True, "data": {"report": self.report}}
@@ -479,6 +626,29 @@ class PlayTests(unittest.TestCase):
         self.assertEqual(counters, {"ticks": 10, "skipped_frames": 0, "max_gap_frames": 1})
         self.assertEqual(state["errors"], [])
 
+    def test_a_play_that_is_still_preparing_has_not_ended_whatever_the_experiment_calls_an_end(self):
+        # `playback.start` answers at once and the status says `preparing` (only where it starts) until the audio mix is built.
+        lab = FakeLab([{"state": "preparing", "from": 0}, {"state": "preparing", "from": 0}, {"state": "playing"}, {"state": "stopped"}])
+        counters, state = self.play(lab, lambda status: status.get("state") != "playing")
+        self.assertIsNotNone(counters)
+        self.assertEqual([status["state"] for status in lab.polled], ["preparing", "preparing", "playing", "stopped"])
+        self.assertEqual(state["errors"], [])
+
+    def test_a_play_that_never_leaves_preparing_runs_out_of_time_instead_of_ending(self):
+        lab = FakeLab([{"state": "preparing", "from": 0}])
+        counters, state = self.play(lab, lambda status: status.get("state") != "playing")
+        self.assertIsNone(counters)
+        self.assertIn("did not end within", state["errors"][0])
+
+    def test_a_play_whose_report_has_no_tick_never_ran_even_when_the_status_says_it_ended(self):
+        # `playback.stop` while the mix is still being built answers the `preparing` status, which counts nothing.
+        lab = FakeLab([{"state": "stopped"}], report={"state": "preparing", "from": 0})
+        counters, state = self.play(lab, lambda status: status.get("state") != "playing")
+        self.assertIsNone(counters)
+        self.assertIn("no clock tick", state["errors"][0])
+        lab = FakeLab([{"state": "stopped"}], report={"state": "stopped", "last": {"ticks": 4, "skipped_frames": 0, "max_gap_frames": 1}})
+        self.assertEqual(self.play(lab, lambda status: status.get("state") != "playing")[0]["ticks"], 4, "a play the host ended by itself reports in `last`")
+
     def test_a_play_that_runs_out_of_time_is_not_a_play_it_is_none_with_the_reason(self):
         lab = FakeLab([{"state": "playing"}])
         counters, state = self.play(lab, lambda status: False)
@@ -502,6 +672,18 @@ class PlayTests(unittest.TestCase):
         record = {}
         self.assertTrue(S.whole_project_twice(FakeWarm, {"length": 48, "fps": 24.0})(lab, clean_state(), lambda *a: True, record))
         self.assertEqual(sorted(record["played"]), ["first", "repeat"])
+
+    def test_the_whole_project_twice_does_not_take_the_preparing_of_a_play_for_its_end(self):
+        lab = FakeLab([{"state": "preparing", "from": 0}] * 3 + [{"state": "playing"}, {"state": "stopped"}])
+        record = {}
+        self.assertTrue(S.whole_project_twice(FakeWarm, {"length": 48, "fps": 24.0})(lab, clean_state(), lambda *a: True, record))
+        self.assertEqual([status["state"] for status in lab.polled], ["preparing"] * 3 + ["playing", "stopped", "stopped"], "the first play ended at its own stop")
+
+    def test_a_window_that_is_preparing_when_first_asked_still_runs_to_its_end(self):
+        lab = FakeLab([{"state": "preparing", "from": 100}, {"state": "playing", "frame": 150}, {"state": "playing", "frame": 200}])
+        state, record = clean_state(), {}
+        self.assertTrue(S.one_window(FakeWarm, {"fps": 24.0}, (100, 200))(lab, state, lambda *a: True, record))
+        self.assertEqual((record["window_last_frame"], state["errors"]), (200, []))
 
     def test_a_window_that_stopped_before_its_end_did_not_run_to_its_end(self):
         lab = FakeLab([{"state": "playing", "frame": 120}, {"state": "stopped", "frame": 150}])

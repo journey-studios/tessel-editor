@@ -76,7 +76,7 @@ def trace_play(start, poll, picture_gaps, fps=24.0, ticks=21):
     done, frames = start + 10.0, []
     for gap in [0.0] + list(picture_gaps):
         done += gap
-        frames.append({"id": len(frames), "done_ms": done, "interactive": True})
+        frames.append({"id": len(frames), "shown_frame": len(frames), "done_ms": done, "interactive": True})
     return events, frames
 
 
@@ -223,20 +223,33 @@ class SessionRowTests(unittest.TestCase):
         slow = self.row_of(record("fixed"), analysis(repeat=(590, 2500.0)))
         self.assertTrue(slow["plays"]["repeat"]["hung"] and slow["hung"])
 
-    def test_a_hang_is_a_result_not_a_failure_even_when_the_second_play_never_came(self):
-        # The first play showed 300 of 600 pictures and the second never started: the editor hung, the run ran. The hung guard of the rule speaks to
-        # it; the session is not counted because it has not its two plays, with or without the harness calling it invalid.
+    def test_a_hang_is_a_finding_about_the_arm_and_never_excuses_a_failure_of_the_run(self):
+        # The first play showed 300 of 600 pictures: the editor hung. That is the arm's result (the hung guard of the rule speaks to it); it does not
+        # excuse the run: a hung session that has not its two plays, or died, is hung AND failed, so the batch does not exit 0.
         lost = self.row_of(record("deadline", plays=1), analysis(first=(300, 80.0), repeat=None))
         self.assertTrue(lost["hung"])
-        self.assertFalse(lost["failed"])
+        self.assertTrue(lost["failed"])
         self.assertFalse(lost["counted"])
         stopped = self.row_of(record("deadline", plays=1, error="the second play never started"),
                               analysis(valid=False, reasons=["a play did not finish normally"], first=(300, 80.0), repeat=None))
-        self.assertTrue(stopped["hung"])
-        self.assertFalse(stopped["failed"])
+        self.assertTrue(stopped["hung"] and stopped["failed"])
         self.assertFalse(stopped["counted"])
-        # The same session without the hang is a failure: that is what the hang is excused from.
-        self.assertTrue(self.row_of(record("deadline", plays=1), analysis(repeat=None))["failed"])
+        self.assertTrue(self.row_of(record("deadline", plays=1), analysis(repeat=None))["failed"], "without the hang it is a failure all the same")
+
+    def test_a_hung_session_with_both_plays_that_recorded_an_error_or_lost_its_editor_is_failed_too(self):
+        for name, defect in {"a play that timed out": {"errors": ["play(repeat) did not end within 50 s"], "plays_ok": False},
+                             "a trace poll that was refused": {"errors": ["render.trace: {'ok': False, 'error': {'code': 'unavailable'}}"]},
+                             "plays that did not end": {"plays_ok": False},
+                             "an editor that ended by itself": {"editor_exit": {"alive": False, "returncode_before_stop": -11}}}.items():
+            for hung, first in ((True, (300, 80.0)), (False, (590, 80.0))):
+                with self.subTest(defect=name, hung=hung):
+                    found = self.row_of({**record("fixed"), **defect}, analysis(first=first))
+                    self.assertEqual((found["hung"], found["failed"], found["counted"]), (hung, True, False))
+
+    def test_a_session_that_ran_as_claimed_is_not_failed_whether_or_not_it_hung(self):
+        for first in ((590, 80.0), (300, 80.0)):
+            found = self.row_of({**record("fixed"), "plays_ok": True, "errors": [], "editor_exit": {"alive": True}}, analysis(first=first))
+            self.assertFalse(found["failed"])
 
     def test_a_session_with_an_error_failed_and_its_report_names_a_code_and_a_kind_only(self):
         found = self.row_of(record("fixed", error="RuntimeError('could not open /Users/someone/private name.tessel.json: refused')"))
@@ -288,8 +301,8 @@ class SummaryTests(unittest.TestCase):
         found = ab.arm_summary(self.rows())
         self.assertEqual((found["sessions"], found["counted"], found["hung"], found["failed"], found["plays"]), (4, 2, 1, 1, 4))
         self.assertEqual((found["delivered"], found["under_30_ms"], found["slow_gt_62_5"], found["slow_gt_100"]), (3000, 330, 26, 7))
-        self.assertEqual(found["under_30_share"], 0.11)
-        self.assertEqual(found["slow_share"], round(26 / 3000, 5))
+        self.assertEqual(found["under_30_share"], 330 / 3000)
+        self.assertEqual(found["slow_share"], 26 / 3000, "the rule compares raw ratios: rounding is only for showing them")
         self.assertEqual(found["skipped_per_play"], 1.25)
 
     def test_the_lag_and_the_polls_are_weighted_by_what_they_were_measured_over(self):
@@ -335,10 +348,12 @@ class PairTests(unittest.TestCase):
         rows = list(reversed(scenario(pairs=3, lags=[(11.0, 2.0), (12.0, 3.0), (13.0, 4.0)])))
         self.assertEqual([pair for pair, _, _ in ab.pair_lags(rows)], [0, 1, 2])
 
-    def test_a_pair_without_a_traced_lag_on_either_side_is_not_a_pair_of_lags(self):
-        rows = scenario(pairs=2)
-        rows[1]["plays"] = {name: play(lag_n=0) for name in ab.PLAYS}
-        self.assertEqual([pair for pair, _, _ in ab.pair_lags(rows)], [1])
+    def test_a_counted_pair_without_a_traced_lag_stays_a_pair_of_the_rule_with_no_lag_on_that_side(self):
+        rows = scenario(pairs=3)
+        rows[1]["plays"] = {name: play(lag_n=0) for name in ab.PLAYS}  # the deadline session of pair 0 traced no lag
+        for found in rows[4:]:  # neither session of pair 2 did
+            found["plays"] = {name: play(lag_n=0) for name in ab.PLAYS}
+        self.assertEqual(ab.pair_lags(rows), [(0, 11.0, None), (1, 11.0, 2.5), (2, None, None)])
 
     def test_a_pair_with_one_session_only_is_not_a_pair(self):
         self.assertEqual(ab.pair_lags([row("fixed", 0)]), [])
@@ -455,6 +470,15 @@ class ShortfallTests(unittest.TestCase):
             self.assertEqual(len(found), 1, (count, needed))
             self.assertIn("counted pairs", found[0])
 
+    def test_a_counted_pair_with_no_lag_on_a_side_is_in_the_base_and_was_not_lower(self):
+        base = {"change_lag_mean_ms": 11.0}
+        measured = [(index, 11.0, 2.5) for index in range(10)]
+        self.assertEqual(self.short(fixed=base, pairs=measured), [], "ten pairs, ten lower")
+        found = self.short(fixed=base, pairs=measured + [(10, None, None), (11, 11.0, None)])
+        self.assertEqual(len(found), 1, "twelve counted pairs need eleven lower, ten are")
+        self.assertIn("lower in 10 of 12 counted pairs", found[0])
+        self.assertEqual(self.short(fixed=base, pairs=[(index, 11.0, 2.5) for index in range(11)] + [(11, None, None)]), [], "eleven of twelve is enough")
+
     def test_a_tie_in_a_pair_is_not_lower(self):
         pairs = [(index, 11.0, 2.5) for index in range(9)] + [(9, 5.0, 5.0)]
         self.assertEqual(len(self.short(fixed={"change_lag_mean_ms": 11.0}, pairs=pairs)), 0)
@@ -496,12 +520,59 @@ class VerdictTests(unittest.TestCase):
         self.assertIn("needs 10", said)
         self.assertNotIn(" of ", ab.verdict(rows).split("the rule")[0])
 
+    def test_the_reviewers_case_ten_improvements_in_twelve_counted_pairs_is_no_gain_not_adopt(self):
+        rows = scenario(pairs=12)
+        for found in rows:
+            if found["pair"] >= 10:  # the last two pairs are counted, and neither session traced a change lag
+                found["plays"] = {name: play(lag_n=0) for name in ab.PLAYS}
+        said = ab.verdict(rows, 12)
+        self.assertTrue(said.startswith("NO GAIN:"), said)
+        self.assertIn("lower in 10 of 12 counted pairs", said)
+        rows = scenario(pairs=12)
+        for found in rows:
+            if found["pair"] == 11:
+                found["plays"] = {name: play(lag_n=0) for name in ab.PLAYS}
+        self.assertTrue(ab.verdict(rows, 12).startswith("ADOPT:"), "eleven of twelve is what the rule asks")
+
+    def test_counted_pairs_without_a_lag_still_count_toward_the_ten_the_rule_needs(self):
+        rows = scenario(pairs=10)
+        for found in rows:
+            if found["pair"] >= 7:
+                found["plays"] = {name: play(lag_n=0) for name in ab.PLAYS}
+        said = ab.verdict(rows, 10)
+        self.assertFalse(said.startswith("INCONCLUSIVE"), said)
+        self.assertTrue(said.startswith("NO GAIN:"), said)
+
     def test_ten_counted_pairs_are_enough(self):
         rows = scenario()
         for found in rows:
             if found["arm"] == ab.DEADLINE and found["pair"] < 2:
                 found["counted"] = False
         self.assertTrue(ab.verdict(rows, 12).startswith("ADOPT:"))
+
+    def test_the_rule_reads_the_raw_share_of_short_pictures_751_of_25000_is_over_three_percent(self):
+        rows = scenario(pairs=10, deadline={"delivered": 1250, "under": 37})  # 20 plays, 25000 gaps, 740 short: 2.96%
+        self.assertTrue(ab.verdict(rows, 10).startswith("ADOPT:"))
+        rows[1]["plays"]["first"]["under_30_ms"] = 48  # 751 short in 25000: 3.004%, which rounds to 0.03
+        summary = ab.arm_summary([row for row in rows if row["arm"] == ab.DEADLINE])
+        self.assertEqual((summary["under_30_ms"], summary["delivered"]), (751, 25000))
+        self.assertEqual((summary["under_30_share"] > 0.03, round(summary["under_30_share"], 4)), (True, 0.03))
+        said = ab.verdict(rows, 10)
+        self.assertTrue(said.startswith("NO GAIN:"), said)
+        self.assertIn("pictures < 30 ms after the previous one: 0.03 (more than 3%)", said, "shown rounded, judged raw")
+
+    def test_the_report_keeps_the_raw_shares_and_the_text_shows_them_rounded(self):
+        rows = scenario(pairs=10, deadline={"delivered": 1250, "under": 37})
+        rows[1]["plays"]["first"]["under_30_ms"] = 48
+        for found in rows:  # one counted pair whose sessions traced no lag
+            if found["pair"] == 9:
+                found["plays"] = {name: play(lag_n=0, delivered=1250, under=37) for name in ab.PLAYS}
+        report = make_report(rows)
+        self.assertEqual(report["arms"]["deadline"]["under_30_share"], 751 / 25000, "the JSON keeps the ratio the rule judged")
+        text = ab.markdown(report)
+        self.assertIn("| 751 | 0.03 |", text)
+        self.assertIn("| 9 | not traced | not traced |", text)
+        self.assertEqual((ab.shown(751 / 25000), ab.shown(26 / 3000, 5), ab.shown(None)), (0.03, 0.00867, None))
 
     def test_the_fixed_arm_has_to_show_the_pattern_under_repair(self):
         said = ab.verdict(scenario(fixed={"under": 31}), 12)  # 7.75% of the pictures
@@ -711,8 +782,8 @@ class CommandTests(unittest.TestCase):
         calls, asked, locks = [], [], [self.Locks('/tmp/gpu.lock'), self.Locks('/tmp/review.lock')]
         run = shared_batch.Run(self.binary, self.document, PROJECT, locks, 1.5)
 
-        def fake_prerequisites(args, needed=(), gate=None):
-            asked.append({"needed": [Path(path).relative_to(self.root).as_posix() for path in needed], "gate": gate})
+        def fake_prerequisites(args, experiment, needed=(), gate=None):
+            asked.append({"experiment": experiment, "needed": [Path(path).relative_to(self.root).as_posix() for path in needed], "gate": gate})
             return None if blocked else run
 
         def fake_session(W, binary, document, record, env, body, stress=0, collect=None):
@@ -741,6 +812,7 @@ class CommandTests(unittest.TestCase):
         _, _, _, asked, _ = self.run_sessions()
         self.assertEqual(asked[0]["needed"], ["runtime/dist/index.html", "runtime/dist/runtime.js"])
         self.assertIs(asked[0]["gate"], ab.rule_gate)
+        self.assertIs(asked[0]["experiment"], ab.EXPERIMENT, "the folder is judged by this experiment's own record names")
 
     def test_the_gate_is_the_reason_the_rule_is_not_fixed_or_nothing(self):
         with mock.patch.object(ab, "rule_state", return_value=(False, "the rule has changes that are not committed")):

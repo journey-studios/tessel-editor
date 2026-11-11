@@ -2,7 +2,7 @@
 import re
 import statistics
 
-from ab.play import entries_of, play_segments, summarize_play, window_report
+from ab.play import entries_of, play_pictures, play_segments, summarize_play, window_report
 from ab.stats import memory_summary, percentile, quiet_class
 
 ACCEPTABLE_STATUS = {200, 206}
@@ -51,6 +51,11 @@ def core_validity(record, mode, unfinished):
     asset_io = status.get("asset_io") or {}
     if record.get("error"):
         reasons.append(f"error: {error_label(published_error(record['error']))}")
+    # What the session recorded while it ran, including the poll of its `finally` (after `plays_ok` was decided): a trace that could not be
+    # read is an incomplete trace. Published as codes and kinds, once each.
+    recorded = sorted({error_label(published_error(text)) for text in record.get("errors") or []})
+    if recorded:
+        reasons.append(f"the session recorded error(s): {', '.join(recorded)}")
     gone = record.get("editor_exit") or {}
     if gone and not gone.get("alive", True):
         reasons.append(f"the editor process ended by itself (return code {gone.get('returncode_before_stop')})")
@@ -75,6 +80,17 @@ def core_validity(record, mode, unfinished):
     if failed:
         reasons.append(f"{len(failed)} asset load(s) failed in the page")
     return reasons
+
+
+def failed_session(record, complete):
+    """Whether the session did not run as claimed, whatever its plays showed: it died (`error`), recorded errors (a play that timed out or was refused,
+    a trace that could not be read), its plays did not run to their end (`plays_ok`), the editor was gone before the harness stopped it, or the plays that
+    were asked for are not all there (`complete`, the runner's own reading). The ONE definition, for every runner that tells a failed run from a hung one.
+
+    A HANG is something else: what a play showed, a finding about the arm that `hung_play` judges. A session can be both, and a hang never excuses a
+    failure: the run is then reported as failed (exit 1) and its hang is still counted."""
+    gone = record.get("editor_exit") or {}
+    return bool(record.get("error") or record.get("errors") or not record.get("plays_ok", True) or (gone and not gone.get("alive", True)) or not complete)
 
 
 def session_validity(session):
@@ -114,8 +130,17 @@ def analyze_session(record, project):
 
 
 def window_validity(record):
-    """(valid, [reasons]) of a window play: the core, and every frame has to carry the page's account (the page timing was on)."""
+    """(valid, [reasons]) of a window play: the core, and every picture of its plays has to carry the page's account (the page timing was on).
+
+    WHY every picture: the host asks the page for its account for all frames or for none (`telemetry.timing` of the handshake), so a picture
+    without one is a lost report, and `decompose_play` leaves the page parts of exactly that picture without a value."""
     reasons = core_validity(record, record["io"], "the window did not play to its end")
-    if not any(e["kind"] == "frame_page" for e in record.get("events", [])):
+    events = record.get("events", [])
+    accounted = {e["fields"].get("id") for e in events if e["kind"] == "frame_page"}
+    pictures = [f for segment in play_segments(events) for f in play_pictures(record.get("frames", []), segment)]
+    missing = [f for f in pictures if f["id"] not in accounted]
+    if not accounted:
         reasons.append("no frame carried the page account (the page timing was not on)")
+    elif missing:
+        reasons.append(f"{len(missing)} of {len(pictures)} picture(s) of the plays carried no page account (a lost report)")
     return (not reasons), reasons

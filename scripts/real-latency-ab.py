@@ -40,10 +40,10 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from ab import ROOT, warm_proof  # noqa: E402
-from ab.batch import Experiment, analyze, arm_order, finish, manifest_of, prerequisites, run_arms  # noqa: E402
+from ab.batch import Experiment, analyze, arm_order, finish, manifest_of, positive_int, prerequisites, run_arms  # noqa: E402
 from ab.charts import write_charts  # noqa: E402
 from ab.pixels import run_pixels  # noqa: E402
-from ab.play import SLOW_DIAGNOSTIC_MS, SLOWER_DIAGNOSTIC_MS  # noqa: E402
+from ab.play import SLOW_DIAGNOSTIC_MS, SLOWER_DIAGNOSTIC_MS, page_work_ms  # noqa: E402
 from ab.project import check_sources, parse_project, sha256_file  # noqa: E402
 from ab.session import POLL_SECONDS, session_env, whole_project_twice, run_session  # noqa: E402
 from ab.stats import PAIR_MAX_DELTA_CORES, QUIET_MEDIAN_CORES, QUIET_P95_CORES  # noqa: E402
@@ -51,7 +51,7 @@ from ab.validity import analyze_session, session_validity  # noqa: E402
 
 MODES = ("sync", "async")
 
-PAGE_BUSY_MS = 10.0   # page decode/fetch/warm overlapping a gap by at least this long is reported as "with page work"
+PAGE_BUSY_MS = 10.0   # page decode/fetch/other load/warm overlapping a gap by at least this long is reported as "with page work"
 TRANSIT_SLOW_MS = 30.0  # the picture after the gap spent this long outside the runtime frame (queue, page thread, return)
 UI_STALL_MS = 20.0  # a UI-thread protocol callback this long overlapping a gap is reported as "with a UI-thread stall"
 
@@ -111,7 +111,7 @@ def arm_groups(analyzed):
                 context = gap["context"]
                 group["with_ui_stall"] += 1 if (context["ui_callback_ms"] or 0) >= UI_STALL_MS else 0
                 group["with_read_overlap"] += 1 if context["reads"] else 0
-                page = (context.get("page_decode_ms") or 0) + (context.get("page_fetch_ms") or 0) + (context.get("page_warm_ms") or 0)
+                page = page_work_ms(context)
                 stall = (context["ui_callback_ms"] or 0) >= UI_STALL_MS
                 busy = page >= PAGE_BUSY_MS
                 group["with_page_work"] += 1 if busy else 0
@@ -168,7 +168,7 @@ def markdown(report):
             lines.append(f"| {s['order_index']} | {s['mode']} | {name} | {p['pictures']} | {g['p50']}/{g['p95']}/{g['max']} | {p['slow_gt_62_5']} | {p['slow_gt_100']} | "
                          f"{r['p95']}/{r['max']} | {t['p95']}/{t['max']} | {c['max']} | {(p['playback_report'] or {}).get('skipped_frames')} | {p['play_command_to_first_picture_ms']} |")
     lines += ["", f"## Slow gaps (> {SLOW_DIAGNOSTIC_MS} ms) by arm and load class (valid sessions only; descriptive counts)", "",
-              f"| group | sessions | plays | pictures | gaps >{SLOW_DIAGNOSTIC_MS} | >100 | with UI-thread callback ≥{UI_STALL_MS:g} ms | overlapping a read | with page decode/fetch/warm ≥{PAGE_BUSY_MS:g} ms | picture transit ≥{TRANSIT_SLOW_MS:g} ms | neither UI stall nor page work | in a prefetch window | at a cut | at a video/still clip entry | elsewhere | worst gap per session ms |",
+              f"| group | sessions | plays | pictures | gaps >{SLOW_DIAGNOSTIC_MS} | >100 | with UI-thread callback ≥{UI_STALL_MS:g} ms | overlapping a read | with page decode/fetch/other load/warm ≥{PAGE_BUSY_MS:g} ms | picture transit ≥{TRANSIT_SLOW_MS:g} ms | neither UI stall nor page work | in a prefetch window | at a cut | at a video/still clip entry | elsewhere | worst gap per session ms |",
               "|" + "---|" * 16]
     for name, g in sorted(report["arms"].items()):
         lines.append(f"| {name} | {g['sessions']} | {g['plays']} | {g['pictures']} | {g['gaps_gt_62_5']} | {g['gaps_gt_100']} | {g['with_ui_stall']} | "
@@ -197,7 +197,7 @@ def markdown(report):
 def cmd_preflight(args):
     document = pathlib.Path(args.project)
     data = json.loads(document.read_text())
-    project = parse_project(data)
+    project = parse_project(data, base=document.resolve().parent)
     checked = check_sources(project["sources"])
     summary = {"document_sha256": sha256_file(document), "length": project["length"], "fps": project["fps"], "cuts": project["cuts"],
                "clip_kinds": project["clip_kinds"], "sources_total": len(checked), "sources_present": sum(1 for c in checked if c["present"]),
@@ -215,7 +215,7 @@ EXPERIMENT = Experiment(record="session-{index:02d}-{arm}.json", build=build_rep
 
 
 def cmd_run(args):
-    run = prerequisites(args)
+    run = prerequisites(args, EXPERIMENT)
     if run is None:
         return 2
     W = warm_proof()
@@ -251,7 +251,7 @@ def main():
     run.add_argument("--out", required=True)
     run.add_argument("--report-dir")
     run.add_argument("--charts", action="store_true")
-    run.add_argument("--pairs", type=int, default=4)
+    run.add_argument("--pairs", type=positive_int, default=4)
     run.add_argument("--lock-wait", type=float, default=600.0)
     run.add_argument("--stress-cpu", type=int, default=0, help="busy processes of this script, the same in both arms (adverse batch)")
     run.add_argument("--label", default="")

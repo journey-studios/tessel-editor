@@ -40,9 +40,9 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from ab import ROOT, warm_proof  # noqa: E402
-from ab.batch import Experiment, analyze, arm_order, finish, manifest_of, prerequisites, run_arms  # noqa: E402
+from ab.batch import Experiment, analyze, arm_order, finish, manifest_of, positive_int, prerequisites, run_arms  # noqa: E402
 from ab.pixels import run_pixels  # noqa: E402
-from ab.play import ENTRY_WINDOW, VIDEO_ENTRY_WINDOW, hung_play, play_pictures, play_segments, summarize_play, window_report  # noqa: E402
+from ab.play import ENTRY_WINDOW, VIDEO_ENTRY_WINDOW, hung_play, page_work_ms, play_pictures, play_segments, summarize_play, window_report  # noqa: E402
 from ab.session import one_window, run_session, session_env, whole_project_twice  # noqa: E402
 from ab.stats import PAIR_MAX_DELTA_CORES, memory_summary, percentile, quiet_class, stats  # noqa: E402
 from ab.transit import decompose_play  # noqa: E402
@@ -169,8 +169,7 @@ def analyze_run(record, project, factor, window=None):
                                                   "play_command_to_clock_ms")},
             "slow_detail": [{"from_frame": g["from_frame"], "to_frame": g["to_frame"], "gap_ms": g["gap_ms"], "where": g["where"],
                              "transit_ms": g["picture"]["transit_ms"], "runtime_total_ms": g["picture"]["runtime_total_ms"],
-                             "ui_callback_ms": g["context"]["ui_callback_ms"], "page_work_ms": round(
-                                 (g["context"].get("page_decode_ms") or 0) + (g["context"].get("page_fetch_ms") or 0) + (g["context"].get("page_warm_ms") or 0), 1),
+                             "ui_callback_ms": g["context"]["ui_callback_ms"], "page_work_ms": round(page_work_ms(g["context"]), 1),
                              "reads": g["context"]["reads"]} for g in summary["slow_detail"] if in_window(g["to_frame"])],
             "png_entries": [e for e in entries(frames, events, project, segment, project["video_starts"], VIDEO_ENTRY_WINDOW) if not window or window[0] <= e["entry"] <= window[1]],
             "cut_entries": [e for e in entries(frames, events, project, segment, project["cuts"], ENTRY_WINDOW) if not window or window[0] <= e["entry"] <= window[1]],
@@ -247,9 +246,15 @@ def pair_rows(runs, factor, entry):
     return rows
 
 
-def _median_gap(items):
-    values = [e["gap_ms"] for e in items if not e.get("missing")]
+def median_of(values):
+    """Median of what was measured, to a tenth; None when nothing was. A play with fewer than two accepted pictures has no gap statistics (None), and a
+    run that shows a hang is such a run: it is to be reported, never to stop the report."""
+    values = [value for value in values if value is not None]
     return round(statistics.median(values), 1) if values else None
+
+
+def _median_gap(items):
+    return median_of([e["gap_ms"] for e in items if not e.get("missing")])
 
 
 def verdict(rows, factor, entry):
@@ -374,17 +379,16 @@ def arm_summary(runs):
             if not mine:
                 continue
             plays = [r["plays"][play] for r in mine]
-            med = lambda values: round(statistics.median(values), 1) if values else None
             valid_runs = [r for r in runs if r["valid"]]
             out[f"{arm}/{play}"] = {
                 "runs": len(mine), "quiet": sum(1 for r in mine if r["quiet_class"] == "quiet"), "hangs": sum(1 for p in plays if p["hang"]),
                 "gaps_gt_62_5_per_run": [p["summary"]["slow_gt_62_5"] for p in plays], "gaps_gt_100_per_run": [p["summary"]["slow_gt_100"] for p in plays],
                 "max_gap_per_run": [p["summary"]["interval_ms"]["max"] for p in plays],
-                "p50_gap_median_ms": med([p["summary"]["interval_ms"]["p50"] for p in plays]), "p95_gap_median_ms": med([p["summary"]["interval_ms"]["p95"] for p in plays]),
+                "p50_gap_median_ms": median_of([p["summary"]["interval_ms"]["p50"] for p in plays]), "p95_gap_median_ms": median_of([p["summary"]["interval_ms"]["p95"] for p in plays]),
                 "pre_cut_excess_per_run": [p["pre_cut_excess_ms"] for p in plays],
                 "png_entry_gaps": stats(pooled(valid_runs, arm, play, "png_entries")), "cut_entry_gaps": stats(pooled(valid_runs, arm, play, "cut_entries")),
                 "play_to_first_picture_per_run": [p["summary"]["play_command_to_first_picture_ms"] for p in plays],
-                "memory_median_of_medians_mib": med([r["memory"]["rss_sum_mib"]["median"] for r in mine if r["memory"]["rss_sum_mib"]["median"] is not None]),
+                "memory_median_of_medians_mib": median_of([r["memory"]["rss_sum_mib"]["median"] for r in mine]),
                 "memory_peak_per_run_mib": [r["memory"]["rss_sum_mib"]["peak"] for r in mine],
             }
     return out
@@ -425,7 +429,7 @@ EXPERIMENT = Experiment(record="run-{index:02d}-{arm}.json", build=build_report,
 
 def cmd_run(args):
     mode = args.command
-    run = prerequisites(args)
+    run = prerequisites(args, EXPERIMENT)
     if run is None:
         return 2
     W = warm_proof()
@@ -477,7 +481,7 @@ def main():
             p.add_argument("--from", dest="start", type=int, default=114)
             p.add_argument("--to", dest="end", type=int, default=210)
         else:
-            p.add_argument("--pairs", type=int, default=4)
+            p.add_argument("--pairs", type=positive_int, default=4)
     px = sub.add_parser("pixels")
     px.add_argument("--factor", choices=sorted(FACTORS), required=True)
     px.add_argument("--binary", default=str(ROOT / "target" / "release" / "tessel-editor"))

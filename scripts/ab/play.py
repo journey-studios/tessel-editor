@@ -79,6 +79,14 @@ def events_in(events, kind, t0, t1):
     return [e for e in events if e["kind"] == kind and t0 <= e["t_ms"] <= t1]
 
 
+PAGE_WORK_KEYS = ("page_decode_ms", "page_fetch_ms", "page_load_other_ms", "page_warm_ms")
+
+
+def page_work_ms(context):
+    """The page work that overlapped a gap, from a `gap_context`: decode, fetch, load work the loader did not split, and warm. One sum for every report."""
+    return sum(context.get(key) or 0 for key in PAGE_WORK_KEYS)
+
+
 def gap_context(events, t0, t1):
     """What the host was doing around one gap [t0, t1] (host clock): a CORRELATION, not a cause."""
     ticks = events_in(events, "tick", t0, t1)
@@ -90,14 +98,25 @@ def gap_context(events, t0, t1):
     sync = events_in(events, "sync", t0, t1)
     # The page's own work, anchored at the host arrival of its report (a page duration is never subtracted from a host
     # stamp; the interval [arrival - duration, arrival] is the page work that had ended by then).
-    loads = [e for e in events if e["kind"] == "asset_state" and (e["fields"].get("timings") or {}).get("load_ms")]
-    decodes = [overlap_ms(e["t_ms"] - e["fields"]["timings"].get("decode_ms", 0), e["t_ms"], t0, t1) for e in loads]
-    fetches = [overlap_ms(e["t_ms"] - e["fields"]["timings"]["load_ms"], e["t_ms"] - e["fields"]["timings"].get("decode_ms", 0), t0, t1)
-               for e in loads]
+    # A load's page-clock timings: `load_ms` is always there; `fetch_ms` / `decode_ms` only for loaders that split it (a frame sequence, a scene parse and
+    # others report `load_ms` alone). What a loader did not split is never called fetch: it is `page_load_other_ms`, load work of an unknown kind.
+    decodes, fetches, unsplit = [], [], []
+    for e in events:
+        timings = (e["fields"].get("timings") or {}) if e["kind"] == "asset_state" else {}
+        if not timings.get("load_ms"):
+            continue
+        end, decode, fetch = e["t_ms"], timings.get("decode_ms") or 0, timings.get("fetch_ms")
+        decodes.append(overlap_ms(end - decode, end, t0, t1))
+        if fetch is None:
+            unsplit.append(overlap_ms(end - timings["load_ms"], end - decode, t0, t1))
+        else:
+            fetches.append(overlap_ms(end - decode - fetch, end - decode, t0, t1))
+            unsplit.append(overlap_ms(end - timings["load_ms"], end - decode - fetch, t0, t1))
     warms = [overlap_ms(*span_interval(e), t0, t1) for e in events if e["kind"] == "runtime_span" and e["fields"].get("k") == "warm"]
     return {
         "page_decode_ms": round(sum(decodes), 3),
         "page_fetch_ms": round(sum(fetches), 3),
+        "page_load_other_ms": round(sum(unsplit), 3),
         "page_warm_ms": round(sum(warms), 3),
         "ticks": len(ticks),
         "max_tick_late_ms": max((e["fields"]["late_ms"] for e in ticks), default=None),

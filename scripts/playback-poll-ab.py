@@ -58,11 +58,11 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from ab import ROOT, cadence, warm_proof  # noqa: E402
-from ab.batch import Experiment, analyze, arm_order, finish, manifest_of, prerequisites, run_arms  # noqa: E402
+from ab.batch import Experiment, analyze, arm_order, finish, manifest_of, positive_int, prerequisites, run_arms  # noqa: E402
 from ab.play import hung_play  # noqa: E402
 from ab.project import sha256_file  # noqa: E402
 from ab.session import CONTROL_ENV, PLAYS, run_session, session_env, whole_project_twice  # noqa: E402
-from ab.validity import analyze_session, error_label, published_error  # noqa: E402
+from ab.validity import analyze_session, error_label, failed_session, published_error  # noqa: E402
 
 FIXED, DEADLINE = "fixed", "deadline"
 ARMS = (FIXED, DEADLINE)
@@ -129,9 +129,9 @@ def session_row(record, project):
     hung = any(play["hung"] for play in plays.values())
     findings = arm_findings(record)
     complete = len(read) == len(PLAYS) and all(name in analysis["plays"] for name in PLAYS)
-    # A hang is a result of the arm (the `hung` guard of the rule speaks to it), not a failure of the run: a hung session is never `failed`, but it
-    # is only counted with its two plays.
-    failed = not hung and (bool(record.get("error")) or not complete)
+    # A hang is a result of the arm (the `hung` guard of the rule speaks to it); a failure is the run not being what it claims. They are independent:
+    # a hung session that also died, recorded errors or lost a play is hung AND failed (and uncounted).
+    failed = failed_session(record, complete)
     return {"arm": record.get("arm"), "pair": record.get("pair"), "order_index": record.get("order_index"), "valid": analysis["valid"],
             "invalid_reasons": analysis["invalid_reasons"], "arm_findings": findings, "plays": plays, "hung": hung, "failed": failed,
             "counted": analysis["valid"] and complete and not failed and not findings,
@@ -163,11 +163,16 @@ def arm_summary(rows):
     per_play = sorted(play["under_30_ms"] / play["delivered"] for play in plays if play["delivered"])
     return {"sessions": len(rows), "counted": len(mine), "hung": sum(1 for row in rows if row["hung"]), "failed": sum(1 for row in rows if row["failed"]),
             "plays": len(plays), "delivered": delivered, "under_30_ms": under, "slow_gt_62_5": slow, "slow_gt_100": slower,
-            "under_30_share": round(under / delivered, 4) if delivered else None, "slow_share": round(slow / delivered, 5) if delivered else None,
+            "under_30_share": under / delivered if delivered else None, "slow_share": slow / delivered if delivered else None,
             "skipped_per_play": round(sum(play["skipped_frames"] for play in plays) / len(plays), 3) if plays else None,
             "change_lag_mean_ms": pooled_mean([lag_of(play) for play in plays]),
             "polls_per_frame_change": pooled_mean([(play["frame_changes"], play["polls_per_frame_change"] or 0.0) for play in plays]) if changes else None,
             "under_30_share_per_play": {"min": round(per_play[0], 4), "median": round(statistics.median(per_play), 4), "max": round(per_play[-1], 4)} if per_play else None}
+
+
+def shown(value, places=4):
+    """A share as a sentence or a table cell says it. The rule compares the raw ratio (751 of 25000 is 3.004%, over 3%); rounding is only for showing."""
+    return None if value is None else round(value, places)
 
 
 def lag_of_session(row):
@@ -175,17 +180,13 @@ def lag_of_session(row):
 
 
 def pair_lags(rows):
-    """[(pair, fixed mean lag, deadline mean lag)] of the pairs whose two sessions are counted."""
+    """[(pair, fixed mean lag, deadline mean lag)] of the pairs whose two sessions are counted. A counted pair stays one when a side traced no lag (that
+    side is None): the rule's base is the counted pairs, and a pair without a lag is a pair in which it was not lower."""
     by_pair = {}
     for row in rows:
         by_pair.setdefault(row["pair"], {})[row["arm"]] = row
-    found = []
-    for pair, sides in sorted(by_pair.items(), key=lambda item: (item[0] is None, item[0])):
-        if all(arm in sides and sides[arm]["counted"] for arm in ARMS):
-            fixed, deadline = lag_of_session(sides[FIXED]), lag_of_session(sides[DEADLINE])
-            if fixed is not None and deadline is not None:
-                found.append((pair, fixed, deadline))
-    return found
+    return [(pair, lag_of_session(sides[FIXED]), lag_of_session(sides[DEADLINE]))
+            for pair, sides in sorted(by_pair.items(), key=lambda item: (item[0] is None, item[0])) if all(arm in sides and sides[arm]["counted"] for arm in ARMS)]
 
 
 def regressions(fixed, deadline):
@@ -209,7 +210,7 @@ def shortfalls(fixed, deadline, pairs):
     """What the deadline arm did not achieve (the gain of the rule), as sentences; empty when it achieved all of it."""
     found = []
     if deadline["under_30_share"] is None or deadline["under_30_share"] > DEADLINE_SHORT_SHARE_MAX:
-        found.append(f"pictures < 30 ms after the previous one: {deadline['under_30_share']} (more than {DEADLINE_SHORT_SHARE_MAX:.0%})")
+        found.append(f"pictures < 30 ms after the previous one: {shown(deadline['under_30_share'])} (more than {DEADLINE_SHORT_SHARE_MAX:.0%})")
     lag, base = deadline["change_lag_mean_ms"], fixed["change_lag_mean_ms"]
     if lag is None or base is None:
         found.append("no change lag was traced (the host did not trace the clock)")
@@ -221,7 +222,7 @@ def shortfalls(fixed, deadline, pairs):
     polls = deadline["polls_per_frame_change"]
     if polls is None or not POLLS_PER_CHANGE_RANGE[0] <= polls <= POLLS_PER_CHANGE_RANGE[1]:
         found.append(f"polls per frame change {polls} (outside {POLLS_PER_CHANGE_RANGE[0]}-{POLLS_PER_CHANGE_RANGE[1]})")
-    better = sum(1 for _, before, after in pairs if after < before)
+    better = sum(1 for _, before, after in pairs if before is not None and after is not None and after < before)
     if not pairs or better < math.ceil(LAG_PAIR_CONSISTENCY * len(pairs)):
         found.append(f"the mean change lag was lower in {better} of {len(pairs)} counted pairs (needs {LAG_PAIR_CONSISTENCY:.0%})")
     return found
@@ -237,7 +238,7 @@ def verdict(rows, requested_pairs=None):
     if len(pairs) < MIN_COUNTED_PAIRS:
         return f"INCONCLUSIVE: {len(pairs)} counted pair(s){f' of {requested_pairs}' if requested_pairs else ''}, the rule needs {MIN_COUNTED_PAIRS}"
     if fixed["under_30_share"] is None or fixed["under_30_share"] < CONTROL_SHORT_SHARE_MIN:
-        return (f"CONTROL NOT REPRODUCED: {fixed['under_30_share']} of the fixed arm's pictures came less than 30 ms after the previous one "
+        return (f"CONTROL NOT REPRODUCED: {shown(fixed['under_30_share'])} of the fixed arm's pictures came less than 30 ms after the previous one "
                 f"(the rule needs {CONTROL_SHORT_SHARE_MIN:.0%}): the pattern under repair is not in this run")
     bad = regressions(fixed, deadline)
     if bad:
@@ -274,12 +275,13 @@ def markdown(report):
     for arm in ARMS:
         a = report["arms"][arm]
         per_play = a["under_30_share_per_play"] or {}
-        lines.append(f"| {arm} | {a['sessions']} | {a['counted']} | {a['hung']} | {a['failed']} | {a['plays']} | {a['delivered']} | {a['under_30_ms']} | {a['under_30_share']} | "
-                     f"{per_play.get('min')} / {per_play.get('median')} / {per_play.get('max')} | {a['slow_gt_62_5']} | {a['slow_share']} | {a['slow_gt_100']} | "
+        lines.append(f"| {arm} | {a['sessions']} | {a['counted']} | {a['hung']} | {a['failed']} | {a['plays']} | {a['delivered']} | {a['under_30_ms']} | {shown(a['under_30_share'])} | "
+                     f"{per_play.get('min')} / {per_play.get('median')} / {per_play.get('max')} | {a['slow_gt_62_5']} | {shown(a['slow_share'], 5)} | {a['slow_gt_100']} | "
                      f"{a['skipped_per_play']} | {a['change_lag_mean_ms']} | {a['polls_per_frame_change']} |")
     lines += ["", "## Counted pairs: mean change lag (ms)", "", "| pair | fixed | deadline |", "|---|---|---|"]
     for pair in report["counted_pairs"]:
-        lines.append(f"| {pair['pair']} | {pair['fixed_lag_ms']} | {pair['deadline_lag_ms']} |")
+        lines.append(f"| {pair['pair']} | {'not traced' if pair['fixed_lag_ms'] is None else pair['fixed_lag_ms']} | "
+                     f"{'not traced' if pair['deadline_lag_ms'] is None else pair['deadline_lag_ms']} |")
     lines += ["", "## Sessions", "",
               "| # | pair | arm | class | ext median/p95 cores | loadavg start / peak 1m | first play: > 62.5 / max gap ms / lag ms | repeat play: > 62.5 / max gap ms / lag ms | counted | note |",
               "|---|---|---|---|---|---|---|---|---|---|"]
@@ -311,7 +313,7 @@ EXPERIMENT = Experiment(record="run-{index:02d}-{arm}.json", build=build_report,
 
 def cmd_run(args):
     runtime = ROOT / "runtime" / "dist" / "runtime.js"
-    run = prerequisites(args, needed=(ROOT / "runtime" / "dist" / "index.html", runtime), gate=rule_gate)
+    run = prerequisites(args, EXPERIMENT, needed=(ROOT / "runtime" / "dist" / "index.html", runtime), gate=rule_gate)
     if run is None:
         return 2
     W = warm_proof()
@@ -337,7 +339,7 @@ def main():
     run.add_argument("--binary", required=True)
     run.add_argument("--project", required=True)
     run.add_argument("--out", required=True)
-    run.add_argument("--pairs", type=int, default=12)
+    run.add_argument("--pairs", type=positive_int, default=12)
     run.add_argument("--stress-cpu", type=int, default=0, help="busy-loop processes kept alive during each session (both arms get the same)")
     run.add_argument("--lock-wait", type=float, default=600.0)
     run.add_argument("--report-dir")

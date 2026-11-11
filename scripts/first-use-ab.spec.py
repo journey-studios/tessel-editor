@@ -32,8 +32,10 @@ def record(arm, gap_at_196, *, enabled=None, sent=3, spans=("uploaded",), suppor
     for i, shown in enumerate(range(190, 201)):
         done += gap_at_196 if shown == 196 else 42.0
         frames.append(frame(i + 1, shown, done))
-    events = [event("play_command", 900), event("play_clock_started", 950),
-              event("frame_page", 1000, id=1, ipc_wait_ms=0.2, page={"queue_ms": 0.1, "held_ms": 1.0, "loop": {"max_ms": 1.0}, "ahead": {}})]
+    events = [event("play_command", 900), event("play_clock_started", 950)]
+    # the host asks the page for its account of every frame (telemetry.timing), so every picture carries one
+    events += [event("frame_page", f["done_ms"], id=f["id"], ipc_wait_ms=0.2, page={"queue_ms": 0.1, "held_ms": 1.0, "loop": {"max_ms": 1.0}, "ahead": {}})
+               for f in frames]
     events += [event("runtime_span", 1200 + n, k=ab.FACTORS[factor]["span"], outcome=outcome, ms=4.0) for n, outcome in enumerate(spans)]
     on = arm == "on" if enabled is None else enabled
     report = {"enabled": on, "supported": supported, "sent": sent}
@@ -143,6 +145,49 @@ class AnalysisTests(unittest.TestCase):
         run = ab.analyze_run(record("control", 130), PROJECT, "preupload", (190, 200))
         slow = run["plays"]["first"]["slow_detail"]
         self.assertEqual([(g["to_frame"], g["gap_ms"], g["where"]) for g in slow], [(196, 130.0, "video:196")])
+
+
+class PageWorkTests(unittest.TestCase):
+    def test_a_slow_gap_over_an_unsplit_load_lists_it_as_page_work(self):
+        busy = record("control", 130)
+        busy["events"].append(event("asset_state", 1370, state="ready", timings={"load_ms": 100}))  # a frame sequence load: 100 ms, no fetch/decode split
+        slow = ab.analyze_run(busy, PROJECT, "preupload", (190, 200))["plays"]["first"]["slow_detail"]
+        quiet = ab.analyze_run(record("control", 130), PROJECT, "preupload", (190, 200))["plays"]["first"]["slow_detail"]
+        self.assertEqual((slow[0]["page_work_ms"], quiet[0]["page_work_ms"]), (100.0, 0.0))
+
+
+class MissingStatisticsTests(unittest.TestCase):
+    """A valid play with fewer than two accepted pictures has no gap percentiles (None): the aggregation must still publish its report."""
+
+    def lone_picture_run(self):
+        lone = record("on", 50)
+        lone["frames"] = lone["frames"][:1]
+        return ab.analyze_run(lone, PROJECT, "preupload", (190, 200))
+
+    def test_a_play_with_one_picture_has_no_gap_statistics_and_still_counts_as_a_run(self):
+        run = self.lone_picture_run()
+        self.assertTrue(run["valid"], run["invalid_reasons"])
+        self.assertIsNone(run["plays"]["first"]["summary"]["interval_ms"]["p50"])
+
+    def test_the_arm_summary_skips_what_was_not_measured_instead_of_failing(self):
+        runs = [self.lone_picture_run(), ab.analyze_run(record("on", 50), PROJECT, "preupload", (190, 200))]
+        found = ab.arm_summary(runs)["on/first"]
+        self.assertEqual(found["runs"], 2)
+        self.assertEqual(found["p50_gap_median_ms"], 42.0, "the median of the run that has one")
+        self.assertIsNotNone(found["p95_gap_median_ms"])
+        alone = ab.arm_summary([self.lone_picture_run()])["on/first"]
+        self.assertEqual((alone["runs"], alone["p50_gap_median_ms"], alone["p95_gap_median_ms"]), (1, None, None))
+
+    def test_the_report_of_a_batch_with_such_a_play_is_published(self):
+        manifest = {"factor": "preupload", "mode": "narrow", "entry": 196, "window": [190, 200], "git": {"sha": "0" * 40, "dirty_files": 0}, "order": []}
+        report = ab.build_report([record("control", 50, spans=()) | {"frames": record("on", 50)["frames"][:1]}], PROJECT, manifest)
+        self.assertEqual(report["arms"]["control/first"]["p50_gap_median_ms"], None)
+
+    def test_the_median_skips_only_what_was_not_measured(self):
+        self.assertEqual(ab.median_of([1.0, None, 3.0]), 2.0)
+        self.assertEqual(ab.median_of([None, None]), None)
+        self.assertEqual(ab.median_of([]), None)
+        self.assertEqual(ab.median_of([40.0, 44.4]), 42.2)
 
 
 class ActivationContractTests(unittest.TestCase):

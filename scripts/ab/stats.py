@@ -17,12 +17,18 @@ def percentile(values, share):
     return round(ordered[index], 3)
 
 
-def stats(values):
-    """p50 / p95 / max / n of a list (None when empty). Nearest-rank percentiles: no interpolation invents a value."""
+def stats(values, detail=False):
+    """p50 / p95 / max / n of a list (None when empty). Nearest-rank percentiles: no interpolation invents a value.
+
+    `detail=True` is the reader of the playback clock's shape (`scripts/playback-cadence.py`): it adds the mean and the p99, in the order n / mean / p50 / p95 /
+    p99 / max. Without it the result is what it always was for every other caller."""
     values = [v for v in values if v is not None]
     if not values:
-        return {"n": 0, "p50": None, "p95": None, "max": None}
-    return {"n": len(values), "p50": percentile(values, 0.5), "p95": percentile(values, 0.95), "max": round(max(values), 3)}
+        return {"n": 0, "mean": None, "p50": None, "p95": None, "p99": None, "max": None} if detail else {"n": 0, "p50": None, "p95": None, "max": None}
+    if not detail:
+        return {"n": len(values), "p50": percentile(values, 0.5), "p95": percentile(values, 0.95), "max": round(max(values), 3)}
+    return {"n": len(values), "mean": round(sum(values) / len(values), 3), "p50": percentile(values, 0.5), "p95": percentile(values, 0.95),
+            "p99": percentile(values, 0.99), "max": round(max(values), 3)}
 
 
 def quiet_class(external_cores):

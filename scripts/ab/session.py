@@ -141,7 +141,10 @@ def play(W, lab, state, collect, name, start, seconds, finished, poll=POLL_SECON
     while time.time() < deadline:
         time.sleep(poll)
         collect(lab, state, deadline)
-        if finished(lab.op({"op": "playback.status"}).get("data") or {}):
+        status = lab.op({"op": "playback.status"}).get("data") or {}
+        if status.get("state") == "preparing":
+            continue  # the audio mix is still being built: the clock has not started, so nothing has ended (the deadline still bounds the wait)
+        if finished(status):
             ended = True
             break
     report = (lab.op({"op": "playback.stop"}).get("data") or {}).get("report") or {}
@@ -150,6 +153,9 @@ def play(W, lab, state, collect, name, start, seconds, finished, poll=POLL_SECON
     collect(lab, state, deadline)
     if not ended:
         state["errors"].append(f"play({name}) did not end within {seconds + 40:.0f} s")
+        return None
+    if played.get("ticks") is None:
+        state["errors"].append(f"play({name}) has no clock tick in its report: it never ran")
         return None
     return {key: played.get(key) for key in ("ticks", "skipped_frames", "max_gap_frames")}
 

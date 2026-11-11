@@ -1,5 +1,6 @@
 """Tests of what every A/B runner does around its own science (`scripts/ab/batch.py`): the prerequisites of a run, the manifest, the run loop,
 saving and analysing a batch. No editor, GPU, runtime page or private media is started; the lab (`scene-warm-proof.py`) is a fake."""
+import argparse
 import contextlib
 import fcntl
 import io
@@ -71,7 +72,7 @@ class Folder(unittest.TestCase):
     def prerequisites(self, warm, gate=None):
         shown = io.StringIO()
         with mock.patch.object(B, "warm_proof", return_value=warm), contextlib.redirect_stdout(shown):
-            return B.prerequisites(self.args, needed=(self.runtime,), gate=gate), shown.getvalue()
+            return B.prerequisites(self.args, EXPERIMENT, needed=(self.runtime,), gate=gate), shown.getvalue()
 
     def run_batch(self, sessions=None):
         """`run_arms` over ORDER with a fake session; returns (records or the error, the locks, what the sessions were asked)."""
@@ -94,6 +95,15 @@ class Folder(unittest.TestCase):
         return result, run.locks, asked, manifest, shown.getvalue()
 
 
+class CountTests(unittest.TestCase):
+    def test_a_count_of_sessions_is_a_whole_number_of_at_least_one(self):
+        self.assertEqual([B.positive_int(text) for text in ("1", "4", "30", " 12 ")], [1, 4, 30, 12])
+        for text in ("0", "-1", "-30", "x", "", "1.5", "1e2", "None"):
+            with self.subTest(text=text), self.assertRaises(argparse.ArgumentTypeError) as raised:
+                B.positive_int(text)
+            self.assertIn("at least 1", str(raised.exception))
+
+
 class PrerequisiteTests(Folder):
     def test_everything_in_place_gives_the_binary_the_document_the_project_and_the_locks(self):
         warm = Warm()
@@ -103,6 +113,13 @@ class PrerequisiteTests(Folder):
         self.assertEqual(warm.waited, 7.0)
         self.assertIsInstance(run.lock_wait_s, float)
         self.assertEqual(shown, "")
+
+    def test_the_sources_are_read_relative_to_the_folder_of_the_document_not_the_working_directory(self):
+        seen = []
+        with mock.patch.object(B, "parse_project", side_effect=lambda document, base=None: seen.append(base) or PROJECT):
+            run, _ = self.prerequisites(Warm())
+        self.assertIsNotNone(run)
+        self.assertEqual(seen, [self.document.resolve().parent])
 
     def test_a_missing_binary_or_needed_file_is_blocked_by_name(self):
         self.binary.unlink()
@@ -134,6 +151,38 @@ class PrerequisiteTests(Folder):
         self.assertIn("GiB free", shown)
         self.assertIsNone(warm.waited)
         self.assertIsNotNone(self.prerequisites(Warm(free=B.MIN_FREE_GIB_START))[0])
+
+    def test_an_out_folder_that_already_holds_a_batch_is_blocked_before_the_locks_and_nothing_is_written(self):
+        self.run_batch()
+        out = Path(self.args.out)
+        before = {path.name: path.read_bytes() for path in out.iterdir()}
+        warm = Warm()
+        run, shown = self.prerequisites(warm)
+        self.assertIsNone(run)
+        self.assertIn("BLOCKED: --out", shown)
+        self.assertIn("already holds a batch", shown)
+        self.assertIsNone(warm.waited, "the locks are not even asked for")
+        self.assertEqual({path.name: path.read_bytes() for path in out.iterdir()}, before, "the batch that is there is left exactly as it was")
+
+    def test_a_manifest_alone_or_a_stray_record_alone_is_a_batch_too(self):
+        out = Path(self.args.out)
+        out.mkdir()
+        (out / "manifest.json").write_text("{}")
+        self.assertIsNone(self.prerequisites(Warm())[0])
+        (out / "manifest.json").unlink()
+        (out / "run-07-first.json").write_text("{}")
+        run, shown = self.prerequisites(Warm())
+        self.assertIsNone(run)
+        self.assertIn("run-07-first.json", shown)
+        self.assertEqual(sorted(path.name for path in out.iterdir()), ["run-07-first.json"])
+
+    def test_a_new_or_empty_out_folder_or_one_with_other_files_is_allowed(self):
+        out = Path(self.args.out)
+        self.assertIsNotNone(self.prerequisites(Warm())[0], "the folder does not exist yet")
+        out.mkdir()
+        self.assertIsNotNone(self.prerequisites(Warm())[0], "an empty folder")
+        (out / "notes.txt").write_text("not a record of this experiment")
+        self.assertIsNotNone(self.prerequisites(Warm())[0])
 
     def test_locks_that_are_not_free_in_time_are_blocked(self):
         run, shown = self.prerequisites(Warm(locks=False))
@@ -227,6 +276,12 @@ class AnalysisTests(Folder):
         code, files, _ = self.finish([{"failed": True}, {}])
         self.assertEqual(code, 1)
         self.assertIn("analysis.md", files)
+
+    def test_a_batch_that_holds_no_session_never_ran_as_claimed_even_though_nothing_in_it_failed(self):
+        code, files, _ = self.finish([], manifest={"order": [], "batch_id": "b" * 32})
+        self.assertEqual(EXPERIMENT.ok(json.loads(files["analysis.json"])), True, "`all([])` is true: the experiment's own check cannot tell")
+        self.assertEqual(code, 1)
+        self.assertIn("analysis.md", files, "the analysis of what is there is still written")
 
     def test_charts_are_written_only_when_asked_and_a_report_folder_never_needs_them(self):
         drawn = []
@@ -339,9 +394,9 @@ class AnalyzeFolderTests(Folder):
     def test_the_document_the_sessions_played_is_the_one_analysed_with(self):
         self.ran()
         parsed = []
-        with mock.patch.object(B, "parse_project", side_effect=lambda document: parsed.append(document) or PROJECT):
+        with mock.patch.object(B, "parse_project", side_effect=lambda document, base=None: parsed.append((document, base)) or PROJECT):
             self.assertEqual(self.analyze(), 0)
-        self.assertEqual(parsed, [{}])
+        self.assertEqual(parsed, [({}, self.document.resolve().parent)], "read where the document is: its relative media paths are under that folder")
         self.assertTrue(json.loads((Path(self.args.out) / "analysis.json").read_text())["project"])
 
     def test_another_document_is_refused_before_anything_is_read_or_written(self):

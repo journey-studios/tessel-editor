@@ -3,9 +3,14 @@ import contextlib
 import importlib.util
 import io
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import ab  # noqa: E402
+from ab import stats as shared  # noqa: E402
 
 spec = importlib.util.spec_from_file_location("playback_cadence", Path(__file__).with_name("playback-cadence.py"))
 pc = importlib.util.module_from_spec(spec)
@@ -36,8 +41,8 @@ def clocked(t, before, after, clock, next_ms=None, late=1.3):
     return event
 
 
-def picture(done):
-    return {"id": int(done), "done_ms": done, "interactive": True}
+def picture(done, interactive=True):
+    return {"id": int(done), "shown_frame": int(done), "done_ms": done, "interactive": interactive}
 
 
 def polled_play(start, seconds=10.0, poll=POLL_MS, fps=24.0, offset=0.0):
@@ -139,6 +144,22 @@ class DeliveredTests(unittest.TestCase):
     def test_one_picture_has_no_gap(self):
         self.assertEqual(pc.delivered_gaps([picture(100.0)], (0.0, 500.0)), [])
 
+    def test_the_refine_of_the_stopped_playhead_is_not_a_playback_gap(self):
+        # the play ran 100..180; the monitor finished the paused playhead's refine at 700 (not interactive), before the next clock started at 5000
+        frames = [picture(100.0), picture(140.0), picture(180.0), picture(700.0, interactive=False)]
+        self.assertEqual(pc.delivered_gaps(frames, (100.0, 5000.0)), [40.0, 40.0])
+
+    def test_a_play_whose_pictures_are_all_refines_keeps_them_as_the_shared_selection_does(self):
+        frames = [picture(100.0, interactive=False), picture(150.0, interactive=False)]
+        self.assertEqual(pc.delivered_gaps(frames, (100.0, 5000.0)), [50.0])
+
+    def test_the_refine_does_not_reach_the_numbers_a_play_is_summarised_by(self):
+        frames = [picture(1100.0), picture(1140.0), picture(1180.0), picture(4000.0, interactive=False)]
+        found = pc.each_play([("a", record("x", [clock_started(1000.0), tick(1022.0, 0, 0)], frames))])[0]
+        self.assertEqual((found["delivered"], found["over_62_5_ms"], found["over_100_ms"], found["max_delivered_ms"]), (2, 0, 0, 40.0))
+        pooled = pc.summarize([("a", record("x", [clock_started(1000.0), tick(1022.0, 0, 0)], frames))])
+        self.assertEqual((pooled["delivered_ms"]["n"], pooled["delivered_share_over_62_5_ms"], pooled["delivered_ms"]["max"]), (2, 0.0, 40.0))
+
     def test_a_picture_without_a_time_is_skipped(self):
         self.assertEqual(pc.delivered_gaps([{"id": 1}, picture(10.0), picture(30.0)], (0.0, 500.0)), [20.0])
 
@@ -163,6 +184,25 @@ class StatsTests(unittest.TestCase):
     def test_nearest_rank_without_interpolation(self):
         found = pc.stats([10.0, 20.0, 30.0, 40.0])
         self.assertEqual((found["n"], found["mean"], found["p50"], found["p95"], found["max"]), (4, 25.0, 20.0, 40.0, 40.0))
+
+    # Fixed samples and what this reader's own `stats` returned for them BEFORE it used the harness's (`ab.stats`): the output must not move by a digit or a key.
+    SMALL = [3.2, None, 10.0, 7.5, 7.5, 1.0, 22.25, 44.4444, 0.0005, 16.7]
+    LARGE = [round(((i * 37) % 101) * 0.731 + (i % 7) * 0.0123, 4) for i in range(1, 201)]
+
+    def test_the_summary_of_a_fixed_sample_is_the_one_this_reader_gave_before_it_shared_the_statistics(self):
+        small = {"n": 9, "mean": 12.511, "p50": 7.5, "p95": 44.444, "p99": 44.444, "max": 44.444}
+        large = {"n": 200, "mean": 36.718, "p50": 36.562, "p95": 69.507, "p99": 72.418, "max": 73.162}
+        nothing = {"n": 0, "mean": None, "p50": None, "p95": None, "p99": None, "max": None}
+        one = {"n": 1, "mean": 5.0, "p50": 5.0, "p95": 5.0, "p99": 5.0, "max": 5.0}
+        for values, expected in ((self.SMALL, small), (self.LARGE, large), ([], nothing), ([None], nothing), ([5.0], one)):
+            with self.subTest(n=len(values)):
+                self.assertEqual(pc.stats(values), expected)
+                self.assertEqual(json.dumps(pc.stats(values)), json.dumps(expected), "the published JSON keeps its key order too")
+                self.assertEqual(list(pc.stats(values)), ["n", "mean", "p50", "p95", "p99", "max"])
+
+    def test_the_statistics_are_the_harnesss_own_not_a_copy_and_load_the_same_way_from_ab(self):
+        self.assertIs(pc.stats.func, shared.stats)
+        self.assertIs(ab.cadence().stats.func, shared.stats, "`ab.cadence()` (the one `load_module`) gets the same function")
 
     def test_nothing_is_nothing(self):
         self.assertEqual(pc.stats([None, None])["n"], 0)

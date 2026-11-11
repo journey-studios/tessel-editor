@@ -213,6 +213,24 @@ class SessionRowTests(unittest.TestCase):
         self.assertEqual((result["hung"], result["failed"]), (False, True))
         self.assertEqual(result["plays"], {})
 
+    def test_a_hang_never_excuses_a_failure_a_hung_session_that_errored_is_both(self):
+        result = ab.session_row(record(ab.UNPATCHED, first=pictures(1, 1000.0, 20), error="RuntimeError('the second play never started')"), PROJECT)
+        self.assertEqual((result["hung"], result["failed"]), (True, True))
+        self.assertEqual(ab.status_of(result), "HUNG, FAILED: exception:RuntimeError")
+
+    def test_a_session_whose_repeat_timed_out_or_whose_editor_died_after_both_plays_is_failed_though_no_play_hung(self):
+        # Both plays are there and healthy; the harness recorded the timeout in `errors` (and `plays_ok`), not in `error`.
+        for name, defect in {"a timeout": {"errors": ["play(repeat) did not end within 50 s"], "plays_ok": False},
+                             "an editor that died after the plays": {"editor_exit": {"alive": False, "returncode_before_stop": -11}}}.items():
+            with self.subTest(defect=name):
+                result = ab.session_row({**record(ab.PATCHED), **defect}, PROJECT)
+                self.assertEqual((result["hung"], result["failed"]), (False, True))
+                self.assertEqual(sorted(result["plays"]), ["first", "repeat"])
+                self.assertEqual(ab.status_of(result), "FAILED: incomplete")
+                manifest = {"git": {"sha": "0" * 40, "dirty_files": 0}, "binary_sha256": "b", "document_sha256": "d", "stress_cpu": 0, "order": [],
+                            "bundle_sha256": {"unpatched": "u", "patched": "p"}}
+                self.assertFalse(ab.build_report([{**record(ab.PATCHED), **defect}], PROJECT, manifest)["all_ran"], "exit 1, not 0")
+
     def test_the_error_of_a_failed_session_is_published_as_a_code_and_a_kind_without_its_path(self):
         broken = record(ab.PATCHED, error="RuntimeError('could not open /Users/someone/private/clip.ply')")
         broken["events"], broken["frames"] = [], []
@@ -286,8 +304,8 @@ class WatchdogTests(unittest.TestCase):
 class NothingIsSignalledTests(unittest.TestCase):
     """AGENTS.md: no process of anybody else is ever killed. The WebKit helpers are not children of the editor, so a deadlocked page is reported, not reaped."""
 
-    def sampled(self, signalled):
-        """A watchdog that sees a stalled, playing editor and a new WebContent helper whose `sample` is the deadlock."""
+    def sampled(self, signalled, pids=(4242,), before=()):
+        """A watchdog that sees a stalled, playing editor and new WebContent helpers (`pids`) whose `sample` is the deadlock, with `before` samples already taken."""
         class Lab:
             def op(self, request):
                 return {"ok": True, "data": {"state": "playing"}}
@@ -298,7 +316,8 @@ class NothingIsSignalledTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             dog = ab.Watchdog(folder, "00-unpatched", set(), now=lambda: 0.0)
             dog.count, dog.changed = 5, -100.0
-            with mock.patch.object(ab, "webkit_pids", return_value={4242}), \
+            dog.samples = list(before)
+            with mock.patch.object(ab, "webkit_pids", return_value=set(pids)), \
                     mock.patch.object(ab, "process_command", return_value="/x/com.apple.WebKit.WebContent.xpc"), \
                     mock.patch.object(ab.subprocess, "run", side_effect=fake_sample), \
                     mock.patch.object(os, "kill", side_effect=signalled.append), mock.patch.object(os, "killpg", side_effect=signalled.append):
@@ -311,6 +330,17 @@ class NothingIsSignalledTests(unittest.TestCase):
         self.assertEqual(signalled, [])
         self.assertEqual([(s["pid"], s["role"], s["file"]) for s in dog.samples], [(4242, "WebContent.xpc", "hang-00-unpatched-4242-0.txt")])
         self.assertTrue(dog.samples[0]["signature"]["deadlock"])
+
+    def test_one_observation_samples_at_most_the_cap_however_many_helpers_it_finds(self):
+        dog = self.sampled([], pids=(4242, 4243, 4244, 4245))
+        self.assertEqual([s["pid"] for s in dog.samples], [4242, 4243], "the cap is checked for each helper, not only before the loop")
+        self.assertEqual(len(dog.samples), ab.MAX_SAMPLES_PER_SESSION)
+
+    def test_a_session_that_already_has_a_sample_takes_only_what_is_left_of_the_cap(self):
+        dog = self.sampled([], pids=(4242, 4243, 4244), before=[{"pid": 1}])
+        self.assertEqual([s.get("pid") for s in dog.samples], [1, 4242])
+        full = self.sampled([], pids=(4242,), before=[{}] * ab.MAX_SAMPLES_PER_SESSION)
+        self.assertEqual(len(full.samples), ab.MAX_SAMPLES_PER_SESSION, "a session at the cap takes no more")
 
     def test_the_module_has_nothing_that_can_signal_a_process(self):
         source = inspect.getsource(ab)
@@ -442,9 +472,32 @@ class ServedBundleTests(unittest.TestCase):
         wrong = ab.served_bundle_check(rows, {"unpatched": UNPATCHED_BYTES, "patched": 4281000})
         self.assertIn(f"patched sessions were served {PATCHED_BYTES} bytes, the arm's bundle has 4281000", wrong["findings"][0])
 
-    def test_a_session_without_the_record_is_unverified_not_a_finding(self):
+    def test_a_session_that_ran_without_the_record_is_a_finding_because_its_bundle_is_not_verified(self):
         check = ab.served_bundle_check([served(ab.UNPATCHED, UNPATCHED_BYTES), served(ab.PATCHED, PATCHED_BYTES), served(ab.PATCHED, None)])
+        self.assertEqual(check["unverified"], 1)
+        self.assertEqual(check["findings"], ["1 session(s) that ran have no record of the runtime.js the host served: the bundle of their arm is not verified"])
+
+    def test_a_failed_session_without_the_record_is_only_unverified_it_may_have_died_before_the_page(self):
+        died = {**served(ab.PATCHED, None), "failed": True}
+        check = ab.served_bundle_check([served(ab.UNPATCHED, UNPATCHED_BYTES), served(ab.PATCHED, PATCHED_BYTES), died])
         self.assertEqual((check["findings"], check["unverified"]), ([], 1))
+
+    def test_unverified_arms_never_confirm_the_patch_and_the_sessions_stay_listed(self):
+        # Three hung unpatched sessions and no hung patched one is CONFIRMED by the rules, unless the arms' bundles were not seen to be served.
+        records = [record(ab.UNPATCHED, first=pictures(1, 1000.0, 20)) for _ in range(3)] + [record(ab.PATCHED) for _ in range(3)]
+        manifest = {"git": {"sha": "0" * 40, "dirty_files": 0}, "binary_sha256": "b", "document_sha256": "d", "stress_cpu": 0, "order": [],
+                    "bundle_sha256": {"unpatched": "u", "patched": "p"}}
+        bare = ab.build_report(records, PROJECT, manifest)
+        self.assertTrue(bare["verdict"].startswith("INVALID ARMS"), bare["verdict"])
+        self.assertIn("the rules alone would say: CONFIRMED", bare["verdict"])
+        self.assertFalse(bare["all_ran"])
+        self.assertEqual(len(bare["rows"]), 6, "every session keeps its row")
+        for session in records:  # the same sessions with the host's own record of what it served
+            size = UNPATCHED_BYTES if session["arm"] == ab.UNPATCHED else PATCHED_BYTES
+            session["events"] = [host_event("/runtime.js", 200, size)] + session["events"]
+        seen = ab.build_report(records, PROJECT, manifest)
+        self.assertTrue(seen["verdict"].startswith("CONFIRMED"), seen["verdict"])
+        self.assertTrue(seen["all_ran"])
 
     def test_the_report_calls_the_run_invalid_when_the_arms_are_not_what_they_say(self):
         records = [record(ab.UNPATCHED), record(ab.PATCHED)]

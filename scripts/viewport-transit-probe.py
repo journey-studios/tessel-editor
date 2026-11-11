@@ -33,7 +33,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from ab import ROOT, warm_proof  # noqa: E402
-from ab.batch import Experiment, analyze, arm_order, finish, manifest_of, prerequisites, run_arms  # noqa: E402
+from ab.batch import Experiment, analyze, arm_order, finish, manifest_of, positive_int, prerequisites, run_arms  # noqa: E402
 from ab.play import SLOW_DIAGNOSTIC_MS as SLOW_MS, play_pictures, play_segments  # noqa: E402
 from ab.session import one_window, run_session, session_env  # noqa: E402
 from ab.stats import quiet_class, stats  # noqa: E402
@@ -138,6 +138,8 @@ def markdown(report):
     lines += ["| iter | valid | class | gaps >62.5 | worst gap ms | pictures | starved | UI blocks ≥50 (n/max ms) | late transit ≥30 | page loop stalls (n/max ms) | ipc wait p95/max ms | eval p95/max ms |",
               "|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for it in report["iterations"]:
+        if not it["plays"]:  # an editor that failed before it played has no play to show: its row says why, so it never disappears from the table
+            lines.append(f"| {it['iteration']} | {'yes' if it['valid'] else 'NO: ' + '; '.join(it['invalid_reasons'])} | {it['quiet_class']} | no play | - | - | - | - | - | - | - | - |")
         for p in it["plays"]:
             lines.append(f"| {it['iteration']} | {'yes' if it['valid'] else 'NO: ' + '; '.join(it['invalid_reasons'])} | {it['quiet_class']} | {p['slow_gaps']} | "
                          f"{p['gap_ms']['max']} | {p['pictures']} | {'YES' if p['starved'] else 'no'} | "
@@ -171,6 +173,9 @@ def markdown(report):
     lines += [f"- slow-gap pictures: {json.dumps(total, sort_keys=True)}"]
     if report["red_iterations"]:
         lines += ["", f"RED: gaps above {SLOW_MS} ms, a UI block of {UI_BLOCK_MS} ms or more, or a starved play in iteration(s) {report['red_iterations']}"]
+    invalid = [it["iteration"] for it in report["iterations"] if not it["valid"]]
+    if invalid:
+        lines += ["", f"INVALID: iteration(s) {invalid} did not measure what they claim (the reasons are in the first table): the run exits 1 although no gap says RED"]
     return "\n".join(lines) + "\n"
 
 
@@ -273,7 +278,7 @@ def window_of(args, project):
 
 
 def cmd_loop(args):
-    run = prerequisites(args)
+    run = prerequisites(args, LOOP)
     if run is None:
         return 2
     W = warm_proof()
@@ -293,7 +298,7 @@ def cmd_loop(args):
 
 
 def cmd_ab(args):
-    run = prerequisites(args)
+    run = prerequisites(args, AB)
     if run is None:
         return 2
     W = warm_proof()
@@ -330,9 +335,9 @@ def main():
         p.add_argument("--label", default="")
         if name == "loop":
             p.add_argument("--report-dir")
-            p.add_argument("--iterations", type=int, default=3)
+            p.add_argument("--iterations", type=positive_int, default=3)
         else:
-            p.add_argument("--pairs", type=int, default=4)
+            p.add_argument("--pairs", type=positive_int, default=4)
     ana = sub.add_parser("analyze")
     ana.add_argument("--out", required=True)
     ana.add_argument("--report-dir")

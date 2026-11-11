@@ -30,7 +30,8 @@ A frozen page that outlives its editor is reported (pid, role and the sample fil
 DECISION RULES, fixed here before any measurement (diagnostic; nothing here decides the acceptance of BL157):
 
     hung play      the play shows fewer than 90% of the project's frames, or waits more than 2000 ms between two pictures (the rule of `first-use-ab.py`).
-    hung session   at least one of its plays is hung. A session that errors, or whose editor dies, without a hung play is `failed`, never counted as hung.
+    hung session   at least one of its plays is hung. Hung and `failed` are independent: a session that errors, records errors, loses a play or whose
+                   editor dies is `failed` (exit 1) whether or not a play of it also hung, and a failed session without a hung play is never counted as hung.
     NOT REPRODUCED the unpatched arm has fewer than 3 hung sessions: this run says nothing about the patch.
     CONFIRMED      the unpatched arm has at least 3 hung sessions and the patched arm none.
     REDUCED        the patched arm has some, fewer than the unpatched one: the hang has another cause too; the patch is not called a fix.
@@ -54,12 +55,12 @@ import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from ab import ROOT, warm_proof  # noqa: E402
-from ab.batch import Experiment, analyze, arm_order, finish, manifest_of, prerequisites, run_arms  # noqa: E402
+from ab.batch import Experiment, analyze, arm_order, finish, manifest_of, positive_int, prerequisites, run_arms  # noqa: E402
 from ab.play import hung_play  # noqa: E402
 from ab.project import sha256_file  # noqa: E402
 from ab.session import CONTROL_ENV, PLAYS, collect as poll_trace, process_table, run_session, session_env, webkit_pids, whole_project_twice  # noqa: E402
 from ab.stats import stats  # noqa: E402
-from ab.validity import analyze_session, error_label, published_error  # noqa: E402
+from ab.validity import analyze_session, error_label, failed_session, published_error  # noqa: E402
 
 UNPATCHED, PATCHED = "unpatched", "patched"
 ARMS = (UNPATCHED, PATCHED)
@@ -99,8 +100,9 @@ def served_runtime_bytes(events):
 
 def served_bundle_check(rows, expected=None):
     """Did every session load the bundle of its arm? Within an arm all sessions were served the same number of bytes (the size of the arm's file, when the
-    manifest has it), and the unpatched bundle is exactly what the patch removes longer than the patched one. A session whose record has no such event is
-    `unverified` (counted, not a finding)."""
+    manifest has it), and the unpatched bundle is exactly what the patch removes longer than the patched one. A session that ran but whose record has no
+    such event cannot say which bundle its page loaded: that is a finding (INVALID ARMS, so no verdict about the patch, `CONFIRMED` included) and the
+    session stays in its row. A FAILED session may have died before it loaded the page: it is only `unverified`, counted, and its own row says why."""
     sizes = {arm: sorted({r["served_runtime_bytes"] for r in rows if r["arm"] == arm and r.get("served_runtime_bytes") is not None}) for arm in ARMS}
     findings = [f"the {arm} sessions were served {len(sizes[arm])} different runtime.js sizes: {sizes[arm]}" for arm in ARMS if len(sizes[arm]) > 1]
     for arm in ARMS:
@@ -110,7 +112,11 @@ def served_bundle_check(rows, expected=None):
         difference, removed = sizes[UNPATCHED][0] - sizes[PATCHED][0], len(DECODER_CALL) - len(PATCH_REPLACEMENT)
         if difference != removed:
             findings.append(f"the served bundles differ by {difference} bytes, the patch removes {removed}")
-    return {"bytes": sizes, "unverified": sum(1 for r in rows if r.get("served_runtime_bytes") is None), "findings": findings}
+    missing = [r for r in rows if r.get("served_runtime_bytes") is None]
+    ran = [r for r in missing if not r.get("failed")]
+    if ran:
+        findings.append(f"{len(ran)} session(s) that ran have no record of the runtime.js the host served: the bundle of their arm is not verified")
+    return {"bytes": sizes, "unverified": len(missing), "findings": findings}
 
 
 def deadlock_signature(text):
@@ -187,7 +193,7 @@ def session_row(record, project):
     return {"arm": record["arm"], "pair": record.get("pair"), "order_index": record.get("order_index"), "valid": analysis["valid"],
             "invalid_reasons": analysis["invalid_reasons"], "plays": plays, "hung": hung,
             "served_runtime_bytes": served_runtime_bytes(record.get("events")),
-            "failed": not hung and (bool(record.get("error")) or any(name not in plays for name in PLAYS)),
+            "failed": failed_session(record, all(name in plays for name in PLAYS)),
             "error": published_error(record["error"]) if record.get("error") else None,
             "quiet_class": analysis["quiet_class"], "external_median_cores": analysis["external_median_cores"],
             "external_p95_cores": analysis["external_p95_cores"], "loadavg_start": analysis["loadavg_start"],
@@ -205,6 +211,12 @@ def build_report(records, project, manifest):
             "served_bundle": served, "play_gaps": gap_summary(rows),
             "chance_of_so_few": round(chance_of_so_few(c[UNPATCHED]["hung"], c[UNPATCHED]["sessions"], c[PATCHED]["hung"], c[PATCHED]["sessions"]), 4),
             "all_ran": not any(r["failed"] for r in rows) and not any(r["leftover_helpers"] for r in rows) and not served["findings"]}
+
+
+def status_of(row):
+    """The `hung` cell of a session: hung and failed are independent, so both are said."""
+    found = (["HUNG"] if row["hung"] else []) + ([f"FAILED: {error_label(row['error']) if row['error'] else 'incomplete'}"] if row["failed"] else [])
+    return ", ".join(found) or "no"
 
 
 def markdown(report):
@@ -241,7 +253,7 @@ def markdown(report):
         samples = ", ".join(f"{'DEADLOCK' if s['signature']['deadlock'] else 'other'} at {s['at_s']} s ({s['role']} {s['pid']}: {s['file']})" for s in r["samples"]) or "-"
         lines.append(f"| {r['order_index']} | {r['pair']} | {r['arm']} | {r.get('served_runtime_bytes') or '?'} | {r['quiet_class']} | "
                      f"{r['external_median_cores']}/{r['external_p95_cores']} | "
-                     f"{r['loadavg_start']} / {r['loadavg_peak_1m']} | {cell('first')} | {cell('repeat')} | {'HUNG' if r['hung'] else ('FAILED: ' + (error_label(r['error']) if r['error'] else 'incomplete')) if r['failed'] else 'no'} | "
+                     f"{r['loadavg_start']} / {r['loadavg_peak_1m']} | {cell('first')} | {cell('repeat')} | {status_of(r)} | "
                      f"{'yes' if r['valid'] else 'NO: ' + '; '.join(r['invalid_reasons'])} | {samples} |")
     lines += ["", f"Exact one-sided chance of so few hung sessions in the patched arm if both arms were alike (diagnostic only): {report['chance_of_so_few']}", "",
               f"Verdict (mechanical, pre-fixed rules): {report['verdict']}", ""]
@@ -294,6 +306,8 @@ class Watchdog:
             return
         self.last_sample = now
         for pid in sorted(webkit_pids() - self.baseline):
+            if len(self.samples) >= MAX_SAMPLES_PER_SESSION:
+                break  # the cap is per sample, not per observation: each one blocks the poll of the trace for as long as `sample` runs
             if "WebContent" not in process_command(pid):
                 continue
             target = self.out_dir / f"hang-{self.label}-{pid}-{len(self.samples)}.txt"
@@ -336,7 +350,7 @@ EXPERIMENT = Experiment(record="run-{index:02d}-{arm}.json", build=build_report,
 
 def cmd_run(args):
     bundles = bundles_of(args)
-    run = prerequisites(args, needed=(ROOT / "runtime" / "dist" / "index.html", *bundles.values()), gate=lambda: bundle_gate(args))
+    run = prerequisites(args, EXPERIMENT, needed=(ROOT / "runtime" / "dist" / "index.html", *bundles.values()), gate=lambda: bundle_gate(args))
     if run is None:
         return 2
     W = warm_proof()
@@ -377,7 +391,7 @@ def main():
     run.add_argument("--project", required=True)
     run.add_argument("--unpatched-bundle", required=True, help="the runtime.js of a plain `./scripts/runtime build` (no patch variable), copied out of runtime/dist before the patched build")
     run.add_argument("--out", required=True)
-    run.add_argument("--pairs", type=int, default=30)
+    run.add_argument("--pairs", type=positive_int, default=30)
     run.add_argument("--stress-cpu", type=int, default=0,
                      help="busy-loop processes kept alive during each session (the hang needs a loaded machine to show often; both arms get the same)")
     run.add_argument("--lock-wait", type=float, default=600.0)

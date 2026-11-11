@@ -20,8 +20,8 @@ ARMS = [("sync", {"TESSEL_VIEWPORT_ASSET_IO": "sync"}), ("async", {"TESSEL_VIEWP
 class Lab:
     """What the pixel proof asks of the lab. `acquire_locks` is the thing it must never ask."""
 
-    def __init__(self, free=40.0, error=None, agree=True):
-        self.free, self.error, self.agree = free, error, agree
+    def __init__(self, free=40.0, error=None, agree=True, raises=None):
+        self.free, self.error, self.agree, self.raises = free, error, agree, raises
         self.locks_asked, self.built, self.sessions = 0, 0, []
 
     def free_gib(self):
@@ -43,6 +43,8 @@ class Lab:
 
     def pixel_session(self, binary, document, arm, env, order, frames, cut_frames, work, retry=None):
         self.sessions.append({"env": env, "order": order, "retry": retry})
+        if len(self.sessions) - 1 == self.raises:
+            raise RuntimeError("the editor never opened /Users/someone/private/project.tessel.json")
         return {"arm": arm, "order": order, "hashes": {}, "monitor": {}, **({"error": self.error} if self.error else {})}
 
     def pixel_verdicts(self, results, frames):
@@ -92,7 +94,30 @@ class PixelProofTests(unittest.TestCase):
         self.assertEqual(saved["verdicts"], [{"check": "explicit frames agree", "ok": False}])
         code, saved, _ = self.run_proof(Lab(error="the editor never opened"))
         self.assertEqual(code, 1)
-        self.assertEqual(saved["sessions"][0]["error"], "the editor never opened")
+        self.assertEqual(saved["sessions"][0]["error"], {"code": "other", "kind": "other"})
+
+    def test_an_error_the_session_answered_is_published_as_a_code_and_a_kind_never_as_its_text(self):
+        asked = "playback.start: {'ok': False, 'error': {'code': 'media_preparing', 'message': 'wait /Users/someone/private/clip.ply'}}"
+        code, saved, shown = self.run_proof(Lab(error=asked))
+        self.assertEqual((code, saved["sessions"][0]["error"]), (1, {"code": "media_preparing", "kind": "host_refused"}))
+        for private in ("/Users", "someone", "clip.ply"):
+            self.assertNotIn(private, json.dumps(saved))
+            self.assertNotIn(private, shown)
+
+    def test_a_session_that_raised_is_a_failed_result_and_the_proof_is_still_written_with_what_ran(self):
+        lab = Lab(raises=1)
+        code, saved, shown = self.run_proof(lab)
+        self.assertEqual(code, 1)
+        self.assertIsNotNone(saved, "the only record of the failure is not lost with the working folder")
+        self.assertEqual([s["label"] for s in saved["sessions"]], ["sync", "sync", "async", "async"])
+        self.assertNotIn("error", saved["sessions"][0], "the session before it keeps its result")
+        self.assertEqual(saved["sessions"][1]["error"], {"code": "RuntimeError", "kind": "exception"})
+        self.assertEqual((saved["sessions"][1]["arm"], saved["sessions"][1]["order"]), ("warm", "cold"))
+        self.assertIn("SESSION FAILED sync cold exception RuntimeError", shown)
+        self.assertEqual(len(lab.sessions), 4, "each session is its own editor: the others still run")
+        for private in ("/Users", "someone", "project.tessel"):
+            self.assertNotIn(private, json.dumps(saved))
+            self.assertNotIn(private, shown)
 
     def test_the_runner_can_add_its_own_verdicts(self):
         code, saved, shown = self.run_proof(Lab(), more=lambda results: [("it happened", False, len(results))])
@@ -112,6 +137,12 @@ class RetryTests(unittest.TestCase):
             answer = PX.retrying_on_cancel(self.Lab(), refused, "async")(lambda: next(answers))
         self.assertTrue(answer["ok"])
         self.assertEqual([item["arm"] for item in refused], ["async", "async"])
+        self.assertEqual(refused[0]["error"], {"code": "cancelled", "kind": "host_refused"})
+
+    def test_a_refusal_is_kept_as_a_code_and_a_kind_never_as_the_text_of_the_answer(self):
+        refused = []
+        PX.retrying_on_cancel(self.Lab(), refused, "sync")(lambda: {"ok": False, "error": {"code": "media_missing", "message": "no /Users/someone/clip.ply"}})
+        self.assertEqual(refused, [{"arm": "sync", "error": {"code": "media_missing", "kind": "host_refused"}}])
 
     def test_any_other_refusal_is_the_answer_and_a_loop_of_cancellations_gives_up(self):
         refused = []
