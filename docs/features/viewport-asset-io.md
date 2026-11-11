@@ -94,7 +94,7 @@ pedem quadro nenhum para medir; sem o traço o `hello` e as respostas são byte 
 | evento `prefetch_asset` | `core::session::prefetch` (só com o traço) | por carga iniciada: `fs_ms` (verificações de arquivo), `send_ms` (entrega ao backend), `bytes`, `kind`; nunca o nome do asset |
 | `telemetry.gpu_finish` (env `TESSEL_VIEWPORT_PROBE_GPU_FINISH=1`, só com o traço) | `HelloOptions::gpu_finish`, `index.js` | **braço diagnóstico, nunca padrão**: após cada draw a página lê 1 pixel (`finish()` sozinho voltou em 0 ms no WebKit, não esperou) e reporta `timings.gpu_finish_ms`; troca a espera do navegador na apresentação por uma espera dentro do quadro |
 
-`scripts/viewport-transit-probe.py` (`loop`/`ab`/`ab-report`/`analyze`; specs em `.spec.py`) decompõe cada imagem tardia em `host_pre_send`, `page_queue`,
+`scripts/viewport-transit-probe.py` (`loop`/`ab`/`analyze`; o `analyze` lê `loop` e `ab` pelo `kind` do manifesto; specs em `.spec.py`) decompõe cada imagem tardia em `host_pre_send`, `page_queue`,
 `page_draw`, `ipc_wait` e `delivery` (o que sobra; ida e volta juntas) e nomeia o dominante. O `loop` é **capaz de falhar**: sai com 1 se
 alguma iteração tem gap > 62,5 ms (limiar diagnóstico, não aceite), um bloqueio de UI (passo de prefetch ≥ 50 ms) ou um play faminto (quase
 nenhuma imagem). Um quadro do mesmo `shown_frame` que o anterior é a imagem de assentamento depois do stop e não conta como gap de
@@ -142,7 +142,7 @@ byte a byte os de antes (testes `core::bridge` e `viewport_host_tests`). Nada mu
 | A pré-upload | `TESSEL_VIEWPORT_PREUPLOAD=1` / `preupload_textures` | `texture.preupload` | `session.preupload {enabled, supported, sent}` | `frame.warm {scenes:false, textures:true}`: o host pede a subida de uma imagem **já carregada** de um corte futuro; o runtime a sobe com `renderer.initTexture`, um por passo, atrás de quadros em espera |
 | B warm draw | `TESSEL_VIEWPORT_WARM_DRAW=1` / `warm_draw` | `scene.warm_draw` | `session.warm_draw {enabled, supported}` | depois do sort do aquecimento de uma linhagem, um draw numa `WebGLRenderTarget` de 16 px (sem MSAA, só profundidade), descartada sempre |
 
-Regras (código em `runtime/src/preupload.js`, `assets.js` `preuploadStill`, `compositor.js` `uploadTexture`/`warmDraw`, `index.js`):
+Regras (código em `runtime/src/preupload.js`, `runtime/src/warm-draw.js`, `assets.js` `preuploadStill` e `index.js`, que chama `renderer.initTexture` direto; o compositor só chama o gancho `onWarmed` ao fim do aquecimento de uma linhagem):
 
 - **A:** fila de no máximo 8, idade máxima 3000 ms; resultados `uploaded`/`resident`/`budget`/`stale`/`missing`/`expired`; respeita o orçamento de
   texturas (nunca expulsa, nunca toca a recência: um quadro atual não perde lugar), cede a qualquer quadro em espera (`framesQueued`), é descartada
@@ -164,7 +164,30 @@ takeover e sem as de contexto, **sozinhas sobrevivem** porque as defesas se sobr
 juntas os mutantes morrem (`M3b`; `M5b` depois de o teste "contexto recém-perdido, estágio ainda conhecido" ser adicionado). O limite: cada camada
 isolada não tem teste próprio; a prova é a da combinação.
 
-### Runner e regras pré-fixadas (`scripts/first-use-ab.py`, 29 testes puros em `first-use-ab.spec.py`)
+### Núcleo comum dos runners (`scripts/ab/`)
+
+Os cinco runners de A/B (`real-latency-ab.py`, `first-use-ab.py`, `viewport-transit-probe.py`, `playback-poll-ab.py`, `runtime-bundle-ab.py`) tinham cópias do mesmo núcleo. A revisão thermo da PR #41 o reuniu no pacote
+`scripts/ab/` (`project`, `stats`, `play`, `transit`, `session`, `validity`, `charts`, `batch`, `pixels`) e num descritor `Experiment` (como os registros se chamam, `build`, `markdown`, `ok`, `stem`, `charts`); cada runner guarda só a sua
+ciência (braços, regras, relatório). Regras comuns:
+
+- **Um juiz de validade** (`core_validity`): a sessão rodou até o fim, nenhum asset `failed`, nenhum erro HTTP, nada perdido, o modo pedido e o editor vivo; fator, aquecimento e contagem da página continuam de cada experimento.
+  `play` devolve `None` no prazo estourado, a janela exige o playhead no fim e o veredito do first-use só lê pares válidos nas duas pontas. A validade da janela ficou mais estrita (leitura em pânico ou velha invalida).
+  Os números publicados antes dele **não** foram reanalisados (BL157.13).
+- **Erros publicados são `{code, kind}`**: `kind` ∈ `timeout`, `ended_early`, `host_refused`, `exception`, `other`; `code` é o código de erro do host (`[a-z_]{1,32}`) ou um nome de classe `…Error`/`…Exception` de até 40 letras, tirados por
+  padrão, nunca um pedaço do texto. A mensagem crua e o fim do log do editor ficam só no `session-*.json` local. O `code` é um padrão, não uma lista: um nome de arquivo que casasse `<Nome>Error` apareceria (BL157.17).
+- **Cada sessão começa sem `TESSEL_*` herdado** (`lab_environment()`): o ambiente do braço é o único; o braço A do `ab` do transit diz `TESSEL_VIEWPORT_PROBE_GPU_FINISH=0`.
+- **`analyze` só lê o lote que o manifesto descreve**: um arquivo por posição da ordem, todos com o `batch_id` do manifesto; recusa faltante, extra, de outro lote e lote sem `batch_id` (nomeando os arquivos), e recusa `--project` cujo
+  sha256 não é o do manifesto, antes de ler ou escrever. Todos os runners escrevem `runs.sha256`; `head_tail_hash` lê a cauda de `max(chunk, size - chunk)`.
+- **`pixels` é funcional**: não toma o lock de GPU, só começa com ≥ 16 GiB livres (acima do piso duro de 12) e não tem `--min-free-gib` nem `--lock-wait`; o manifesto de `run` grava `locks` e `lock_wait_s`; o arquivo do lock nunca é removido.
+- **Nada sinaliza processo**: o vigia do `runtime-bundle-ab.py` só lê e amostra; helpers do WebKit que sobrevivem ao editor são relatados (pid, papel, arquivo da amostra) e o operador decide. A posse deles não é provável
+  localmente (BL157.14).
+- **Gaps**: `gap_context` põe o span da página onde ele **rodou** (`[t_ms - ago_ms - ms, t_ms - ago_ms]`), não onde chegou; o `ahead` do transit conta o trabalho em andamento ou na fila até ele **terminar**, e valores de builds
+  anteriores (que contavam até o trabalho começar) não se comparam. Gráficos são opt-in (`--charts` em `real-latency-ab.py analyze`).
+
+Testes: `ab-core.spec.py` (43), `ab-batch.spec.py` (30), `ab-pixels.spec.py` (8) e `playback-poll-rule.spec.py` (10); 681 testes nos 28 specs de `scripts/*.spec.py`. Nenhuma sessão real do editor foi executada para estas correções (só
+registros sintéticos e um `Lab` falso): o `pixels` na janela real fica **a validar**.
+
+### Runner e regras pré-fixadas (`scripts/first-use-ab.py`, 32 testes puros em `first-use-ab.spec.py`)
 
 `narrow` (janela 114–210) e `full` (projeto real completo; `RL.run_session`) com `--factor preupload|warm_draw`; `pixels` (janela real, sintético,
 só `warm_draw`: o projeto sintético não tem imagens; os pixels do pré-upload são os testes de Chrome); `analyze` regenera o relato. Cada braço
@@ -212,9 +235,10 @@ no Git e os JSON brutos, com o projeto privado, ficam fora dele ([proveniência]
 - Os tempos de fetch/decode pertencem ao resultado de cada carga admitida (identidade do objeto de metadados, em `WeakMap`),
   não ao ID reutilizável do asset. Cargas antigas recusadas/canceladas não publicam tempos nem apagam os da substituta.
   O campo bridge `asset.state.timings` e os metadados não mudam. Teste puro do runtime exercita a corrida e leitura fora de ordem.
-- `redact()` remove também nomes finais com espaços e arquivos diretamente sob a home/temp. Relatórios publicados nunca devem conter esses nomes.
-- `ab-report` só reconstrói os runs do lote salvo em `ab.json` quando **todos** os brutos esperados existem. Arquivo de outro lote é ignorado;
-  arquivo ausente preserva todos os resumos, recalcula apenas o veredito e registra a limitação.
+- Nada publicado carrega texto de erro: `redact()` foi apagado na revisão thermo da PR #41 (a regex ainda vazava nomes com aspas, apóstrofo e dois-pontos).
+  O erro publicado é `{code, kind}` ([Núcleo comum dos runners](#núcleo-comum-dos-runners-scriptsab)); a mensagem crua e o fim do log do editor ficam só no `session-*.json` local.
+- `ab-report` foi apagado: o único analisador de cada runner é `analyze`, e ele só lê o lote que o manifesto descreve (um arquivo por posição, todos com o `batch_id`
+  do manifesto; faltante, extra, de outro lote ou lote sem `batch_id` é **recusado**, sem escrever nada). Os números publicados antes disso não foram reanalisados (BL157.13).
 - **Lacuna de correlação:** para `frame_sequence`, `asset_load_sent.path` é o hash do padrão e `asset_cb`/`asset_io` usam o caminho do quadro concreto;
   esses rótulos não são uma chave de junção. As sete entradas PNG medidas em BL157.3 são imagens paradas (`still`), não sequências.
   Nenhum resultado sobre sequências é afirmado. Ligar cada fetch expandido à carga de sequência continua pendente em BL157.3.
@@ -242,12 +266,13 @@ subseção). Nada aqui muda o produto: os dois fatores seguem opt-in e desligado
 |---|---|---|---|
 | Store (Node puro, sem WebGL) | `runtime/test/preupload-store.test.mjs` | 8 | `AssetStore.preuploadStill`: `uploaded` (a textura é feita uma vez, antes do quadro, e o quadro a encontra), `resident` (nunca refeita), `budget` (nunca expulsa para caber), `stale`/`missing` (o pedido de uma carga antiga nunca dá textura à substituta, a um asset solto, nem a splat/vídeo), `failed` (sem textura nem bytes, libera o que criou, pode ser pedido de novo), recência intacta (`lastUsed`: uma textura que ninguém desenhou é a primeira que o orçamento devolve), perda de contexto (descarta a textura, mantém a imagem) |
 | Fila e tempos (Node puro) | `preupload.test.mjs` (4), `load-timings.test.mjs` (5) | 9 | fila limitada, idade, `upload_ms` só soma o upload que aconteceu; tempos presos ao resultado da carga admitida |
-| Página (`index.js`) com compositor falso | `orchestrator-preupload.test.mjs` | 15 | desligado por padrão (nada anunciado nem subido); ligado: sobe antes do quadro e relata; nada em dobro; **quadro primeiro** (já em espera e chegando no meio da fila: espera o passo em voo, não a fila); recarga ou liberação antes do passo; falha do upload; retenção desligada; descarte em perda de contexto, `hello` sem o fator e `dispose`; perda ainda não entregue como evento; fila limitada; orçamento; idade |
+| Página (`index.js`) com compositor falso | `orchestrator-preupload.test.mjs` | 16 | desligado por padrão (nada anunciado nem subido); ligado: sobe antes do quadro e relata; nada em dobro; **quadro primeiro** (já em espera e chegando no meio da fila: espera o passo em voo, não a fila); o passo **cede uma tarefa** ao quadro (o quadro que o host manda com uploads pendentes começa antes do 2º upload); recarga ou liberação antes do passo; falha do upload; retenção desligada; descarte em perda de contexto, `hello` sem o fator e `dispose`; perda ainda não entregue como evento; fila limitada; orçamento; idade |
+| | `orchestrator-timing.test.mjs` | 4 | `ahead.frames` e `ahead.warms` contam o trabalho em andamento ou na fila até ele **terminar** (também quando o quadro falha); um span é posto para trás a partir da entrega da resposta, e o tempo de codificar o PNG conta (os spans são drenados depois do `toDataURL`) |
 | | `orchestrator-warm-draw.test.mjs` | 13 | desligado por padrão; o draw segue o **seu** sort e é um só; quadro em espera vai antes; contexto perdido durante o sort; descarte por `hello` sem o fator e `dispose`; idade; cada desfecho do compositor (`gone`, `taken`, `no_order`, `lost`, `failed`) relatado como ele é e **não** contado como draw; falha engolida sem travar a fila |
 | | `orchestrator-loads.test.mjs` | 4 | a carga pronta devolve o pedido que responde e os tempos da **própria** carga; carga ultrapassada por recarga é cancelada com o **seu** pedido, nas duas ordens de chegada; carga liberada em voo |
-| Contrato de ativação | `orchestrator-contract.test.mjs` + `runtime/test/fixtures/activation-spans.json` | 19 | para cada span do contrato (`preupload`: `uploaded`; `warm_draw`: `drawn`), cada desfecho é emitido pelo runtime como `{k, outcome, ms}` em `frame.done.runtime_spans`; varredura do código real: o que `warmDraw`, `runWarmDraw`, `preuploadStill` e `step` podem devolver é **exatamente** o vocabulário do contrato |
+| Contrato de ativação | `orchestrator-contract.test.mjs` + `runtime/test/fixtures/activation-spans.json` | 19 | para cada span do contrato (`preupload`: `uploaded`; `warm_draw`: `drawn`), cada desfecho é emitido pelo runtime como `{k, outcome, ms}` em `frame.done.runtime_spans`; varredura do código real: o que `drawWarmed` (em `warm-draw.js`), `runWarmDraw`, `preuploadStill` e `step` podem devolver é **exatamente** o vocabulário do contrato |
 | Host (Rust) | `crates/desktop/src/workstation/asset_io_tests.rs` | 1 | todo desfecho do contrato chega ao `render.trace` do host como `runtime_span` com `k`/`outcome`/`ms` intactos |
-| Harness (Python) | `first-use-ab.spec.py` (29), `scene-warm-proof.spec.py` (27) | 13 novos | só o braço que relata o desfecho que funcionou é "ativo"; controle contaminado, interruptor diferente do pedido ou ausência de relato **reprovam**; coleta de spans da prova de pixels |
+| Harness (Python) | `first-use-ab.spec.py` (32), `scene-warm-proof.spec.py` (29) | 13 novos | só o braço que relata o desfecho que funcionou é "ativo"; controle contaminado, interruptor diferente do pedido ou ausência de relato **reprovam**; coleta de spans da prova de pixels |
 | Chrome real (já existia) | `preupload-browser.test.mjs` (11), `warm-draw-browser.test.mjs` (10) | 21 | hashes exatos iguais, alvos/texturas/geometrias, liberação do alvo, perda de contexto real |
 
 ### Como a página é testada sem WebGL
@@ -283,7 +308,7 @@ Cada regra foi quebrada, uma por vez, numa **cópia** de `runtime/` (a árvore e
 | Página (`index.js`) | 24 | passo que não cede a quadro em espera (pré-upload e warm draw); contexto não consultado; fila com retenção desligada, durante perda, sem esquecer em perda/`hello`/`dispose`; fator ligado "a menos que recusado"; recurso anunciado a todo host; nome e campos dos spans; draw que ignora perda de contexto, `hello` que desliga e idade; todo desfecho contado como draw; quadro em espera não contado; tempos lidos pelo ID reutilizável (a leitura anterior a `b53775e`); pedido da carga não devolvido; pré-upload que nunca avisa o host |
 | Store (`assets.js`) | 7 | entrada pedida não conferida; série repetida; orçamento ignorado; recência tocada; textura recusada não liberada; segunda textura sobre a residente; entrada que não é imagem parada aceita |
 | Fila (`preupload.js`) | 5 | limite +1; idade ignorada; pedido repetido; nome do desfecho `failed`; `upload_ms` somando o que não subiu |
-| Compositor (`compositor.js`) | 1 | desfecho do warm draw renomeado (a varredura do código real o pega) |
+| Warm draw (`warm-draw.js`; o código saiu do `compositor.js` na revisão thermo da PR #41) | 1 | desfecho do warm draw renomeado (a varredura do código real o pega) |
 
 A primeira rodada (35 de 37 mortos) deixou dois sobreviventes que viraram testes: splat/vídeo só eram barrados por `kind` (agora a entrada
 fabricada tem bitmap, então só `kind` a impede) e `upload_ms` contava uploads que não aconteceram; a limpeza síncrona da fila (equivalente no
@@ -295,7 +320,7 @@ spans) reprovam os specs.
 
 - **Latência.** Nenhum teste unitário tem a GPU, o disco, a carga ou o relógio da janela real. Se a antecipação do `texSubImage2D` ou o
   draw de aquecimento reduzem a pausa no projeto real é pergunta do A/B, que foi **inconclusivo** (zero pares comparáveis por fator).
-- **O compositor real.** O compositor falso devolve o desfecho que o teste manda. Que o `Compositor` real devolve `drawn`/`lost`/`gone` num
+- **O compositor real.** O compositor falso devolve o desfecho que o teste manda. Que `drawWarmed` sobre o `Compositor` real devolve `drawn`/`lost`/`gone` num
   contexto WebGL de verdade é o que os testes de Chrome (SwiftShader) provam; Chrome não é o WKWebView/Metal da janela. A varredura
   do código real só garante que o vocabulário não diverge.
 - **Pixels no WKWebView.** Só a prova de pixels na janela real vê o monitor nativo. A prova de pixels da janela real (`first-use-ab.py pixels --factor warm_draw`) agora registra os spans e reprova sem `drawn` no braço ligado, mas **não foi repetida** nesta entrega (o runner exige 12 GiB livres e havia 5 GiB): o último resultado nativo continua sendo o histórico (saída não versionada), sem registro de ativação. O pré-upload é N/A nessa prova (o projeto
@@ -400,8 +425,9 @@ O p exato unilateral (hipergeométrico) sai só como diagnóstico. A carga é re
 ≥ 16 GiB livres, os dois locks de GPU. Saídas em `--out`: `manifest.json`, `run-NN-braço.json`, `hang-*.txt` (amostras), `analysis.json`, `analysis.md`, `runs.sha256`; `--report-dir` publica as três últimas.
 O relatório traz também **como foram os plays de cada braço** (maior espera entre duas imagens por play, gaps lentos de 62,5 e 100 ms, em quantos plays cada local do projeto teve um gap lento): é o estado do editor na
 rodada, não uma comparação que este experimento decide (as sessões dividem uma máquina, não um relógio).
-`scripts/runtime-bundle-ab.spec.py` tem 51 testes puros (ordem dos braços, achados do bundle, regra de play preso, assinatura do deadlock com texto realista, hipergeométrico, veredito, linhas de sessão sintéticas, o vigia, a
-pasta temporária, o bundle que o host serviu, os resumos dos gaps por play); mutação: 39 de 39 mutantes mortos (script fora do repositório).
+`scripts/runtime-bundle-ab.spec.py` tem 59 testes puros (ordem dos braços, achados do bundle, regra de play preso, assinatura do deadlock com texto realista, hipergeométrico, veredito, linhas de sessão sintéticas, o vigia, a
+pasta temporária, o bundle que o host serviu, os resumos dos gaps por play, o vigia que nunca sinaliza processo, a recusa do braço remendado que cita o build com `TESSEL_RUNTIME_SPARK_RELEASE_LOCK_PATCH=1`); mutação: 39 de 39 mutantes mortos na rodada original (script fora do repositório) e,
+na revisão thermo da PR #41, cada teste novo falha com a correção revertida.
 
 **Resultado** (72 sessões em 36 pares, 80 min; binário `4e334135…`, documento `0b456aec…`, bundles `c7d27bd2…` sem a correção e `78a0c8f4…` com ela; o host serviu o bundle certo em 72 de 72 sessões;
 tabelas e a cadeia do deadlock em [`viewport-real-latency-ab-results/bundle-ab/`](../viewport-real-latency-ab-results/bundle-ab/)):
@@ -434,16 +460,18 @@ Registrado, não filtrado: a sessão 11 deixou 2 helpers de GPU vivos depois do 
 ### Reprodução de BL157.4
 
 ```sh
-cd runtime && pnpm test                                      # 336 testes; TESSEL_REQUIRE_RUNTIME=1 inclui o bundle e o Chrome real
-python3 scripts/runtime-bundle-ab.spec.py                    # 51 testes puros do runner nativo
+cd runtime && pnpm test                                      # 364 testes; TESSEL_REQUIRE_RUNTIME=1 inclui o bundle e o Chrome real
+python3 scripts/runtime-bundle-ab.spec.py                    # 59 testes puros do runner nativo
 python3 scripts/playback-cadence.spec.py                     # 74 testes puros do leitor de cadência (BL157.6)
 # laboratório (precisa de macOS com WKWebView; as nuvens são caminhos locais seus):
 node runtime/scripts/perf/run.mjs --engine webkit --suite real --cases real-entry --variants current,warmdraw --passes 30 --fresh \
   --pacing film --warmup 10 --size 1280x720 --quality preview --drain read1x1 --out <dir> \
   --real-cloud-a <nuvem-a.ply> --real-cloud-b <nuvem-b.ply> --real-ring <anel.ply> --real-sparks <faiscas.ply>
+./scripts/runtime build && cp runtime/dist/runtime.js <runtime-sem-correcao.js>   # build simples = bundle SEM a correção (o padrão)
+TESSEL_RUNTIME_SPARK_RELEASE_LOCK_PATCH=1 ./scripts/runtime build               # o braço remendado é o runtime/dist/runtime.js desta build
 python3 scripts/runtime-bundle-ab.py run --binary <tessel-editor> --project <projeto.tessel.json> --unpatched-bundle <runtime-sem-correcao.js> \
   --out <dir> --pairs 36 --stress-cpu 6                      # janela real; trava os locks de GPU, ≥ 16 GiB livres
-python3 scripts/runtime-bundle-ab.py analyze --out <dir> --project <projeto.tessel.json> [--report-dir <pasta>]   # refaz a análise dos registros salvos
+python3 scripts/runtime-bundle-ab.py analyze --out <dir> --project <projeto.tessel.json> [--report-dir <pasta>]   # refaz a análise de um lote com `batch_id` (ver "Núcleo comum dos runners")
 # réplica do laboratório (`prev` é o bundle sem a correção; 300 passes intercalados, uma página nova por run):
 node runtime/scripts/perf/run.mjs --engine webkit --suite real --cases real-load --variants prev,current --baseline-bundle <runtime-sem-correcao.js> \
   --passes 300 --fresh --warmup 1 --size 1280x720 --quality preview --workerlog --load-timeout 10000 --out <dir> \
@@ -512,8 +540,8 @@ a regra vem antes dos números, no histórico. Resumo (os números são marcas d
 | SEM GANHO | no `deadline`: mais de 3% das imagens < 30 ms; atraso médio de observação acima de 4 ms ou menos de 5 ms abaixo do `fixed`; consultas por troca fora de 1,9–2,15; atraso menor em menos de 90% dos pares |
 | ADOTAR | nenhum dos anteriores: permite tornar `deadline` o padrão; **não é aceite do usuário nem de BL157** |
 
-Carga e ocupação da máquina são **registradas, nunca filtradas**; sessão nenhuma é descartada. O runner tem 104 testes puros (a regra, as bordas, a ordem dos braços, o bloqueio por regra não commitada, disco e travas, a
-conferência do braço, `run`/`analyze`) e mutação 150 de 150, com o controle passando (script fora do repositório; o primeiro desenho deixou 7 sobreviventes, 5 deles lacunas reais de teste, e 2 mutantes só "morriam" por erro de
+Carga e ocupação da máquina são **registradas, nunca filtradas**; sessão nenhuma é descartada. O runner tem 86 testes puros (os braços, a regressão, o veredito, o relatório) e a regra fixada tem 10 em `playback-poll-rule.spec.py` (as constantes, as bordas e o bloqueio por regra não commitada);
+a ordem dos braços, o disco e as travas, a conferência do braço e `run`/`analyze` são testados uma vez só, no núcleo comum (`ab-batch.spec.py`). Na rodada original: mutação 150 de 150, com o controle passando (script fora do repositório; o primeiro desenho deixou 7 sobreviventes, 5 deles lacunas reais de teste, e 2 mutantes só "morriam" por erro de
 sintaxe: o script passou a rejeitar mutante que não compila, e uma sessão `hung` sem os dois plays deixou de contar como par, como a regra diz).
 
 **Estado: o A/B nativo ainda NÃO foi rodado.** O runner exige ≥ 16 GiB livres (`MIN_FREE_GIB_START`; abaixo de 12 GiB entre sessões ele para) e a máquina de desenvolvimento estava abaixo disso (entre ≈ 5 e 12 GiB livres durante o trabalho), então
@@ -541,7 +569,8 @@ Reprodução (sem janela, GPU nem dispositivo):
 
 ```sh
 python3 scripts/playback-cadence.spec.py                      # 74 testes puros do leitor
-python3 scripts/playback-poll-ab.spec.py                      # 104 testes puros do runner do A/B e da regra fixada
+python3 scripts/playback-poll-ab.spec.py                      # 86 testes puros do runner do A/B
+python3 scripts/playback-poll-rule.spec.py                    # 10 testes puros da regra fixada
 ./scripts/cargo test -p tessel-editor --locked playback       # a conta pura (34) e o laço (10) de `playback.rs`
 python3 scripts/playback-cadence.py <dir> --group auto --markdown cadence.md   # lê o traço do host de cada sessão (só lê)
 ```

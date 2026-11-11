@@ -200,7 +200,7 @@ código gravados em log local, não versionado (sem pipe mascarando o código).
 | Janela real, binário release `ac023eba…` (HOME/socket próprios, só pedidos semânticos de `./scripts/ui`/`Lab`, sem coordenadas) | `real-latency-ab.py pixels`: PASS (imagem do `render.frame` idêntica byte a byte em quente/frio × cache quente/seek frio, controles negativos: cortes distintos não compartilham imagem e todo quadro foi lido); `loop4` (4 editores novos, `render.status.asset_io.mode == async` verificado por run) e `ab4` (16 runs válidos) |
 
 **Segunda rodada de correções de revisão** (`2b4b197`: o pacote da página não passa mais pelo pool em `async`; `665ec4d`: `redact` e
-`ab-report`). Gates refeitos no código final (log local, não versionado): fmt 0, check 0, clippy `-D warnings` 0,
+`ab-report`, os dois apagados depois, na revisão thermo da PR #41: [F063](features/viewport-asset-io.md#núcleo-comum-dos-runners-scriptsab)). Gates refeitos no código final (log local, não versionado): fmt 0, check 0, clippy `-D warnings` 0,
 `cargo tree` sem `gpui`/`wry`, build debug e release 0 (release `4add680ead4d37f9`, reconstruído depois de o mbx recolher o artefato:
 mesmo sha), `cargo test --workspace --locked` 0 (2084 passaram, 0 falharam), `./scripts/runtime test` 0 (225/225), specs
 `viewport-transit-probe` e `real-latency-ab` 0. **BLOCKED:** o `loop` do editor final (`4add680e…`) esperou 120 s pelos locks de GPU
@@ -263,7 +263,7 @@ veredito mecânico `CONSISTENT` com A reproduzindo o stall em 3 de 6 runs.
 - Em `loop1`, um de 3 editores teve dois passos de prefetch de ~3 s na thread da janela (UI bloqueada, sem imagens). Os eventos por carga (`prefetch_asset`) só existem a partir do `loop2`;
   não se repetiu nos 60 runs seguintes. Causa não determinada.
 - Veredito mecânico do `ab`: só `CONSISTENT`/`INCONCLUSIVE`; a regra antiga (`REFUTED` pela contagem de stalls) estava confundida (a espera do braço B também é um stall) e foi trocada
-  antes de ser usada como resultado; `ab-report` reaplica a regra vigente a cada lote.
+  antes de ser usada como resultado; o `analyze` reaplica a regra vigente a cada lote (o `ab-report` que fazia isso foi apagado na revisão thermo da PR #41).
 
 ### 11.4 Limites e próximo passo
 
@@ -272,7 +272,7 @@ nos lotes). Não se declara causa única: a GPU pendente é **compatível**, e o
 cenas splat) mexe em resolução, MSAA ou contagem de splats, que não foram variados e dependem de decisão de produto. O efeito de um draw de aquecimento **não foi medido**, e nenhum teste daqui separa custo de preenchimento de custo de primeiro uso: não se conclui que ajudaria nem que não ajudaria.
 Próximos fatores, um por vez e dentro da proteção do quadro atual: pré-upload da 1ª textura PNG de cada sequência (`195→196`) e investigação das páginas que param.
 
-Reprodução: `python3 scripts/viewport-transit-probe.py loop --project <documento> --out <dir> --iterations 4` e `... ab --pairs 8`; `ab-report`/`analyze` regeneram as tabelas.
+Reprodução: `python3 scripts/viewport-transit-probe.py loop --project <documento> --out <dir> --iterations 4` e `... ab --pairs 8`; o `analyze` regenera as tabelas de um lote **novo** (com `batch_id` no manifesto): os lotes desta seção são anteriores a ele e o `analyze` de hoje os recusa (BL157.13).
 
 
 ## 12. Reprodução final pela coordenação (`7850ade`)
@@ -574,7 +574,7 @@ um artefato do laboratório. **O que não mostra:** que a correção o evita; 1 
 - **Anomalias registradas, não filtradas.** A sessão 11 (sem a correção) deixou 2 processos de GPU vivos depois do editor: o runner os relata e **nunca os mata**; já tinham saído quando a rodada foi
   analisada. Por isso `analyze` sai com código 1 (`all_ran: false`) embora a sessão não tenha parado nem falhado. A sessão 24 está marcada inválida (o aquecimento da cena nunca rodou, porque a página parou antes) e **conta como presa**.
 - **O runner foi estendido enquanto a rodada corria.** Quem mediu foi a revisão `6b1cab41…`; depois entraram a conferência do bundle servido e o resumo das esperas por play, que são só código de **análise**
-  (regras, ordem, braços e coleta não mudaram), e a análise foi refeita dos registros salvos (a lista de SHA-256 dos registros não é mantida no Git). A revisão commitada é a final. O `manifest.json` da rodada (também fora do Git) registrou o commit do código como
+  (regras, ordem, braços e coleta não mudaram), e a análise foi refeita dos registros salvos na época (a lista de SHA-256 dos registros não é mantida no Git; o `analyze` de hoje recusa um lote sem `batch_id` e leva uma validade mais estrita, então estes números não se reproduzem com ele: BL157.13). A revisão commitada é a final. O `manifest.json` da rodada (também fora do Git) registrou o commit do código como
   `b153f257b14a` (o commit da correção, reescrito depois só na mensagem, com a mesma árvore: hoje `e4e5aa2`) com 9 arquivos sujos (diff por SHA-256 no manifesto): os scripts, os testes e as docs desta
   entrega, ainda não commitados na época.
 - **Limites:** uma máquina, um projeto, um WebKit (21624.5.1.11.3); os 72 registros brutos (143 MB) não são versionados; o runner não conferiu o tamanho servido contra o dos arquivos dos braços (essa conferência não existia quando a rodada
@@ -633,7 +633,7 @@ play 0,15 acima; mais sessões presas), SEM GANHO (mais de 3% das imagens < 30 m
 ponto percentual para 12 sessões por braço), e não são limites aprovados por ninguém. Carga e ocupação são registradas, nunca filtradas; nenhuma sessão é descartada.
 
 **Estado: o A/B nativo NÃO foi rodado.** O runner exige ≥ 16 GiB livres e a máquina de desenvolvimento estava abaixo disso durante todo o trabalho (5–12 GiB livres em `/tmp`, medidos entre as etapas), então nenhuma sessão nativa foi
-tocada: **não há medida do `deadline` no editor real, o padrão continua `fixed` e BL157.6 segue aberto**. O runner (104 testes, mutação 150/150), o leitor (74 testes, mutação 118/118), a função pura (34 testes, mutação 40/41, o
+tocada: **não há medida do `deadline` no editor real, o padrão continua `fixed` e BL157.6 segue aberto**. O runner (104 testes e mutação 150/150 na rodada; hoje 86 mais 10 da regra, depois da revisão thermo da PR #41), o leitor (74 testes, mutação 118/118), a função pura (34 testes, mutação 40/41, o
 sobrevivente é equivalente) e o laço (10 testes determinísticos, mutação 19/19) têm prova; o que **não** tem prova é o efeito na janela real: se `deadline` entrega mesmo as imagens a ≈ 42 ms, se o atraso de observação cai de ≈ 11 ms para
 ≈ 2,5 ms e se isso não piora o resto. Para rodar: `./scripts/runtime setup && ./scripts/cargo build -p tessel-editor --locked --release`, depois
 `python3 scripts/playback-poll-ab.py run --binary target/release/tessel-editor --project <projeto.tessel.json> --out <dir> --pairs 12 --report-dir docs/viewport-real-latency-ab-results/poll-ab` (≈ 35 min; janela e áudio reais).
