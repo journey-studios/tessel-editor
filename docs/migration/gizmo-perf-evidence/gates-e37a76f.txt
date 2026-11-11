@@ -1,0 +1,137 @@
+Gates of round 3 on the CLEAN tree of e37a76f (F055 performance, BL015.21 / PR #44)
+==============================================================================
+Code under test: e37a76faa731830ef1e4c108de337222fbd60e2d (fix(gizmo-perf): Measure only the mutant executable prepare
+built) on top of f3b2c32f7cf1e410d5b19d5c9ddc153db8dc3aff, the PR head the round started from (base main =
+cbe9e1b393861febf073633fbbaa0da9857780b6, not moved).
+Changes against f3b2c32: scripts/gizmo-perf/mutate.py, scripts/gizmo-perf/gizmo-perf.spec.py (4 new tests), a comment in
+crates/core/tests/scene_gizmo_perf_budget.rs (5 lines added, 2 removed) and the control log
+docs/migration/gizmo-perf-evidence/spec-new-tests-vs-f3b2c32-runners.log. Nothing else under crates/, Cargo.toml or Cargo.lock:
+the only Rust change since c3ae380 is that comment.
+Cargo only through the shared serial wrapper (cargo-serial.py -> ./scripts/cargo -> mbx), default target, run from the
+worktree root, every step under a finite timeout (own wrapper, process group, no retry, no sleep). `./scripts/disk-guard.sh
+4 12` ran before g1, g3 and g9: "disk-guard: 19 GiB free (step 4 GiB, floor 12 GiB): ok" each time.
+Every step started with `git status --porcelain` EMPTY at the HEAD shown (record: tree line); the records were written to a
+temporary directory so that this file did not make the tree dirty, and were copied here afterwards.
+THE MACHINE WAS LOADED BY OTHER WORK: the 1-min load average read between 29.8 and 64.3 on 11 CPUs in these steps (the limit
+the measurement guard uses is 5.5). NO TIME WAS MEASURED, NO A/B, NO TIME MUTANT, NO NATIVE WINDOW: these steps prove that the
+Rust of the core compiles and what its tests and the runner spec say, nothing about performance.
+
+## g1-fmt
+command : python3 cargo-serial.py fmt --all -- --check
+exit    : 0 (DONE, 16.6 s)
+when    : 2026-11-11 03:47:47 -0300 -> 2026-11-11 03:48:04 -0300
+disk    : 19.00 GiB free before, 19.01 GiB after (floor 12 GiB)
+load    : 64.28 71.05 50.61 (before) -> 61.95 70.19 50.66   [1/5/15 min, 11 CPUs]
+tree    : HEAD e37a76faa, CLEAN (git status --porcelain empty before and after)
+result  : (no result line)
+
+## g2-clippy-core
+command : python3 cargo-serial.py clippy -p tessel-editor-core --all-targets --locked -- -D warnings
+exit    : 0 (DONE, 87.9 s)
+when    : 2026-11-11 03:48:15 -0300 -> 2026-11-11 03:49:43 -0300
+disk    : 19.00 GiB free before, 19.08 GiB after (floor 12 GiB)
+load    : 59.92 69.32 50.69 (before) -> 50.81 64.95 50.84   [1/5/15 min, 11 CPUs]
+tree    : HEAD e37a76faa, CLEAN (git status --porcelain empty before and after)
+result  : Finished `dev` profile [unoptimized + debuginfo] target(s) in 1m 25s
+result  : mbx[cache]: 14 hits, 63 misses; 0 B downloaded, 0 B uploaded, 10.8 MiB stored locally
+
+## g3-structure-test
+command : python3 cargo-serial.py test -p tessel-editor-core --locked --test scene_gizmo_perf_structure
+exit    : 0 (DONE, 26.1 s)
+when    : 2026-11-11 03:49:54 -0300 -> 2026-11-11 03:50:20 -0300
+disk    : 19.09 GiB free before, 19.07 GiB after (floor 12 GiB)
+load    : 48.20 63.93 50.64 (before) -> 42.60 61.04 50.05   [1/5/15 min, 11 CPUs]
+tree    : HEAD e37a76faa, CLEAN (git status --porcelain empty before and after)
+result  : Finished `test` profile [unoptimized + debuginfo] target(s) in 5.91s
+result  : running 7 tests
+result  : test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 18.30s
+result  : mbx[cache]: 24 hits, 1 misses; 0 B downloaded, 0 B uploaded, 13.5 MiB stored locally
+
+## g4-threads-test
+command : python3 cargo-serial.py test -p tessel-editor-core --locked --test scene_gizmo_perf_threads
+exit    : 0 (DONE, 17.7 s)
+when    : 2026-11-11 03:50:41 -0300 -> 2026-11-11 03:50:59 -0300
+disk    : 19.08 GiB free before, 19.08 GiB after (floor 12 GiB)
+load    : 39.40 59.10 49.61 (before) -> 35.42 57.25 49.12   [1/5/15 min, 11 CPUs]
+tree    : HEAD e37a76faa, CLEAN (git status --porcelain empty before and after)
+result  : Finished `test` profile [unoptimized + debuginfo] target(s) in 2.26s
+result  : running 1 test
+result  : test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 14.12s
+result  : mbx[cache]: 0 hits, 1 misses; 0 B downloaded, 0 B uploaded, 13.4 MiB stored locally
+
+## g5-spec
+command : env PYTHONDONTWRITEBYTECODE=1 python3 scripts/gizmo-perf/gizmo-perf.spec.py
+exit    : 0 (DONE, 31.9 s)
+when    : 2026-11-11 03:51:05 -0300 -> 2026-11-11 03:51:36 -0300
+disk    : 19.08 GiB free before, 19.06 GiB after (floor 12 GiB)
+load    : 34.83 56.76 48.99 (before) -> 30.36 53.22 48.01   [1/5/15 min, 11 CPUs]
+tree    : HEAD e37a76faa, CLEAN (git status --porcelain empty before and after)
+result  : Ran 111 tests in 31.576s
+result  : OK
+          (the stderr of the run has `fatal:` lines of git in temporary directories the tests create, a ResourceWarning
+          of a test that opens a lock file, and the `PREREQUISITE_MISSING` JSON line of a native.py test; the exit is 0)
+          Against the runners of f3b2c32 the new spec FAILS: spec-new-tests-vs-f3b2c32-runners.log (3 failures).
+
+## g6-corpus-check
+command : env PYTHONDONTWRITEBYTECODE=1 python3 scripts/gizmo-perf/corpus.py --check
+exit    : 0 (DONE, 0.1 s)
+when    : 2026-11-11 03:51:43 -0300 -> 2026-11-11 03:51:43 -0300
+disk    : 19.06 GiB free before, 19.06 GiB after (floor 12 GiB)
+load    : 30.49 52.87 47.92 (before) -> 30.49 52.87 47.92   [1/5/15 min, 11 CPUs]
+tree    : HEAD e37a76faa, CLEAN (git status --porcelain empty before and after)
+result  : corpus up to date
+
+## g7-diff-check-vs-f3b2c32
+command : git diff --check f3b2c32f7cf1e410d5b19d5c9ddc153db8dc3aff HEAD
+exit    : 0 (DONE, 0.1 s)
+when    : 2026-11-11 03:51:43 -0300 -> 2026-11-11 03:51:43 -0300
+disk    : 19.06 GiB free before, 19.06 GiB after (floor 12 GiB)
+load    : 30.49 52.87 47.92 (before) -> 30.49 52.87 47.92   [1/5/15 min, 11 CPUs]
+tree    : HEAD e37a76faa, CLEAN (git status --porcelain empty before and after)
+result  : (no result line)
+
+## g8-diff-check-vs-main
+command : git diff --check cbe9e1b393861febf073633fbbaa0da9857780b6 HEAD
+exit    : 0 (DONE, 0.1 s)
+when    : 2026-11-11 03:51:43 -0300 -> 2026-11-11 03:51:43 -0300
+disk    : 19.06 GiB free before, 19.06 GiB after (floor 12 GiB)
+load    : 30.49 52.87 47.92 (before) -> 30.49 52.87 47.92   [1/5/15 min, 11 CPUs]
+tree    : HEAD e37a76faa, CLEAN (git status --porcelain empty before and after)
+result  : (no result line)
+
+## g9-cargo-tree-no-gpui-wry
+command : python3 cargo-serial.py tree -p tessel-editor-core --locked, written to a temporary file, then `rg -i "gpui|wry"` over it
+          (run as `bash -c '...'`: the step exits 0 only if the tree command exits 0 AND rg finds nothing, rg exit 1)
+exit    : 0 (DONE, 0.9 s)
+when    : 2026-11-11 03:51:52 -0300 -> 2026-11-11 03:51:53 -0300
+disk    : 19.06 GiB free before, 19.06 GiB after (floor 12 GiB)
+load    : 29.82 51.99 47.67 (before) -> 29.82 51.99 47.67   [1/5/15 min, 11 CPUs]
+tree    : HEAD e37a76faa, CLEAN (git status --porcelain empty before and after)
+result  : tree-exit=0
+result  : rg-exit=1  (no line of the tree matches gpui|wry, case-insensitive)
+          16 lines of output = the wrapper's two "shared Tessel Cargo slot" lines + the 14 lines of the tree below
+--- cargo tree -p tessel-editor-core --locked (full output) ---
+Waiting for the shared Tessel Cargo slot
+Acquired shared Tessel Cargo slot
+tessel-editor-core v0.1.0 (/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-f1991227/crates/core)
+├── flate2 v1.1.10
+│   ├── crc32fast v1.5.4
+│   │   └── cfg-if v1.0.5
+│   └── miniz_oxide v0.9.1
+│       ├── adler2 v2.0.1
+│       └── simd-adler32 v0.3.10
+├── serde v1.0.229
+│   └── serde_core v1.0.229
+└── serde_json v1.0.154
+    ├── itoa v1.0.18
+    ├── memchr v2.8.3
+    ├── serde_core v1.0.229
+    └── zmij v1.0.23
+
+Not run in this round: `scene_gizmo_perf_budget` (it measures time; it is only compiled, by `clippy --all-targets`),
+`cargo test -p tessel-editor-core --no-fail-fast` (the core is unchanged since c3ae380 except a comment), `cargo test -p
+tessel-editor` (the host crate has not changed since c3ae380), `clippy --workspace`, the whole workspace with
+TESSEL_REQUIRE_RUNTIME=1 (another delegate's task), release builds, run.py, ab.py, mutate.py (`prepare` and `time`: the new
+check of mutate.py was exercised only by the spec, with fakes for git, the machine, the lock, the build and the run),
+native.py, and any time measurement. The step records of the cheap checks at the final head (spec, corpus.py --check and the
+two `git diff --check`) are in the delivery report: a file cannot record the exit of the commit that contains it.
