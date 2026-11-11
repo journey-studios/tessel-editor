@@ -4075,10 +4075,67 @@ class BoundedPolls(unittest.TestCase):
         self.assertTrue(Queued.asked and all(0 < timeout <= 60 for timeout in Queued.asked), Queued.asked)
 
 
+# --- round 9 (PR #44): what `settle_commit` does with the FIRST sighting of an acknowledgement ---------------------------
+# Two documented behaviours that the 18 tests of `LateAcknowledgement` and `Release` did not pin: a mutation of each of them
+# survived those tests (`spec-round9-ack-tests-vs-mutants.log`). The tests run on fakes: no benchmark, no window, no build.
+
+
+class ScriptedReads(native.Window):
+    """`settle_commit` over a monitor whose reads are scripted one by one: only `viewport` is scripted (like `SlowMonitor`) and a
+    read takes the virtual clock `cost` seconds, the answer reflecting the state at the END of the read (like `HostWindow`).
+    Each entry of `script` is `(cost, converged, matches)`: the monitor shows the candidate's picture converged (`converged`) or
+    a redraw still in flight, and the page's acknowledgement is the one of the committed state (`matches`) or still the one of
+    the revision before. A read the script does not have is an error, never a repeat of the last one: the scenario is exactly
+    what the script says."""
+
+    def __init__(self, clock, script, step, candidate, scene='proof'):
+        self.clock, self.script, self.step, self.candidate, self.scene = clock, list(script), step, candidate, scene
+        self.deadline = None
+
+    def shows(self, converged, matches):
+        """The state the monitor answers with (the shape `HostWindow.viewport` answers for the candidate's picture)."""
+        revision = HostWindow.REVISION + (1 if matches else 0)
+        return {'phase': 'ready', 'headline': '', 'overlay': {'supported': True, 'drawn': release_overlay(self.step, revision)},
+                'directed': {'scene': self.scene, 'queued': None, 'suspended': False,
+                             'active': None if converged else {'id': self.candidate[0] + 1},
+                             'shown': {'request_id': self.candidate[0], 'edit_frame': 24}},
+                'last_frame': {'request': self.candidate[0], 'revision': self.candidate[0], 'hash': self.candidate[1]}}
+
+    def viewport(self, timeout=90):
+        if not self.script:
+            raise AssertionError('settle_commit read the monitor once more than the script has')
+        cost, converged, matches = self.script.pop(0)
+        self.clock.sleep(cost)
+        return self.shows(converged, matches)
+
+
 class LateAcknowledgement(GestureCase):
     """`settle_commit`: a MATCHING acknowledgement counts only when the read that first saw it came within `ACK_SECONDS` of the
     first read of the candidate's picture. A slow read cannot say when the acknowledgement really arrived, and a runner that
-    cannot know turns that into `unconfirmed`, never into a dedupe."""
+    cannot know turns that into `unconfirmed`, never into a dedupe. Two more properties are pinned (round 9): the lateness is
+    judged on the read that FIRST saw the acknowledgement, never on the time of the reads that follow it (a slow read after an
+    acknowledgement seen in time cannot make it late), and an acknowledgement that stops matching starts over: only its NEXT
+    match counts, because a match older than the gap says nothing about what the page shows after it.
+
+    The reset of `acked_at` together with `first_at` when the picture stops converging is NOT covered here, on purpose: it is
+    defensive and no read sequence can tell it from `first_at = None` alone (the stale `acked_at` is older than the new
+    `first_at`, so it is never late, and a read whose acknowledgement does not match zeroes it before a later match could use
+    it), so a test of it would pass on both versions (an equivalent mutant, docs/features/scene-gizmo-performance.md, round 9)."""
+
+    def settle_script(self, script):
+        """`settle_commit` for the translate release of `STEP` over `ScriptedReads(script)`: the candidate is `CANDIDATE`, the
+        release answered the overlay of the revision after `HostWindow.REVISION` and the page must acknowledge it."""
+        clock = VirtualClock()
+        window = ScriptedReads(clock, script, self.STEP, self.CANDIDATE)
+        overlay = release_overlay(self.STEP, HostWindow.REVISION + 1)
+        info = native.picture(window.shows(converged=True, matches=True))
+        started = clock.now
+        with patch.object(native, 'time', clock), bounded(10):
+            tool = {'tool': self.STEP['tool'], 'space': self.STEP['space']}
+            settled = window.settle_commit('proof', 24, info, overlay, tool)
+        self.spent = clock.now - started
+        self.unread = window.script  # the reads the scenario had and `settle_commit` did not make
+        return settled
 
     def settle(self, ack_delay, read_cost):
         clock = VirtualClock()
@@ -4114,6 +4171,36 @@ class LateAcknowledgement(GestureCase):
         self.assertIsNone(settled['outcome'])
         self.assertIn('never acknowledged', settled['problem'])
         self.assertLess(self.spent, native.ACK_SECONDS + 1.5)
+
+    def test_an_acknowledgement_seen_with_the_picture_is_in_time_even_when_the_slow_reads_that_follow_pass_the_ack_budget(self):
+        # every read takes 6 s, longer than the 5 s budget. The first read already shows the picture AND the matching
+        # acknowledgement, so as far as any read can tell it was there from the start; the second ends 6 s after the first
+        # sighting and shows the same thing. Only the read that FIRST saw the acknowledgement is judged against the budget
+        # (it was 0 s after the picture): the time the later reads take is not evidence that the acknowledgement was late
+        # (the ack_delay=3/read_cost=2 test above cannot tell the two rules apart: the read that first saw the acknowledgement
+        # is also the current one there, so both distances are the same 2 s).
+        settled = self.settle(ack_delay=0.0, read_cost=6.0)
+        self.assertEqual(settled['outcome'], 'deduped')
+        self.assertIsNone(settled['problem'])
+        self.assertEqual(settled['observed']['ack_problems'], [])
+        self.assertEqual(settled['observed']['reads'], 2)  # one that saw the picture and its acknowledgement, one for the quiet period
+        self.assertGreater(self.spent, native.ACK_SECONDS)  # the wait itself outlasted the budget: that is not lateness
+
+    def test_an_acknowledgement_that_matched_then_stopped_and_matched_again_after_the_budget_is_unconfirmed_not_deduped(self):
+        # reads as (cost, the picture is the candidate's and converged, the acknowledgement matches):
+        #   0.01 s: yes, yes   the picture is first seen and the acknowledgement already matches
+        #   2.0 s:  yes, NO    the acknowledgement stops matching (still the revision before)
+        #   3.5 s:  yes, yes   it matches again, 5.52 s after the picture was first seen: past the 5 s budget
+        # What the first read saw is not evidence about the page after the gap: "first seen" starts over at the read that
+        # saw it again, which is late. A stale first sighting (0 s) would make this a dedupe, a false pass.
+        settled = self.settle_script([(0.01, True, True), (2.0, True, False), (3.5, True, True)])
+        self.assertIsNone(settled['outcome'])
+        self.assertIn('unconfirmed', settled['problem'])
+        self.assertIn('only 5.5 s after the candidate\'s picture was first seen', settled['problem'])
+        self.assertIn(f'{native.ACK_SECONDS:g} s budget', settled['problem'])
+        self.assertEqual(settled['observed']['ack_problems'], [])  # the last read DID match: it came too late to count
+        self.assertEqual(settled['observed']['reads'], 3)
+        self.assertEqual(self.unread, [])  # the verdict came at the third read, the one that saw it match again
 
 
 if __name__ == '__main__':
