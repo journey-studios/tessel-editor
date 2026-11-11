@@ -2,7 +2,7 @@
 
 Compara, no editor real, `TESSEL_PLAYBACK_POLL=fixed` (o relógio é consultado meio quadro depois de cada resposta) com `deadline` (a consulta é armada para a próxima fronteira de quadro, no mínimo duas vezes por
 quadro). Fala da **regularidade das imagens** entregues e de **quão cedo uma troca de quadro é pedida**; **não** fala das pausas de 60–160 ms de BL157 e **não é aceite do usuário**.
-Contrato e leitura: [F018](../../features/playback.md), [F060 §BL157.6](../../features/viewport-asset-io.md#bl1576--a-cadência-do-relógio-de-reprodução-e-o-agendamento-da-consulta),
+Contrato e leitura: [F018](../../features/playback.md), [F063 §BL157.6](../../features/viewport-asset-io.md#bl1576--a-cadência-do-relógio-de-reprodução-e-o-agendamento-da-consulta),
 [relatório §16.7](../../viewport-real-latency-ab-report.md#167-bl1576-a-cadência-do-relógio-de-reprodução-e-o-agendamento-da-consulta).
 
 | Arquivo | O que é |

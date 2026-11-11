@@ -41,7 +41,7 @@ per-frame create/dispose path (A/B and rollback). Neither adds a control: both a
 With the same trace, `ui op '{"op":"render.trace","since":0,"limit":4096}'` returns the correlation events (tick, prefetch, protocol
 requests, asset reads, page spans) after a cursor, with `lost` when the reader fell behind the 16 384-event window;
 `TESSEL_VIEWPORT_ASSET_IO=sync|async` (default `sync`) picks who reads project files for the `tessel://` protocol and
-`render.status` reports `asset_io`. `./scripts/headless` has no window, so it answers `desktop_required` ([F058](features/viewport-asset-io.md)).
+`render.status` reports `asset_io`. `./scripts/headless` has no window, so it answers `desktop_required` ([F063](features/viewport-asset-io.md)).
 
 `scripts/proxy-live-proof.py` (OPT01/OPT04) starts the release binary with an isolated `HOME` per variant and checks, with
 semantic requests only: the media job builds the preview proxy (`op preview.policy` → `proxy_ready`), a scrub frame is drawn

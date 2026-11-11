@@ -1,6 +1,6 @@
-# F060 — Diagnóstico de I/O de assets do viewport (BL157.1)
+# F063 — Diagnóstico de I/O de assets do viewport (BL157.1)
 
-ID atual **F060** após integração com `main`: F058/F059 pertencem às chaves de FX e ao grão. Referências antigas a F058 nesta PR eram do diagnóstico.
+ID atual **F063** após integração com `main`: F058/F059 pertencem às chaves de FX e ao grão. Referências antigas a F058 nesta PR eram do diagnóstico.
 
 ## Objetivo e limites
 

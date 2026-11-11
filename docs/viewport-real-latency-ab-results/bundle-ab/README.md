@@ -1,7 +1,7 @@
 # BL157.4 — resultados da prova nativa e da réplica do laboratório
 
 Dados gerados da checagem do `releaseLock` do decodificador do Spark. Leitura, regras e limites: [relatório §16](../../viewport-real-latency-ab-report.md#16-bl1574-deadlock-do-webkit-no-decodificador-laboratório-de-webkit-real-e-prova-nativa-pr-41-após-4c16656)
-e [F060](../../features/viewport-asset-io.md#bl1574--o-deadlock-do-webkit-no-decodificador-o-laboratório-e-a-prova-nativa). **Veredito de ambas as réplicas: NÃO REPRODUZIDO** (sem poder para julgar a correção).
+e [F063](../../features/viewport-asset-io.md#bl1574--o-deadlock-do-webkit-no-decodificador-o-laboratório-e-a-prova-nativa). **Veredito de ambas as réplicas: NÃO REPRODUZIDO** (sem poder para julgar a correção).
 
 | Arquivo | O que é |
 |---|---|

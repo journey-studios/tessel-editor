@@ -3,7 +3,7 @@
 **A latência continua não aceita.** Nada aqui fecha o BL157 nem declara um limite aprovado: 62,5 ms e 100 ms são gatilhos
 diagnósticos e 41,7 ms (24 fps) é só a referência de orçamento. Plano: [real-latency-ab-test-plan.md](migration/real-latency-ab-test-plan.md);
 investigação anterior: [viewport-real-latency-investigation.md](viewport-real-latency-investigation.md); contrato do que foi
-construído: [F060](features/viewport-asset-io.md); dados: [viewport-real-latency-ab-results/](viewport-real-latency-ab-results/).
+construído: [F063](features/viewport-asset-io.md); dados: [viewport-real-latency-ab-results/](viewport-real-latency-ab-results/).
 
 ## 1. Resultado em uma página
 
@@ -214,7 +214,7 @@ As sessões brutas (1,5 MB cada) ficam fora do Git; seus sha256 estão em
 
 ## 11. BL157.2: onde está o trânsito do quadro
 
-**Latência continua NÃO ACEITA; nenhuma mudança de produto foi feita; BL157 segue aberto.** Contrato dos probes: [F060](features/viewport-asset-io.md#bl1572--probes-do-trânsito-do-quadro-opt-in-o-mesmo-custo-nos-dois-braços).
+**Latência continua NÃO ACEITA; nenhuma mudança de produto foi feita; BL157 segue aberto.** Contrato dos probes: [F063](features/viewport-asset-io.md#bl1572--probes-do-trânsito-do-quadro-opt-in-o-mesmo-custo-nos-dois-braços).
 Dados por run em [viewport-real-latency-ab-results/bl157-2/](viewport-real-latency-ab-results/bl157-2/) (lotes separados, cada um com seu binário/runtime/documento
 em `manifest`; **não se somam**; o final é `loop4-final-analysis.md` e `ab4.md`, binário `ac023eba…`, runtime `1fed1ef9…`, código `a01090b`).
 Projeto real (23 assets, só o documento foi copiado), janela 114–210 (3 s antes do primeiro corte até 1 s depois), I/O `async` fixo, TRACE e page
@@ -294,7 +294,7 @@ Nenhuma correção de latência foi implementada nesta rodada da coordenação. 
 
 Dois fatores de custo de primeiro uso, **opt-in, desligados por padrão**, medidos separadamente no mesmo binário (`4e334135…`, runtime `f721cd65…`,
 documento `e93363ae…`), com `async` e warm do sort ligados nos dois braços, `gpu_finish=false`, `TESSEL_GL=gpu`. Contrato, regras, provas de Chrome e
-mutação: [F060 §BL157.3](features/viewport-asset-io.md). Runner `scripts/first-use-ab.py` (+ spec, 19 testes) sobre `real-latency-ab.py` e
+mutação: [F063 §BL157.3](features/viewport-asset-io.md). Runner `scripts/first-use-ab.py` (+ spec, 19 testes) sobre `real-latency-ab.py` e
 `viewport-transit-probe.py`. Dados: [first-use/](viewport-real-latency-ab-results/first-use/) (`analysis.md`, `manifest.json`, `runs.sha256` de cada
 conjunto; JSON brutos fora do Git por conterem o projeto privado).
 
@@ -343,7 +343,7 @@ scripts e docs):
 | Specs Python (`first-use-ab`, `real-latency-ab`, `viewport-transit-probe`, `scene-warm-proof`) | 0 (19, 22, 18 e a do `scene-warm-proof`) |
 | `cargo tree -p tessel-editor-core` | sem `gpui`/`wry` |
 | Headless JSONL | N/A para os dois fatores (`render.trace` e o relato da janela exigem o desktop; a regra do fator é testada no core, `bridge`/`session`) |
-| Janela real, binário `4e334135…`, só pedidos semânticos, sem coordenadas | `first-use-ab.py pixels --factor warm_draw`: PASS (ver F060); pré-upload: N/A na janela (o projeto sintético não tem imagens), provado em Chrome real |
+| Janela real, binário `4e334135…`, só pedidos semânticos, sem coordenadas | `first-use-ab.py pixels --factor warm_draw`: PASS (ver F063); pré-upload: N/A na janela (o projeto sintético não tem imagens), provado em Chrome real |
 | Locks de GPU | uma tentativa de 15 s nas execuções de desempenho e de pixels: adquiridos; nenhum lock removido, nenhuma espera repetida |
 
 A primeira tentativa de pixels foi **BLOCKED** pelo piso de disco do runner (15,3 GiB < 16); depois, com a prova escrevendo < 1 GiB, o piso inicial
@@ -357,7 +357,7 @@ provado); as páginas que param sob carga.
 ## 14. Integração e resíduos de revisão após `5adf5b9`
 
 A coordenação integrou a `main` por merge (`08cdfd4`), preservando FX/chaves/grão e resolvendo o conflito da matriz.
-O diagnóstico passou de F058 para **F060**, pois F058/F059 já pertencem às features de FX na `main`.
+O diagnóstico passou de F058 para **F063**, pois F058/F059 já pertencem às features de FX na `main`.
 Os gates de §13.1 continuam históricos de `5adf5b9`: não validam a árvore integrada nem as correções seguintes.
 
 Reproduções puras antes dos fixes: dois testes de carga concorrente falharam (a carga antiga apagava os tempos da nova);
@@ -383,7 +383,7 @@ não foram iniciados: 14 GiB livres, abaixo da reserva de 16 GiB. Nada foi limpo
 ## 15. BL157.3: o que os testes unitários provam, sem janela (PR #41, após `b53775e`)
 
 A pergunta foi: "isso não dá para fazer com unit testing?". Dá para as **decisões**, não para as **medidas**. Matriz teste → garantia, cadeia de
-ativação, mutação e limites: [F060](features/viewport-asset-io.md#bl1573--o-que-os-testes-unitários-provam-e-o-que-não-podem-provar).
+ativação, mutação e limites: [F063](features/viewport-asset-io.md#bl1573--o-que-os-testes-unitários-provam-e-o-que-não-podem-provar).
 Nenhum comportamento do produto mudou (o único toque em código de produto é o parâmetro `createCompositor` de `createRuntime`, com o `Compositor`
 real como padrão) e **nenhuma medida de latência foi produzida**.
 
@@ -515,7 +515,7 @@ cancelados com a página ainda atendendo pedidos) são **compatíveis** com um a
 
 ### 16.5 Prova nativa: o editor real, a mesma build, dois `runtime.js`
 
-`scripts/runtime-bundle-ab.py run` (contrato e regras, fixadas antes de medir, em [F060](features/viewport-asset-io.md#bl1574--o-deadlock-do-webkit-no-decodificador-o-laboratório-e-a-prova-nativa)):
+`scripts/runtime-bundle-ab.py run` (contrato e regras, fixadas antes de medir, em [F063](features/viewport-asset-io.md#bl1574--o-deadlock-do-webkit-no-decodificador-o-laboratório-e-a-prova-nativa)):
 o **mesmo binário** do editor (`4e334135…`) e o mesmo projeto real (25 s, 600 quadros; `0b456aec…`), um editor novo por sessão que toca o projeto duas vezes, 36 pares alternados
 (72 sessões, 80 min; a ordem dentro do par inverte a cada par), com 6 processos de CPU ocupados ao lado de cada sessão para dar carga igual aos dois braços. Os braços diferem **só** no
 `runtime.js` (`TESSEL_RUNTIME_DIR` aponta para uma pasta temporária por braço): sem a correção (`c7d27bd2…`, 4.281.059 B) e com ela (`78a0c8f4…`, 4.281.045 B: o `dist` atual, que
@@ -580,7 +580,7 @@ um artefato do laboratório. **O que não mostra:** que a correção o evita; 1 
   enquanto outro código aloca em laço, para forçar a coleta no momento certo), com a mesma regra fixada antes.
 - A causa da espera de GPU na primeira entrada segue **sem atribuição**; o `warm_draw` segue **opt-in** (desloca o custo, não o elimina) e promovê-lo a padrão exige A/B nativo pareado em máquina quieta
   (`scripts/first-use-ab.py full --factor warm_draw --pairs N`, que existe; não foi repetido nesta entrega) e uma decisão deliberada.
-- A prova de **pixels** nativa do `warm_draw` com o veredito de ativação (`first-use-ab.py pixels --factor warm_draw`) e a correlação dos fetches de `frame_sequence` continuam pendentes (F060).
+- A prova de **pixels** nativa do `warm_draw` com o veredito de ativação (`first-use-ab.py pixels --factor warm_draw`) e a correlação dos fetches de `frame_sequence` continuam pendentes (F063).
 - As três hipóteses de §16.3 **não foram testadas**; testá-las precisa de instrumentação do processo de GPU (captura de quadro Metal), que o laboratório não tem.
 - A cadência do relógio de reprodução (§16.7, BL157.6): a consulta por prazo (`TESSEL_PLAYBACK_POLL=deadline`) foi entregue **opt-in**, com o padrão `fixed`; o efeito no editor real **não foi medido** (o A/B nativo pareado não rodou: falta disco) e a pausa de 60–160 ms não é o alvo dela.
 - **Gates do head final desta entrega.** Nada de Rust mudou nesta rodada; o único Rust novo desde `b53775e` é o teste do host do §15, e os gates abaixo rodaram nele (fecham a pendência do §15):
@@ -610,7 +610,7 @@ O traço do host tem 28 quadros pulados em 86.098 trocas (consultas em que o rel
 **A mudança (opt-in; padrão `fixed`).** `TESSEL_PLAYBACK_POLL=deadline` arma a próxima consulta para a próxima fronteira de quadro **mais 1 ms de folga**, descontado o tempo desde que o relógio foi lido e nunca mais que
 meio quadro (a consulta continua a acontecer ao menos 2 vezes por quadro, então um quadro que atrasa, um `seek` ou um relógio que se reestima ainda são vistos em meio quadro); sem leitura, com o relógio parado ou em pausa, ou com uma
 taxa inválida, espera meio quadro como `fixed`. A conta é a função pura `playback_poll::next_poll` e o laço de `playback.rs` a usa; contrato, testes e superfícies em
-[F060 §BL157.6](features/viewport-asset-io.md#bl1576--a-cadência-do-relógio-de-reprodução-e-o-agendamento-da-consulta) e [F018](features/playback.md). O **modelo** (que reproduz primeiro as medidas nativas do `fixed`) prevê para o `deadline`
+[F063 §BL157.6](features/viewport-asset-io.md#bl1576--a-cadência-do-relógio-de-reprodução-e-o-agendamento-da-consulta) e [F018](features/playback.md). O **modelo** (que reproduz primeiro as medidas nativas do `fixed`) prevê para o `deadline`
 a 24 fps: 0% das imagens a menos de 30 ms da anterior, atraso médio de observação de 2,46 ms (guarda de 1 ms + atraso do timer, ≈ 1,46 ms) contra 11,15 ms, e 2,00 consultas por troca contra 1,87.
 **É um modelo**: ele assume um relógio perfeito e um timer com atraso constante, e não diz nada sobre o editor real.
 
@@ -628,7 +628,7 @@ sobrevivente é equivalente) e o laço (10 testes determinísticos, mutação 19
 ≈ 2,5 ms e se isso não piora o resto. Para rodar: `./scripts/runtime setup && ./scripts/cargo build -p tessel-editor --locked --release`, depois
 `python3 scripts/playback-poll-ab.py run --binary target/release/tessel-editor --project <projeto.tessel.json> --out <dir> --pairs 12 --report-dir docs/viewport-real-latency-ab-results/poll-ab` (≈ 35 min; janela e áudio reais).
 
-**Fumaça informal no editor real (não é o A/B).** Quatro sessões (duas por braço) do binário **debug**, com o projeto real e a máquina com carga média de 9 a 22, tocaram o projeto até o fim nos dois modos, sem erro e com o braço confirmado pelo host: o laço funciona na janela real. Os números **não** são o efeito: o timer chegou ≈ 20 ms atrasado (no release, 1,46 ms), as consultas por troca foram 1,00–1,01 (`fixed`) e 1,20–1,36 (`deadline`) em vez de 1,87 e 2,00, e pela regra fixada esse regime daria CONTROLE NÃO REPRODUZIDO. Delas saiu um achado, **BL157.7** (aberto, custo não medido): cada consulta termina em `cx.notify()`, tenha o quadro trocado ou não. Detalhes em [F060 §BL157.6](features/viewport-asset-io.md#fumaça-no-editor-real-informal-não-é-o-ab).
+**Fumaça informal no editor real (não é o A/B).** Quatro sessões (duas por braço) do binário **debug**, com o projeto real e a máquina com carga média de 9 a 22, tocaram o projeto até o fim nos dois modos, sem erro e com o braço confirmado pelo host: o laço funciona na janela real. Os números **não** são o efeito: o timer chegou ≈ 20 ms atrasado (no release, 1,46 ms), as consultas por troca foram 1,00–1,01 (`fixed`) e 1,20–1,36 (`deadline`) em vez de 1,87 e 2,00, e pela regra fixada esse regime daria CONTROLE NÃO REPRODUZIDO. Delas saiu um achado, **BL157.7** (aberto, custo não medido): cada consulta termina em `cx.notify()`, tenha o quadro trocado ou não. Detalhes em [F063 §BL157.6](features/viewport-asset-io.md#fumaça-no-editor-real-informal-não-é-o-ab).
 
 **Limites desta etapa.** Mesmo com um veredito ADOTAR, o ganho é de regularidade: **não** reduz as pausas de 60–160 ms do corte e do primeiro crossfade, que são o que o usuário não aceitou (BL157 segue aberto). A defasagem
 áudio-imagem muda em até meia consulta (≈ 11 ms) ao mudar o agendamento, e **ninguém ouviu** o resultado (`heard:false`, F018). Resultados gerados das 72 sessões:
