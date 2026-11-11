@@ -289,3 +289,66 @@ Logs e dados brutos locais em `/tmp/pr41-coordination/`; nenhum asset privado no
 Não foi necessário repetir build/workspace por estes novos documentos. O bloqueio dos locks
 registrado no §9 era daquela tentativa; a reprodução final acima agora foi executada.
 Nenhuma correção de latência foi implementada nesta rodada da coordenação. BL157 segue não aceito.
+
+## 13. BL157.3: pré-upload da textura PNG e warm draw (PR #41, `fb0036f` + docs)
+
+Dois fatores de custo de primeiro uso, **opt-in, desligados por padrão**, medidos separadamente no mesmo binário (`4e334135…`, runtime `f721cd65…`,
+documento `e93363ae…`), com `async` e warm do sort ligados nos dois braços, `gpu_finish=false`, `TESSEL_GL=gpu`. Contrato, regras, provas de Chrome e
+mutação: [F058 §BL157.3](features/viewport-asset-io.md). Runner `scripts/first-use-ab.py` (+ spec, 19 testes) sobre `real-latency-ab.py` e
+`viewport-transit-probe.py`. Dados: [first-use/](viewport-real-latency-ab-results/first-use/) (`analysis.md`, `manifest.json`, `runs.sha256` de cada
+conjunto; JSON brutos fora do Git por conterem o projeto privado).
+
+Execução: janela estreita 114–210 (1 par por fator, 2 sessões) e projeto real completo (4 pares alternados controle/ligado, 8 sessões por fator),
+**todas as 20 sessões válidas e mantidas** (nenhuma descartada). Classes: nas 16 sessões completas, 14 "carregadas" e 2 "quietas" (carga média de outras
+tarefas 9–57); **0 de 4 pares comparáveis por fator**. Nenhuma tolerância foi relaxada.
+
+| | A pré-upload | B warm draw |
+|---|---|---|
+| Entrada PNG 196, 1ª reprodução (n=28), p50/p95/max ms, controle → ligado | 58,4/72,4/110,9 → **44,2/51,6/55,5** | 57,9/71,6/76,2 → 64,1/113,6/129,2 |
+| Entrada PNG, repetições | 56,0/76,4/93,5 → 44,1/48,9/49,0 | 62,6/82,9/86,5 → 56,0/114,7/122,0 |
+| Entrada do corte (n=12), p50/p95/max | 49,4/68,7/68,7 → 50,4/59,8/59,8 | 50,0/73,6/73,6 → 47,2/142,7/142,7 |
+| Intervalos > 62,5 ms por run (1ª reprodução) | 3,9,4,1 → 3,1,1,3 | 1,3,11,5 → 6,4,12,9 |
+| > 100 ms por run | 0,1,0,0 → 0,0,0,0 | 0,0,1,0 → 2,0,3,3 |
+| Excesso pré-corte por run, ms | 320/439/358/389 → 374/338/308/393 | 349/357/537/374 → 500/436/416/710 |
+| Memória, mediana das medianas / picos por run (MiB) | 865 / 996–1395 → 958 / 1034–1569 | 777 / 792–1168 → 640 / 677–1412 |
+| `HANG` (play com < 90 % dos quadros ou espera > 2 s) | 0 | 1 (par 2, repetição: 11,1 s, 165 de 600 imagens, pico de carga 56,7) |
+| Veredito mecânico (regras pré-fixadas) | `SHIFTED` (1 de 4 pares com +53,6 ms); agregado dentro da dispersão | sem benefício local |
+
+**Leitura:**
+
+1. **A** reduz de modo claro o custo **local** da primeira imagem (o `texSubImage2D` de 13–27 ms sai do corte da imagem e vai para um passo de
+   pré-upload de ≤ 48 ms atrás dos quadros em espera). **Não resolve as pausas grandes** (entradas de corte iguais; `prefetch:268` 63–79 ms nos dois
+   braços) e portanto **não fecha BL157**. Não há deslocamento demonstrado para antes do corte, mas o excesso de um par cresceu e a carga externa
+   impede afirmar que não houve.
+2. **B** não sustentou a hipótese de custo de primeiro uso do draw: não reduziu a entrada do corte e o braço ligado teve mais pausas. Com carga
+   desigual isso não demonstra piora; demonstra ausência de benefício. Rejeitado como candidato.
+3. O `HANG` do B é mantido e **sem causa determinada** (laço da página com `loop_stall` de 4,7 s e `clientWaitSync` de 349 ms em carga 56); a mesma
+   classe de parada ocorreu sem o fator em `ab1`–`ab3` (5 de 28 runs).
+4. Memória: sem diferença atribuível; picos de até 1569 MiB no A ligado (um run), nenhuma promessa.
+5. Pixels: ver §13.1.
+
+### 13.1 Gates e provas de pixels no código final
+
+Gates no código final (`./scripts/cargo`; saídas em `/tmp/pr41-preupload/gates/`, fora do Git; as fontes Rust são as de `fb0036f`, depois só
+scripts e docs):
+
+| Gate | Resultado |
+|---|---|
+| `cargo fmt --all -- --check` | 0 |
+| `./scripts/cargo check --workspace --locked` | 0 |
+| `./scripts/cargo clippy --workspace --all-targets --locked -- -D warnings` | 0 |
+| `TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test --workspace --locked --no-fail-fast` | 0; 2153 passaram, 0 falharam, 12 ignorados; sem SKIP |
+| Build debug e release de `tessel-editor` | 0 e 0; sha256 do release `4e334135…` (o mesmo binário das medições) |
+| `./scripts/runtime setup` e `./scripts/runtime test` (Chrome real) | 0 e 0; 256/256 sem SKIP |
+| Specs Python (`first-use-ab`, `real-latency-ab`, `viewport-transit-probe`, `scene-warm-proof`) | 0 (19, 22, 18 e a do `scene-warm-proof`) |
+| `cargo tree -p tessel-editor-core` | sem `gpui`/`wry` |
+| Headless JSONL | N/A para os dois fatores (`render.trace` e o relato da janela exigem o desktop; a regra do fator é testada no core, `bridge`/`session`) |
+| Janela real, binário `4e334135…`, só pedidos semânticos, sem coordenadas | `first-use-ab.py pixels --factor warm_draw`: PASS (ver F058); pré-upload: N/A na janela (o projeto sintético não tem imagens), provado em Chrome real |
+| Locks de GPU | uma tentativa de 15 s nas execuções de desempenho e de pixels: adquiridos; nenhum lock removido, nenhuma espera repetida |
+
+A primeira tentativa de pixels foi **BLOCKED** pelo piso de disco do runner (15,3 GiB < 16); depois, com a prova escrevendo < 1 GiB, o piso inicial
+foi passado explicitamente (`--min-free-gib 13`, acima do piso duro de 12 GiB) e o resultado acima é dessa execução.
+
+Hipóteses: **confirmada (local):** a primeira imagem PNG paga `texSubImage2D`; subi-la antes tira o custo da entrada. **Refutada (neste teste):** um
+draw de aquecimento reduz o intervalo do corte. **Em aberto:** a parada de 60–160 ms da página depois do draw do corte (GPU pendente é consistente, não
+provado); as páginas que param sob carga.

@@ -325,6 +325,7 @@ def run_iteration(W, binary, document, project, io, window, number, arm_env=None
         if sampler:
             sampler.stop()
             record["external_cores"] = sampler.external
+            record["memory_series"] = sampler.rows
         if lab:
             try:
                 RL.collect(lab, state, 0)

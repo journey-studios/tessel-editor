@@ -642,7 +642,8 @@ def collect(lab, state, deadline):
     status = lab.report()
     merge_by_key(state["frames"], ((status.get("session") or {}).get("trace") or {}).get("recent"), "id")
     state["status"] = {"asset_io": status.get("asset_io"), "stats": (status.get("session") or {}).get("stats"),
-                       "error": (status.get("session") or {}).get("error")}
+                       "error": (status.get("session") or {}).get("error"),
+                       "preupload": (status.get("session") or {}).get("preupload"), "warm_draw": (status.get("session") or {}).get("warm_draw")}
     state["loadavg"].append([round(v, 2) for v in os.getloadavg()])
     return True
 
@@ -699,11 +700,14 @@ def editor_exit(lab):
     return {"returncode_before_stop": code, "alive": code is None, "log_lines": lines[-12:]}
 
 
-def run_session(W, binary, document, project, mode, out_dir, number, order_index, stress):
-    """One fresh editor in `mode`: opens a private copy, plays the project twice, returns the raw session record."""
+def run_session(W, binary, document, project, mode, out_dir, number, order_index, stress, env_extra=None, arm=None):
+    """One fresh editor in `mode`: opens a private copy, plays the project twice, returns the raw session record.
+
+    `env_extra` and `arm` (BL157.3) are for an experiment that holds the asset I/O mode fixed and varies one other switch: the extra
+    environment of the session and the name of its arm, both recorded in the raw record. Absent, the session is what it always was."""
     work = tempfile.mkdtemp(prefix="rl-", dir="/tmp")
     record = {"number": number, "mode": mode, "order_index": order_index, "started_unix": time.time(),
-              "env": {"TESSEL_GL": "gpu", "TESSEL_VIEWPORT_TRACE": "1", "TESSEL_VIEWPORT_ASSET_IO": mode},
+              "env": {"TESSEL_GL": "gpu", "TESSEL_VIEWPORT_TRACE": "1", "TESSEL_VIEWPORT_ASSET_IO": mode, **(env_extra or {})}, "arm": arm,
               "host": {"ncpu": os.cpu_count(), "system": platform.platform(), "loadavg_start": [round(v, 2) for v in os.getloadavg()],
                        "free_gib_start": round(W.free_gib(), 1)}}
     state = {"cursor": 0, "events": [], "frames": {}, "lost": 0, "errors": [], "loadavg": [], "status": {}}

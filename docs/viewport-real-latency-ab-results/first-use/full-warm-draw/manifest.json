@@ -1,0 +1,38 @@
+{
+  "git": {
+    "sha": "fb0036f14a5a9e75dd99265ca04cdc4ea286f917",
+    "dirty_files": 6,
+    "diff_sha256": "ed18ec6cf2462bfefbb14cd95a3a96d62d8aaa7b7dd0a3aa0ae9f0684759445a"
+  },
+  "binary_sha256": "4e3341359878bf93471fdeff48d6e77ea927720617cb9185c5dec36f08c6bef6",
+  "runtime_sha256": "f721cd6551017f6bb67c6a9898d9036ad4092883bd3f42164d6bbfc8c38a3aa5",
+  "document_sha256": "e93363aecc4c05915fa5b74892f2f7b26b8d1cc9442c1b1a49866960eec309d7",
+  "factor": "warm_draw",
+  "mode": "full",
+  "window": null,
+  "order": [
+    "control",
+    "on",
+    "on",
+    "control",
+    "control",
+    "on",
+    "on",
+    "control"
+  ],
+  "io": "async",
+  "label": "",
+  "started_unix": 1794355980.9635808,
+  "entry": 186,
+  "env_control": {
+    "TESSEL_VIEWPORT_WARM_DRAW": "0",
+    "TESSEL_VIEWPORT_PREUPLOAD": "0",
+    "TESSEL_VIEWPORT_PROBE_GPU_FINISH": "0"
+  },
+  "env_on": {
+    "TESSEL_VIEWPORT_WARM_DRAW": "1",
+    "TESSEL_VIEWPORT_PREUPLOAD": "0",
+    "TESSEL_VIEWPORT_PROBE_GPU_FINISH": "0"
+  },
+  "finished_unix": 1794356487.789238
+}

@@ -240,6 +240,39 @@ test('a lost context drops a queued draw; the next frame is the picture of a run
   });
 });
 
+test('a draw asked on a context that was just lost (its event not delivered yet, the stage still known) is refused', async (t) => {
+  if (skipUnavailable(t, assert)) return;
+  const files = kit(['a']);
+  await withRuntime(files, ON, async (runtime) => {
+    await watchRenders(runtime);
+    // Keep the item the runtime hands to its scheduler, so the test can ask for the same draw again on a lost context.
+    await runtime.page.evaluate(() => {
+      const compositor = window.TesselRuntime.debug.compositor();
+      const take = compositor.takeWarmDraws.bind(compositor);
+      window.__items = [];
+      compositor.takeWarmDraws = () => {
+        const items = take();
+        window.__items.push(...items);
+        return items;
+      };
+    });
+    const s = await warm(runtime, [at('scene-a', -2)]);
+    assert.equal(s.drawn, 1);
+    const before = await scratchDraws(runtime);
+    // `loseContext()` makes `isContextLost()` true at once; the `webglcontextlost` event, which clears the stages, comes later.
+    const outcome = await runtime.page.evaluate(async () => {
+      const debug = window.TesselRuntime.debug;
+      debug.loseContext();
+      const compositor = debug.compositor();
+      const known = compositor.stages.entries.has(window.__items[0].lineage);
+      return { known, outcome: await compositor.warmDraw(window.__items[0], debug.assets) };
+    });
+    assert.equal(outcome.known, true, 'the stage was still known: nothing but the context check can refuse this draw');
+    assert.equal(outcome.outcome, 'lost');
+    assert.equal(await scratchDraws(runtime), before, 'no draw was issued on the lost context');
+  });
+});
+
 test('a scene released before its draw is skipped without an error and leaves nothing alive', async (t) => {
   if (skipUnavailable(t, assert)) return;
   const files = kit(['a']);
