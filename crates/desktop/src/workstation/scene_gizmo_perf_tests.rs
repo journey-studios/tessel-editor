@@ -12,7 +12,7 @@
 //! What a test window is not, so what this does NOT prove: it has no WebView (the page that draws
 //! the overlay and presents the picture is absent; the host is told the page announced
 //! `overlay.gizmo`, as `scene_gizmo_tests.rs` does), no GPU, no compositor and no physical pointer.
-//! "First frame presented" is the native proof's (`scripts/gizmo-perf/native.py`).
+//! "First frame presented" is the native proof's (a real window, part of the timing stack, BL015.23).
 use core::prelude::v1::test;
 
 use serde_json::{Value, json};
@@ -243,9 +243,9 @@ fn showing_a_scene_that_shares_its_bundle_with_the_shown_one_shows_it(cx: &mut T
     );
 }
 
-/// BL015.22, the sequence that reproduced it (`docs/migration/gizmo-perf-evidence/bl01522-same-bundle-repro.rs.txt`,
-/// steps E1-E5), now a regression test through `Workstation::run_op`: `monitor.show_scene` leaves the monitor on the
-/// scene it was asked for, whichever scenes were shown before and whether or not they come from one bundle file.
+/// BL015.22, the sequence that reproduced it (steps E1-E6 below), now a regression test through
+/// `Workstation::run_op`: `monitor.show_scene` leaves the monitor on the scene it was asked for,
+/// whichever scenes were shown before and whether or not they come from one bundle file.
 /// `proof-b` and `proof-c` are INTACT scenes attached from the same file (same plan, resource map and options at the
 /// same playhead); `proof` comes from another bundle. The old rule matched by content, so it failed in both directions
 /// (E2: `proof-c` after `proof-b`; E5: `proof-b` after `proof-c`) and worked only after a scene of another bundle (E4);

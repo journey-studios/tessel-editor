@@ -17,8 +17,8 @@
 //! - the memo key the host gates its replanning on is free to read (no layout), stable while
 //!   nothing changed and different after every change that moves the picture or the handles.
 //!
-//! What it cannot say: how long anything takes (`scene_gizmo_perf_budget.rs`, opt-in, release,
-//! under the performance lock) or what a window presents (`scripts/gizmo-perf/native.py`).
+//! What it cannot say: how long anything takes (the timing stack, BL015.23) or what a window
+//! presents (the native proof of the same journey, also BL015.23).
 
 use core::prelude::v1::test;
 use serde_json::{Value, json};

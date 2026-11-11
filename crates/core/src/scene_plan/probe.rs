@@ -13,10 +13,11 @@
 //!
 //! They count work, never time, and change no behaviour; a monotonic reading is subtracted from
 //! another one. The counter is production code on the hot path (one thread-local add plus one
-//! relaxed atomic add per layout, with no allocation and no lock): its own cost is never assumed
-//! zero, it is what `scripts/gizmo-perf/ab.py` measures by building the baseline WITHOUT the call
-//! site. `PlanTimeline::build_with` is not counted: nothing reads such a counter, and an unread
-//! counter would be dead code on a hot path (BL015.23 records the unprotected timeline path).
+//! relaxed atomic add per layout, with no allocation and no lock): its own cost is not assumed
+//! zero, and nothing here measures it. Only an A/B against a baseline built WITHOUT the call site
+//! can, and that A/B belongs to the timing stack (BL015.23). `PlanTimeline::build_with` is not
+//! counted: nothing reads such a counter, and an unread counter would be dead code on a hot path
+//! (BL015.23 records the unprotected timeline path).
 use std::cell::Cell;
 use std::sync::atomic::{AtomicU64, Ordering};
 
