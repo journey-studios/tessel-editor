@@ -49,6 +49,7 @@ def decompose(frame, page_event, evaluation):
         if loop >= 0.7 * (queue or 0):
             detail = "event_loop_stalled"
         elif (ahead.get("frames") or 0) + (ahead.get("warms") or 0) > 0:
+            # Work in progress or queued at the request (the page counts it until it ends); an older runtime counted only until it started.
             detail = "behind_queued_work"
         else:
             detail = "unexplained_by_loop_or_queue"

@@ -181,6 +181,15 @@ class IterationTests(unittest.TestCase):
         json.dumps(report)
         self.assertIn("page_queue", probe.markdown(report))
 
+    def test_the_report_says_that_ahead_of_an_older_build_is_not_comparable(self):
+        report = probe.build_report([self.record(gap=110)], None, {"git": {"sha": "0" * 40, "dirty_files": 0}, "binary_sha256": "a" * 64,
+                                                       "runtime_sha256": "b" * 64, "document_sha256": "c" * 64, "io": "async", "window": [1, 2]})
+        text = probe.markdown(report)
+        self.assertIn("| ahead |", text, "the column the note speaks of is in the report")
+        self.assertIn(probe.AHEAD_NOTE, text)
+        self.assertIn("not comparable", probe.AHEAD_NOTE)
+        self.assertIn("until the work ENDS", probe.AHEAD_NOTE)
+
 
 class ArmsAreDistinctTests(unittest.TestCase):
     def test_the_two_arms_differ_even_when_the_shell_exports_the_switch_the_probe_turns_on(self):

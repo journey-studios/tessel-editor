@@ -50,6 +50,13 @@ GPU_FINISH = "TESSEL_VIEWPORT_PROBE_GPU_FINISH"
 AB_ENV = {"A": {GPU_FINISH: "0"}, "B": {GPU_FINISH: "1"}}
 
 
+# What the `ahead` column of the slow-gap table counts. The page counts it from the work it has in progress or queued when a picture is requested; builds of the
+# runtime before it counted work only until that work STARTED (a picture behind one still waiting for a video read as `ahead` 0), so an `ahead` from a report
+# of such a build is not comparable with one from this version, and the detail `behind_queued_work` of the dominant `page_queue` carries the same caveat.
+AHEAD_NOTE = ("`ahead` is the work the page had in progress or queued when the picture was requested (pictures, warms, loads), counted until the work ENDS. "
+              "Reports of runtime builds that counted it only until the work started are not comparable with it: do not set their `ahead` figures beside these.")
+
+
 # ------------------------------------------------------------------------------------------------ pure logic
 def late_summary(decomposed, gaps):
     """For the pictures that END a slow gap and for every late picture: counts by dominant part."""
@@ -147,6 +154,7 @@ def markdown(report):
                 lines.append(f"| {it['iteration']} | {g['from_frame']}→{g['to_frame']} | {g['gap_ms']} | {d.get('total_ms')} | {parts.get('host_pre_send')} | {parts.get('page_queue')} | "
                              f"{parts.get('page_draw')} | {parts.get('ipc_wait')} | {parts.get('delivery')} | {d.get('eval_ms')} | {d.get('page_loop_max_ms')} | "
                              f"{d.get('page_ahead')} | {d.get('dominant')}{':' + d['detail'] if d.get('detail') else ''} |")
+    lines += ["", AHEAD_NOTE]
     lines += ["", "## UI blocks: prefetch steps that held the window's thread", "",
               "| iter | began ms | total ms | prefetch ms | plans ahead ms | warm ms | loads | per load: kind bytes fs/send ms |", "|---|---|---|---|---|---|---|---|"]
     for it in report["iterations"]:
