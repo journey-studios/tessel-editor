@@ -16,7 +16,8 @@
 //  - outlive the world it was asked for: a lost context, a retention switch-off, a dispose or a time limit drops the queue.
 //
 // The queue is bounded (`PREUPLOAD_PENDING_LIMIT`), each item expires (`PREUPLOAD_MAX_AGE_MS`) and each step is its own task of
-// the page's serial queue, re-queued behind whatever arrived meanwhile: a frame the host asked for goes first.
+// the page's serial queue, queued behind whatever arrived meanwhile, from a macrotask of its own (index.js `pumpPreupload`): the
+// message of a frame the host asked for is a task too, and it goes first.
 
 /** Pending uploads kept; a warm that would add more is counted as `dropped`, not queued. */
 export const PREUPLOAD_PENDING_LIMIT = 8;

@@ -95,6 +95,8 @@ export const createRuntime = ({
   const preupload = new TexturePreupload();
   let framesQueued = 0;
   let preuploadPumping = false;
+  // The pause between two pre-uploads (a task of the page, see `pumpPreupload`), while there is one; `debug.idle` waits for it too.
+  let preuploadGap = null;
   const warmDraws = new WarmDraws();
   const warmDrawStats = { requested: 0, drawn: 0, skipped: 0, expired: 0, draw_ms: 0, max_draw_ms: 0, outcomes: {} };
   const cancelled = new Set();
@@ -471,7 +473,10 @@ export const createRuntime = ({
 
   /**
    * One upload of the queue (BL157.3) as a task of the page's serial queue. A frame that is waiting goes first: the upload
-   * puts itself back behind it, and after an upload the next one is queued behind whatever arrived meanwhile. A lost
+   * puts itself back behind it. After an upload the page lets go of the thread for one macrotask (`preuploadGap`) and only then
+   * queues the next one behind whatever arrived meanwhile, which asks `framesQueued` again when it runs: a frame request is a
+   * message, delivered by a task of the page, and a chain of microtasks never lets one in (it would wait for the whole queue,
+   * up to 8 uploads of 13 to 27 ms each). A lost
    * context, a retention switch-off or a dispose drops the queue instead of touching a context that is not the one asked.
    */
   const pumpPreupload = () => {
@@ -491,7 +496,14 @@ export const createRuntime = ({
       // unit 0 and unbinds it). The context was asked just above, in the same task.
       const result = preupload.step(assets, (texture) => compositor.renderer.initTexture(texture));
       if (result) noteSpan({ k: 'preupload', outcome: result.outcome, ms: result.ms });
-      pumpPreupload();
+      if (preupload.pending.length === 0) return;
+      // Held (`preuploadPumping`) so a warm that arrives in the pause queues nothing of its own: this one pumps when it ends.
+      preuploadPumping = true;
+      preuploadGap = new Promise((resolve) => setTimeout(resolve, 0)).then(() => {
+        preuploadGap = null;
+        preuploadPumping = false;
+        pumpPreupload();
+      });
     });
   };
 
@@ -690,7 +702,8 @@ export const createRuntime = ({
       if (!info) return null;
       return { textures: info.memory.textures, geometries: info.memory.geometries, programs: info.programs?.length ?? 0 };
     },
-    idle: () => renderQueue,
+    // The page's serial queue and, while there is one, the pause between two pre-uploads (which ends with the next step queued).
+    idle: () => (preuploadGap ? Promise.all([preuploadGap, renderQueue]) : renderQueue),
     // Holds the page's serial queue until the returned function is called (tests): whatever is queued meanwhile waits.
     holdQueue: () => {
       let release;
