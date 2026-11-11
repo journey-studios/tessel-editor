@@ -47,6 +47,22 @@ test('the queue is bounded, repeats collapse and a clear is counted', () => {
   assert.equal(queue.step(store({}), () => {}), null);
 });
 
+test('only an upload that happened adds to the upload time', () => {
+  let clock = 0;
+  const queue = new TexturePreupload({ now: () => clock });
+  const said = { a: 'uploaded', b: 'resident', c: 'budget', d: 'stale', e: 'missing' };
+  const assets = {
+    preuploadStill: (id) => {
+      clock += 10; // every step costs 10 ms, whatever it ends up saying
+      return said[id];
+    },
+  };
+  queue.enqueue(Object.keys(said).map((id, serial) => ({ id, serial })));
+  for (let step = 0; step < 5; step += 1) queue.step(assets, () => {});
+  assert.equal(queue.stats.upload_ms, 10, 'the one upload that happened, not the four steps that did not make a texture');
+  assert.equal(queue.stats.max_upload_ms, 10);
+});
+
 test('a step does one upload and reports what the store said; a throw is a failure, an old item expires', () => {
   let clock = 0;
   const queue = new TexturePreupload({ now: () => clock });

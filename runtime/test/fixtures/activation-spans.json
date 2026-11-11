@@ -1,0 +1,13 @@
+{
+  "about": "BL157.3 activation contract: what the page tells the host, in frame.done.runtime_spans as { k, outcome, ms }, about the work of the two opt-in first-use experiments, and which outcome means the manipulation really happened. Three suites read this one file: runtime/test/orchestrator-contract.test.mjs makes the real runtime report every outcome listed here (and no other); crates/desktop/src/workstation/asset_io_tests.rs sends every one through the host and finds it in the trace as a runtime_span; scripts/first-use-ab.spec.py has the A/B harness judge an arm by it. Rename or add an outcome on one side only and the other suites fail.",
+  "spans": {
+    "preupload": {
+      "worked": "uploaded",
+      "not_worked": ["resident", "budget", "stale", "missing", "expired", "failed"]
+    },
+    "warm_draw": {
+      "worked": "drawn",
+      "not_worked": ["gone", "taken", "no_order", "lost", "failed", "dropped", "expired"]
+    }
+  }
+}

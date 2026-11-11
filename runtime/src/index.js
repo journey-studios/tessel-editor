@@ -67,7 +67,17 @@ const WARM_DRAW_FEATURE = 'scene.warm_draw';
 // A warm draw older than this is dropped unrun: the cut it was for has come or gone.
 const WARM_DRAW_MAX_AGE_MS = 3000;
 
-export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
+// `createCompositor` is the seam of the Node unit tests (`test/orchestrator-fixtures.mjs`): a page never passes it, and the
+// default is the one compositor there has always been. WebGL cannot run in plain Node, so a test that wants to prove what THIS
+// file decides (the serial queue, a frame going first, what a lost context or a dispose drops, which span the host hears) hands
+// in a compositor that records instead of drawing; what the real compositor does stays in the Chrome tests.
+export const createRuntime = ({
+  post,
+  assetUrl,
+  canvas,
+  overlay = null,
+  createCompositor = (target, compositorOptions) => new Compositor(target, compositorOptions),
+}) => {
   const send = (message) => post({ v: BRIDGE_VERSION, ...message });
   const counters = new RetentionCounters();
   const assets = new AssetStore({ assetUrl, counters });
@@ -195,7 +205,7 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
   const ensureCompositor = () => {
     if (compositor) return compositor;
     try {
-      compositor = new Compositor(canvas, { retain: options.retain, resultCache: options.resultCache, counters });
+      compositor = createCompositor(canvas, { retain: options.retain, resultCache: options.resultCache, counters });
       if (options.sceneSamples !== undefined) compositor.setSceneSamples(options.sceneSamples);
       if (options.previewSceneSamples !== undefined) compositor.setPreviewSceneSamples(options.previewSceneSamples);
       if (options.previewSort !== undefined) compositor.setPreviewSort(options.previewSort);
