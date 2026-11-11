@@ -207,10 +207,16 @@ pub(super) struct ScopeKey {
     clip: String,
 }
 
+/// The Kit state of one scope `Select`.
+type ScopeSelect = Entity<SelectState<SearchableVec<String>>>;
+
+/// The `(scope, text)` pairs a selector lists.
+type ScopeOptions = Vec<(String, String)>;
+
 /// A Kit `Select` with the `(scope, text)` pairs it was last given.
 pub(super) struct ScopePick {
-    select: Entity<SelectState<SearchableVec<String>>>,
-    options: Vec<(String, String)>,
+    select: ScopeSelect,
+    options: ScopeOptions,
 }
 
 /// The selectors of the section, by clip.
@@ -227,10 +233,7 @@ impl Workstation {
         &self,
         scene: &str,
         clip: &str,
-    ) -> Option<(
-        Entity<SelectState<SearchableVec<String>>>,
-        Vec<(String, String)>,
-    )> {
+    ) -> Option<(ScopeSelect, ScopeOptions)> {
         let pick = self.scene_ui.fx.scopes.get(&ScopeKey {
             scene: scene.to_string(),
             clip: clip.to_string(),
