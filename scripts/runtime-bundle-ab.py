@@ -306,6 +306,8 @@ class Watchdog:
             return
         self.last_sample = now
         for pid in sorted(webkit_pids() - self.baseline):
+            if len(self.samples) >= MAX_SAMPLES_PER_SESSION:
+                break  # the cap is per sample, not per observation: each one blocks the poll of the trace for as long as `sample` runs
             if "WebContent" not in process_command(pid):
                 continue
             target = self.out_dir / f"hang-{self.label}-{pid}-{len(self.samples)}.txt"

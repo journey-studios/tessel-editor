@@ -304,8 +304,8 @@ class WatchdogTests(unittest.TestCase):
 class NothingIsSignalledTests(unittest.TestCase):
     """AGENTS.md: no process of anybody else is ever killed. The WebKit helpers are not children of the editor, so a deadlocked page is reported, not reaped."""
 
-    def sampled(self, signalled):
-        """A watchdog that sees a stalled, playing editor and a new WebContent helper whose `sample` is the deadlock."""
+    def sampled(self, signalled, pids=(4242,), before=()):
+        """A watchdog that sees a stalled, playing editor and new WebContent helpers (`pids`) whose `sample` is the deadlock, with `before` samples already taken."""
         class Lab:
             def op(self, request):
                 return {"ok": True, "data": {"state": "playing"}}
@@ -316,7 +316,8 @@ class NothingIsSignalledTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             dog = ab.Watchdog(folder, "00-unpatched", set(), now=lambda: 0.0)
             dog.count, dog.changed = 5, -100.0
-            with mock.patch.object(ab, "webkit_pids", return_value={4242}), \
+            dog.samples = list(before)
+            with mock.patch.object(ab, "webkit_pids", return_value=set(pids)), \
                     mock.patch.object(ab, "process_command", return_value="/x/com.apple.WebKit.WebContent.xpc"), \
                     mock.patch.object(ab.subprocess, "run", side_effect=fake_sample), \
                     mock.patch.object(os, "kill", side_effect=signalled.append), mock.patch.object(os, "killpg", side_effect=signalled.append):
@@ -329,6 +330,17 @@ class NothingIsSignalledTests(unittest.TestCase):
         self.assertEqual(signalled, [])
         self.assertEqual([(s["pid"], s["role"], s["file"]) for s in dog.samples], [(4242, "WebContent.xpc", "hang-00-unpatched-4242-0.txt")])
         self.assertTrue(dog.samples[0]["signature"]["deadlock"])
+
+    def test_one_observation_samples_at_most_the_cap_however_many_helpers_it_finds(self):
+        dog = self.sampled([], pids=(4242, 4243, 4244, 4245))
+        self.assertEqual([s["pid"] for s in dog.samples], [4242, 4243], "the cap is checked for each helper, not only before the loop")
+        self.assertEqual(len(dog.samples), ab.MAX_SAMPLES_PER_SESSION)
+
+    def test_a_session_that_already_has_a_sample_takes_only_what_is_left_of_the_cap(self):
+        dog = self.sampled([], pids=(4242, 4243, 4244), before=[{"pid": 1}])
+        self.assertEqual([s.get("pid") for s in dog.samples], [1, 4242])
+        full = self.sampled([], pids=(4242,), before=[{}] * ab.MAX_SAMPLES_PER_SESSION)
+        self.assertEqual(len(full.samples), ab.MAX_SAMPLES_PER_SESSION, "a session at the cap takes no more")
 
     def test_the_module_has_nothing_that_can_signal_a_process(self):
         source = inspect.getsource(ab)
