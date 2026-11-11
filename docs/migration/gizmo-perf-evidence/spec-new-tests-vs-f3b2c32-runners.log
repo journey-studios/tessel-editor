@@ -1,0 +1,42 @@
+# Negative control of the round-3 additions to the spec (BL015.21 / PR #44, round 3 of corrections).
+# The spec of this round (scripts/gizmo-perf/gizmo-perf.spec.py) run against the runners of f3b2c32f7cf1e410d5b19d5c9ddc153db8dc3aff
+# (the PR head the round started from): `git archive` of `scripts/gizmo-perf` into a temp directory, the new spec
+# copied over its old one, the rest of `scripts/`, `crates`, `docs`, `runtime`, `vendor`, `Cargo.toml`,
+# `Cargo.lock` and `rust-toolchain.toml` linked from this worktree (no checkout; nothing was written in it).
+# Command, with that temp directory as cwd: PYTHONDONTWRITEBYTECODE=1 python3 scripts/gizmo-perf/gizmo-perf.spec.py -v
+# Python 3.14.3. Worktree HEAD when it ran: f3b2c32f7cf1e410d5b19d5c9ddc153db8dc3aff, the parent of the code commit, with the round-3 changes not
+# yet committed. The files under test, by git blob id (the code commit holds these same blobs):
+#   scripts/gizmo-perf/gizmo-perf.spec.py 64d3ce54698c260998fbaf1dd514645663bb4545 (f3b2c32: dd105e43835fa25724568cdcfb10dd3b56ba8518)
+#   scripts/gizmo-perf/mutate.py          0a4c2e9e4ab1d1c6a37e3bbe5dcd6bc13fdac1d7 (f3b2c32: 60f0191792a0c7081d9a73fe98402e4c8c641b5c)
+# No other runner changed in this round, so the old-runner side is the f3b2c32 runners, byte for byte.
+# THE MACHINE WAS LOADED BY OTHER WORK. NOTHING WAS MEASURED: no time run, no A/B, no time mutant, no native window.
+# The control, on the same layout with the runners of this round:
+#   new spec + new runners : Ran 111 tests in 60.2s -> OK
+#   new spec + OLD runners : Ran 111 tests in 48.5s -> FAILED (failures=3)
+# 4 tests are new in this round (class MutantExecutables); the other 107 are the earlier ones.
+# On the old runners 3 fail or error; none of them is an earlier test.
+# Three of the four new tests fail on the old mutate.py. The fourth, `(ii)` below, passes on both sides ON
+# PURPOSE: the old code already refused an executable whose recorded hash differs from the file's (there was no
+# test of it), so no test of that case can fail on it. It is a guard of the fixed condition: its first half
+# fails against a version that only demands "a hash was recorded" (see the additional controls below) and its
+# second half (the file whose hash IS on record is the one measured) fails against a check that refuses all.
+# Test labels: (i) a stale executable with no recorded hash is never measured; (ii) only the file whose hash
+# `prepare` recorded is measured; (iii) a `prepare` whose build gave no executable leaves none of an earlier
+# `prepare`; seq: the review finding replayed end to end (prepare A, BLOCKED time, prepare B with no
+# executable, time B).
+
+FAIL  MutantExecutables.test_a_prepare_whose_build_gave_no_executable_leaves_none_of_an_earlier_prepare
+      AssertionError: Lists differ: ['another_mutant.exe', 'time_mutant.exe'] != []
+FAIL  MutantExecutables.test_a_stale_executable_with_no_hash_recorded_for_it_is_never_measured
+      AssertionError: Tuples differ: (0, 'ALL_AS_EXPECTED') != (3, 'BLOCKED_OR_INFRA')
+FAIL  MutantExecutables.test_the_executable_of_one_head_is_never_measured_as_the_product_of_the_next
+      AssertionError: 'KILLED' != 'MISSING_EXECUTABLE'
+
+# Additional controls (not asked for): the four new tests alone, against the NEW runners with one half of
+# the fix taken out in a temporary copy (F = the test fails, . = it passes):
+#    (i)   (ii)  (iii)    seq  runners under test
+#      F      .      F      F  f3b2c32 runners (the old mutate.py), full spec
+#      .      .      .      .  this round's runners, full spec
+#      F      .      .      .  new minus (a): the `time` check as it was (a hash is compared only when one was recorded)
+#      .      F      .      .  new minus the comparison: a recorded hash is required but never compared with the file
+#      .      .      F      .  new minus (b): `prepare` does not empty --out/exes

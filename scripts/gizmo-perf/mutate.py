@@ -30,7 +30,10 @@ compared with `git`'s after every mutant; a mismatch aborts loudly. The restore,
 mutated, restored), is logged in the manifest. The `time` phase refuses to run for another HEAD/tree than the
 `prepare` that built the executables and writes ONE merged manifest (`manifest.final.json`): its refusals too, never
 over `prepare`'s `manifest.json`. It also refuses a `prepare` that is not finished and any mutant `prepare` did not run
-(it is never silently dropped), and a verdict over no mutant at all is never a pass.
+(it is never silently dropped), and a verdict over no mutant at all is never a pass. It measures an executable only
+when `prepare` recorded the hash of that very file (else `MISSING_EXECUTABLE`), and `prepare` begins by emptying
+`--out/exes`, so no executable of an earlier `prepare` can stand in for one this run did not build. A `time` run in which
+a mutant was BLOCKED or had no usable executable keeps `--out/exes`, so the same `prepare` can be measured again.
 
 Exit 0 only when every mutant was detected by every detector that must detect it and passed every one that must not;
 1 when a mutant is not as expected; 3 when anything was BLOCKED or infrastructure failed (never a pass).
@@ -313,6 +316,11 @@ def main(argv=None):
             manifest.update(status='REFUSED', reason=f'{path} is not at HEAD: mutants start from a committed tree')
             return harness.die(1, manifest, refusal_path)
     exes_dir = out / 'exes'
+    if args.phase == 'prepare' and exes_dir.exists():
+        # A `prepare` answers for its own HEAD. An executable an earlier `prepare` left here (another HEAD, another run)
+        # must not be around to stand in for a mutant whose build in THIS run failed, timed out or named no executable:
+        # that run records no hash and copies nothing. Not `ignore_errors`: a directory that cannot be emptied stops it.
+        shutil.rmtree(exes_dir)
     exes_dir.mkdir(exist_ok=True)
     if args.phase == 'prepare':
         manifest_path = out / 'manifest.json'
@@ -379,9 +387,12 @@ def main(argv=None):
         if not exe.exists():
             manifest['mutants'][name]['time'] = {'outcome': 'MISSING_EXECUTABLE', 'status': 'MISSING_EXECUTABLE',
                                                  'detail': f'{exe} does not exist: run `--phase prepare`'}
-        elif recorded and harness.sha256(exe) != recorded:
+        elif not recorded or harness.sha256(exe) != recorded:
+            # Only the file `prepare` hashed is measured. No recorded hash (its build gave no executable) is not
+            # "nothing to compare": the file there was left by something else, and its verdict would be this HEAD's.
             manifest['mutants'][name]['time'] = {'outcome': 'MISSING_EXECUTABLE', 'status': 'MISSING_EXECUTABLE',
-                                                 'detail': 'the executable changed since `prepare` built it'}
+                                                 'detail': 'no hash of this executable was recorded by `prepare`, or '
+                                                           'it changed since `prepare` built it: not the one built'}
     pending = [n for n in timed if 'time' not in manifest['mutants'][n]]
     if pending and reason:
         for name in pending:

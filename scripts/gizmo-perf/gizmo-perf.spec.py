@@ -1375,6 +1375,148 @@ class TimePhase(unittest.TestCase):
             self.assertNotEqual(code, 0)
 
 
+class MutantExecutables(unittest.TestCase):
+    """The executables of the mutants the time detector judges travel from `prepare` to `time` through --out/exes, and
+    the only thing that says a file there is the one `prepare` built is the hash `prepare` recorded for it. Everything
+    around that hand-over is faked: git, the machine, the lock, the release build (it names the bytes of an executable,
+    or none) and the controlled run, which only notes in `self.measured` the bytes it was asked to measure. The mutated
+    file is one in a temporary directory, never the repository's."""
+
+    NAME = 'time_mutant'
+    A = {'head': 'a' * 40, 'tree': '1' * 40, 'branch': 'b', 'dirty': ''}
+    B = {'head': 'b' * 40, 'tree': '2' * 40, 'branch': 'b', 'dirty': ''}
+    LOADED = 'load average (1 min) 9.00 over 5.5 (11 cpus)'
+
+    def phase(self, root, phase, identity=None, built=None, build_exit=0, blocked=None):
+        """`main --phase prepare|time --out ROOT/out` for the one mutant, at HEAD `identity`. `built`: the bytes of the
+        executable its release build names, `None` for a build that named none (and failed); `build_exit` is that
+        build's exit; `blocked` the reason the machine guard refuses a measurement. Returns the exit code and the
+        manifest the phase wrote (`manifest.json` of `prepare`, `manifest.final.json` of `time`; `{}` if none)."""
+        root = Path(root)
+        out = root / 'out'
+        source = root / 'f.rs'
+        source.write_text('fn a() {}\n')
+        state = {'loadavg': (0.0, 0.0, 0.0)}
+        self.measured = []
+
+        def release_build():
+            if built is None:
+                return ['cargo', 'test', '--release'], done('error[E0425]: cannot find value', 101), None
+            target = root / 'target-exe'
+            target.write_bytes(built)
+            return ['cargo', 'test', '--release'], done('', build_exit), str(target)
+
+        def controlled_run(exe, report, directory, name):
+            self.measured.append((name, Path(exe).read_bytes()))
+            return {'outcome': 'KILLED', 'status': 'KILLED', 'detail': 'faked: nothing was executed'}
+
+        mutants = {self.NAME: {'file': str(source), 'old': 'fn a() {}', 'new': 'fn a() { loop {} }',
+                               'detectors': {'time': True}}}
+        fakes = [patch.object(mutate, 'MUTANTS', mutants), patch.object(mutate, 'ROOT', Path('/')),
+                 patch.object(mutate, 'file_hash', return_value='blob'),
+                 patch.object(mutate, 'committed_hash', return_value='blob'),
+                 patch.object(mutate, 'run_time', side_effect=controlled_run),
+                 patch.object(mutate.runner, 'build', side_effect=release_build),
+                 patch.object(mutate.harness, 'git_identity', return_value=identity or self.A),
+                 patch.object(mutate.harness, 'toolchain', return_value={}),
+                 patch.object(mutate.harness, 'machine', return_value=state),
+                 patch.object(mutate.harness, 'guards', return_value=(state, blocked)),
+                 patch.object(mutate.harness, 'claims', return_value=[]),
+                 patch.object(mutate.harness, 'Lock', FakeLock)]
+        with contextlib.ExitStack() as stack:
+            for fake in fakes:
+                stack.enter_context(fake)
+            code = run_main(mutate, ['--phase', phase, '--out', str(out)])
+        written = out / ('manifest.json' if phase == 'prepare' else 'manifest.final.json')
+        return code, json.loads(written.read_text()) if written.exists() else {}
+
+    def finished_prepare(self, out, recorded, identity=None):
+        """What a finished `prepare` left in --out/manifest.json for the mutant: its build recorded `recorded` as the
+        hash of the executable (`None`: the build named none). The executable itself is the caller's."""
+        manifest = {'suite': 'gizmo-perf-mutants', 'phase': 'prepare', 'status': 'PREPARED',
+                    'identity': identity or self.A,
+                    'mutants': {self.NAME: {'file': 'f.rs', 'must': {'time': True},
+                                            'time_build': {'exit': 0, 'executable_sha256': recorded}}}}
+        (Path(out) / 'manifest.json').write_text(json.dumps(manifest))
+
+    def leave(self, out, content):
+        """`out/exes/<mutant>.exe` as an earlier run left it; returns the path."""
+        exe = Path(out) / 'exes' / f'{self.NAME}.exe'
+        exe.parent.mkdir(parents=True, exist_ok=True)
+        exe.write_bytes(content)
+        return exe
+
+    def test_a_stale_executable_with_no_hash_recorded_for_it_is_never_measured(self):
+        with tempfile.TemporaryDirectory() as root:
+            out = Path(root) / 'out'
+            out.mkdir()
+            self.finished_prepare(out, None)  # this `prepare`'s build named no executable, so it recorded no hash
+            self.leave(out, b'built by an earlier prepare, for another head')
+            code, final = self.phase(root, 'time')
+            answer = final['mutants'][self.NAME]['time']
+            self.assertEqual((code, final['status']), (harness.BLOCKED_EXIT, 'BLOCKED_OR_INFRA'))
+            self.assertEqual(answer['outcome'], 'MISSING_EXECUTABLE')
+            self.assertIn('no hash', answer['detail'])
+            self.assertEqual(self.measured, [])  # the file was there, and nothing about this head was run
+
+    def test_only_the_file_whose_hash_prepare_recorded_is_measured(self):
+        built = b'what prepare built'
+        with tempfile.TemporaryDirectory() as root:
+            out = Path(root) / 'out'
+            out.mkdir()
+            self.leave(out, built)
+            self.finished_prepare(out, hashlib.sha256(b'another file').hexdigest())  # a hash, but not this file's
+            code, final = self.phase(root, 'time')
+            answer = final['mutants'][self.NAME]['time']
+            self.assertEqual((code, answer['outcome']), (harness.BLOCKED_EXIT, 'MISSING_EXECUTABLE'))
+            self.assertIn('changed since', answer['detail'])
+            self.assertEqual(self.measured, [])
+            # the control: the same file with ITS hash on record is the one that is measured (a check that refused
+            # every executable would pass the half above)
+            self.finished_prepare(out, hashlib.sha256(built).hexdigest())
+            code, final = self.phase(root, 'time')
+            self.assertEqual(self.measured, [(self.NAME, built)])
+            self.assertEqual((code, final['status']), (0, 'ALL_AS_EXPECTED'))
+
+    def test_a_prepare_whose_build_gave_no_executable_leaves_none_of_an_earlier_prepare(self):
+        with tempfile.TemporaryDirectory() as root:
+            out = Path(root) / 'out'
+            self.assertEqual(self.phase(root, 'prepare', self.A, built=b'product of A')[0], 0)
+            exe = out / 'exes' / f'{self.NAME}.exe'
+            self.assertEqual(exe.read_bytes(), b'product of A')
+            (exe.parent / 'another_mutant.exe').write_bytes(b'a mutant this prepare does not run')
+            # the same --out for the next head: the release build of the mutant named no executable
+            code, prepared = self.phase(root, 'prepare', self.B, built=None)
+            self.assertEqual(code, 0)  # `prepare` still finishes: the `time` answer is what says it is missing
+            self.assertIsNone(prepared['mutants'][self.NAME]['time_build']['executable_sha256'])
+            self.assertEqual(sorted(p.name for p in exe.parent.iterdir()), [])
+            # a build that named an executable but did not succeed (a timeout after the link) copies nothing either
+            self.leave(out, b'product of A')
+            code, prepared = self.phase(root, 'prepare', self.B, built=b'product of B', build_exit=-9)
+            self.assertEqual(sorted(p.name for p in exe.parent.iterdir()), [])
+            # the control: a build that did succeed leaves exactly its own executable, with its hash on record
+            code, prepared = self.phase(root, 'prepare', self.B, built=b'product of B')
+            self.assertEqual(exe.read_bytes(), b'product of B')
+            self.assertEqual(prepared['mutants'][self.NAME]['time_build']['executable_sha256'],
+                             hashlib.sha256(b'product of B').hexdigest())
+
+    def test_the_executable_of_one_head_is_never_measured_as_the_product_of_the_next(self):
+        # the sequence of the review finding, end to end
+        with tempfile.TemporaryDirectory() as root:
+            out = Path(root) / 'out'
+            exe = out / 'exes' / f'{self.NAME}.exe'
+            self.phase(root, 'prepare', self.A, built=b'product of A')  # 1. prepare at head A
+            code, final = self.phase(root, 'time', self.A, blocked=self.LOADED)  # 2. a time run that is BLOCKED...
+            self.assertEqual(final['mutants'][self.NAME]['time']['outcome'], 'BLOCKED')
+            self.assertEqual(exe.read_bytes(), b'product of A')  # ...keeps the executable for a retry
+            self.assertEqual(self.measured, [])
+            self.phase(root, 'prepare', self.B, built=None)  # 3. prepare at head B, same --out: no executable
+            code, final = self.phase(root, 'time', self.B)  # 4. time at head B passes the identity check...
+            self.assertEqual(final['mutants'][self.NAME]['time']['outcome'], 'MISSING_EXECUTABLE')
+            self.assertEqual(self.measured, [])  # ...and must not measure the product of head A for it
+            self.assertEqual(final['prepare_identity'], self.B)
+
+
 class Native(unittest.TestCase):
     def test_placeholders_and_tolerance(self):
         self.assertEqual(native.fill({'a': ['$x', 1]}, {'x': 'v'}), {'a': ['v', 1]})

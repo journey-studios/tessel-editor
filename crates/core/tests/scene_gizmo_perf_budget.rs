@@ -25,8 +25,11 @@
 //! `READ_WINDOW` reads), and every request is divided by the reference of its own window. A ratio
 //! cancels the speed of the machine at that moment (a thread moved between a fast and a slow core,
 //! the load of a neighbour), which a constant or a single reference taken once cannot. Each
-//! handler's p50 and p95 ratios are limited by `budgets.json`, fixed BEFORE the candidate was
-//! measured; a handler that does a second plan's worth of work (the mutants of
+//! handler's p50 and p95 ratios are limited by `budgets.json`, which was NOT fixed before the
+//! candidate was measured: it comes from calibration runs of this same tree (see
+//! `scripts/gizmo-perf/budgets.py`), and its cold margins were widened after a judged run failed
+//! (the budget history in `docs/features/scene-gizmo-performance.md`), so a pass is no proof that
+//! nothing regressed; a handler that does a second plan's worth of work (the mutants of
 //! `scripts/gizmo-perf/mutate.py`) leaves the budget on a dense scene. A long-tick count (a sample
 //! over a 60 Hz frame) is kept as well. A run whose reference blocks are themselves unstable (a
 //! block whose own samples disagree by more than `reference.max_block_spread`, in more than
