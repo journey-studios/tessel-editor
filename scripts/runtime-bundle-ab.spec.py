@@ -1,7 +1,11 @@
 """Pure-logic tests of the BL157.4 runtime bundle A/B; no editor, GPU, runtime page, WebKit process or private media is started."""
 import importlib.util
+import inspect
+import os
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 spec = importlib.util.spec_from_file_location("runtime_bundle_ab", Path(__file__).with_name("runtime-bundle-ab.py"))
 ab = importlib.util.module_from_spec(spec)
@@ -258,6 +262,49 @@ class WatchdogTests(unittest.TestCase):
         state = {"frames": {i: i for i in range(5)}}
         self.assertEqual(dog.wrap(lambda lab, st, deadline: "polled")(Lab(), state, 0), "polled")
         self.assertIn("socket gone", dog.samples[0]["error"])
+
+
+class NothingIsSignalledTests(unittest.TestCase):
+    """AGENTS.md: no process of anybody else is ever killed. The WebKit helpers are not children of the editor, so a deadlocked page is reported, not reaped."""
+
+    def sampled(self, signalled):
+        """A watchdog that sees a stalled, playing editor and a new WebContent helper whose `sample` is the deadlock."""
+        class Lab:
+            def op(self, request):
+                return {"ok": True, "data": {"state": "playing"}}
+
+        def fake_sample(command, **named):
+            Path(command[command.index("-file") + 1]).write_text(DEADLOCK_SAMPLE)
+
+        with tempfile.TemporaryDirectory() as folder:
+            dog = ab.Watchdog(folder, "00-unpatched", set(), now=lambda: 0.0)
+            dog.count, dog.changed = 5, -100.0
+            with mock.patch.object(ab.RL, "webkit_pids", return_value={4242}), \
+                    mock.patch.object(ab, "process_command", return_value="/x/com.apple.WebKit.WebContent.xpc"), \
+                    mock.patch.object(ab.subprocess, "run", side_effect=fake_sample), \
+                    mock.patch.object(os, "kill", side_effect=signalled.append), mock.patch.object(os, "killpg", side_effect=signalled.append):
+                dog.observe(Lab(), 5)
+        return dog
+
+    def test_a_deadlocked_page_is_recorded_with_its_pid_role_and_sample_file_and_never_signalled(self):
+        signalled = []
+        dog = self.sampled(signalled)
+        self.assertEqual(signalled, [])
+        self.assertEqual([(s["pid"], s["role"], s["file"]) for s in dog.samples], [(4242, "WebContent.xpc", "hang-00-unpatched-4242-0.txt")])
+        self.assertTrue(dog.samples[0]["signature"]["deadlock"])
+
+    def test_the_module_has_nothing_that_can_signal_a_process(self):
+        source = inspect.getsource(ab)
+        for forbidden in ("os.kill", "os.killpg", "SIGKILL", "SIGTERM", "signal.", "killed_deadlocked_helpers"):
+            self.assertFalse(forbidden in source, f"the runner mentions `{forbidden}`")
+        self.assertFalse(hasattr(ab, "reap"))
+        self.assertFalse(hasattr(ab.Watchdog(".", "x", set()), "deadlocked"))
+
+    def test_the_row_of_a_session_carries_the_sample_it_took(self):
+        session = record(ab.UNPATCHED, first=pictures(1, 1000.0, 20))
+        session["hang_samples"] = [{"at_s": 31.0, "pid": 7, "role": "WebContent.xpc", "file": "x.txt", "signature": ab.deadlock_signature(DEADLOCK_SAMPLE)}]
+        self.assertEqual({key: ab.session_row(session, PROJECT)["samples"][0][key] for key in ("pid", "role", "file")},
+                         {"pid": 7, "role": "WebContent.xpc", "file": "x.txt"})
 
 
 class ScratchRuntimeTests(unittest.TestCase):

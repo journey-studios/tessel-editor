@@ -18,9 +18,10 @@ one is checked against the host's own `asset_io` record of the `runtime.js` it s
 arm's file) and the unpatched bundle is exactly what the patch removes longer than the patched one; otherwise the run is INVALID ARMS and says nothing.
 
 While a session plays, a watchdog reads the frame table: when the editor is playing and no new picture arrived for STALL_SECONDS, it samples the
-page's WebContent process (`sample`, twice at most per session) and keeps the file next to the session. A sample is a DEADLOCK sample only when the
-decoder worker is inside `releaseLock` waiting for a lock the collector's marking holds: that is the lab's stack, seen natively. A helper process that
-outlives its editor with such a sample is killed after the session (nothing else is ever killed: a frozen page does not exit with its window).
+page's WebContent process (`sample`, read only, twice at most per session) and keeps the file next to the session. A sample is a DEADLOCK sample only when the
+decoder worker is inside `releaseLock` waiting for a lock the collector's marking holds: that is the lab's stack, seen natively. NOTHING IS EVER SIGNALLED:
+the WebKit helpers are not children of the editor (they are told apart by "born during the session"), so no process here can be shown to be the session's own.
+A frozen page that outlives its editor is reported (pid, role and the sample file, as `leftover_helpers`) and the operator decides what to do with it.
 
 DECISION RULES, fixed here before any measurement (diagnostic; nothing here decides the acceptance of BL157):
 
@@ -45,7 +46,6 @@ import os
 import pathlib
 import re
 import shutil
-import signal
 import subprocess
 import sys
 import tempfile
@@ -197,7 +197,7 @@ def session_row(record, project):
                     "slow_where": sorted(where for where, stats in (p.get("by_location") or {}).items() if stats.get("slow"))}
              for name, p in analysis["plays"].items()}
     hung = any(p["hung"] for p in plays.values())
-    samples = [{"at_s": s.get("at_s"), "signature": s["signature"]} for s in record.get("hang_samples") or []]
+    samples = [{key: s.get(key) for key in ("at_s", "pid", "role", "file")} | {"signature": s["signature"]} for s in record.get("hang_samples") or []]
     return {"arm": record["arm"], "pair": record.get("pair"), "order_index": record.get("order_index"), "valid": analysis["valid"],
             "invalid_reasons": analysis["invalid_reasons"], "plays": plays, "hung": hung,
             "served_runtime_bytes": served_runtime_bytes(record.get("events")),
@@ -252,7 +252,7 @@ def markdown(report):
         def cell(name):
             play = r["plays"].get(name)
             return "missing" if play is None else f"{play['pictures']} / {play['max_gap_ms']}{' HUNG' if play['hung'] else ''}"
-        samples = ", ".join(f"{'DEADLOCK' if s['signature']['deadlock'] else 'other'} at {s['at_s']} s" for s in r["samples"]) or "-"
+        samples = ", ".join(f"{'DEADLOCK' if s['signature']['deadlock'] else 'other'} at {s['at_s']} s ({s['role']} {s['pid']}: {s['file']})" for s in r["samples"]) or "-"
         lines.append(f"| {r['order_index']} | {r['pair']} | {r['arm']} | {r.get('served_runtime_bytes') or '?'} | {r['quiet_class']} | "
                      f"{r['external_median_cores']}/{r['external_p95_cores']} | "
                      f"{r['loadavg_start']} / {r['loadavg_peak_1m']} | {cell('first')} | {cell('repeat')} | {'HUNG' if r['hung'] else ('FAILED: ' + str(r['error'])) if r['failed'] else 'no'} | "
@@ -267,6 +267,11 @@ def process_command(pid):
     return RL.process_table().get(pid, (0, 0, 0.0, ""))[3]
 
 
+def helper_role(command):
+    """The short role of a WebKit helper from its command line (`WebContent`, `Networking`, ...)."""
+    return re.sub(r".*com\.apple\.WebKit\.", "", command)[:40]
+
+
 class Watchdog:
     """Wraps the harness's poll (`collect`): the editor is playing and the frame table has not grown for STALL_SECONDS -> sample the page's process."""
 
@@ -274,7 +279,7 @@ class Watchdog:
         self.out_dir, self.label, self.baseline, self.now = pathlib.Path(out_dir), label, set(baseline), now
         self.started = now()
         self.count, self.changed, self.last_sample = -1, now(), None
-        self.samples, self.deadlocked = [], set()
+        self.samples = []
 
     def wrap(self, collect):
         def wrapped(lab, state, deadline):
@@ -307,32 +312,14 @@ class Watchdog:
             target = self.out_dir / f"hang-{self.label}-{pid}-{len(self.samples)}.txt"
             subprocess.run(["/usr/bin/sample", str(pid), "2", "1", "-file", str(target)], capture_output=True, timeout=60)
             text = target.read_text(errors="replace") if target.exists() else ""
-            signature = deadlock_signature(text)
-            self.samples.append({"at_s": round(now - self.started, 1), "pid": pid, "file": target.name, "signature": signature})
-            if signature["deadlock"]:
-                self.deadlocked.add(pid)
-
-
-def reap(pids, wait=20.0):
-    """After the session: a helper whose sample was the deadlock and that is still alive is killed (the frozen page does not exit with its window).
-    Returns the pids it had to kill. Nothing else is ever signalled."""
-    deadline = time.monotonic() + wait
-    left = [p for p in pids if p in RL.process_table()]
-    while left and time.monotonic() < deadline:
-        time.sleep(0.5)
-        left = [p for p in left if p in RL.process_table()]
-    for pid in left:
-        try:
-            os.kill(pid, signal.SIGKILL)
-        except OSError:
-            pass
-    return left
+            self.samples.append({"at_s": round(now - self.started, 1), "pid": pid, "role": helper_role(process_command(pid)), "file": target.name,
+                                 "signature": deadlock_signature(text)})
 
 
 def leftover_helpers(baseline):
     """WebKit helpers born during the session that are still alive a little after its editor ended: reported (a pid and its role), never killed."""
     time.sleep(3.0)
-    return [{"pid": pid, "role": re.sub(r".*com\.apple\.WebKit\.", "", process_command(pid))[:40]} for pid in sorted(RL.webkit_pids() - set(baseline))]
+    return [{"pid": pid, "role": helper_role(process_command(pid))} for pid in sorted(RL.webkit_pids() - set(baseline))]
 
 
 # ------------------------------------------------------------------------------------------------ commands
@@ -401,7 +388,6 @@ def cmd_run(args):
                     RL.collect = original_collect
                 record["pair"], record["order_index"] = index // 2, index
                 record["hang_samples"] = watchdog.samples
-                record["killed_deadlocked_helpers"] = reap(watchdog.deadlocked)
                 record["leftover_helpers"] = leftover_helpers(baseline)
                 (out / f"run-{index:02d}-{arm}.json").write_text(json.dumps(record))
                 records.append(record)
