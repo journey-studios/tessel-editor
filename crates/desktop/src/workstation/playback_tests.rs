@@ -83,19 +83,25 @@ fn next_ms(tick: &Value) -> f64 {
     tick["next_ms"].as_f64().expect("a tick that continues")
 }
 
-/// The tick after `ticks` ticks comes `wait` milliseconds after the previous one's deadline, not before and not after: the
-/// executor's clock is `already` milliseconds past that deadline, goes to a millisecond short of the wait (no tick), then past it
-/// (the tick), and ends a millisecond past the new deadline.
+/// The tick after `ticks` ticks comes `wait` milliseconds after the previous one's deadline, not before and not after. The
+/// executor's clock is exactly on that deadline (it lands on each one it fires): it goes to a margin short of the wait (no tick),
+/// then to the new deadline itself (the tick), and stops there, so the wait that tick armed is still ahead of the clock.
+///
+/// The margin is a millisecond, or half the wait when the wait is under two: the least a wait can be is [`LANDING_GUARD`] (a
+/// reading that aged on the real clock has nothing else left of its distance), and a millisecond short of that is before the
+/// tick that armed it. Going past the deadline instead of stopping on it would also run the next tick whenever that wait is the
+/// least.
 fn expect_next_tick_after(
     view: &Entity<Workstation>,
     cx: &mut VisualTestContext,
     wait: f64,
-    already: f64,
     ticks: usize,
 ) {
-    advance(cx, Duration::from_secs_f64((wait - already - 1.0) / 1000.0));
+    let wait = Duration::from_secs_f64(wait / 1000.0);
+    let margin = Duration::from_millis(1).min(wait / 2);
+    advance(cx, wait - margin);
     assert_eq!(events_of(view, cx, "tick").len(), ticks, "a tick early");
-    advance(cx, Duration::from_millis(2));
+    advance(cx, margin);
     assert_eq!(events_of(view, cx, "tick").len(), ticks + 1, "no tick");
 }
 
@@ -247,15 +253,39 @@ fn the_loop_arms_its_timer_for_the_wait_the_tick_said(cx: &mut TestAppContext) {
         "the second tick should land before the half frame: {}",
         ticks[1]
     );
-    expect_next_tick_after(&view, cx, wait, 0.0, 2);
+    expect_next_tick_after(&view, cx, wait, 2);
 
     // And the third reading is waited for in turn: the loop takes each wait from the tick that just ran.
     let ticks = events_of(&view, cx, "tick");
     assert_eq!(ticks[2]["clock"], 10.8, "{}", ticks[2]);
     let wait = next_ms(&ticks[2]);
     assert!(wait < ms(cap) - 2.0, "{}", ticks[2]);
-    // (The helper left the executor's clock a millisecond past the third tick's deadline.)
-    expect_next_tick_after(&view, cx, wait, 1.0, 3);
+    expect_next_tick_after(&view, cx, wait, 3);
+}
+
+#[gpui_kit::test]
+fn a_reading_already_at_its_boundary_is_waited_for_the_least_a_wait_can_be(
+    cx: &mut TestAppContext,
+) {
+    // What a tick that ran late does to its wait: the reading's age (real time; the executor's clock is a mock) eats the distance
+    // to the boundary, and the wait is the landing guard and nothing less. A reading a hair short of a boundary (under a
+    // nanosecond) makes that the wait of every tick, whatever the real time was, so the loop is held to it every run.
+    let (view, cx) = fixture(cx);
+    start(&view, cx, PollMode::Deadline);
+    let cap = playback_poll::interval(fps(&view, cx));
+    let _script = script_wall_clock(&[10.5, 10.999_999_998, 10.999_999_999]);
+    advance(cx, cap);
+    advance(cx, cap);
+    let ticks = events_of(&view, cx, "tick");
+    assert_eq!(ticks.len(), 2, "{ticks:?}");
+    assert_eq!(next_ms(&ticks[1]), ms(LANDING_GUARD), "{}", ticks[1]);
+
+    // The loop makes exactly that wait, and the tick after it is waited for the same way.
+    expect_next_tick_after(&view, cx, next_ms(&ticks[1]), 2);
+    let ticks = events_of(&view, cx, "tick");
+    assert_eq!(ticks[2]["clock"], 10.999_999_999, "{}", ticks[2]);
+    assert_eq!(next_ms(&ticks[2]), ms(LANDING_GUARD), "{}", ticks[2]);
+    expect_next_tick_after(&view, cx, next_ms(&ticks[2]), 3);
 }
 
 #[gpui_kit::test]
