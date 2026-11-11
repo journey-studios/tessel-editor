@@ -32,16 +32,465 @@
         "runtime/src/output-fx.js": "6910ee19bda017846d1b0d93d8b2d1ed206a8e371df71a9ab40f3a63af7c0a0e"
       },
       "finished": true
+    },
+    {
+      "started": "2026-11-11T19:00:20+00:00",
+      "head": "a80ed73",
+      "dirty_before": [],
+      "selected": [
+        "C01",
+        "C02",
+        "C03",
+        "C04",
+        "C05",
+        "C06",
+        "C07",
+        "C08",
+        "C09",
+        "C10",
+        "C11",
+        "C12",
+        "C13",
+        "C14",
+        "C15",
+        "C16",
+        "C17",
+        "C18",
+        "C19",
+        "C20",
+        "C21",
+        "C22",
+        "J01",
+        "J02",
+        "J03",
+        "J04",
+        "J05",
+        "J06",
+        "R01",
+        "R02",
+        "R03",
+        "W01",
+        "W02",
+        "W03",
+        "W04"
+      ],
+      "baselines": {
+        "core": {
+          "exit": 0,
+          "seconds": 20,
+          "failed": [],
+          "tail": ""
+        },
+        "js": {
+          "exit": 0,
+          "seconds": 0,
+          "failed": [],
+          "tail": ""
+        },
+        "render": {
+          "exit": 0,
+          "seconds": 91,
+          "failed": [],
+          "tail": ""
+        },
+        "desktop": {
+          "exit": 0,
+          "seconds": 44,
+          "failed": [],
+          "tail": ""
+        }
+      },
+      "stopped": null,
+      "note": "",
+      "restored": true,
+      "hashes_before": {
+        "crates/core/src/directed_scene/fx/mod.rs": "82a4c10712bfde2d1cee4d2c096ada42a7106114f5d12c390c472b86ec466169",
+        "crates/core/src/directed_scene/fx/scope.rs": "c2c80a3dc3c4e92edb82e15572abb2bab950ba41a5f250f096e07bb9a45d3e2f",
+        "crates/core/src/directed_scene/integrity.rs": "197af8a9d31ebf699869576ff3c4d7ab437d6a2aac2a821bc37ec809c19f924b",
+        "crates/core/src/scene_edit/fx.rs": "3ffb232acd3e528ab9a3a8e51acb0e6c01d099c9fef518e330d2d4c1b65cf3e3",
+        "crates/core/src/scene_edit/fx_inspector.rs": "2076fce965a798e3aadda11280345e5fa8e1d481c32e8bfe42e7888ae5ebece7",
+        "crates/core/src/scene_plan/validate.rs": "09c953fcf222e7b240aa38835028e47692490eb52e9c1b19536dd752e83f0b34",
+        "crates/desktop/src/workstation/scene_fx_scope.rs": "5a5d942d48dbce0724337106bf78a1cbda8485469f78f9d0fd6fe69b49b84ef6",
+        "runtime/src/directed-scene.js": "47ef1ca3c97172c04c608d6be40088f652b6d40df45859c0d07aa0bc5940c5a7",
+        "runtime/src/output-fx.js": "6910ee19bda017846d1b0d93d8b2d1ed206a8e371df71a9ab40f3a63af7c0a0e"
+      },
+      "hashes_after": {
+        "crates/core/src/directed_scene/fx/mod.rs": "82a4c10712bfde2d1cee4d2c096ada42a7106114f5d12c390c472b86ec466169",
+        "crates/core/src/directed_scene/fx/scope.rs": "c2c80a3dc3c4e92edb82e15572abb2bab950ba41a5f250f096e07bb9a45d3e2f",
+        "crates/core/src/directed_scene/integrity.rs": "197af8a9d31ebf699869576ff3c4d7ab437d6a2aac2a821bc37ec809c19f924b",
+        "crates/core/src/scene_edit/fx.rs": "3ffb232acd3e528ab9a3a8e51acb0e6c01d099c9fef518e330d2d4c1b65cf3e3",
+        "crates/core/src/scene_edit/fx_inspector.rs": "2076fce965a798e3aadda11280345e5fa8e1d481c32e8bfe42e7888ae5ebece7",
+        "crates/core/src/scene_plan/validate.rs": "09c953fcf222e7b240aa38835028e47692490eb52e9c1b19536dd752e83f0b34",
+        "crates/desktop/src/workstation/scene_fx_scope.rs": "5a5d942d48dbce0724337106bf78a1cbda8485469f78f9d0fd6fe69b49b84ef6",
+        "runtime/src/directed-scene.js": "47ef1ca3c97172c04c608d6be40088f652b6d40df45859c0d07aa0bc5940c5a7",
+        "runtime/src/output-fx.js": "6910ee19bda017846d1b0d93d8b2d1ed206a8e371df71a9ab40f3a63af7c0a0e"
+      },
+      "finished": true
     }
   ],
   "mutants": {
+    "C01": {
+      "what": "a clip that fills its shot to the last frame is refused (end bound off by one)",
+      "file": "crates/core/src/directed_scene/fx/scope.rs",
+      "kind": "core",
+      "result": "KILLED",
+      "run": 1,
+      "head": "a80ed73",
+      "failed": [
+        "a_runtime_without_the_capability_refuses_the_shot_plan_by_name_and_serves_the_others",
+        "a_shot_scope_survives_save_and_reopen_and_evaluates_the_same",
+        "composition_is_a_function_of_the_frame_alone",
+        "directed_scene::fx::scope::tests::a_clip_inside_its_shot_belongs_to_it_up_to_the_last_frame",
+        "hidden_clips_and_tracks_draw_nothing_in_either_stage",
+        "pilot_cases_4_and_6_a_clip_inside_its_shot_is_valid_and_one_that_crosses_it_is_not",
+        "resolve_takes_the_shots_it_is_given_and_without_them_a_shot_clip_draws_nothing",
+        "the_boundary_frames_of_the_first_corpus_belong_to_one_shot_each"
+      ],
+      "seconds": 24,
+      "original_sha256": "c2c80a3dc3c4e92edb82e15572abb2bab950ba41a5f250f096e07bb9a45d3e2f"
+    },
+    "C02": {
+      "what": "a clip that starts on the first frame of its shot is refused (start bound off by one)",
+      "file": "crates/core/src/directed_scene/fx/scope.rs",
+      "kind": "core",
+      "result": "KILLED",
+      "run": 1,
+      "head": "a80ed73",
+      "failed": [
+        "a_hand_written_output_scope_is_accepted_and_kept_until_an_op_touches_the_clip",
+        "a_runtime_without_the_capability_refuses_the_shot_plan_by_name_and_serves_the_others",
+        "a_shot_id_is_everything_after_the_first_colon",
+        "a_shot_scope_survives_save_and_reopen_and_evaluates_the_same",
+        "composition_is_a_function_of_the_frame_alone",
+        "directed_scene::fx::scope::tests::a_clip_inside_its_shot_belongs_to_it_up_to_the_last_frame",
+        "hidden_clips_and_tracks_draw_nothing_in_either_stage",
+        "pilot_case_1_set_scope_to_a_shot_and_back_to_the_output_removes_the_key"
+      ],
+      "seconds": 10,
+      "original_sha256": "c2c80a3dc3c4e92edb82e15572abb2bab950ba41a5f250f096e07bb9a45d3e2f"
+    },
+    "C03": {
+      "what": "a shot that does not exist is read as the first shot (UNKNOWN_SHOT never raised)",
+      "file": "crates/core/src/directed_scene/fx/scope.rs",
+      "kind": "core",
+      "result": "KILLED",
+      "run": 1,
+      "head": "a80ed73",
+      "failed": [
+        "a_batch_is_atomic_and_the_refused_op_is_named",
+        "a_runtime_without_the_capability_refuses_the_shot_plan_by_name_and_serves_the_others",
+        "a_scope_that_is_not_well_formed_in_the_document_says_what_is_wrong",
+        "a_shot_scope_survives_save_and_reopen_and_evaluates_the_same",
+        "composition_is_a_function_of_the_frame_alone",
+        "directed_scene::fx::scope::tests::a_clip_inside_its_shot_belongs_to_it_up_to_the_last_frame",
+        "directed_scene::fx::scope::tests::a_shot_the_edit_does_not_have_is_unknown_and_the_hint_lists_the_shots",
+        "hidden_clips_and_tracks_draw_nothing_in_either_stage"
+      ],
+      "seconds": 10,
+      "original_sha256": "c2c80a3dc3c4e92edb82e15572abb2bab950ba41a5f250f096e07bb9a45d3e2f"
+    },
+    "C04": {
+      "what": "the first frame of the next shot still belongs to the shot that ends there",
+      "file": "crates/core/src/directed_scene/fx/scope.rs",
+      "kind": "core",
+      "result": "KILLED",
+      "run": 1,
+      "head": "a80ed73",
+      "failed": [
+        "directed_scene::fx::scope::tests::the_shot_of_a_frame_changes_exactly_on_the_boundary",
+        "the_boundary_frames_of_the_first_corpus_belong_to_one_shot_each",
+        "the_passes_of_a_shot_are_composed_before_the_output_whatever_the_track_order",
+        "the_second_corpus_has_its_own_boundary_at_frame_40",
+        "the_timeline_gives_the_plan_of_a_build_at_every_frame_and_in_any_order"
+      ],
+      "seconds": 9,
+      "original_sha256": "c2c80a3dc3c4e92edb82e15572abb2bab950ba41a5f250f096e07bb9a45d3e2f"
+    },
+    "C05": {
+      "what": "the first frame of a shot belongs to no shot",
+      "file": "crates/core/src/directed_scene/fx/scope.rs",
+      "kind": "core",
+      "result": "KILLED",
+      "run": 1,
+      "head": "a80ed73",
+      "failed": [
+        "directed_scene::fx::scope::tests::the_shot_of_a_frame_changes_exactly_on_the_boundary",
+        "the_boundary_frames_of_the_first_corpus_belong_to_one_shot_each",
+        "the_passes_of_a_shot_are_composed_before_the_output_whatever_the_track_order",
+        "the_second_corpus_has_its_own_boundary_at_frame_40",
+        "the_timeline_gives_the_plan_of_a_build_at_every_frame_and_in_any_order"
+      ],
+      "seconds": 6,
+      "original_sha256": "c2c80a3dc3c4e92edb82e15572abb2bab950ba41a5f250f096e07bb9a45d3e2f"
+    },
+    "C06": {
+      "what": "the output scope is written to the document (the canonical spelling leaves the key out)",
+      "file": "crates/core/src/directed_scene/fx/scope.rs",
+      "kind": "core",
+      "result": "KILLED",
+      "run": 1,
+      "head": "a80ed73",
+      "failed": [
+        "a_hand_written_output_scope_is_accepted_and_kept_until_an_op_touches_the_clip",
+        "directed_scene::fx::scope::tests::the_output_is_left_out_of_the_document_and_a_shot_is_an_object",
+        "pilot_case_1_set_scope_to_a_shot_and_back_to_the_output_removes_the_key",
+        "pilot_case_3_add_clip_keeps_a_shot_scope_and_a_seed_and_drops_an_output_scope"
+      ],
+      "seconds": 5,
+      "original_sha256": "c2c80a3dc3c4e92edb82e15572abb2bab950ba41a5f250f096e07bb9a45d3e2f"
+    },
+    "C07": {
+      "what": "a shot id with a colon is cut at the colon",
+      "file": "crates/core/src/directed_scene/fx/scope.rs",
+      "kind": "core",
+      "result": "KILLED",
+      "run": 1,
+      "head": "a80ed73",
+      "failed": [
+        "a_shot_id_is_everything_after_the_first_colon",
+        "directed_scene::fx::scope::tests::the_text_of_a_scope_round_trips_and_the_id_is_everything_after_the_first_colon",
+        "scope_is_part_of_the_shape_the_edit_vocabulary_documents"
+      ],
+      "seconds": 4,
+      "original_sha256": "c2c80a3dc3c4e92edb82e15572abb2bab950ba41a5f250f096e07bb9a45d3e2f"
+    },
+    "C08": {
+      "what": "the passes of a shot are drawn in the output stage",
+      "file": "crates/core/src/directed_scene/fx/scope.rs",
+      "kind": "core",
+      "result": "KILLED",
+      "run": 1,
+      "head": "a80ed73",
+      "failed": [
+        "directed_scene::fx::scope::tests::the_deck_is_drawn_before_the_output",
+        "the_pass_budget_sums_the_shot_and_the_output",
+        "the_passes_of_a_shot_are_composed_before_the_output_whatever_the_track_order",
+        "the_plan_refuses_what_the_frame_cannot_draw"
+      ],
+      "seconds": 4,
+      "original_sha256": "c2c80a3dc3c4e92edb82e15572abb2bab950ba41a5f250f096e07bb9a45d3e2f"
+    },
+    "C09": {
+      "what": "scope `node:<id>` is a plain invalid value instead of FX_SCOPE_NOT_YET",
+      "file": "crates/core/src/directed_scene/fx/scope.rs",
+      "kind": "core",
+      "result": "KILLED",
+      "run": 1,
+      "head": "a80ed73",
+      "failed": [
+        "directed_scene::fx::scope::tests::a_scope_that_is_not_drawn_or_not_a_scope_is_refused_with_its_code",
+        "pilot_case_7_a_node_scope_is_still_refused_by_the_importer_and_by_the_edit",
+        "scene_edit::fx_inspector::tests::the_scope_choice_builds_the_edit_op_and_refuses_what_is_not_a_scope",
+        "the_headless_executable_scopes_a_clip_like_the_library_and_refuses_the_same_way"
+      ],
+      "seconds": 5,
+      "original_sha256": "c2c80a3dc3c4e92edb82e15572abb2bab950ba41a5f250f096e07bb9a45d3e2f"
+    },
+    "C10": {
+      "what": "the output passes come before the passes of the shot (stages flipped)",
+      "file": "crates/core/src/directed_scene/fx/mod.rs",
+      "kind": "core",
+      "result": "KILLED",
+      "run": 1,
+      "head": "a80ed73",
+      "failed": [
+        "a_runtime_without_the_capability_refuses_the_shot_plan_by_name_and_serves_the_others",
+        "a_shot_scope_survives_save_and_reopen_and_evaluates_the_same",
+        "hidden_clips_and_tracks_draw_nothing_in_either_stage",
+        "resolve_takes_the_shots_it_is_given_and_without_them_a_shot_clip_draws_nothing",
+        "the_capability_is_asked_for_only_by_a_plan_with_a_pass_of_a_shot",
+        "the_headless_executable_scopes_a_clip_like_the_library_and_refuses_the_same_way",
+        "the_pass_budget_sums_the_shot_and_the_output",
+        "the_passes_of_a_shot_are_composed_before_the_output_whatever_the_track_order"
+      ],
+      "seconds": 7,
+      "original_sha256": "82a4c10712bfde2d1cee4d2c096ada42a7106114f5d12c390c472b86ec466169"
+    },
+    "C11": {
+      "what": "a shot pass is drawn in every frame of its interval, whatever shot the frame is in",
+      "file": "crates/core/src/directed_scene/fx/mod.rs",
+      "kind": "core",
+      "result": "KILLED",
+      "run": 1,
+      "head": "a80ed73",
+      "failed": [
+        "resolve_takes_the_shots_it_is_given_and_without_them_a_shot_clip_draws_nothing"
+      ],
+      "seconds": 12,
+      "original_sha256": "82a4c10712bfde2d1cee4d2c096ada42a7106114f5d12c390c472b86ec466169"
+    },
+    "C12": {
+      "what": "the pass budget counts only the output clips",
+      "file": "crates/core/src/directed_scene/fx/mod.rs",
+      "kind": "core",
+      "result": "KILLED",
+      "run": 1,
+      "head": "a80ed73",
+      "failed": [
+        "the_pass_budget_sums_the_shot_and_the_output"
+      ],
+      "seconds": 12,
+      "original_sha256": "82a4c10712bfde2d1cee4d2c096ada42a7106114f5d12c390c472b86ec466169"
+    },
+    "C13": {
+      "what": "a plan with a pass of a shot does not require fxShotScope",
+      "file": "crates/core/src/scene_plan/validate.rs",
+      "kind": "core",
+      "result": "KILLED",
+      "run": 1,
+      "head": "a80ed73",
+      "failed": [
+        "a_runtime_without_the_capability_refuses_the_shot_plan_by_name_and_serves_the_others",
+        "the_capability_is_asked_for_only_by_a_plan_with_a_pass_of_a_shot",
+        "the_headless_executable_scopes_a_clip_like_the_library_and_refuses_the_same_way",
+        "the_plan_lists_the_passes_by_stage_with_a_scope_each_and_asks_for_the_capability",
+        "the_plan_refuses_what_the_frame_cannot_draw"
+      ],
+      "seconds": 9,
+      "original_sha256": "09c953fcf222e7b240aa38835028e47692490eb52e9c1b19536dd752e83f0b34"
+    },
+    "C14": {
+      "what": "the plan accepts a pass of another shot than the frame's",
+      "file": "crates/core/src/scene_plan/validate.rs",
+      "kind": "core",
+      "result": "KILLED",
+      "run": 1,
+      "head": "a80ed73",
+      "failed": [
+        "the_plan_refuses_what_the_frame_cannot_draw"
+      ],
+      "seconds": 11,
+      "original_sha256": "09c953fcf222e7b240aa38835028e47692490eb52e9c1b19536dd752e83f0b34"
+    },
+    "C15": {
+      "what": "the plan accepts the passes of the shot after the passes of the output",
+      "file": "crates/core/src/scene_plan/validate.rs",
+      "kind": "core",
+      "result": "KILLED",
+      "run": 1,
+      "head": "a80ed73",
+      "failed": [
+        "the_plan_refuses_what_the_frame_cannot_draw"
+      ],
+      "seconds": 9,
+      "original_sha256": "09c953fcf222e7b240aa38835028e47692490eb52e9c1b19536dd752e83f0b34"
+    },
+    "C16": {
+      "what": "the importer does not judge the scope of the clips",
+      "file": "crates/core/src/directed_scene/integrity.rs",
+      "kind": "core",
+      "result": "KILLED",
+      "run": 1,
+      "head": "a80ed73",
+      "failed": [
+        "a_retime_that_pushes_a_shot_clip_out_of_its_shot_is_judged_by_the_importer",
+        "a_scope_that_is_not_well_formed_in_the_document_says_what_is_wrong",
+        "pilot_case_5_a_shot_that_does_not_exist_is_unknown_and_the_hint_lists_the_shots",
+        "pilot_cases_4_and_6_a_clip_inside_its_shot_is_valid_and_one_that_crosses_it_is_not"
+      ],
+      "seconds": 10,
+      "original_sha256": "197af8a9d31ebf699869576ff3c4d7ab437d6a2aac2a821bc37ec809c19f924b"
+    },
+    "C17": {
+      "what": "add_clip does not judge the scope itself (the importer refuses it later, with another code)",
+      "file": "crates/core/src/scene_edit/fx.rs",
+      "kind": "core",
+      "result": "KILLED",
+      "run": 1,
+      "head": "a80ed73",
+      "failed": [
+        "a_batch_is_atomic_and_the_refused_op_is_named",
+        "pilot_case_5_a_shot_that_does_not_exist_is_unknown_and_the_hint_lists_the_shots"
+      ],
+      "seconds": 12,
+      "original_sha256": "3ffb232acd3e528ab9a3a8e51acb0e6c01d099c9fef518e330d2d4c1b65cf3e3"
+    },
+    "C18": {
+      "what": "set_scope to the scope the clip already holds is an edit",
+      "file": "crates/core/src/scene_edit/fx.rs",
+      "kind": "core",
+      "result": "KILLED",
+      "run": 1,
+      "head": "a80ed73",
+      "failed": [
+        "a_hand_written_output_scope_is_accepted_and_kept_until_an_op_touches_the_clip"
+      ],
+      "seconds": 10,
+      "original_sha256": "3ffb232acd3e528ab9a3a8e51acb0e6c01d099c9fef518e330d2d4c1b65cf3e3"
+    },
+    "C19": {
+      "what": "going back to the output writes {kind: output} instead of leaving the key out",
+      "file": "crates/core/src/scene_edit/fx.rs",
+      "kind": "core",
+      "result": "KILLED",
+      "run": 1,
+      "head": "a80ed73",
+      "failed": [
+        "a_hand_written_output_scope_is_accepted_and_kept_until_an_op_touches_the_clip",
+        "pilot_case_1_set_scope_to_a_shot_and_back_to_the_output_removes_the_key",
+        "text_that_is_no_scope_is_an_invalid_value_and_a_missing_scope_an_invalid_op"
+      ],
+      "seconds": 9,
+      "original_sha256": "3ffb232acd3e528ab9a3a8e51acb0e6c01d099c9fef518e330d2d4c1b65cf3e3"
+    },
+    "C20": {
+      "what": "set_scope does not judge whether the clip fits the shot",
+      "file": "crates/core/src/scene_edit/fx.rs",
+      "kind": "core",
+      "result": "KILLED",
+      "run": 1,
+      "head": "a80ed73",
+      "failed": [
+        "a_batch_is_atomic_and_the_refused_op_is_named",
+        "pilot_case_2_a_clip_that_leaves_the_shot_is_refused_with_the_legal_interval",
+        "retime_first_in_the_same_batch_when_both_are_meant",
+        "the_headless_executable_scopes_a_clip_like_the_library_and_refuses_the_same_way",
+        "the_same_scope_is_a_no_op_for_a_shot_too_and_a_dry_run_leaves_no_trace",
+        "the_second_corpus_has_its_own_boundary_at_frame_40"
+      ],
+      "seconds": 8,
+      "original_sha256": "3ffb232acd3e528ab9a3a8e51acb0e6c01d099c9fef518e330d2d4c1b65cf3e3"
+    },
+    "C21": {
+      "what": "the mismatch is reported to commands with another code",
+      "file": "crates/core/src/scene_edit/fx.rs",
+      "kind": "core",
+      "result": "KILLED",
+      "run": 1,
+      "head": "a80ed73",
+      "failed": [
+        "a_batch_is_atomic_and_the_refused_op_is_named",
+        "pilot_case_2_a_clip_that_leaves_the_shot_is_refused_with_the_legal_interval",
+        "retime_first_in_the_same_batch_when_both_are_meant",
+        "the_headless_executable_scopes_a_clip_like_the_library_and_refuses_the_same_way",
+        "the_same_scope_is_a_no_op_for_a_shot_too_and_a_dry_run_leaves_no_trace",
+        "the_second_corpus_has_its_own_boundary_at_frame_40"
+      ],
+      "seconds": 7,
+      "original_sha256": "3ffb232acd3e528ab9a3a8e51acb0e6c01d099c9fef518e330d2d4c1b65cf3e3"
+    },
+    "C22": {
+      "what": "the inspector offers a shot the clip does not fit",
+      "file": "crates/core/src/scene_edit/fx_inspector.rs",
+      "kind": "core",
+      "result": "KILLED",
+      "run": 1,
+      "head": "a80ed73",
+      "failed": [
+        "scene_edit::fx_inspector::tests::the_scope_choice_has_every_text_in_three_languages_and_the_op_it_runs",
+        "scene_edit::fx_inspector::tests::the_scope_choice_lists_the_output_then_the_shots_that_hold_the_clip",
+        "the_inspector_offers_the_scope_as_a_choice_in_three_languages_with_the_op_that_chooses_it"
+      ],
+      "seconds": 8,
+      "original_sha256": "2076fce965a798e3aadda11280345e5fa8e1d481c32e8bfe42e7888ae5ebece7"
+    },
     "J01": {
       "what": "a pass of a shot is accepted by a plan that does not require fxShotScope",
       "file": "runtime/src/output-fx.js",
       "kind": "js",
       "result": "KILLED",
-      "run": 0,
-      "head": "0448d02",
+      "run": 1,
+      "head": "a80ed73",
       "failed": [
         "without the capability a pass of a shot is refused by name, never drawn as if it were the output"
       ],
@@ -53,8 +502,8 @@
       "file": "runtime/src/output-fx.js",
       "kind": "js",
       "result": "KILLED",
-      "run": 0,
-      "head": "0448d02",
+      "run": 1,
+      "head": "a80ed73",
       "failed": [
         "a pass of another shot than the frame's is unsupported, typed, and says which shot is which"
       ],
@@ -66,8 +515,8 @@
       "file": "runtime/src/output-fx.js",
       "kind": "js",
       "result": "KILLED",
-      "run": 0,
-      "head": "0448d02",
+      "run": 1,
+      "head": "a80ed73",
       "failed": [
         "the stages are listed in order: the passes of the shot, then the passes of the output"
       ],
@@ -79,8 +528,8 @@
       "file": "runtime/src/output-fx.js",
       "kind": "js",
       "result": "KILLED",
-      "run": 0,
-      "head": "0448d02",
+      "run": 1,
+      "head": "a80ed73",
       "failed": [
         "the deck and the output are two loops of their own, the seam between them is where a transition will go",
         "the deck is drawn before the output and the ping-pong goes on across the stages"
@@ -93,8 +542,8 @@
       "file": "runtime/src/directed-scene.js",
       "kind": "js",
       "result": "KILLED",
-      "run": 0,
-      "head": "0448d02",
+      "run": 1,
+      "head": "a80ed73",
       "failed": [
         "a capability the runtime does not have is named; the ones it has are the core list",
         "a pass of a shot is accepted with the capability, in the frame of that shot, and is a deck pass",
@@ -108,8 +557,8 @@
       "file": "runtime/src/output-fx.js",
       "kind": "js",
       "result": "KILLED",
-      "run": 0,
-      "head": "0448d02",
+      "run": 1,
+      "head": "a80ed73",
       "failed": [
         "one deck pass and one output pass need no more than the two targets and the one material of the effect",
         "the deck and the output are two loops of their own, the seam between them is where a transition will go",
@@ -117,9 +566,117 @@
       ],
       "seconds": 0,
       "original_sha256": "6910ee19bda017846d1b0d93d8b2d1ed206a8e371df71a9ab40f3a63af7c0a0e"
+    },
+    "R01": {
+      "what": "the output is drawn before the deck (images)",
+      "file": "runtime/src/output-fx.js",
+      "kind": "render",
+      "result": "KILLED",
+      "run": 1,
+      "head": "a80ed73",
+      "failed": [
+        "the_stages_do_not_commute_and_the_picture_follows_them_on_the_cut_corpus",
+        "the_stages_do_not_commute_and_the_picture_follows_them_on_the_minimal_corpus"
+      ],
+      "seconds": 147,
+      "original_sha256": "6910ee19bda017846d1b0d93d8b2d1ed206a8e371df71a9ab40f3a63af7c0a0e"
+    },
+    "R02": {
+      "what": "the deck stage draws nothing (images)",
+      "file": "runtime/src/output-fx.js",
+      "kind": "render",
+      "result": "KILLED",
+      "run": 1,
+      "head": "a80ed73",
+      "failed": [
+        "a_shot_clip_darkens_only_its_shot_on_the_cut_corpus",
+        "a_shot_clip_darkens_only_its_shot_on_the_minimal_corpus",
+        "an_export_on_the_cut_corpus_is_what_scene_render_draws_on_both_sides_of_the_cut",
+        "an_export_on_the_minimal_corpus_is_what_scene_render_draws_on_both_sides_of_the_cut_of_shots",
+        "the_stages_do_not_commute_and_the_picture_follows_them_on_the_cut_corpus",
+        "the_stages_do_not_commute_and_the_picture_follows_them_on_the_minimal_corpus"
+      ],
+      "seconds": 47,
+      "original_sha256": "6910ee19bda017846d1b0d93d8b2d1ed206a8e371df71a9ab40f3a63af7c0a0e"
+    },
+    "R03": {
+      "what": "the passes of the deck are drawn twice (images)",
+      "file": "runtime/src/output-fx.js",
+      "kind": "render",
+      "result": "KILLED",
+      "run": 1,
+      "head": "a80ed73",
+      "failed": [
+        "a_shot_clip_darkens_only_its_shot_on_the_cut_corpus",
+        "a_shot_clip_darkens_only_its_shot_on_the_minimal_corpus",
+        "an_export_on_the_cut_corpus_is_what_scene_render_draws_on_both_sides_of_the_cut",
+        "an_export_on_the_minimal_corpus_is_what_scene_render_draws_on_both_sides_of_the_cut_of_shots",
+        "the_stages_do_not_commute_and_the_picture_follows_them_on_the_cut_corpus",
+        "the_stages_do_not_commute_and_the_picture_follows_them_on_the_minimal_corpus"
+      ],
+      "seconds": 53,
+      "original_sha256": "6910ee19bda017846d1b0d93d8b2d1ed206a8e371df71a9ab40f3a63af7c0a0e"
+    },
+    "W01": {
+      "what": "the option the clip already holds is offered as a move",
+      "file": "crates/desktop/src/workstation/scene_fx_scope.rs",
+      "kind": "desktop",
+      "result": "KILLED",
+      "run": 1,
+      "head": "a80ed73",
+      "failed": [
+        "workstation::scene_fx_scope_tests::moving_a_clip_between_scopes_is_one_entry_each_and_undo_restores_it",
+        "workstation::scene_fx_scope_tests::the_nodes_list_the_scope_choice_the_shots_and_what_fits_where"
+      ],
+      "seconds": 21,
+      "original_sha256": "5a5d942d48dbce0724337106bf78a1cbda8485469f78f9d0fd6fe69b49b84ef6"
+    },
+    "W02": {
+      "what": "add on the shot does not cut the clip at the end of the shot",
+      "file": "crates/desktop/src/workstation/scene_fx_scope.rs",
+      "kind": "desktop",
+      "result": "KILLED",
+      "run": 1,
+      "head": "a80ed73",
+      "failed": [
+        "workstation::scene_fx_scope_tests::a_refused_scope_is_typed_on_the_panel_and_writes_nothing",
+        "workstation::scene_fx_scope_tests::add_in_shot_lays_the_clip_inside_the_shot_the_monitor_shows_as_one_entry",
+        "workstation::scene_fx_scope_tests::moving_a_clip_between_scopes_is_one_entry_each_and_undo_restores_it",
+        "workstation::scene_fx_scope_tests::the_add_buttons_on_the_shot_run_the_shared_handler_and_are_disabled_outside_the_edit",
+        "workstation::scene_fx_scope_tests::the_selector_is_a_kit_select_whose_pick_is_the_same_command"
+      ],
+      "seconds": 25,
+      "original_sha256": "5a5d942d48dbce0724337106bf78a1cbda8485469f78f9d0fd6fe69b49b84ef6"
+    },
+    "W03": {
+      "what": "the shot of the monitor is the first one",
+      "file": "crates/desktop/src/workstation/scene_fx_scope.rs",
+      "kind": "desktop",
+      "result": "KILLED",
+      "run": 1,
+      "head": "a80ed73",
+      "failed": [
+        "workstation::scene_fx_scope_tests::add_in_shot_lays_the_clip_inside_the_shot_the_monitor_shows_as_one_entry",
+        "workstation::scene_fx_scope_tests::the_add_buttons_on_the_shot_run_the_shared_handler_and_are_disabled_outside_the_edit"
+      ],
+      "seconds": 34,
+      "original_sha256": "5a5d942d48dbce0724337106bf78a1cbda8485469f78f9d0fd6fe69b49b84ef6"
+    },
+    "W04": {
+      "what": "add on the shot is enabled outside the edit",
+      "file": "crates/desktop/src/workstation/scene_fx_scope.rs",
+      "kind": "desktop",
+      "result": "KILLED",
+      "run": 1,
+      "head": "a80ed73",
+      "failed": [
+        "workstation::scene_fx_scope_tests::the_add_buttons_on_the_shot_run_the_shared_handler_and_are_disabled_outside_the_edit"
+      ],
+      "seconds": 12,
+      "original_sha256": "5a5d942d48dbce0724337106bf78a1cbda8485469f78f9d0fd6fe69b49b84ef6"
     }
   },
   "summary": {
-    "KILLED": 6
+    "KILLED": 35
   }
 }
