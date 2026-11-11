@@ -3,7 +3,8 @@
 
     python3 scripts/first-use-ab.py narrow --factor preupload|warm_draw --binary B --project P.tessel.json --out DIR [--from 114 --to 210]
     python3 scripts/first-use-ab.py full   --factor preupload|warm_draw --binary B --project P.tessel.json --out DIR [--pairs 4]
-    python3 scripts/first-use-ab.py analyze --factor ... --mode narrow|full --project P.tessel.json --out DIR [--report-dir DIR2]
+    python3 scripts/first-use-ab.py analyze --project P.tessel.json --out DIR [--report-dir DIR2]   (factor and mode come from the manifest)
+    python3 scripts/first-use-ab.py pixels --factor warm_draw --binary B --out DIR   (functional proof: takes no GPU lock)
 
 The two factors are SEPARATE experiments (the arms of one run never switch both on):
 
@@ -32,19 +33,24 @@ DECISION RULES, fixed here before any measurement (diagnostic references, not ac
 Exit: 0 all sessions valid; 1 a session invalid (still published); 2 a prerequisite is missing (BLOCKED).
 """
 import argparse
-import importlib.util
 import json
-import os
 import pathlib
-import shutil
 import statistics
 import sys
-import tempfile
-import time
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from ab import ROOT, warm_proof  # noqa: E402
+from ab.batch import Experiment, analyze, arm_order, finish, manifest_of, prerequisites, run_arms  # noqa: E402
+from ab.pixels import run_pixels  # noqa: E402
+from ab.play import ENTRY_WINDOW, VIDEO_ENTRY_WINDOW, hung_play, play_pictures, play_segments, summarize_play, window_report  # noqa: E402
+from ab.session import one_window, run_session, session_env, whole_project_twice  # noqa: E402
+from ab.stats import PAIR_MAX_DELTA_CORES, memory_summary, percentile, quiet_class, stats  # noqa: E402
+from ab.transit import decompose_play  # noqa: E402
+from ab.validity import published_error, session_validity, window_validity  # noqa: E402
+
 BUDGET_DELTA_MS = 10.0
 PRE_CUT_EXCESS_MS = 20.0
+
 # `span` is the page's `runtime_spans` kind for the factor and `worked` the ONE outcome that means the manipulation happened (every other outcome
 # says why it did not). The list of outcomes the page can report is `runtime/test/fixtures/activation-spans.json`: the runtime suite makes the real
 # page report each, the host suite sends each to the trace, and `first-use-ab.spec.py` checks these two fields against it.
@@ -55,37 +61,14 @@ FACTORS = {
                   "span": "warm_draw", "worked": "drawn", "target": "the cut's entry"},
 }
 ARMS = ("control", "on")
-# A play that shows fewer than this share of the project's frames, or waits this long between two pictures, is a HANG: reported in its own column
-# and counted per arm. It does not make the run invalid (it is what the editor did), and it is never dropped.
-HANG_PICTURES_SHARE = 0.9
-HANG_GAP_MS = 2000.0
 
 
-def load_module(name, path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-RL = load_module("real_latency_ab", ROOT / "scripts" / "real-latency-ab.py")
-TP = load_module("viewport_transit_probe", ROOT / "scripts" / "viewport-transit-probe.py")
-
-
+# ------------------------------------------------------------------------------------------------ pure logic
 # ------------------------------------------------------------------------------------------------ pure logic
 def arm_env(factor, arm):
     """The environment that makes an arm: the factor's switch explicitly 0 or 1, the other factor's explicitly 0, the probe's GPU wait off."""
     spec = FACTORS[factor]
     return {spec["env"]: "1" if arm == "on" else "0", spec["other"]: "0", "TESSEL_VIEWPORT_PROBE_GPU_FINISH": "0"}
-
-
-def arm_order(pairs):
-    """control/on, on/control, control/on, on/control, ..."""
-    order = []
-    for pair in range(pairs):
-        order += ["control", "on"] if pair % 2 == 0 else ["on", "control"]
-    return order
 
 
 def factor_validity(record, factor):
@@ -120,7 +103,7 @@ def span_summary(events, kind):
         outcomes[span.get("outcome")] = outcomes.get(span.get("outcome"), 0) + 1
     worked_outcome = next((spec["worked"] for spec in FACTORS.values() if spec["span"] == kind), None)
     worked = [s["ms"] for s in spans if s.get("outcome") == worked_outcome]
-    return {"spans": len(spans), "outcomes": outcomes, "ms": RL.stats(worked), "total_ms": round(sum(worked), 1)}
+    return {"spans": len(spans), "outcomes": outcomes, "ms": stats(worked), "total_ms": round(sum(worked), 1)}
 
 
 def gl_calls(events):
@@ -139,8 +122,8 @@ def entries(frames, events, project, segment, starts, width):
     """For each entry (a clip start or a cut): the LONGEST gap that ends on one of its first `width`+1 frames, with the picture that ended it and
     where that picture's time went. The long wait of a cut can land a frame or two after the cut (`187 -> 188` for the cut at 186), so the
     first picture at the entry is not the one to read."""
-    shots = RL.play_pictures(frames, segment)
-    decomposed = {d["id"]: d for d in TP.decompose_play(frames, events, segment)}
+    shots = play_pictures(frames, segment)
+    decomposed = {d["id"]: d for d in decompose_play(frames, events, segment)}
     out = []
     for start in starts:
         best = None
@@ -170,14 +153,14 @@ def analyze_run(record, project, factor, window=None):
     if window:
         # The window's play is stopped by polling and the refine of the paused playhead follows; the stop frame and anything after it are not part of it.
         frames = [f for f in frames if f.get("shown_frame") is None or f["shown_frame"] < window[1]]
-    segments = RL.play_segments(events)
+    segments = play_segments(events)
     names = ["first"] if window else ["first", "repeat"]
     budget = 1000.0 / project["fps"]
     in_window = (lambda f: window[0] - 2 <= f <= window[1] + 2) if window else (lambda f: True)
     plays = {}
     for name, segment in zip(names, segments):
-        summary = RL.summarize_play(frames, events, segment, project, budget)
-        windows = RL.window_report(frames, project, segment)
+        summary = summarize_play(frames, events, segment, project, budget)
+        windows = window_report(frames, project, segment)
         mine = [f for f in frames if segment["clock_ms"] and segment["clock_ms"] <= f["done_ms"] < segment["end_ms"]]
         plays[name] = {
             "summary": {k: summary[k] for k in ("pictures", "interval_ms", "slow_gt_62_5", "slow_gt_100", "over_budget_gt_41_7", "request_to_accept_ms",
@@ -189,15 +172,15 @@ def analyze_run(record, project, factor, window=None):
                              "ui_callback_ms": g["context"]["ui_callback_ms"], "page_work_ms": round(
                                  (g["context"].get("page_decode_ms") or 0) + (g["context"].get("page_fetch_ms") or 0) + (g["context"].get("page_warm_ms") or 0), 1),
                              "reads": g["context"]["reads"]} for g in summary["slow_detail"] if in_window(g["to_frame"])],
-            "png_entries": [e for e in entries(frames, events, project, segment, project["video_starts"], RL.VIDEO_ENTRY_WINDOW) if not window or window[0] <= e["entry"] <= window[1]],
-            "cut_entries": [e for e in entries(frames, events, project, segment, project["cuts"], RL.ENTRY_WINDOW) if not window or window[0] <= e["entry"] <= window[1]],
-            "pre_cut_excess_ms": round(sum(w["prefetch_window"]["excess_ms"] for w in windows if not window or window[0] <= w["cut"] <= window[1] + RL.ENTRY_WINDOW), 1),
-            "pre_cut_slow": sum(w["prefetch_window"]["slow"] for w in windows if not window or window[0] <= w["cut"] <= window[1] + RL.ENTRY_WINDOW),
+            "png_entries": [e for e in entries(frames, events, project, segment, project["video_starts"], VIDEO_ENTRY_WINDOW) if not window or window[0] <= e["entry"] <= window[1]],
+            "cut_entries": [e for e in entries(frames, events, project, segment, project["cuts"], ENTRY_WINDOW) if not window or window[0] <= e["entry"] <= window[1]],
+            "pre_cut_excess_ms": round(sum(w["prefetch_window"]["excess_ms"] for w in windows if not window or window[0] <= w["cut"] <= window[1] + ENTRY_WINDOW), 1),
+            "pre_cut_slow": sum(w["prefetch_window"]["slow"] for w in windows if not window or window[0] <= w["cut"] <= window[1] + ENTRY_WINDOW),
             "windows": windows,
             "frames_in_play": len(mine),
-            "hang": bool(window is None and (summary["pictures"] < HANG_PICTURES_SHARE * project["length"] or (summary["interval_ms"]["max"] or 0) > HANG_GAP_MS)),
+            "hang": bool(window is None and hung_play(summary, project["length"])),
         }
-    valid, reasons = RL.session_validity(record | {"mode": "async"}) if not window else TP.validity(record)
+    valid, reasons = session_validity(record | {"mode": "async"}) if not window else window_validity(record)
     reasons = list(reasons) + factor_validity(record, factor)
     warmed = ((record.get("status") or {}).get("stats") or {}).get("warmed")
     if window and not (isinstance(warmed, int) and warmed > 0):
@@ -206,18 +189,18 @@ def analyze_run(record, project, factor, window=None):
     return {
         "arm": record.get("arm"), "pair": record.get("pair"), "order_index": record.get("order_index"),
         "valid": not reasons, "invalid_reasons": reasons,
-        "quiet_class": RL.quiet_class(external), "external_median_cores": round(statistics.median(external), 2) if external else None,
-        "external_p95_cores": RL.percentile(external, 0.95),
+        "quiet_class": quiet_class(external), "external_median_cores": round(statistics.median(external), 2) if external else None,
+        "external_p95_cores": percentile(external, 0.95),
         "loadavg_start": (record.get("host") or {}).get("loadavg_start"),
         "loadavg_peak_1m": max((row[0] for row in record.get("loadavg", [])), default=None),
-        "memory": RL.memory_summary(record.get("memory_series", [])),
+        "memory": memory_summary(record.get("memory_series", [])),
         "factor_report": (record.get("status") or {}).get(spec["report"]),
         "factor_spans": span_summary(events, spec["span"]),
         "gl_calls": gl_calls(events),
         "asset_io": (record.get("status") or {}).get("asset_io"),
         "warmed": ((record.get("status") or {}).get("stats") or {}).get("warmed"),
         "plays": plays,
-        "errors": [RL.redact(e) for e in record.get("errors", [])],
+        "errors": [published_error(e) for e in record.get("errors", [])],
     }
 
 
@@ -242,12 +225,13 @@ def pair_rows(runs, factor, entry):
         if set(sides) != set(ARMS):
             continue
         control, on = sides["control"], sides["on"]
-        comparable = control["valid"] and on["valid"] and control["quiet_class"] == "quiet" and on["quiet_class"] == "quiet" \
-            and abs((control["external_median_cores"] or 0) - (on["external_median_cores"] or 0)) <= RL.PAIR_MAX_DELTA_CORES
+        valid = control["valid"] and on["valid"]
+        comparable = valid and control["quiet_class"] == "quiet" and on["quiet_class"] == "quiet" \
+            and abs((control["external_median_cores"] or 0) - (on["external_median_cores"] or 0)) <= PAIR_MAX_DELTA_CORES
         for play in sorted(set(control["plays"]) & set(on["plays"])):
             pc, po = control["plays"][play], on["plays"][play]
             rows.append({
-                "pair": pair, "play": play, "comparable": comparable, "order": [control["order_index"], on["order_index"]],
+                "pair": pair, "play": play, "valid": valid, "comparable": comparable, "order": [control["order_index"], on["order_index"]],
                 "entry_gap_ms": {"control": target_gap(pc, factor, entry), "on": target_gap(po, factor, entry)},
                 "png_entry_gap_median_ms": {arm: _median_gap(p["png_entries"]) for arm, p in (("control", pc), ("on", po))},
                 "cut_entry_gap_median_ms": {arm: _median_gap(p["cut_entries"]) for arm, p in (("control", pc), ("on", po))},
@@ -274,9 +258,11 @@ def verdict(rows, factor, entry):
     spec = FACTORS[factor]
     if len(first) < 4:
         return f"INCONCLUSIVE: {len(first)} first-play pair(s); the rule needs 4."
-    usable = [r for r in first if r["entry_gap_ms"]["control"] is not None and r["entry_gap_ms"]["on"] is not None]
+    # Only a pair whose two sessions are VALID is read: a session that did not run to its end, lost an asset or never did the factor's work has numbers
+    # that mean nothing, and they must not make a "LOCAL BENEFIT" or a "SHIFTED".
+    usable = [r for r in first if r["valid"] and r["entry_gap_ms"]["control"] is not None and r["entry_gap_ms"]["on"] is not None]
     if len(usable) < 4:
-        return f"INCONCLUSIVE: {spec['target']} was shown in both arms in only {len(usable)} of the first plays."
+        return f"INCONCLUSIVE: {spec['target']} was shown in both arms of valid sessions in only {len(usable)} of {len(first)} first plays."
     better = [r for r in usable if r["entry_gap_ms"]["control"] - r["entry_gap_ms"]["on"] >= BUDGET_DELTA_MS]
     grew = [r for r in usable if r["pre_cut_excess_ms"]["on"] - r["pre_cut_excess_ms"]["control"] > PRE_CUT_EXCESS_MS]
     comparable = sum(1 for r in usable if r["comparable"])
@@ -396,7 +382,7 @@ def arm_summary(runs):
                 "max_gap_per_run": [p["summary"]["interval_ms"]["max"] for p in plays],
                 "p50_gap_median_ms": med([p["summary"]["interval_ms"]["p50"] for p in plays]), "p95_gap_median_ms": med([p["summary"]["interval_ms"]["p95"] for p in plays]),
                 "pre_cut_excess_per_run": [p["pre_cut_excess_ms"] for p in plays],
-                "png_entry_gaps": RL.stats(pooled(valid_runs, arm, play, "png_entries")), "cut_entry_gaps": RL.stats(pooled(valid_runs, arm, play, "cut_entries")),
+                "png_entry_gaps": stats(pooled(valid_runs, arm, play, "png_entries")), "cut_entry_gaps": stats(pooled(valid_runs, arm, play, "cut_entries")),
                 "play_to_first_picture_per_run": [p["summary"]["play_command_to_first_picture_ms"] for p in plays],
                 "memory_median_of_medians_mib": med([r["memory"]["rss_sum_mib"]["median"] for r in mine if r["memory"]["rss_sum_mib"]["median"] is not None]),
                 "memory_peak_per_run_mib": [r["memory"]["rss_sum_mib"]["peak"] for r in mine],
@@ -404,7 +390,8 @@ def arm_summary(runs):
     return out
 
 
-def build_report(records, project, manifest, factor):
+def build_report(records, project, manifest):
+    factor = manifest["factor"]
     window = manifest.get("window") if manifest["mode"] == "narrow" else None
     runs = [analyze_run(r, project, factor, window) for r in records]
     entry = manifest["entry"]
@@ -414,115 +401,52 @@ def build_report(records, project, manifest, factor):
             "all_valid": all(r["valid"] for r in runs)}
 
 
-def write_outputs(out, report, report_dir):
-    (out / "analysis.json").write_text(json.dumps(report, indent=2))
-    (out / "analysis.md").write_text(markdown(report))
-    if report_dir:
-        target = pathlib.Path(report_dir)
-        target.mkdir(parents=True, exist_ok=True)
-        (target / "analysis.json").write_text(json.dumps(report, indent=2))
-        (target / "analysis.md").write_text(markdown(report))
-    shas = "".join(f"{RL.sha256_file(p)}  {p.name}\n" for p in sorted(out.glob("run-*.json")))
-    (out / "runs.sha256").write_text(shas)
-    if report_dir:
-        (pathlib.Path(report_dir) / "runs.sha256").write_text(shas)
-
-
-# --------------------------------------------------------------------------------------------------- commands
-def prerequisites(args, W):
-    binary = pathlib.Path(args.binary).resolve()
-    document = pathlib.Path(args.project).resolve()
-    for needed in (binary, ROOT / "runtime" / "dist" / "runtime.js", document):
-        if not needed.exists():
-            print(f"BLOCKED: missing {needed}")
-            return None
-    project = RL.parse_project(json.loads(document.read_text()))
-    if [s for s in RL.check_sources(project["sources"]) if not s["present"]]:
-        print("BLOCKED: project source(s) missing")
-        return None
-    if W.free_gib() < RL.MIN_FREE_GIB_START:
-        print(f"BLOCKED: {W.free_gib():.1f} GiB free")
-        return None
-    locks = W.acquire_locks(args.lock_wait)
-    if locks is None:
-        print(f"BLOCKED: the GPU bench locks were not free within {args.lock_wait:.0f} s")
-        return None
-    return binary, document, project, locks
-
-
-def manifest_of(args, binary, document, mode, window, project):
-    return {"git": RL.git_state(), "binary_sha256": RL.sha256_file(binary), "runtime_sha256": RL.sha256_file(ROOT / "runtime" / "dist" / "runtime.js"),
-            "document_sha256": RL.sha256_file(document), "factor": args.factor, "mode": mode, "window": list(window) if window else None,
-            "order": arm_order(args.pairs if mode == "full" else 1), "io": "async", "label": args.label, "started_unix": time.time(),
-            "entry": args.entry if args.entry is not None else (196 if args.factor == "preupload" else project["cuts"][0]),
-            "env_control": arm_env(args.factor, "control"), "env_on": arm_env(args.factor, "on")}
-
-
-def cmd_run(args, mode):
-    W = load_module("scene_warm_proof", ROOT / "scripts" / "scene-warm-proof.py")
-    got = prerequisites(args, W)
-    if got is None:
-        return 2
-    binary, document, project, locks = got
-    window = (args.start, args.end) if mode == "narrow" else None
-    out = pathlib.Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
-    manifest = manifest_of(args, binary, document, mode, window, project)
-    (out / "manifest.json").write_text(json.dumps(manifest, indent=2))
-    print(f"build {manifest['git']['sha'][:9]} dirty={manifest['git']['dirty_files']} binary {manifest['binary_sha256'][:12]} order {manifest['order']}", flush=True)
-    records = []
-    try:
-        for index, arm in enumerate(manifest["order"]):
-            env = arm_env(args.factor, arm)
-            if mode == "narrow":
-                record = TP.run_iteration(W, binary, document, project, "async", window, index, arm_env=env)
-                record.setdefault("host", {"loadavg_start": [round(v, 2) for v in os.getloadavg()]})
-            else:
-                record = RL.run_session(W, binary, document, project, "async", out, index, index, 0, env_extra=env, arm=arm)
-            record["arm"], record["pair"], record["order_index"] = arm, index // 2, index
-            (out / f"run-{index:02d}-{arm}.json").write_text(json.dumps(record))
-            records.append(record)
-            run = analyze_run(record, project, args.factor, window)
-            print(f"  run {index} {arm} valid={run['valid']} {run['invalid_reasons']} class={run['quiet_class']}", flush=True)
-    finally:
-        for handle in locks:
-            handle.close()
-    manifest["finished_unix"] = time.time()
-    (out / "manifest.json").write_text(json.dumps(manifest, indent=2))
-    return finish(out, records, project, manifest, args.factor, args.report_dir)
-
-
-def finish(out, records, project, manifest, factor, report_dir):
-    report = build_report(records, project, manifest, factor)
-    write_outputs(out, report, report_dir)
-    print(markdown(report))
-    return 0 if report["all_valid"] else 1
-
-
-def cmd_analyze(args):
-    out = pathlib.Path(args.out)
-    manifest = json.loads((out / "manifest.json").read_text())
-    project = RL.parse_project(json.loads(pathlib.Path(args.project).read_text()))
-    records = [json.loads(p.read_text()) for p in sorted(out.glob("run-*.json"))]
-    return finish(out, records, project, manifest, manifest["factor"], args.report_dir)
-
-
 def activation_verdicts(sessions, factor):
     """What makes the pixel proof mean something: the manipulation HAPPENED. The `on` session that played into the cut reports the factor's worked
     outcome in the page's own spans, no control session reports a span of the factor, and the host reports each arm's switch as it was asked.
     Missing data never passes (an empty list of sessions is not "all of them agree")."""
     spec = FACTORS[factor]
-    on_hot = [s for s in sessions if s.get("factor_arm") == "on" and s.get("order") == "hot"]
+    on_hot = [s for s in sessions if s.get("label") == "on" and s.get("order") == "hot"]
     worked = [((s.get("spans") or {}).get(spec["span"]) or {}).get(spec["worked"], 0) for s in on_hot]
-    control = [s for s in sessions if s.get("factor_arm") == "control"]
+    control = [s for s in sessions if s.get("label") == "control"]
     shown = [(s.get("spans") or {}).get(spec["span"]) for s in control]
     switches = [((s.get("factors") or {}).get(spec["report"]) or {}).get("enabled") for s in sessions]
     return [
         (f"activation: the `on` session that played into the cut reports `{spec['span']}`/`{spec['worked']}` from the page",
          bool(on_hot) and all(n > 0 for n in worked), worked),
         (f"activation: no control session reports a `{spec['span']}` span", bool(control) and not any(shown), shown),
-        (f"activation: the host reports `{spec['report']}.enabled` as each arm was asked", bool(sessions) and switches == [s.get("factor_arm") == "on" for s in sessions], switches),
+        (f"activation: the host reports `{spec['report']}.enabled` as each arm was asked", bool(sessions) and switches == [s.get("label") == "on" for s in sessions], switches),
     ]
+
+
+# --------------------------------------------------------------------------------------------------- commands
+EXPERIMENT = Experiment(record="run-{index:02d}-{arm}.json", build=build_report, markdown=markdown, ok=lambda report: report["all_valid"])
+
+
+def cmd_run(args):
+    mode = args.command
+    run = prerequisites(args)
+    if run is None:
+        return 2
+    W = warm_proof()
+    window = (args.start, args.end) if mode == "narrow" else None
+    manifest = manifest_of(run, arm_order(ARMS, args.pairs if mode == "full" else 1), factor=args.factor, mode=mode, window=list(window) if window else None,
+                           io="async", label=args.label,
+                           entry=args.entry if args.entry is not None else (196 if args.factor == "preupload" else run.project["cuts"][0]),
+                           env_control=arm_env(args.factor, "control"), env_on=arm_env(args.factor, "on"))
+
+    def session(index, arm):
+        env = session_env("async", arm_env(args.factor, arm))
+        if window:
+            return run_session(W, run.binary, run.document, {"iteration": index, "io": "async", "window": list(window)}, env, one_window(W, run.project, window))
+        return run_session(W, run.binary, run.document, {"number": index, "mode": "async"}, env, whole_project_twice(W, run.project))
+
+    def summary(record):
+        found = analyze_run(record, run.project, args.factor, window)
+        return f"  run {record['order_index']} {record['arm']} valid={found['valid']} {found['invalid_reasons']} class={found['quiet_class']}"
+
+    records = run_arms(run, pathlib.Path(args.out), manifest, EXPERIMENT, session, summary)
+    return finish(EXPERIMENT, pathlib.Path(args.out), records, run.project, manifest, args.report_dir)
 
 
 def cmd_pixels(args):
@@ -532,63 +456,8 @@ def cmd_pixels(args):
     if args.factor != "warm_draw":
         print("N/A: the synthetic project has no stills; see runtime/test/preupload-browser.test.mjs for the pre-upload's pixel proof")
         return 0
-    W = load_module("scene_warm_proof", ROOT / "scripts" / "scene-warm-proof.py")
-    binary = pathlib.Path(args.binary).resolve()
-    if W.free_gib() < args.min_free_gib:
-        print(f"BLOCKED: {W.free_gib():.1f} GiB free")
-        return 2
-    locks = W.acquire_locks(args.lock_wait)
-    if locks is None:
-        print("BLOCKED: the GPU bench locks were not free")
-        return 2
-    original_env, original_retry = W.env_for, W.retry_while_preparing
-    refused = []
-    box = {"arm": "control"}
-
-    def retrying(call, *rest, **named):
-        answer = original_retry(call, *rest, **named)
-        for _ in range(4):
-            if not (isinstance(answer, dict) and not answer.get("ok")):
-                break
-            refused.append({"arm": box["arm"], "answer": str(answer)[:300]})
-            if ((answer.get("error") or {}).get("code")) != "cancelled":
-                break
-            time.sleep(1.0)
-            answer = original_retry(call, *rest, **named)
-        return answer
-
-    W.retry_while_preparing = retrying
-    W.env_for = lambda arm, inspect: {**original_env("warm", inspect), "TESSEL_VIEWPORT_ASSET_IO": "async", "TESSEL_GL": "gpu", **arm_env(args.factor, box["arm"])}
-    work = tempfile.mkdtemp(prefix="fuab-px-", dir="/tmp")
-    results = []
-    try:
-        cuts, cut_frames = 5, 72
-        document = W.build_project(str(binary), os.path.join(work, "build"), 200000, cuts, cut_frames)
-        if not document:
-            return 1
-        frames = sorted({cut_frames + 5, 2 * cut_frames + 5, (cuts - 1) * cut_frames + 5, cut_frames + 40})
-        number = 0
-        for arm in ARMS:
-            for order in ("hot", "cold"):
-                box["arm"] = arm
-                session = W.pixel_session(str(binary), document, "warm", order, frames, cut_frames, os.path.join(work, f"px{number}"))
-                session["factor_arm"] = arm
-                results.append(session)
-                number += 1
-    finally:
-        W.env_for, W.retry_while_preparing = original_env, original_retry
-        for handle in locks:
-            handle.close()
-        shutil.rmtree(work, ignore_errors=True)
-    verdicts = W.pixel_verdicts(results, frames) + activation_verdicts(results, args.factor)
-    failures = [name for name, ok, _ in verdicts if not ok]
-    for name, ok, detail in verdicts:
-        print(("PASS " if ok else "FAIL ") + name + ("" if ok else f"  [{str(detail)[:200]}]"))
-    out = pathlib.Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
-    (out / "pixels.json").write_text(json.dumps({"factor": args.factor, "frames": frames, "sessions": results, "refused_requests": refused,
-                                                  "verdicts": [{"check": n, "ok": ok} for n, ok, _ in verdicts]}, indent=2))
-    return 1 if failures or any(s.get("error") for s in results) else 0
+    arms = [(arm, {"TESSEL_VIEWPORT_ASSET_IO": "async", "TESSEL_GL": "gpu", **arm_env(args.factor, arm)}) for arm in ARMS]
+    return run_pixels(pathlib.Path(args.binary).resolve(), args.out, arms, lambda results: activation_verdicts(results, args.factor), {"factor": args.factor})
 
 
 def main():
@@ -613,19 +482,12 @@ def main():
     px.add_argument("--factor", choices=sorted(FACTORS), required=True)
     px.add_argument("--binary", default=str(ROOT / "target" / "release" / "tessel-editor"))
     px.add_argument("--out", required=True)
-    px.add_argument("--lock-wait", type=float, default=15.0)
-    px.add_argument("--min-free-gib", type=float, default=RL.MIN_FREE_GIB_START,
-                    help="the pixel proof writes under 1 GiB; a lower start floor is allowed only above the 12 GiB hard floor")
     ana = sub.add_parser("analyze")
     ana.add_argument("--project", required=True)
     ana.add_argument("--out", required=True)
     ana.add_argument("--report-dir")
     args = parser.parse_args()
-    if args.command == "analyze":
-        return cmd_analyze(args)
-    if args.command == "pixels":
-        return cmd_pixels(args)
-    return cmd_run(args, args.command)
+    return {"analyze": lambda a: analyze(EXPERIMENT, a), "pixels": cmd_pixels}.get(args.command, cmd_run)(args)
 
 
 if __name__ == "__main__":

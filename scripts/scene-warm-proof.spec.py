@@ -1,9 +1,11 @@
 """Pure-logic tests of the scene warm A/B harness; no editor, GPU or runtime page is started."""
 import fcntl
 import importlib.util
+import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 spec = importlib.util.spec_from_file_location("scene_warm_proof", Path(__file__).with_name("scene-warm-proof.py"))
 proof = importlib.util.module_from_spec(spec)
@@ -22,8 +24,8 @@ class FixtureTests(unittest.TestCase):
         self.assertNotEqual(first, proof.splat_bytes(50, 8), "another cut has another cloud, or the pixel control is vacuous")
 
     def test_the_arms_alternate_and_stay_balanced(self):
-        self.assertEqual(proof.arm_order(1), ["warm", "cold"])
-        order = proof.arm_order(4)
+        self.assertEqual(proof.arm_order(("warm", "cold"), 1), ["warm", "cold"])
+        order = proof.arm_order(("warm", "cold"), 4)
         self.assertEqual(order, ["warm", "cold", "cold", "warm", "warm", "cold", "cold", "warm"])
         self.assertEqual(order.count("warm"), order.count("cold"))
 
@@ -240,6 +242,28 @@ class LockTests(unittest.TestCase):
 
         stuck = proof.retry_while_preparing(lambda: {"ok": False, "error": {"code": "media_preparing"}}, timeout=25, sleep=lambda s: None, now=tick)
         self.assertEqual(proof.error_code(stuck), "media_preparing", "a wait that never ends is the caller's failure, not a pass")
+
+
+class LabEnvironmentTests(unittest.TestCase):
+    """What an editor of the lab inherits from the shell: nothing of `TESSEL_*`, so an arm is exactly what its own environment says."""
+
+    def test_no_switch_left_in_the_shell_reaches_the_editor_and_the_arms_own_switches_do(self):
+        shell = {"PATH": "/usr/bin", "HOME": "/real/home", "TESSEL_VIEWPORT_WARM_DRAW": "1", "TESSEL_GL": "cpu", "TESSEL_VIEWPORT_PROBE_GPU_FINISH": "1"}
+        made = proof.lab_environment(shell, "/lab/h", {"TESSEL_VIEWPORT_PROBE_GPU_FINISH": "0", "TESSEL_VIEWPORT_TRACE": "1"})
+        self.assertEqual(made["TESSEL_VIEWPORT_PROBE_GPU_FINISH"], "0", "the arm's own value wins over the shell's")
+        self.assertNotIn("TESSEL_VIEWPORT_WARM_DRAW", made, "a switch the arm did not name is not inherited")
+        self.assertNotIn("TESSEL_GL", made)
+        self.assertEqual((made["PATH"], made["HOME"], made["TESSEL_VIEWPORT_TRACE"]), ("/usr/bin", "/lab/h", "1"))
+
+    def test_the_editor_is_started_with_that_environment_not_the_shells(self):
+        started = {}
+        work = tempfile.mkdtemp(prefix="labenv-", dir="/tmp")
+        self.addCleanup(lambda: __import__("shutil").rmtree(work, ignore_errors=True))
+        with mock.patch.dict(os.environ, {"TESSEL_VIEWPORT_PREUPLOAD": "1", "TESSEL_VIEWPORT_WARM_DRAW": "1"}), \
+                mock.patch.object(proof.subprocess, "Popen", side_effect=lambda command, **named: started.update(named) or mock.Mock()):
+            proof.Lab("/bin/true", work, {"TESSEL_VIEWPORT_WARM_DRAW": "0"})
+        self.assertEqual(started["env"]["TESSEL_VIEWPORT_WARM_DRAW"], "0")
+        self.assertNotIn("TESSEL_VIEWPORT_PREUPLOAD", started["env"])
 
 
 if __name__ == "__main__":

@@ -1,8 +1,12 @@
 """Pure-logic tests of the BL157.3 first-use A/B; no editor, GPU, runtime page or private media is started."""
+import contextlib
 import importlib.util
+import io
 import json
+import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 spec = importlib.util.spec_from_file_location("first_use_ab", Path(__file__).with_name("first-use-ab.py"))
 ab = importlib.util.module_from_spec(spec)
@@ -51,7 +55,7 @@ class ArmTests(unittest.TestCase):
             self.assertEqual(on["TESSEL_VIEWPORT_PROBE_GPU_FINISH"], "0")
 
     def test_the_order_alternates_which_arm_goes_first_by_pair(self):
-        self.assertEqual(ab.arm_order(4), ["control", "on", "on", "control", "control", "on", "on", "control"])
+        self.assertEqual(ab.arm_order(ab.ARMS, 4), ["control", "on", "on", "control", "control", "on", "on", "control"])
 
 
 class ValidityTests(unittest.TestCase):
@@ -95,6 +99,15 @@ def cut_record(gap_at, stop_gap=300.0):
 
 
 class AnalysisTests(unittest.TestCase):
+    def test_the_errors_of_a_session_are_published_as_codes_and_kinds_never_as_their_text(self):
+        failing = record("on", 40)
+        failing["errors"] = ["play(first): RuntimeError('could not open /Users/someone/private/clip.ply')",
+                             "playback.start(first): {'ok': False, 'error': {'code': 'media_preparing', 'message': 'wait /Users/someone/private/clip.ply'}}"]
+        run = ab.analyze_run(failing, PROJECT, "preupload", (190, 200))
+        self.assertEqual(run["errors"], [{"code": "RuntimeError", "kind": "exception"}, {"code": "media_preparing", "kind": "host_refused"}])
+        for private in ("/Users", "someone", "private", "clip.ply"):
+            self.assertNotIn(private, json.dumps(run))
+
     def test_the_entry_gap_at_a_picture_clip_is_read_from_the_picture_that_first_shows_it(self):
         run = ab.analyze_run(record("control", 90), PROJECT, "preupload", (190, 200))
         play = run["plays"]["first"]
@@ -171,7 +184,7 @@ def pixel_session(arm, order, *, spans=None, enabled=None, factor="warm_draw"):
     """One session of the pixel proof: `spans` as `scene-warm-proof.span_counts` gives them, and the host's report of the factor's switch."""
     report = ab.FACTORS[factor]["report"]
     on = arm == "on"
-    return {"factor_arm": arm, "order": order, "spans": spans if spans is not None else {}, "factors": {report: {"enabled": on if enabled is None else enabled}}}
+    return {"label": arm, "order": order, "spans": spans if spans is not None else {}, "factors": {report: {"enabled": on if enabled is None else enabled}}}
 
 
 class PixelActivationTests(unittest.TestCase):
@@ -188,7 +201,7 @@ class PixelActivationTests(unittest.TestCase):
 
     def test_an_inert_on_arm_fails_the_proof_however_identical_the_pixels_are(self):
         for spans in ({}, {"warm_draw": {"taken": 3, "gone": 1}}, {"warm": {"-": 2}}):
-            sessions = [s if s["factor_arm"] != "on" or s["order"] != "hot" else pixel_session("on", "hot", spans=spans) for s in self.GOOD]
+            sessions = [s if s["label"] != "on" or s["order"] != "hot" else pixel_session("on", "hot", spans=spans) for s in self.GOOD]
             verdicts = self.verdicts(sessions)
             self.assertFalse(verdicts["the `on` session that played into the cut reports `warm_draw`/`drawn` from the page"], spans)
 
@@ -244,6 +257,19 @@ class VerdictTests(unittest.TestCase):
         self.assertIn("not closed", self.verdict([120, 120, 120, 120], [100, 100, 100, 100]))
         self.assertIn("under 62.5 ms in every first play", self.verdict([120, 120, 120, 120], [50, 50, 50, 50]))
 
+    def test_a_pair_with_an_invalid_session_is_not_read_even_when_its_numbers_are_a_gain(self):
+        runs = pairs([90, 95, 88, 92], [60, 70, 80, 75])
+        self.assertIn("LOCAL BENEFIT", ab.verdict(ab.pair_rows(runs, "preupload", 196), "preupload", 196))
+        for index in (1, 3):  # the `on` session of the first two pairs did not run to its end: its numbers mean nothing
+            runs[index]["valid"] = False
+            runs[index]["invalid_reasons"] = ["the window did not play to its end"]
+        rows = ab.pair_rows(runs, "preupload", 196)
+        self.assertEqual([r["valid"] for r in rows if r["play"] == "first"], [False, False, True, True])
+        text = ab.verdict(rows, "preupload", 196)
+        self.assertTrue(text.startswith("INCONCLUSIVE"), text)
+        self.assertIn("valid sessions in only 2 of 4", text)
+        self.assertNotIn("LOCAL BENEFIT", text)
+
     def test_fewer_than_four_pairs_is_inconclusive(self):
         rows = ab.pair_rows(pairs([90, 95], [60, 60]), "preupload", 196)
         self.assertIn("INCONCLUSIVE", ab.verdict(rows, "preupload", 196))
@@ -253,6 +279,23 @@ class VerdictTests(unittest.TestCase):
         self.assertTrue(ab.pair_rows(runs, "preupload", 196)[0]["comparable"])
         runs[1]["quiet_class"] = "loaded"
         self.assertFalse(ab.pair_rows(runs, "preupload", 196)[0]["comparable"])
+
+
+class PixelsCommandTests(unittest.TestCase):
+    def parse(self, *argv):
+        seen = {}
+        with mock.patch.object(ab, "cmd_pixels", side_effect=lambda args: seen.update(vars(args)) or 0), \
+                mock.patch.object(sys, "argv", ["first-use-ab.py", "pixels", "--factor", "warm_draw", *argv]), contextlib.redirect_stderr(io.StringIO()):
+            return ab.main(), seen
+
+    def test_the_pixel_proof_takes_neither_a_lock_wait_nor_a_lower_disk_floor(self):
+        code, seen = self.parse("--out", "o")
+        self.assertEqual(code, 0)
+        self.assertEqual(sorted(seen), ["binary", "command", "factor", "out"])
+        for flag in (("--min-free-gib", "0"), ("--lock-wait", "5")):
+            with self.assertRaises(SystemExit) as raised:
+                self.parse("--out", "o", *flag)
+            self.assertEqual(raised.exception.code, 2, flag)
 
 
 if __name__ == "__main__":

@@ -16,14 +16,16 @@ ROOT = HERE.parent
 spec = importlib.util.spec_from_file_location("playback_poll_ab", HERE / "playback-poll-ab.py")
 ab = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ab)
+from ab import batch as shared_batch, play as shared_play  # noqa: E402  (the runner put `scripts/` on the path)
 
 # A private path and a private file name that must never reach a report.
 PROJECT = {"length": 600, "fps": 24.0, "cuts": [186, 268, 410], "video_starts": [], "sources": [{"path": "/private/not-published.mov", "kind": "video"}]}
-RULE_FILE = ROOT / "docs" / "viewport-real-latency-ab-results" / "poll-ab" / "rule.txt"
+
 POLL_RS = ROOT / "crates" / "desktop" / "src" / "workstation" / "playback_poll.rs"
 
 # What the 72 native sessions looked like, and what the model says the deadline schedule does.
 FIXED_PLAY = {"delivered": 400, "under": 52, "slow": 4, "very_slow": 1, "changes": 280, "polls": 1.87}
+
 DEADLINE_PLAY = {"delivered": 400, "under": 0, "slow": 4, "very_slow": 1, "changes": 280, "polls": 2.0}
 
 
@@ -98,14 +100,14 @@ def analysis(valid=True, reasons=(), first=(590, 80.0), repeat=(590, 80.0)):
 
 
 def manifest(pairs=2):
-    return {"git": {"sha": "a" * 40, "dirty_files": 3}, "binary_sha256": "b" * 64, "document_sha256": "d" * 64, "pairs": pairs, "order": ab.arm_order(pairs),
+    return {"git": {"sha": "a" * 40, "dirty_files": 3}, "binary_sha256": "b" * 64, "document_sha256": "d" * 64, "pairs": pairs, "order": ab.arm_order(ab.ARMS, pairs),
             "io": "sync", "stress_cpu": 0}
 
 
 class ArmTests(unittest.TestCase):
     def test_the_order_alternates_which_arm_goes_first_by_pair(self):
-        self.assertEqual(ab.arm_order(3), ["fixed", "deadline", "deadline", "fixed", "fixed", "deadline"])
-        self.assertEqual(ab.arm_order(0), [])
+        self.assertEqual(ab.arm_order(ab.ARMS, 3), ["fixed", "deadline", "deadline", "fixed", "fixed", "deadline"])
+        self.assertEqual(ab.arm_order(ab.ARMS, 0), [])
 
     def test_the_arms_differ_only_in_the_poll_switch(self):
         fixed, deadline = ab.arm_env("fixed"), ab.arm_env("deadline")
@@ -114,7 +116,7 @@ class ArmTests(unittest.TestCase):
         self.assertEqual((fixed["TESSEL_PLAYBACK_POLL"], deadline["TESSEL_PLAYBACK_POLL"]), ("fixed", "deadline"))
 
     def test_the_arms_keep_the_control_environment_of_the_first_use_experiment(self):
-        control = ab.FU.arm_env("warm_draw", "control")
+        control = ab.CONTROL_ENV
         self.assertEqual((control["TESSEL_VIEWPORT_WARM_DRAW"], control["TESSEL_VIEWPORT_PREUPLOAD"]), ("0", "0"))
         for arm in ab.ARMS:
             self.assertEqual({key: value for key, value in ab.arm_env(arm).items() if key != ab.POLL_ENV}, control)
@@ -167,13 +169,14 @@ class HungTests(unittest.TestCase):
         self.assertTrue(hung(600, 2000.1))
         self.assertFalse(hung(600, None))
 
-    def test_the_rule_is_the_one_of_the_first_use_experiment(self):
-        self.assertEqual((ab.FU.HANG_PICTURES_SHARE, ab.FU.HANG_GAP_MS), (0.9, 2000.0))
+    def test_the_rule_is_the_one_every_experiment_uses(self):
+        self.assertIs(ab.hung_play, shared_play.hung_play, "a copy of the rule in the runner could drift from the others")
+        self.assertEqual((shared_play.HANG_PICTURES_SHARE, shared_play.HANG_GAP_MS), (0.9, 2000.0))
 
 
 class SessionRowTests(unittest.TestCase):
     def row_of(self, rec, found=None, project=PROJECT):
-        with mock.patch.object(ab.RL, "analyze_session", return_value=found or analysis()):
+        with mock.patch.object(ab, "analyze_session", return_value=found or analysis()):
             return ab.session_row(rec, project)
 
     def test_a_valid_session_that_played_twice_in_its_arm_is_counted(self):
@@ -235,13 +238,18 @@ class SessionRowTests(unittest.TestCase):
         # The same session without the hang is a failure: that is what the hang is excused from.
         self.assertTrue(self.row_of(record("deadline", plays=1), analysis(repeat=None))["failed"])
 
-    def test_a_session_with_an_error_failed_and_its_message_has_no_path(self):
-        found = self.row_of(record("fixed", error="could not open /Users/someone/private name.tessel.json: refused"))
+    def test_a_session_with_an_error_failed_and_its_report_names_a_code_and_a_kind_only(self):
+        found = self.row_of(record("fixed", error="RuntimeError('could not open /Users/someone/private name.tessel.json: refused')"))
         self.assertTrue(found["failed"])
         self.assertFalse(found["counted"])
-        self.assertNotIn("someone", found["error"])
-        self.assertNotIn("private name", found["error"])
-        self.assertIn("refused", found["error"])
+        self.assertEqual(found["error"], {"code": "RuntimeError", "kind": "exception"})
+        rows = scenario(pairs=12)
+        rows[0] = found
+        text = ab.markdown(make_report(rows))
+        self.assertIn("FAILED: exception:RuntimeError", text)
+        for private in ("/Users", "someone", "private name", "refused"):
+            self.assertNotIn(private, text)
+            self.assertNotIn(private, json.dumps(found))
 
     def test_a_session_that_played_once_failed(self):
         found = self.row_of(record("deadline", plays=1), analysis(repeat=None))
@@ -613,12 +621,12 @@ class MarkdownTests(unittest.TestCase):
     def test_every_session_has_a_row_with_its_note(self):
         rows = scenario(pairs=2)
         rows[0]["counted"], rows[0]["invalid_reasons"] = False, ["the scene warm did not run"]
-        rows[1]["counted"], rows[1]["failed"], rows[1]["error"] = False, True, "refused"
+        rows[1]["counted"], rows[1]["failed"], rows[1]["error"] = False, True, {"code": "media_preparing", "kind": "host_refused"}
         rows[2]["plays"]["first"]["hung"] = True
         rows[3]["plays"].pop("repeat")
         text, _ = self.text(rows)
         self.assertIn("the scene warm did not run", text)
-        self.assertIn("FAILED: refused", text)
+        self.assertIn("FAILED: host_refused:media_preparing", text)
         self.assertIn("HUNG", text)
         self.assertIn("missing", text)
         self.assertEqual(len([line for line in text.splitlines() if re.match(r"\| \d+ \| \d+ \| (fixed|deadline) \|", line)]), 4)
@@ -633,181 +641,121 @@ class MarkdownTests(unittest.TestCase):
         self.assertNotIn("not-published", text)
 
 
+class OutcomeTests(unittest.TestCase):
+    def test_the_outcomes_the_docstring_names_are_the_ones_the_verdict_can_give(self):
+        match = re.search(r"DECISION RULES.*?\n\n(?=Load is recorded)", ab.__doc__, re.S)
+        self.assertTrue(match, "the docstring has no DECISION RULES block")
+        text = match.group(0)
+        for name in ("INVALID ARMS", "INCONCLUSIVE", "CONTROL NOT REPRODUCED", "REGRESSION", "NO GAIN", "ADOPT"):
+            self.assertIn(name, text)
+        said = {ab.verdict(scenario(), 12).split(":")[0], ab.verdict([], 12).split(":")[0], ab.verdict(scenario(fixed={"under": 0}), 12).split(":")[0],
+                ab.verdict(scenario(deadline={"slow": 99}), 12).split(":")[0], ab.verdict(scenario(lags=[(11.0, 11.0)] * 12), 12).split(":")[0]}
+        rows = scenario(pairs=2)
+        rows[0]["arm_findings"] = ["x"]
+        said.add(ab.verdict(rows, 2).split(":")[0])
+        self.assertEqual(said, {"ADOPT", "INCONCLUSIVE", "CONTROL NOT REPRODUCED", "REGRESSION", "NO GAIN", "INVALID ARMS"})
+
+
 class FinishTests(unittest.TestCase):
-    def run_finish(self, rows, report_dir=None):
-        with tempfile.TemporaryDirectory() as tmp:
-            out = Path(tmp) / "out"
-            out.mkdir()
-            for name in ("run-00-fixed.json", "run-01-deadline.json"):
-                (out / name).write_text(json.dumps({"name": name}))
-            (out / "notes.txt").write_text("not a run")
-            records = [{"arm": found["arm"], "i": index} for index, found in enumerate(rows)]
-            target = Path(tmp) / "report" if report_dir else None
-            with mock.patch.object(ab, "session_row", side_effect=lambda rec, project: rows[rec["i"]]), contextlib.redirect_stdout(io.StringIO()) as printed:
-                code = ab.finish(out, records, PROJECT, manifest(12), str(target) if target else None)
-            files = {path.name: path.read_text() for path in out.iterdir()}
-            copied = {path.name: path.read_text() for path in target.iterdir()} if target and target.exists() else {}
-            return code, files, copied, printed.getvalue()
+    def build(self, rows):
+        records = [{"arm": found["arm"], "i": index} for index, found in enumerate(rows)]
+        with mock.patch.object(ab, "session_row", side_effect=lambda rec, project: rows[rec["i"]]):
+            return ab.EXPERIMENT.build(records, PROJECT, manifest(12))
 
-    def test_the_files_the_run_leaves_are_the_analysis_and_the_hashes_of_the_raw_records(self):
-        code, files, copied, printed = self.run_finish(scenario(pairs=12))
-        self.assertEqual(code, 0)
-        self.assertEqual(json.loads(files["analysis.json"])["verdict"][:5], "ADOPT")
-        self.assertIn("Verdict (mechanical, pre-fixed rules)", files["analysis.md"])
-        self.assertEqual(printed, files["analysis.md"] + "\n")
-        lines = files["runs.sha256"].splitlines()
-        self.assertEqual([line.split("  ")[1] for line in lines], ["run-00-fixed.json", "run-01-deadline.json"])
-        self.assertTrue(all(re.fullmatch(r"[0-9a-f]{64}", line.split("  ")[0]) for line in lines))
-        self.assertEqual(copied, {})
+    def test_the_raw_records_of_a_batch_are_named_by_their_place_and_arm(self):
+        self.assertEqual(ab.EXPERIMENT.names(ab.arm_order(ab.ARMS, 2)), ["run-00-fixed.json", "run-01-deadline.json", "run-02-deadline.json", "run-03-fixed.json"])
 
-    def test_the_report_folder_gets_the_analysis_and_the_hashes_never_the_raw_records(self):
-        _, files, copied, _ = self.run_finish(scenario(pairs=12), report_dir=True)
-        self.assertEqual(sorted(copied), ["analysis.json", "analysis.md", "runs.sha256"])
-        for name in copied:
-            self.assertEqual(copied[name], files[name])
+    def test_a_batch_where_every_session_ran_gives_the_verdict_and_exits_zero(self):
+        report = self.build(scenario(pairs=12))
+        self.assertEqual(report["verdict"][:5], "ADOPT")
+        self.assertIn("Verdict (mechanical, pre-fixed rules)", ab.EXPERIMENT.markdown(report))
+        self.assertTrue(ab.EXPERIMENT.ok(report))
 
-    def test_the_exit_code_is_one_when_a_session_failed_and_the_report_is_still_written(self):
+    def test_a_failed_session_exits_one_and_a_wrong_arm_too(self):
         rows = scenario(pairs=12)
         rows[0]["failed"] = True
-        code, files, _, _ = self.run_finish(rows)
-        self.assertEqual(code, 1)
-        self.assertIn("analysis.md", files)
+        self.assertFalse(ab.EXPERIMENT.ok(self.build(rows)))
+        rows = scenario(pairs=12)
+        rows[1]["arm_findings"] = ["the host named another schedule"]
+        self.assertFalse(ab.EXPERIMENT.ok(self.build(rows)))
 
 
 class CommandTests(unittest.TestCase):
     class Locks:
-        def __init__(self):
-            self.closed = 0
+        def __init__(self, name):
+            self.name, self.closed = name, 0
 
         def close(self):
             self.closed += 1
 
-    class Warm:
-        def __init__(self, free=40.0, locks=True):
-            self.free, self.locks, self.waited = free, locks, None
-
-        def free_gib(self):
-            return self.free
-
-        def acquire_locks(self, wait):
-            self.waited = wait
-            return [CommandTests.Locks(), CommandTests.Locks()] if self.locks else None
-
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
         (self.root / "runtime" / "dist").mkdir(parents=True)
         (self.root / "runtime" / "dist" / "index.html").write_text("")
-        (self.root / "runtime" / "dist" / "runtime.js").write_text("")
+        (self.root / "runtime" / "dist" / "runtime.js").write_text("runtime")
         self.binary = self.root / "tessel-editor"
         self.binary.write_text("binary")
         self.document = self.root / "p.tessel.json"
         self.document.write_text("{}")
         self.args = mock.Mock(binary=str(self.binary), project=str(self.document), out=str(self.root / "out"), pairs=2, stress_cpu=0, lock_wait=7.0, report_dir=None)
-        patches = [mock.patch.object(ab, "ROOT", self.root), mock.patch.object(ab.RL, "parse_project", return_value=PROJECT),
-                   mock.patch.object(ab.RL, "check_sources", return_value=[{"present": True}]), mock.patch.object(ab, "rule_state", return_value=(True, None)),
-                   mock.patch.object(ab, "rule_identity", return_value={"rule_sha256": "e" * 64, "rule_commit": "f" * 40})]
-        for patch in patches:
+        for patch in (mock.patch.object(ab, "ROOT", self.root), mock.patch.object(ab, "warm_proof", return_value=object()),
+                      mock.patch.object(shared_batch, "git_state", return_value={"sha": "c" * 40, "dirty_files": 1, "diff_sha256": None}),
+                      mock.patch.object(ab, "rule_identity", return_value={"rule_sha256": "e" * 64, "rule_commit": "f" * 40})):
             patch.start()
             self.addCleanup(patch.stop)
-        self.addCleanup(self.tmp.cleanup)
 
-    def blocked(self, warm):
-        shown = io.StringIO()
-        with contextlib.redirect_stdout(shown):
-            return ab.prerequisites(self.args, warm), shown.getvalue()
+    def run_sessions(self, blocked=False, sessions=None):
+        """`cmd_run` with the lab's session and the analysis replaced: returns (exit code, sessions asked, locks, prerequisites asked, what was shown)."""
+        calls, asked, locks = [], [], [self.Locks('/tmp/gpu.lock'), self.Locks('/tmp/review.lock')]
+        run = shared_batch.Run(self.binary, self.document, PROJECT, locks, 1.5)
 
-    def test_everything_in_place_gives_the_binary_the_document_the_project_and_the_locks(self):
-        warm = self.Warm()
-        got, shown = self.blocked(warm)
-        binary, document, project, locks = got
-        self.assertEqual((binary, document, project), (self.binary.resolve(), self.document.resolve(), PROJECT))
-        self.assertEqual(len(locks), 2)
-        self.assertEqual(warm.waited, 7.0)
-        self.assertEqual(shown, "")
+        def fake_prerequisites(args, needed=(), gate=None):
+            asked.append({"needed": [Path(path).relative_to(self.root).as_posix() for path in needed], "gate": gate})
+            return None if blocked else run
 
-    def test_a_missing_binary_or_runtime_page_is_blocked_by_name(self):
-        self.binary.unlink()
-        got, shown = self.blocked(self.Warm())
-        self.assertIsNone(got)
-        self.assertEqual(shown, "BLOCKED: missing tessel-editor\n")
-        self.binary.write_text("binary")
-        (self.root / "runtime" / "dist" / "runtime.js").unlink()
-        got, shown = self.blocked(self.Warm())
-        self.assertIsNone(got)
-        self.assertEqual(shown, "BLOCKED: missing runtime.js\n")
-
-    def test_a_missing_document_is_blocked(self):
-        self.document.unlink()
-        got, shown = self.blocked(self.Warm())
-        self.assertIsNone(got)
-        self.assertIn("BLOCKED: missing p.tessel.json", shown)
-
-    def test_a_missing_project_source_is_blocked(self):
-        with mock.patch.object(ab.RL, "check_sources", return_value=[{"present": True}, {"present": False}]):
-            got, shown = self.blocked(self.Warm())
-        self.assertIsNone(got)
-        self.assertEqual(shown, "BLOCKED: project source(s) missing\n")
-
-    def test_too_little_disk_is_blocked_before_the_locks_are_taken(self):
-        warm = self.Warm(free=ab.RL.MIN_FREE_GIB_START - 0.1)
-        got, shown = self.blocked(warm)
-        self.assertIsNone(got)
-        self.assertIn("GiB free", shown)
-        self.assertIsNone(warm.waited)
-        self.assertIsNotNone(self.blocked(self.Warm(free=ab.RL.MIN_FREE_GIB_START))[0])
-
-    def test_locks_that_are_not_free_in_time_are_blocked(self):
-        got, shown = self.blocked(self.Warm(locks=False))
-        self.assertIsNone(got)
-        self.assertIn("BLOCKED: the GPU bench locks were not free within 7 s", shown)
-
-    def test_a_rule_that_is_not_committed_blocks_the_run_before_the_disk_and_the_locks(self):
-        warm = self.Warm()
-        with mock.patch.object(ab, "rule_state", return_value=(False, "the rule has changes that are not committed")):
-            got, shown = self.blocked(warm)
-        self.assertIsNone(got)
-        self.assertEqual(shown, "BLOCKED: the decision rule is not fixed before the run: the rule has changes that are not committed\n")
-        self.assertIsNone(warm.waited)
-
-    def run_sessions(self, sessions=None, blocked=False):
-        """`cmd_run` with the harness's `run_session` and the analysis replaced: returns (exit code, calls, locks, rows)."""
-        calls, locks = [], [self.Locks(), self.Locks()]
-        project = PROJECT
-        rows = {}
-
-        def fake_session(W, binary, document, project, mode, out_dir, number, order_index, stress, env_extra=None, arm=None):
-            calls.append({"mode": mode, "number": number, "order_index": order_index, "stress": stress, "env_extra": env_extra, "arm": arm, "out": out_dir})
-            if sessions is not None and number >= sessions:
+        def fake_session(W, binary, document, record, env, body, stress=0, collect=None):
+            calls.append({"record": dict(record), "env": env, "stress": stress, "binary": binary})
+            if sessions is not None and record["number"] >= sessions:
                 raise RuntimeError("the editor never opened")
-            return {"arm": arm, "number": number, "mode": mode, "order_index": order_index, "events": [], "frames": []}
+            return {**record, "events": [], "frames": []}
 
         def fake_row(rec, project):
-            found = row(rec["arm"], rec["order_index"] // 2, [play(lag=11.0 if rec["arm"] == ab.FIXED else 2.5)] * 2)
-            rows[rec["order_index"]] = found
-            return found
+            return row(rec["arm"], rec["order_index"] // 2, [play(lag=11.0 if rec["arm"] == ab.FIXED else 2.5)] * 2)
 
-        got = None if blocked else (self.binary, self.document, project, locks)
         shown = io.StringIO()
-        with mock.patch.object(ab, "load_module", return_value=self.Warm()), mock.patch.object(ab, "prerequisites", return_value=got), \
-                mock.patch.object(ab.RL, "run_session", side_effect=fake_session), mock.patch.object(ab, "session_row", side_effect=fake_row), \
-                mock.patch.object(ab.RL, "git_state", return_value={"sha": "c" * 40, "dirty_files": 1, "diff_sha256": None}), contextlib.redirect_stdout(shown):
+        with mock.patch.object(ab, "prerequisites", side_effect=fake_prerequisites), mock.patch.object(ab, "run_session", side_effect=fake_session), \
+                mock.patch.object(ab, "session_row", side_effect=fake_row), contextlib.redirect_stdout(shown):
             try:
                 code = ab.cmd_run(self.args)
             except RuntimeError:
                 code = "raised"
-        return code, calls, locks, rows, shown.getvalue()
+        return code, calls, locks, asked, shown.getvalue()
 
     def test_a_blocked_run_exits_two_and_starts_nothing(self):
         code, calls, _, _, _ = self.run_sessions(blocked=True)
         self.assertEqual((code, calls), (2, []))
 
+    def test_the_run_asks_for_the_runtime_page_and_for_the_rule_to_be_committed(self):
+        _, _, _, asked, _ = self.run_sessions()
+        self.assertEqual(asked[0]["needed"], ["runtime/dist/index.html", "runtime/dist/runtime.js"])
+        self.assertIs(asked[0]["gate"], ab.rule_gate)
+
+    def test_the_gate_is_the_reason_the_rule_is_not_fixed_or_nothing(self):
+        with mock.patch.object(ab, "rule_state", return_value=(False, "the rule has changes that are not committed")):
+            self.assertEqual(ab.rule_gate(), "the decision rule is not fixed before the run: the rule has changes that are not committed")
+        with mock.patch.object(ab, "rule_state", return_value=(True, None)):
+            self.assertIsNone(ab.rule_gate())
+
     def test_the_run_plays_two_sessions_per_pair_in_the_alternating_order_each_in_its_own_environment(self):
         code, calls, locks, _, shown = self.run_sessions()
-        self.assertEqual([call["arm"] for call in calls], ["fixed", "deadline", "deadline", "fixed"])
-        self.assertEqual([call["env_extra"] for call in calls], [ab.arm_env(call["arm"]) for call in calls])
-        self.assertEqual({call["mode"] for call in calls}, {"sync"})
-        self.assertEqual([(call["number"], call["order_index"]) for call in calls], [(0, 0), (1, 1), (2, 2), (3, 3)])
+        self.assertEqual([call["env"][ab.POLL_ENV] for call in calls], ["fixed", "deadline", "deadline", "fixed"])
+        for call, arm in zip(calls, ["fixed", "deadline", "deadline", "fixed"]):
+            self.assertEqual({key: value for key, value in call["env"].items() if key in ab.arm_env(arm)}, ab.arm_env(arm))
+            self.assertEqual(call["env"]["TESSEL_VIEWPORT_ASSET_IO"], "sync")
+        self.assertEqual([call["record"]["number"] for call in calls], [0, 1, 2, 3])
+        self.assertEqual({call["record"]["mode"] for call in calls}, {"sync"})
         self.assertEqual({call["stress"] for call in calls}, {0})
         self.assertEqual([lock.closed for lock in locks], [1, 1])
         self.assertEqual(code, 0)
@@ -819,67 +767,18 @@ class CommandTests(unittest.TestCase):
         _, calls, _, _, _ = self.run_sessions()
         self.assertEqual({call["stress"] for call in calls}, {3})
 
-    def test_every_session_is_written_as_it_finishes_with_its_pair_and_place(self):
+    def test_the_manifest_carries_the_rule_the_control_environment_and_the_options(self):
         self.run_sessions()
-        out = self.root / "out"
-        self.assertEqual(sorted(path.name for path in out.glob("run-*.json")), ["run-00-fixed.json", "run-01-deadline.json", "run-02-deadline.json", "run-03-fixed.json"])
-        record = json.loads((out / "run-02-deadline.json").read_text())
-        self.assertEqual((record["pair"], record["order_index"], record["arm"]), (1, 2, "deadline"))
-        manifest_found = json.loads((out / "manifest.json").read_text())
-        self.assertEqual(manifest_found["order"], ["fixed", "deadline", "deadline", "fixed"])
-        self.assertEqual((manifest_found["pairs"], manifest_found["io"], manifest_found["stress_cpu"]), (2, "sync", 0))
-        self.assertEqual(manifest_found["binary_sha256"], ab.RL.sha256_file(self.binary))
-        self.assertEqual(manifest_found["document_sha256"], ab.RL.sha256_file(self.document))
-        self.assertEqual(manifest_found["git"]["sha"], "c" * 40)
-        self.assertEqual((manifest_found["rule_sha256"], manifest_found["rule_commit"]), ("e" * 64, "f" * 40))
-        self.assertIn("finished_unix", manifest_found)
-        self.assertEqual(manifest_found["env"], ab.FU.arm_env("warm_draw", "control"))
-        self.assertTrue((out / "analysis.md").exists())
-        self.assertEqual(len((out / "runs.sha256").read_text().splitlines()), 4)
-
-    def test_a_session_that_raises_still_releases_the_locks_and_keeps_what_ran(self):
-        code, calls, locks, _, _ = self.run_sessions(sessions=2)
-        self.assertEqual(code, "raised")
-        self.assertEqual([lock.closed for lock in locks], [1, 1])
-        out = self.root / "out"
-        self.assertEqual(sorted(path.name for path in out.glob("run-*.json")), ["run-00-fixed.json", "run-01-deadline.json"])
-        self.assertTrue((out / "manifest.json").exists())
-
-    def test_analyze_reads_the_saved_records_again(self):
-        self.run_sessions()
-        out = self.root / "out"
-        (out / "analysis.md").unlink()
-        self.args.out = str(out)
-        self.args.project = str(self.document)
-        shown = io.StringIO()
-        with mock.patch.object(ab, "session_row", side_effect=lambda rec, project: row(rec["arm"], rec["order_index"] // 2, [play(lag=11.0 if rec["arm"] == ab.FIXED else 2.5)] * 2)), \
-                contextlib.redirect_stdout(shown):
-            code = ab.cmd_analyze(self.args)
-        self.assertEqual(code, 0)
-        self.assertTrue((out / "analysis.md").exists())
-        self.assertIn("Verdict", shown.getvalue())
-
-    def test_analyze_reports_under_the_manifest_the_run_wrote_not_another(self):
-        self.run_sessions()
-        out = self.root / "out"
-        saved = json.loads((out / "manifest.json").read_text())
-        self.args.out = str(out)
-        self.args.project = str(self.document)
-        with mock.patch.object(ab, "session_row", side_effect=lambda rec, project: row(rec["arm"], rec["order_index"] // 2, [play(lag=11.0 if rec["arm"] == ab.FIXED else 2.5)] * 2)), \
-                contextlib.redirect_stdout(io.StringIO()):
-            ab.cmd_analyze(self.args)
-        again = json.loads((out / "analysis.json").read_text())
-        self.assertEqual(again["manifest"], saved)
-        text = (out / "analysis.md").read_text()
-        self.assertIn("c" * 12, text)  # the code the run was started from
-        self.assertIn(saved["binary_sha256"], text)
-        self.assertIn("2 counted pair(s) of 2", again["verdict"])
+        saved = json.loads((self.root / "out" / "manifest.json").read_text())
+        self.assertEqual(saved["order"], ["fixed", "deadline", "deadline", "fixed"])
+        self.assertEqual((saved["pairs"], saved["io"], saved["stress_cpu"]), (2, "sync", 0))
+        self.assertEqual((saved["rule_sha256"], saved["rule_commit"]), ("e" * 64, "f" * 40))
+        self.assertEqual(saved["env"], ab.CONTROL_ENV)
+        self.assertEqual((saved["locks"], saved["lock_wait_s"]), (["/tmp/gpu.lock", "/tmp/review.lock"], 1.5))
+        self.assertTrue((self.root / "out" / "analysis.md").exists())
 
     def test_the_call_to_the_harness_matches_its_real_signature(self):
-        signature = inspect.signature(ab.RL.run_session)
-        signature.bind(object(), self.binary, self.document, PROJECT, ab.IO_MODE, self.root, 0, 0, 0, env_extra=ab.arm_env("fixed"), arm="fixed")
-        for needed in ("env_extra", "arm"):
-            self.assertIn(needed, signature.parameters)
+        inspect.signature(ab.run_session).bind(object(), self.binary, self.document, {"number": 0}, ab.arm_env("fixed"), lambda *a: True, 0, collect=lambda *a: True)
 
     def test_the_command_line_defaults_are_the_ones_the_rule_is_written_for(self):
         seen = {}
@@ -887,146 +786,10 @@ class CommandTests(unittest.TestCase):
                 mock.patch.object(sys, "argv", ["playback-poll-ab.py", "run", "--binary", "b", "--project", "p", "--out", "o"]):
             self.assertEqual(ab.main(), 0)
         self.assertEqual((seen["pairs"], seen["stress_cpu"], seen["lock_wait"], seen["report_dir"]), (12, 0, 600.0, None))
-        with mock.patch.object(ab, "cmd_analyze", return_value=0) as analyzed, mock.patch.object(sys, "argv", ["playback-poll-ab.py", "analyze", "--out", "o", "--project", "p"]):
+        with mock.patch.object(ab, "analyze", return_value=0) as analyzed, mock.patch.object(sys, "argv", ["playback-poll-ab.py", "analyze", "--out", "o", "--project", "p"]):
             self.assertEqual(ab.main(), 0)
-        self.assertEqual(analyzed.call_args.args[0].out, "o")
-
-
-class RuleStateTests(unittest.TestCase):
-    """`rule_state` and `rule_identity` against a real git repository in a temporary folder."""
-
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.root = Path(self.tmp.name)
-        patch = mock.patch.object(ab, "ROOT", self.root)
-        patch.start()
-        self.addCleanup(patch.stop)
-        self.file = self.root / ab.RULE_PATH
-        self.git("init", "-q")
-        self.git("config", "user.email", "test@example.invalid")
-        self.git("config", "user.name", "test")
-        self.git("config", "commit.gpgsign", "false")
-
-    def git(self, *args):
-        return ab.subprocess.run(["git", *args], cwd=self.root, capture_output=True, text=True, check=True).stdout.strip()
-
-    def write(self, text):
-        self.file.parent.mkdir(parents=True, exist_ok=True)
-        self.file.write_text(text)
-
-    def test_the_path_is_the_one_the_docstring_names(self):
-        self.assertIn(f"`{ab.RULE_PATH}`", ab.__doc__)
-        self.assertEqual(RULE_FILE, ROOT / ab.RULE_PATH)
-
-    def test_a_missing_file_is_not_a_fixed_rule(self):
-        committed, why = ab.rule_state()
-        self.assertFalse(committed)
-        self.assertIn("does not exist", why)
-
-    def test_a_file_git_does_not_know_is_not_a_fixed_rule(self):
-        self.write("the rule")
-        committed, why = ab.rule_state()
-        self.assertFalse(committed)
-        self.assertIn("not tracked", why)
-
-    def test_a_file_that_is_only_staged_is_not_a_fixed_rule(self):
-        self.write("the rule")
-        self.git("add", str(ab.RULE_PATH))
-        committed, why = ab.rule_state()
-        self.assertFalse(committed)
-        self.assertIn("not committed", why)
-
-    def test_a_committed_file_is_a_fixed_rule_until_it_is_changed(self):
-        self.write("the rule")
-        self.git("add", str(ab.RULE_PATH))
-        self.git("commit", "-q", "-m", "rule")
-        self.assertEqual(ab.rule_state(), (True, None))
-        self.write("the rule, a little different")
-        committed, why = ab.rule_state()
-        self.assertFalse(committed)
-        self.assertIn("not committed", why)
-
-    def test_the_identity_is_the_hash_of_the_file_and_the_commit_that_last_changed_it(self):
-        self.write("the rule")
-        self.git("add", str(ab.RULE_PATH))
-        self.git("commit", "-q", "-m", "rule")
-        first = self.git("rev-parse", "HEAD")
-        (self.root / "other.txt").write_text("unrelated")
-        self.git("add", "other.txt")
-        self.git("commit", "-q", "-m", "other")
-        found = ab.rule_identity()
-        self.assertEqual(found["rule_commit"], first)
-        self.assertEqual(found["rule_sha256"], ab.RL.sha256_file(self.file))
-        self.assertRegex(found["rule_sha256"], r"^[0-9a-f]{64}$")
-
-
-class RuleTests(unittest.TestCase):
-    """The rule is written in the docstring of the runner and in `rule.txt` before any measurement; its numbers are the ones the code uses."""
-
-    DOC = ab.__doc__
-
-    @classmethod
-    def block(cls):
-        match = re.search(r"DECISION RULES.*?\n\n(?=Load is recorded)", cls.DOC, re.S)
-        assert match, "the docstring has no DECISION RULES block"
-        return match.group(0)
-
-    def number(self, pattern):
-        found = re.search(pattern, self.block(), re.S)
-        self.assertIsNotNone(found, pattern)
-        return float(found.group(1))
-
-    def test_the_constants_are_the_numbers_the_rule_states(self):
-        for pattern, scale, constant in (
-            (r"fewer than (\d+) counted pairs", 1, ab.MIN_COUNTED_PAIRS),
-            (r"\(of the (\d+) asked for\)", 1, 12),
-            (r"fewer than (\d+)% of the `fixed` arm's pictures", 100, ab.CONTROL_SHORT_SHARE_MIN),
-            (r"more than ([\d.]+) percentage points higher", 100, ab.SLOW_SHARE_MARGIN),
-            (r"above ([\d.]+) times the fixed arm's", 1, ab.VERY_SLOW_FACTOR),
-            (r"number of plays\s+of the deadline arm\) plus (\d+);", 1, ab.VERY_SLOW_PLUS),
-            (r"skipped frames per play are more than ([\d.]+) higher", 1, ab.SKIPPED_PER_PLAY_MARGIN),
-            (r"more than (\d+)% of the pictures came less than 30 ms", 100, ab.DEADLINE_SHORT_SHARE_MAX),
-            (r"mean change lag \([^)]*\) is above ([\d.]+) ms", 1, ab.LAG_DEADLINE_MAX_MS),
-            (r"or less than ([\d.]+) ms below the fixed arm's", 1, ab.LAG_GAIN_MIN_MS),
-            (r"outside ([\d.]+)-[\d.]+;", 1, ab.POLLS_PER_CHANGE_RANGE[0]),
-            (r"outside [\d.]+-([\d.]+);", 1, ab.POLLS_PER_CHANGE_RANGE[1]),
-            (r"in at least (\d+)% of the counted pairs", 100, ab.LAG_PAIR_CONSISTENCY),
-        ):
-            self.assertAlmostEqual(self.number(pattern) / scale, constant, places=9, msg=pattern)
-
-    def test_the_marks_of_the_pictures_are_the_ones_the_cadence_reader_and_the_hang_rule_use(self):
-        text = self.block()
-        self.assertIn("less than 30 ms after the previous", text)
-        self.assertEqual(ab.CAD.SHORT_DELIVERY_MS, 30.0)
-        self.assertIn("more than 62.5 ms after the previous", text)
-        self.assertEqual(ab.CAD.SLOW_DELIVERY_MS, 62.5)
-        self.assertIn("more than 100 ms after the previous", text)
-        self.assertEqual(ab.CAD.VERY_SLOW_DELIVERY_MS, 100.0)
-        self.assertIn("under 90% of the frames, or waits over 2000 ms", text)
-        self.assertEqual((ab.FU.HANG_PICTURES_SHARE, ab.FU.HANG_GAP_MS), (0.9, 2000.0))
-
-    def test_the_outcomes_the_docstring_names_are_the_ones_the_verdict_can_give(self):
-        text = self.block()
-        for name in ("INVALID ARMS", "INCONCLUSIVE", "CONTROL NOT REPRODUCED", "REGRESSION", "NO GAIN", "ADOPT"):
-            self.assertIn(name, text)
-        said = {ab.verdict(scenario(), 12).split(":")[0], ab.verdict([], 12).split(":")[0], ab.verdict(scenario(fixed={"under": 0}), 12).split(":")[0],
-                ab.verdict(scenario(deadline={"slow": 99}), 12).split(":")[0], ab.verdict(scenario(lags=[(11.0, 11.0)] * 12), 12).split(":")[0]}
-        rows = scenario(pairs=2)
-        rows[0]["arm_findings"] = ["x"]
-        said.add(ab.verdict(rows, 2).split(":")[0])
-        self.assertEqual(said, {"ADOPT", "INCONCLUSIVE", "CONTROL NOT REPRODUCED", "REGRESSION", "NO GAIN", "INVALID ARMS"})
-
-    def test_the_committed_rule_file_holds_the_decision_rules_word_for_word(self):
-        self.assertTrue(RULE_FILE.exists(), f"{RULE_FILE.relative_to(ROOT)} has to be committed before any measurement")
-        self.assertIn(self.block().rstrip(), RULE_FILE.read_text())
-
-    def test_the_rule_file_names_what_it_decides_and_what_it_does_not(self):
-        text = RULE_FILE.read_text()
-        self.assertIn("TESSEL_PLAYBACK_POLL", text)
-        self.assertIn("NOT an acceptance by the user", text)
-        self.assertIn("NOT about the 60-160 ms pauses", text)
-        self.assertNotIn("/Users/", text)
+        self.assertIs(analyzed.call_args.args[0], ab.EXPERIMENT)
+        self.assertEqual(analyzed.call_args.args[1].out, "o")
 
 
 if __name__ == "__main__":

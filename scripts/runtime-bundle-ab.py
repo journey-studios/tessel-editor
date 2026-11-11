@@ -11,16 +11,21 @@ page stopped answering. The patch is proven in the lab and by unit tests; this a
 WHAT. `run` plays the whole project twice (a first play of a cold editor and a repeat in the same process, as `real-latency-ab.py` does) in
 2 * --pairs sessions of the SAME binary, one fresh editor each, in the order unpatched/patched, patched/unpatched, ... The arms differ ONLY in the
 `runtime.js` the page loads: `TESSEL_RUNTIME_DIR` of a session is a scratch folder with that arm's bundle and the repository's `index.html`. Everything
-else is the control arm of `first-use-ab.py` (async asset I/O, trace on, scene warm on, both first-use factors explicitly 0). `--unpatched-bundle` is a
-`runtime.js` built from the same sources WITHOUT the patch (a path argument; it stays out of the repository); the patched one is `runtime/dist/runtime.js`.
+else is the control arm of `first-use-ab.py` (async asset I/O, trace on, scene warm on, both first-use factors explicitly 0).
+
+THE BUNDLES. The patch is OPT-IN in the build, so a plain `./scripts/runtime build` makes the UNPATCHED bundle. `--unpatched-bundle` is a `runtime.js` of such a
+plain build, copied out of `runtime/dist` (a path argument; it stays out of the repository) before the patched one is built; the PATCHED arm is the
+`runtime/dist/runtime.js` that `TESSEL_RUNTIME_SPARK_RELEASE_LOCK_PATCH=1 ./scripts/runtime build` leaves there. A `dist` left by a plain build is therefore
+refused as the patched arm (BLOCKED, with the command that builds it).
 Each bundle is read before the first session: the unpatched one must contain the decoder's call once, the patched one not at all. After the sessions, each
 one is checked against the host's own `asset_io` record of the `runtime.js` it served: within an arm every session got the same number of bytes (the size of the
 arm's file) and the unpatched bundle is exactly what the patch removes longer than the patched one; otherwise the run is INVALID ARMS and says nothing.
 
 While a session plays, a watchdog reads the frame table: when the editor is playing and no new picture arrived for STALL_SECONDS, it samples the
-page's WebContent process (`sample`, twice at most per session) and keeps the file next to the session. A sample is a DEADLOCK sample only when the
-decoder worker is inside `releaseLock` waiting for a lock the collector's marking holds: that is the lab's stack, seen natively. A helper process that
-outlives its editor with such a sample is killed after the session (nothing else is ever killed: a frozen page does not exit with its window).
+page's WebContent process (`sample`, read only, twice at most per session) and keeps the file next to the session. A sample is a DEADLOCK sample only when the
+decoder worker is inside `releaseLock` waiting for a lock the collector's marking holds: that is the lab's stack, seen natively. NOTHING IS EVER SIGNALLED:
+the WebKit helpers are not children of the editor (they are told apart by "born during the session"), so no process here can be shown to be the session's own.
+A frozen page that outlives its editor is reported (pid, role and the sample file, as `leftover_helpers`) and the operator decides what to do with it.
 
 DECISION RULES, fixed here before any measurement (diagnostic; nothing here decides the acceptance of BL157):
 
@@ -38,32 +43,23 @@ Exit: 0 every session ran (the verdict is in the report); 1 a session failed or 
 lock/disk guard refused (BLOCKED).
 """
 import argparse
-import importlib.util
-import json
 import math
-import os
 import pathlib
 import re
 import shutil
-import signal
 import subprocess
 import sys
 import tempfile
 import time
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
-
-
-def load_module(name, path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-FU = load_module("first_use_ab", ROOT / "scripts" / "first-use-ab.py")
-RL = FU.RL
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from ab import ROOT, warm_proof  # noqa: E402
+from ab.batch import Experiment, analyze, arm_order, finish, manifest_of, prerequisites, run_arms  # noqa: E402
+from ab.play import hung_play  # noqa: E402
+from ab.project import sha256_file  # noqa: E402
+from ab.session import CONTROL_ENV, PLAYS, collect as poll_trace, process_table, run_session, session_env, webkit_pids, whole_project_twice  # noqa: E402
+from ab.stats import stats  # noqa: E402
+from ab.validity import analyze_session, error_label, published_error  # noqa: E402
 
 UNPATCHED, PATCHED = "unpatched", "patched"
 ARMS = (UNPATCHED, PATCHED)
@@ -71,28 +67,23 @@ ARMS = (UNPATCHED, PATCHED)
 DECODER_CALL = "reader.releaseLock();"
 # What the build puts where the call was: the patched bundle is `len(DECODER_CALL) - len(PATCH_REPLACEMENT)` bytes shorter.
 PATCH_REPLACEMENT = "void 0;"
+# The patch is opt-in in the build: this is what leaves the PATCHED arm in `runtime/dist/runtime.js` (a plain build leaves the unpatched bundle there).
+PATCHED_BUILD = "TESSEL_RUNTIME_SPARK_RELEASE_LOCK_PATCH=1 ./scripts/runtime build"
 MIN_UNPATCHED_HANGS = 3
 STALL_SECONDS = 10.0
 MAX_SAMPLES_PER_SESSION = 2
-PLAYS = ("first", "repeat")
 
 
 # ------------------------------------------------------------------------------------------------ pure logic
-def arm_order(pairs):
-    """unpatched/patched, patched/unpatched, unpatched/patched, ...: which arm goes first alternates by pair."""
-    order = []
-    for pair in range(pairs):
-        order += [UNPATCHED, PATCHED] if pair % 2 == 0 else [PATCHED, UNPATCHED]
-    return order
-
-
 def bundle_findings(arm, text):
     """Why a bundle is not what its arm says it is (an empty list when it is)."""
     count = text.count(DECODER_CALL)
     if arm == UNPATCHED and count != 1:
-        return [f"the unpatched bundle has the decoder's `{DECODER_CALL}` {count} time(s), expected exactly 1"]
+        return [f"the unpatched bundle has the decoder's `{DECODER_CALL}` {count} time(s), expected exactly 1 (--unpatched-bundle is the runtime.js of a plain "
+                "`./scripts/runtime build`, without the patch variable)"]
     if arm == PATCHED and count != 0:
-        return [f"the patched bundle still has the decoder's `{DECODER_CALL}` ({count} time(s))"]
+        return [f"the patched bundle still has the decoder's `{DECODER_CALL}` ({count} time(s)); runtime/dist/runtime.js is the PATCHED arm and the patch is "
+                f"opt-in, so build it with `{PATCHED_BUILD}` (a plain build leaves the unpatched bundle)"]
     return []
 
 
@@ -120,11 +111,6 @@ def served_bundle_check(rows, expected=None):
         if difference != removed:
             findings.append(f"the served bundles differ by {difference} bytes, the patch removes {removed}")
     return {"bytes": sizes, "unverified": sum(1 for r in rows if r.get("served_runtime_bytes") is None), "findings": findings}
-
-
-def hung_play(summary, length):
-    """The rule of `first-use-ab.py` (its constants are read from there so the two never differ)."""
-    return bool(summary["pictures"] < FU.HANG_PICTURES_SHARE * length or (summary["interval_ms"]["max"] or 0) > FU.HANG_GAP_MS)
 
 
 def deadlock_signature(text):
@@ -166,7 +152,7 @@ def gap_summary(rows):
         for play in plays:
             for location in play.get("slow_where", []):
                 where[location] = where.get(location, 0) + 1
-        out[arm] = {"plays": len(plays), "max_gap_ms": RL.stats([p["max_gap_ms"] for p in plays]),
+        out[arm] = {"plays": len(plays), "max_gap_ms": stats([p["max_gap_ms"] for p in plays]),
                     "slow_gt_62_5": sum(p.get("slow_gt_62_5", 0) for p in plays), "slow_gt_100": sum(p.get("slow_gt_100", 0) for p in plays),
                     "plays_with_gap_gt_100": sum(1 for p in plays if (p["max_gap_ms"] or 0) > 100),
                     "plays_with_a_slow_gap_at": dict(sorted(where.items(), key=lambda item: (-item[1], item[0])))}
@@ -191,18 +177,18 @@ def verdict(rows):
 
 # ------------------------------------------------------------------------------------------------ analysis
 def session_row(record, project):
-    analysis = RL.analyze_session(record, project)
+    analysis = analyze_session(record, project)
     plays = {name: {"pictures": p["pictures"], "max_gap_ms": p["interval_ms"]["max"], "hung": hung_play(p, project["length"]),
                     "slow_gt_62_5": p.get("slow_gt_62_5", 0), "slow_gt_100": p.get("slow_gt_100", 0),
                     "slow_where": sorted(where for where, stats in (p.get("by_location") or {}).items() if stats.get("slow"))}
              for name, p in analysis["plays"].items()}
     hung = any(p["hung"] for p in plays.values())
-    samples = [{"at_s": s.get("at_s"), "signature": s["signature"]} for s in record.get("hang_samples") or []]
+    samples = [{key: s.get(key) for key in ("at_s", "pid", "role", "file")} | {"signature": s["signature"]} for s in record.get("hang_samples") or []]
     return {"arm": record["arm"], "pair": record.get("pair"), "order_index": record.get("order_index"), "valid": analysis["valid"],
             "invalid_reasons": analysis["invalid_reasons"], "plays": plays, "hung": hung,
             "served_runtime_bytes": served_runtime_bytes(record.get("events")),
             "failed": not hung and (bool(record.get("error")) or any(name not in plays for name in PLAYS)),
-            "error": RL.redact(record["error"]) if record.get("error") else None,
+            "error": published_error(record["error"]) if record.get("error") else None,
             "quiet_class": analysis["quiet_class"], "external_median_cores": analysis["external_median_cores"],
             "external_p95_cores": analysis["external_p95_cores"], "loadavg_start": analysis["loadavg_start"],
             "loadavg_peak_1m": analysis["loadavg_peak_1m"], "samples": samples, "leftover_helpers": record.get("leftover_helpers") or []}
@@ -252,10 +238,10 @@ def markdown(report):
         def cell(name):
             play = r["plays"].get(name)
             return "missing" if play is None else f"{play['pictures']} / {play['max_gap_ms']}{' HUNG' if play['hung'] else ''}"
-        samples = ", ".join(f"{'DEADLOCK' if s['signature']['deadlock'] else 'other'} at {s['at_s']} s" for s in r["samples"]) or "-"
+        samples = ", ".join(f"{'DEADLOCK' if s['signature']['deadlock'] else 'other'} at {s['at_s']} s ({s['role']} {s['pid']}: {s['file']})" for s in r["samples"]) or "-"
         lines.append(f"| {r['order_index']} | {r['pair']} | {r['arm']} | {r.get('served_runtime_bytes') or '?'} | {r['quiet_class']} | "
                      f"{r['external_median_cores']}/{r['external_p95_cores']} | "
-                     f"{r['loadavg_start']} / {r['loadavg_peak_1m']} | {cell('first')} | {cell('repeat')} | {'HUNG' if r['hung'] else ('FAILED: ' + str(r['error'])) if r['failed'] else 'no'} | "
+                     f"{r['loadavg_start']} / {r['loadavg_peak_1m']} | {cell('first')} | {cell('repeat')} | {'HUNG' if r['hung'] else ('FAILED: ' + (error_label(r['error']) if r['error'] else 'incomplete')) if r['failed'] else 'no'} | "
                      f"{'yes' if r['valid'] else 'NO: ' + '; '.join(r['invalid_reasons'])} | {samples} |")
     lines += ["", f"Exact one-sided chance of so few hung sessions in the patched arm if both arms were alike (diagnostic only): {report['chance_of_so_few']}", "",
               f"Verdict (mechanical, pre-fixed rules): {report['verdict']}", ""]
@@ -263,8 +249,14 @@ def markdown(report):
 
 
 # ------------------------------------------------------------------------------------------------ the watchdog
+# ------------------------------------------------------------------------------------------------ the watchdog
 def process_command(pid):
-    return RL.process_table().get(pid, (0, 0, 0.0, ""))[3]
+    return process_table().get(pid, (0, 0, 0.0, ""))[3]
+
+
+def helper_role(command):
+    """The short role of a WebKit helper from its command line (`WebContent`, `Networking`, ...)."""
+    return re.sub(r".*com\.apple\.WebKit\.", "", command)[:40]
 
 
 class Watchdog:
@@ -274,7 +266,7 @@ class Watchdog:
         self.out_dir, self.label, self.baseline, self.now = pathlib.Path(out_dir), label, set(baseline), now
         self.started = now()
         self.count, self.changed, self.last_sample = -1, now(), None
-        self.samples, self.deadlocked = [], set()
+        self.samples = []
 
     def wrap(self, collect):
         def wrapped(lab, state, deadline):
@@ -301,143 +293,80 @@ class Watchdog:
         if (lab.op({"op": "playback.status"}).get("data") or {}).get("state") != "playing":
             return
         self.last_sample = now
-        for pid in sorted(RL.webkit_pids() - self.baseline):
+        for pid in sorted(webkit_pids() - self.baseline):
             if "WebContent" not in process_command(pid):
                 continue
             target = self.out_dir / f"hang-{self.label}-{pid}-{len(self.samples)}.txt"
             subprocess.run(["/usr/bin/sample", str(pid), "2", "1", "-file", str(target)], capture_output=True, timeout=60)
             text = target.read_text(errors="replace") if target.exists() else ""
-            signature = deadlock_signature(text)
-            self.samples.append({"at_s": round(now - self.started, 1), "pid": pid, "file": target.name, "signature": signature})
-            if signature["deadlock"]:
-                self.deadlocked.add(pid)
-
-
-def reap(pids, wait=20.0):
-    """After the session: a helper whose sample was the deadlock and that is still alive is killed (the frozen page does not exit with its window).
-    Returns the pids it had to kill. Nothing else is ever signalled."""
-    deadline = time.monotonic() + wait
-    left = [p for p in pids if p in RL.process_table()]
-    while left and time.monotonic() < deadline:
-        time.sleep(0.5)
-        left = [p for p in left if p in RL.process_table()]
-    for pid in left:
-        try:
-            os.kill(pid, signal.SIGKILL)
-        except OSError:
-            pass
-    return left
+            self.samples.append({"at_s": round(now - self.started, 1), "pid": pid, "role": helper_role(process_command(pid)), "file": target.name,
+                                 "signature": deadlock_signature(text)})
 
 
 def leftover_helpers(baseline):
     """WebKit helpers born during the session that are still alive a little after its editor ended: reported (a pid and its role), never killed."""
     time.sleep(3.0)
-    return [{"pid": pid, "role": re.sub(r".*com\.apple\.WebKit\.", "", process_command(pid))[:40]} for pid in sorted(RL.webkit_pids() - set(baseline))]
+    return [{"pid": pid, "role": helper_role(process_command(pid))} for pid in sorted(webkit_pids() - set(baseline))]
 
 
 # ------------------------------------------------------------------------------------------------ commands
-def scratch_runtime(parent, arm, bundle):
-    """A folder the host accepts as `TESSEL_RUNTIME_DIR`: `dist/index.html` of the repository and this arm's `runtime.js`."""
+def scratch_runtime(parent, arm, bundle, index=None):
+    """A folder the host accepts as `TESSEL_RUNTIME_DIR`: `dist/index.html` (the repository's built page unless `index` names another) and this arm's `runtime.js`."""
     dist = pathlib.Path(parent) / arm / "dist"
     dist.mkdir(parents=True)
-    shutil.copyfile(ROOT / "runtime" / "dist" / "index.html", dist / "index.html")
+    shutil.copyfile(index or ROOT / "runtime" / "dist" / "index.html", dist / "index.html")
     shutil.copyfile(bundle, dist / "runtime.js")
     return dist.parent
 
 
-def prerequisites(args, W):
-    binary = pathlib.Path(args.binary).resolve()
-    document = pathlib.Path(args.project).resolve()
-    bundles = {UNPATCHED: pathlib.Path(args.unpatched_bundle).resolve(), PATCHED: ROOT / "runtime" / "dist" / "runtime.js"}
-    for needed in (binary, document, ROOT / "runtime" / "dist" / "index.html", *bundles.values()):
-        if not needed.exists():
-            print(f"BLOCKED: missing {needed.name}")
-            return None
-    for arm, bundle in bundles.items():
+def bundles_of(args):
+    return {UNPATCHED: pathlib.Path(args.unpatched_bundle).resolve(), PATCHED: ROOT / "runtime" / "dist" / "runtime.js"}
+
+
+def bundle_gate(args):
+    """Why the run may not start: a bundle that is not what its arm says (the unpatched one must hold the decoder's call, the patched one not), or None."""
+    for arm, bundle in bundles_of(args).items():
         for finding in bundle_findings(arm, bundle.read_text(errors="replace")):
-            print(f"BLOCKED: {finding}")
-            return None
-    project = RL.parse_project(json.loads(document.read_text()))
-    if [s for s in RL.check_sources(project["sources"]) if not s["present"]]:
-        print("BLOCKED: project source(s) missing")
-        return None
-    if W.free_gib() < RL.MIN_FREE_GIB_START:
-        print(f"BLOCKED: {W.free_gib():.1f} GiB free")
-        return None
-    locks = W.acquire_locks(args.lock_wait)
-    if locks is None:
-        print(f"BLOCKED: the GPU bench locks were not free within {args.lock_wait:.0f} s")
-        return None
-    return binary, document, bundles, project, locks
+            return finding
+    return None
+
+
+EXPERIMENT = Experiment(record="run-{index:02d}-{arm}.json", build=build_report, markdown=markdown, ok=lambda report: report["all_ran"])
 
 
 def cmd_run(args):
-    W = load_module("scene_warm_proof", ROOT / "scripts" / "scene-warm-proof.py")
-    got = prerequisites(args, W)
-    if got is None:
+    bundles = bundles_of(args)
+    run = prerequisites(args, needed=(ROOT / "runtime" / "dist" / "index.html", *bundles.values()), gate=lambda: bundle_gate(args))
+    if run is None:
         return 2
-    binary, document, bundles, project, locks = got
+    W = warm_proof()
     out = pathlib.Path(args.out)
+    manifest = manifest_of(run, arm_order(ARMS, args.pairs), runtime_js=None, bundle_sha256={arm: sha256_file(path) for arm, path in bundles.items()},
+                           bundle_bytes={arm: path.stat().st_size for arm, path in bundles.items()}, io="async", env=CONTROL_ENV, stress_cpu=args.stress_cpu)
     out.mkdir(parents=True, exist_ok=True)
-    manifest = {"git": RL.git_state(), "binary_sha256": RL.sha256_file(binary), "document_sha256": RL.sha256_file(document),
-                "bundle_sha256": {arm: RL.sha256_file(path) for arm, path in bundles.items()},
-                "bundle_bytes": {arm: path.stat().st_size for arm, path in bundles.items()}, "order": arm_order(args.pairs), "io": "async",
-                "started_unix": time.time(), "env": FU.arm_env("warm_draw", "control"), "stress_cpu": args.stress_cpu}
-    (out / "manifest.json").write_text(json.dumps(manifest, indent=2))
-    print(f"build {manifest['git']['sha'][:9]} dirty={manifest['git']['dirty_files']} binary {manifest['binary_sha256'][:12]} order {manifest['order']}", flush=True)
-    records = []
-    original_collect = RL.collect
+    scratch = tempfile.TemporaryDirectory(prefix="rb-", dir="/tmp")
+    dirs = {arm: scratch_runtime(scratch.name, arm, path) for arm, path in bundles.items()}
+
+    def session(index, arm):
+        baseline = webkit_pids()
+        watchdog = Watchdog(out, f"{index:02d}-{arm}", baseline)
+        record = run_session(W, run.binary, run.document, {"number": index, "mode": "async"},
+                             session_env("async", {**CONTROL_ENV, "TESSEL_RUNTIME_DIR": str(dirs[arm])}), whole_project_twice(W, run.project),
+                             args.stress_cpu, collect=watchdog.wrap(poll_trace))
+        record["hang_samples"] = watchdog.samples
+        record["leftover_helpers"] = leftover_helpers(baseline)
+        return record
+
+    def summary(record):
+        row = session_row(record, run.project)
+        return (f"  run {record['order_index']} {record['arm']} hung={row['hung']} failed={row['failed']} valid={row['valid']} class={row['quiet_class']} "
+                f"samples={[s['signature']['deadlock'] for s in row['samples']]} leftover={len(row['leftover_helpers'])}")
+
     try:
-        with tempfile.TemporaryDirectory(prefix="rb-", dir="/tmp") as scratch:
-            dirs = {arm: scratch_runtime(scratch, arm, path) for arm, path in bundles.items()}
-            for index, arm in enumerate(manifest["order"]):
-                baseline = RL.webkit_pids()
-                watchdog = Watchdog(out, f"{index:02d}-{arm}", baseline)
-                RL.collect = watchdog.wrap(original_collect)
-                try:
-                    record = RL.run_session(W, binary, document, project, "async", out, index, index, args.stress_cpu,
-                                            env_extra={**manifest["env"], "TESSEL_RUNTIME_DIR": str(dirs[arm])}, arm=arm)
-                finally:
-                    RL.collect = original_collect
-                record["pair"], record["order_index"] = index // 2, index
-                record["hang_samples"] = watchdog.samples
-                record["killed_deadlocked_helpers"] = reap(watchdog.deadlocked)
-                record["leftover_helpers"] = leftover_helpers(baseline)
-                (out / f"run-{index:02d}-{arm}.json").write_text(json.dumps(record))
-                records.append(record)
-                row = session_row(record, project)
-                print(f"  run {index} {arm} hung={row['hung']} failed={row['failed']} valid={row['valid']} class={row['quiet_class']} "
-                      f"samples={[s['signature']['deadlock'] for s in row['samples']]} leftover={len(row['leftover_helpers'])}", flush=True)
+        records = run_arms(run, out, manifest, EXPERIMENT, session, summary)
     finally:
-        for handle in locks:
-            handle.close()
-    manifest["finished_unix"] = time.time()
-    (out / "manifest.json").write_text(json.dumps(manifest, indent=2))
-    return finish(out, records, project, manifest, args.report_dir)
-
-
-def finish(out, records, project, manifest, report_dir):
-    report = build_report(records, project, manifest)
-    (out / "analysis.json").write_text(json.dumps(report, indent=2))
-    (out / "analysis.md").write_text(markdown(report))
-    shas = "".join(f"{RL.sha256_file(p)}  {p.name}\n" for p in sorted(out.glob("run-*.json")))
-    (out / "runs.sha256").write_text(shas)
-    if report_dir:
-        target = pathlib.Path(report_dir)
-        target.mkdir(parents=True, exist_ok=True)
-        (target / "analysis.json").write_text(json.dumps(report, indent=2))
-        (target / "analysis.md").write_text(markdown(report))
-        (target / "runs.sha256").write_text(shas)
-    print(markdown(report))
-    return 0 if report["all_ran"] else 1
-
-
-def cmd_analyze(args):
-    out = pathlib.Path(args.out)
-    manifest = json.loads((out / "manifest.json").read_text())
-    project = RL.parse_project(json.loads(pathlib.Path(args.project).read_text()))
-    records = [json.loads(p.read_text()) for p in sorted(out.glob("run-*.json"))]
-    return finish(out, records, project, manifest, args.report_dir)
+        scratch.cleanup()
+    return finish(EXPERIMENT, out, records, run.project, manifest, args.report_dir)
 
 
 def main():
@@ -446,19 +375,19 @@ def main():
     run = sub.add_parser("run")
     run.add_argument("--binary", required=True)
     run.add_argument("--project", required=True)
-    run.add_argument("--unpatched-bundle", required=True, help="a runtime.js built from the same sources without the patch")
+    run.add_argument("--unpatched-bundle", required=True, help="the runtime.js of a plain `./scripts/runtime build` (no patch variable), copied out of runtime/dist before the patched build")
     run.add_argument("--out", required=True)
     run.add_argument("--pairs", type=int, default=30)
     run.add_argument("--stress-cpu", type=int, default=0,
                      help="busy-loop processes kept alive during each session (the hang needs a loaded machine to show often; both arms get the same)")
     run.add_argument("--lock-wait", type=float, default=600.0)
     run.add_argument("--report-dir")
-    analyze = sub.add_parser("analyze")
-    analyze.add_argument("--out", required=True)
-    analyze.add_argument("--project", required=True)
-    analyze.add_argument("--report-dir")
+    ana = sub.add_parser("analyze")
+    ana.add_argument("--out", required=True)
+    ana.add_argument("--project", required=True)
+    ana.add_argument("--report-dir")
     args = parser.parse_args()
-    return cmd_run(args) if args.command == "run" else cmd_analyze(args)
+    return cmd_run(args) if args.command == "run" else analyze(EXPERIMENT, args)
 
 
 if __name__ == "__main__":

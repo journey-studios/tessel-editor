@@ -1,11 +1,20 @@
 """Pure-logic tests of the BL157.4 runtime bundle A/B; no editor, GPU, runtime page, WebKit process or private media is started."""
+import contextlib
 import importlib.util
+import inspect
+import io
+import json
+import os
+import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 spec = importlib.util.spec_from_file_location("runtime_bundle_ab", Path(__file__).with_name("runtime-bundle-ab.py"))
 ab = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ab)
+from ab import play as shared_play  # noqa: E402  (the runner put `scripts/` on the path)
 
 PROJECT = {"length": 100, "fps": 24.0, "cuts": [], "video_starts": [], "sources": []}
 
@@ -70,8 +79,8 @@ def rows(unpatched_hung, patched_hung, n=10):
 
 class ArmTests(unittest.TestCase):
     def test_the_order_alternates_which_arm_goes_first_by_pair(self):
-        self.assertEqual(ab.arm_order(3), ["unpatched", "patched", "patched", "unpatched", "unpatched", "patched"])
-        self.assertEqual(ab.arm_order(0), [])
+        self.assertEqual(ab.arm_order(ab.ARMS, 3), ["unpatched", "patched", "patched", "unpatched", "unpatched", "patched"])
+        self.assertEqual(ab.arm_order(ab.ARMS, 0), [])
 
     def test_an_unpatched_bundle_has_the_decoders_call_exactly_once(self):
         self.assertEqual(ab.bundle_findings(ab.UNPATCHED, f"a();{ab.DECODER_CALL}b();"), [])
@@ -101,8 +110,9 @@ class HangRuleTests(unittest.TestCase):
     def test_a_play_with_no_picture_at_all_is_hung(self):
         self.assertTrue(ab.hung_play(self.play(0, None), 100))
 
-    def test_it_reads_the_constants_of_the_first_use_experiment_so_the_two_never_differ(self):
-        self.assertEqual((ab.FU.HANG_PICTURES_SHARE, ab.FU.HANG_GAP_MS), (0.9, 2000.0))
+    def test_it_uses_the_one_hang_rule_of_every_experiment(self):
+        self.assertIs(ab.hung_play, shared_play.hung_play, "a copy of the rule in the runner could drift from the others")
+        self.assertEqual((shared_play.HANG_PICTURES_SHARE, shared_play.HANG_GAP_MS), (0.9, 2000.0))
 
 
 class SignatureTests(unittest.TestCase):
@@ -203,6 +213,19 @@ class SessionRowTests(unittest.TestCase):
         self.assertEqual((result["hung"], result["failed"]), (False, True))
         self.assertEqual(result["plays"], {})
 
+    def test_the_error_of_a_failed_session_is_published_as_a_code_and_a_kind_without_its_path(self):
+        broken = record(ab.PATCHED, error="RuntimeError('could not open /Users/someone/private/clip.ply')")
+        broken["events"], broken["frames"] = [], []
+        manifest = {"git": {"sha": "0" * 40, "dirty_files": 0}, "binary_sha256": "b", "document_sha256": "d", "stress_cpu": 0, "order": [],
+                    "bundle_sha256": {"unpatched": "u", "patched": "p"}}
+        report = ab.build_report([broken], PROJECT, manifest)
+        text = ab.markdown(report)
+        self.assertEqual(report["rows"][0]["error"], {"code": "RuntimeError", "kind": "exception"})
+        self.assertIn("FAILED: exception:RuntimeError", text)
+        for private in ("/Users", "someone", "private", "clip.ply"):
+            self.assertNotIn(private, json.dumps(report))
+            self.assertNotIn(private, text)
+
     def test_the_samples_of_a_session_are_carried_with_their_signature(self):
         session = record(ab.UNPATCHED, first=pictures(1, 1000.0, 20))
         session["hang_samples"] = [{"at_s": 31.0, "pid": 1, "file": "x.txt", "signature": ab.deadlock_signature(DEADLOCK_SAMPLE)}]
@@ -260,15 +283,114 @@ class WatchdogTests(unittest.TestCase):
         self.assertIn("socket gone", dog.samples[0]["error"])
 
 
+class NothingIsSignalledTests(unittest.TestCase):
+    """AGENTS.md: no process of anybody else is ever killed. The WebKit helpers are not children of the editor, so a deadlocked page is reported, not reaped."""
+
+    def sampled(self, signalled):
+        """A watchdog that sees a stalled, playing editor and a new WebContent helper whose `sample` is the deadlock."""
+        class Lab:
+            def op(self, request):
+                return {"ok": True, "data": {"state": "playing"}}
+
+        def fake_sample(command, **named):
+            Path(command[command.index("-file") + 1]).write_text(DEADLOCK_SAMPLE)
+
+        with tempfile.TemporaryDirectory() as folder:
+            dog = ab.Watchdog(folder, "00-unpatched", set(), now=lambda: 0.0)
+            dog.count, dog.changed = 5, -100.0
+            with mock.patch.object(ab, "webkit_pids", return_value={4242}), \
+                    mock.patch.object(ab, "process_command", return_value="/x/com.apple.WebKit.WebContent.xpc"), \
+                    mock.patch.object(ab.subprocess, "run", side_effect=fake_sample), \
+                    mock.patch.object(os, "kill", side_effect=signalled.append), mock.patch.object(os, "killpg", side_effect=signalled.append):
+                dog.observe(Lab(), 5)
+        return dog
+
+    def test_a_deadlocked_page_is_recorded_with_its_pid_role_and_sample_file_and_never_signalled(self):
+        signalled = []
+        dog = self.sampled(signalled)
+        self.assertEqual(signalled, [])
+        self.assertEqual([(s["pid"], s["role"], s["file"]) for s in dog.samples], [(4242, "WebContent.xpc", "hang-00-unpatched-4242-0.txt")])
+        self.assertTrue(dog.samples[0]["signature"]["deadlock"])
+
+    def test_the_module_has_nothing_that_can_signal_a_process(self):
+        source = inspect.getsource(ab)
+        for forbidden in ("os.kill", "os.killpg", "SIGKILL", "SIGTERM", "signal.", "killed_deadlocked_helpers"):
+            self.assertFalse(forbidden in source, f"the runner mentions `{forbidden}`")
+        self.assertFalse(hasattr(ab, "reap"))
+        self.assertFalse(hasattr(ab.Watchdog(".", "x", set()), "deadlocked"))
+
+    def test_the_row_of_a_session_carries_the_sample_it_took(self):
+        session = record(ab.UNPATCHED, first=pictures(1, 1000.0, 20))
+        session["hang_samples"] = [{"at_s": 31.0, "pid": 7, "role": "WebContent.xpc", "file": "x.txt", "signature": ab.deadlock_signature(DEADLOCK_SAMPLE)}]
+        self.assertEqual({key: ab.session_row(session, PROJECT)["samples"][0][key] for key in ("pid", "role", "file")},
+                         {"pid": 7, "role": "WebContent.xpc", "file": "x.txt"})
+
+
 class ScratchRuntimeTests(unittest.TestCase):
-    def test_it_makes_a_folder_the_host_accepts_with_the_arms_bundle(self):
-        import tempfile
+    def test_it_makes_a_folder_the_host_accepts_with_the_arms_bundle_and_the_page_it_is_given(self):
         with tempfile.TemporaryDirectory() as parent:
-            bundle = Path(parent) / "a.js"
+            bundle, index = Path(parent) / "a.js", Path(parent) / "index.html"
             bundle.write_text("// the arm's bundle")
-            directory = ab.scratch_runtime(parent, ab.UNPATCHED, bundle)
+            index.write_text("<!-- a page -->")
+            directory = ab.scratch_runtime(parent, ab.UNPATCHED, bundle, index)
             self.assertEqual((directory / "dist" / "runtime.js").read_text(), "// the arm's bundle")
-            self.assertTrue((directory / "dist" / "index.html").is_file())
+            self.assertEqual((directory / "dist" / "index.html").read_text(), "<!-- a page -->")
+
+
+class BundleGateTests(unittest.TestCase):
+    """What the run says before it starts when the two bundles are not the arms they stand for. Nothing here reads the repository's own `runtime/dist`:
+    a folder of the test stands in for it, so these hold however that was built."""
+    PLAIN = f"a();{ab.DECODER_CALL}b();"
+    PATCHED_TEXT = "a();void 0;b();"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        (self.root / "runtime" / "dist").mkdir(parents=True)
+        patcher = mock.patch.object(ab, "ROOT", self.root)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def gate(self, dist, unpatched):
+        (self.root / "runtime" / "dist" / "runtime.js").write_text(dist)
+        given = self.root / "unpatched.js"
+        given.write_text(unpatched)
+        return ab.bundle_gate(SimpleNamespace(unpatched_bundle=str(given)))
+
+    def test_a_plain_build_in_dist_is_refused_as_the_patched_arm_and_the_message_says_how_to_build_it(self):
+        why = self.gate(self.PLAIN, self.PLAIN)
+        self.assertIn("still has", why)
+        self.assertIn("TESSEL_RUNTIME_SPARK_RELEASE_LOCK_PATCH=1 ./scripts/runtime build", why)
+        self.assertIn("opt-in", why)
+
+    def test_a_patched_dist_and_a_plain_unpatched_bundle_are_the_two_arms(self):
+        self.assertIsNone(self.gate(self.PATCHED_TEXT, self.PLAIN))
+
+    def test_the_arms_given_the_wrong_way_round_are_refused_whichever_side_is_wrong(self):
+        swapped = self.gate(self.PLAIN, self.PATCHED_TEXT)
+        self.assertIn("unpatched bundle has the decoder's", swapped)
+        self.assertIn("0 time(s)", swapped)
+        self.assertIn("plain `./scripts/runtime build`", swapped)
+        self.assertIn("unpatched bundle", self.gate(self.PATCHED_TEXT, self.PATCHED_TEXT))
+
+    def test_the_run_starts_only_when_the_gate_lets_it_and_says_blocked_with_the_reason(self):
+        (self.root / "runtime" / "dist" / "index.html").write_text("")
+        (self.root / "runtime" / "dist" / "runtime.js").write_text(self.PLAIN)
+        given = self.root / "unpatched.js"
+        given.write_text(self.PLAIN)
+        args = SimpleNamespace(unpatched_bundle=str(given), binary=str(given), project=str(given), out=str(self.root / "out"), lock_wait=0.0, pairs=1,
+                               stress_cpu=0, report_dir=None, label="")
+        shown = io.StringIO()
+        proof = mock.Mock()
+        proof.free_gib.return_value = 100.0
+        with mock.patch("ab.batch.warm_proof", return_value=proof), mock.patch("ab.batch.parse_project", return_value=PROJECT), \
+                mock.patch("ab.batch.check_sources", return_value=[]), contextlib.redirect_stdout(shown):
+            code = ab.cmd_run(args)
+        self.assertEqual(code, 2)
+        self.assertIn("BLOCKED: the patched bundle still has", shown.getvalue())
+        self.assertIn("TESSEL_RUNTIME_SPARK_RELEASE_LOCK_PATCH=1", shown.getvalue())
+        proof.acquire_locks.assert_not_called()
 
 
 def host_event(asset, status, size):
