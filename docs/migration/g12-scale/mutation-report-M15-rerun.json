@@ -1,0 +1,18 @@
+{
+  "restored": true,
+  "hashes": {
+    "crates/core/src/scene_interaction/gizmo/scaling.rs": "43a797890bedd85c7964837b33d99fdec274475372526e8398dab090d958e8df",
+    "crates/core/src/scene_project/gizmo.rs": "c0e1052c9932b77f2e16e5ef853bddccdfc9ca50a698d994318f00473fade171",
+    "runtime/src/overlay.js": "d5c1b717ff38b08fd4cad7415b1aa1864c1add73c8031ad4b90a241b8a02b069"
+  },
+  "mutants": [
+    {
+      "mutant": "M15 uniform box does not win",
+      "result": "KILLED",
+      "failed": [
+        "scene_interaction::gizmo::scaling::tests::the_uniform_box_wins_over_an_axis_handle_that_runs_under_it"
+      ],
+      "seconds": 6
+    }
+  ]
+}

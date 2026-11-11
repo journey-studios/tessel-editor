@@ -616,3 +616,145 @@ test('switching from the rings to the arrows replaces what is drawn and what is 
   assert.equal((await runtime.page.evaluate(() => window.TesselRuntime.debug.overlay.state().hover)), null);
   assert.deepEqual(drawn.probes.map((p) => p.id), ['x', 'y', 'screen']);
 });
+
+// ---- BL015.1 (G1.2): the scale tool's handles on the real canvas ----------------------------------
+
+const scaleOverlay = (extra = {}) => ({
+  tool: 'scale',
+  space: 'local',
+  handles: [
+    { id: 'x', kind: 'scale_axis', from: { u: 0.5, v: 0.5 }, to: { u: 0.62, v: 0.5 } },
+    { id: 'y', kind: 'scale_axis', from: { u: 0.5, v: 0.5 }, to: { u: 0.5, v: 0.36 } },
+    { id: 'z', kind: 'scale_axis', from: { u: 0.5, v: 0.5 }, to: { u: 0.44, v: 0.58 } },
+    { id: 'uniform', kind: 'scale_uniform', from: { u: 0.5, v: 0.5 }, to: { u: 0.5 + 0.0636 / ASPECT, v: 0.5 - 0.0636 } },
+  ],
+  disabled_handles: [],
+  metrics: { handle_length: 0.14, hit_radius: 0.025, center_radius: 0.03, uniform_offset: 0.09, unit: 'picture_height' },
+  ...extra,
+});
+
+test('the scale handles are boxes on the canvas in the axis colours, the uniform one is light, and nothing is painted at the centre', async (t) => {
+  const runtime = await open(t);
+  if (!runtime) return;
+  const drawn = await enable(runtime, scaleOverlay());
+  assert.equal(drawn.tool, 'scale');
+  assert.deepEqual(drawn.disabled, []);
+  const [x, y, z, uniform] = drawn.probes;
+  assert.deepEqual([x.id, y.id, z.id, uniform.id], ['x', 'y', 'z', 'uniform']);
+  // The probe of a scale handle is the middle of its box: a really painted pixel in its colour.
+  assert.ok(x.rgba[3] > 200 && x.rgba[0] > x.rgba[1] && x.rgba[0] > x.rgba[2], `x pixel ${x.rgba}`);
+  assert.ok(y.rgba[3] > 200 && y.rgba[1] > y.rgba[0] && y.rgba[1] > y.rgba[2], `y pixel ${y.rgba}`);
+  assert.ok(z.rgba[3] > 200 && z.rgba[2] > z.rgba[0] && z.rgba[2] > z.rgba[1], `z pixel ${z.rgba}`);
+  assert.ok(uniform.rgba[3] > 200 && Math.min(...uniform.rgba.slice(0, 3)) > 200, `uniform pixel ${uniform.rgba}`);
+  // The shaft of an axis is painted halfway; the node's own origin is not (no disc for this tool).
+  const rect = await picture(runtime);
+  const pixels = await runtime.page.evaluate(({ rect: r }) => {
+    const context = document.getElementById('overlay').getContext('2d');
+    const ratio = window.devicePixelRatio || 1;
+    const at = (u, v) => [...context.getImageData(Math.round((r.x + u * r.width) * ratio), Math.round((r.y + v * r.height) * ratio), 1, 1).data];
+    return { shaft: at(0.56, 0.5), far: at(0.9, 0.9) };
+  }, { rect });
+  assert.ok(pixels.shaft[3] > 200, `shaft ${pixels.shaft}`);
+  assert.equal(pixels.far[3], 0, `nothing elsewhere ${pixels.far}`);
+});
+
+test('the handles the core disabled are reported with their reason and not drawn or pressable', async (t) => {
+  const runtime = await open(t);
+  if (!runtime) return;
+  const overlay = scaleOverlay({ disabled_handles: [{ id: 'x', reason: 'world_axis_shear' }] });
+  overlay.handles = overlay.handles.filter((handle) => handle.id !== 'x');
+  const drawn = await enable(runtime, overlay);
+  assert.deepEqual(drawn.disabled, [{ id: 'x', reason: 'world_axis_shear' }]);
+  assert.deepEqual(drawn.probes.map((p) => p.id), ['y', 'z', 'uniform']);
+  const rect = await picture(runtime);
+  const at = pane(rect, { u: 0.56, v: 0.5 });
+  await runtime.page.mouse.move(at.x, at.y);
+  await settle(runtime);
+  assert.equal(await runtime.page.evaluate(() => window.TesselRuntime.debug.overlay.state().hover), null);
+  assert.notEqual(await runtime.page.evaluate(() => document.getElementById('overlay').style.cursor), 'grab');
+});
+
+test('a real press on the uniform box and a drag away from the node post picture coordinates', async (t) => {
+  const runtime = await open(t);
+  if (!runtime) return;
+  const overlay = scaleOverlay();
+  await enable(runtime, overlay);
+  const rect = await picture(runtime);
+  const box = overlay.handles[3].to;
+  const start = pane(rect, box);
+  await runtime.page.mouse.move(start.x, start.y);
+  await settle(runtime);
+  assert.equal(await runtime.page.evaluate(() => window.TesselRuntime.debug.overlay.state().hover), 'uniform');
+  assert.equal(await runtime.page.evaluate(() => document.getElementById('overlay').style.cursor), 'grab');
+  await runtime.page.mouse.down();
+  const end = { u: 0.5 + 2 * (box.u - 0.5), v: 0.5 + 2 * (box.v - 0.5) };
+  for (const step of [0.25, 0.5, 0.75, 1]) {
+    const at = pane(rect, { u: box.u + (end.u - box.u) * step, v: box.v + (end.v - box.v) * step });
+    await runtime.page.mouse.move(at.x, at.y);
+  }
+  await runtime.page.mouse.up();
+  await settle(runtime);
+  const messages = pointerMessages(runtime);
+  assert.equal(messages[0].phase, 'down');
+  assert.ok(Math.abs(messages[0].point.u - box.u) < 1e-6 && Math.abs(messages[0].point.v - box.v) < 1e-6, JSON.stringify(messages[0].point));
+  const up = messages.at(-1);
+  assert.equal(up.phase, 'up');
+  assert.ok(Math.abs(up.point.u - end.u) < 1e-6 && Math.abs(up.point.v - end.v) < 1e-6, JSON.stringify(up.point));
+  assert.ok(messages.every((m) => m.stamp.session === STAMP.session), 'every message echoes the stamp');
+  assert.equal(messages.filter((m) => m.phase === 'cancel').length, 0);
+});
+
+test('Escape cancels a scale drag, and a resize keeps the same picture point', async (t) => {
+  const runtime = await open(t);
+  if (!runtime) return;
+  const overlay = scaleOverlay();
+  await enable(runtime, overlay);
+  const rect = await picture(runtime);
+  const start = pane(rect, overlay.handles[0].to);
+  const next = pane(rect, { u: 0.7, v: 0.5 });
+  runtime.messages.length = 0;
+  await runtime.page.mouse.move(start.x, start.y);
+  await runtime.page.mouse.down();
+  await runtime.page.mouse.move(next.x, next.y);
+  await settle(runtime);
+  await runtime.page.keyboard.press('Escape');
+  await runtime.page.mouse.move(start.x, start.y);
+  await runtime.page.mouse.up();
+  await settle(runtime);
+  const phases = pointerMessages(runtime).map((m) => m.phase);
+  assert.deepEqual(phases.filter((p) => p !== 'move'), ['down', 'cancel']);
+  assert.equal(phases.at(-1), 'cancel', 'nothing after the cancel');
+  // A resize in the middle of a drag does not end it: the same pointer still has its picture point.
+  runtime.messages.length = 0;
+  await runtime.page.mouse.move(start.x, start.y);
+  await runtime.page.mouse.down();
+  await runtime.page.setViewport({ width: 640, height: 480 });
+  await settle(runtime);
+  const resized = await picture(runtime);
+  const after = pane(resized, { u: 0.7, v: 0.5 });
+  await runtime.page.mouse.move(after.x, after.y);
+  await runtime.page.mouse.up();
+  await settle(runtime);
+  const up = pointerMessages(runtime).at(-1);
+  assert.equal(up.phase, 'up');
+  assert.ok(Math.abs(up.point.u - 0.7) < 1e-6 && Math.abs(up.point.v - 0.5) < 1e-6, JSON.stringify(up.point));
+});
+
+test('switching from the scale boxes to the arrows replaces what is drawn and hit', async (t) => {
+  const runtime = await open(t);
+  if (!runtime) return;
+  const overlay = scaleOverlay();
+  await enable(runtime, overlay);
+  const rect = await picture(runtime);
+  const at = pane(rect, overlay.handles[3].to);
+  await runtime.page.mouse.move(at.x, at.y);
+  await settle(runtime);
+  assert.equal(await runtime.page.evaluate(() => window.TesselRuntime.debug.overlay.state().hover), 'uniform');
+  await runtime.send({ type: 'overlay.set', overlay: overlayJson({ stamp: { ...STAMP, revision: 2 } }), ack: true });
+  const drawn = await runtime.waitFor((m) => m.type === 'overlay.drawn' && m.stamp?.revision === 2, 'overlay.drawn');
+  assert.equal(drawn.tool, 'translate');
+  assert.deepEqual(drawn.disabled, []);
+  await runtime.page.mouse.move(at.x + 1, at.y + 1);
+  await settle(runtime);
+  assert.notEqual(await runtime.page.evaluate(() => window.TesselRuntime.debug.overlay.state().hover), 'uniform');
+});

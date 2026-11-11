@@ -1,8 +1,8 @@
-# F055 — Gizmo de translação e rotação no canvas (BL015, BL015.1, BL042)
+# F055 — Gizmo de translação, rotação e escala no canvas (BL015, BL015.1, BL042)
 
 ## Objetivo e limites
 
-Um gizmo inicial de seleção, **translação e rotação** para cenas dirigidas. Ele é **desenhado e acertado
+Um gizmo inicial de seleção, **translação, rotação e escala** para cenas dirigidas. Ele é **desenhado e acertado
 por um canvas 2D dentro da página da WebView** (`runtime/src/overlay.js`), nunca por elementos
 GPUI sobre a WKWebView (a view nativa pinta acima de qualquer elemento GPUI). O ponteiro vira
 intents que o **core valida e aplica**; a página não decide nada além de "onde, em coordenadas da
@@ -14,8 +14,9 @@ imagem, o usuário apertou".
 - O que é editado: a propriedade vetorial existente `…/node/<id>/position` (`localPosition` do
   documento) com a ferramenta `translate`, e a propriedade `…/node/<id>/rotation` (o quaternion
   `localRotation`) com a ferramenta `rotate` (BL015.1, [seção própria](#rotação-de-um-nó-g1-bl0151)).
-  Não há escala, snapping, múltiplas seleções nem grupos: com mais de um selecionado o overlay fica
-  oculto (`multiple_selection`).
+  A propriedade `…/node/<id>/scale` (`localScale`) é editada pela ferramenta `scale` (G1.2, BL015.1,
+  [seção própria](#escala-de-um-nó-g12-bl0151)). Não há snapping, múltiplas seleções nem grupos: com mais de um
+  selecionado o overlay fica oculto (`multiple_selection`).
 - Fora do escopo e **não declarado como entregue**: ponteiro físico nativo (BL043), popover/foco
   de teclado sobre a WebView (BL044), perfil de latência, atalhos de teclado do gizmo.
 
@@ -328,15 +329,95 @@ animada não pode ser editada como base sem criar um deslocamento invisível; es
 
 ### Limites desta fatia (continuam pendentes em BL015.1)
 
-Escala, snapping, múltipla seleção e pivôs de grupo, luzes, câmera espacial e FX; **translação em eixos locais**
-(a translação segue em coordenadas de mundo; o espaço só vale para a rotação); rotação de um nó cuja rotação é
+Snapping, múltipla seleção e pivôs de grupo, luzes, câmera espacial e FX (a escala entrou depois, em G1.2, abaixo);
+**translação em eixos locais** (a translação segue em coordenadas de mundo; o espaço só vale para a rotação e a escala); rotação de um nó cuja rotação é
 animada (edição de chave); pais com escala não uniforme (recusa tipada, não suporte); o mouse **físico** na WKWebView
 (BL015.2/BL043/BL044).
+
+## Escala de um nó (G1.2, BL015.1)
+
+Segunda fatia de G1 do [plano de gizmos](../migration/gizmos-spatial-editing-plan.md): **escala de UM nó** por
+eixo e uniforme, com orientação local ou de mundo, reutilizando o gesto de F055 (begin/update/commit/cancel).
+Fica dentro de F055 (nenhum ID novo). **Não entram** snapping, seleção múltipla, grupos, luzes, câmera, FX nem
+chaves automáticas.
+
+### Convenções (decididas antes do código, fixadas por testes)
+
+| Tema | Regra |
+|---|---|
+| Representação | O documento continua com `localScale` (propriedade `scale`, três números). Nenhuma representação nova. Posição, rotação e pai do nó nunca são tocados: a origem não se move e os filhos escalam junto. |
+| Fator | **Multiplicativo**, relativo ao valor no press: o componente novo é `antigo · f`. Um arrasto recalcula `f` a cada move a partir do press (razão de duas distâncias), então não depende do caminho nem acumula. Um comando numérico carrega o mesmo `f`. `f = 1` (dentro de `1e-12`) é **no-op**: o vetor autorado volta com os mesmos bits, nada é escrito e não há entrada de histórico. |
+| Handles | `x`, `y`, `z` escalam um componente; `uniform` (caixa a `0,09` altura de imagem acima e à direita da origem, a 45° **na imagem**, para nunca ir atrás da câmera) aplica o **mesmo** `f` aos três (uma escala desigual mantém as razões). `screen` não é um handle de escala. |
+| Eixos `local` | Colunas de `M = W·S⁻¹ = P·R` (cadeia de pais e rotação autorada, sem a escala própria), normalizadas: `W' = W·diag(d)`. **Sempre** representável, qualquer que seja o pai (girado, com escala desigual, espelhando). |
+| Eixos `world` | `W' = (I + (f−1)·a·aᵀ)·W` para o eixo `a` da cena. É um nó TRS de novo só quando `a` corre ao longo de um eixo do próprio nó (`T = M⁻¹·a·aᵀ·M` tem um `1` na diagonal e zeros fora, tolerância `1e-9`); então o fator cai naquele componente (um nó girado de um quarto de volta escreve em outro componente que a letra do handle). Qualquer outro caso seria um **shear** que o TRS não guarda: o handle é **desabilitado** (`world_axis_shear`), nunca aproximado. `uniform` é igual nos dois espaços (`W' = f·W`). |
+| Limites (do core; o documento só exige "finito") | fator finito e `> 0`; o componente mudado mantém o **sinal** (nenhum espelhamento é criado, um ponteiro que atravessa a origem é uma posição recusada, não uma inversão) e sua magnitude fica em `[1e-3, 1e3]`; um componente que o documento já tem fora da faixa só pode andar **em direção a ela**; o determinante da matriz de mundo resultante não pode cair abaixo de `1e-12` (a mesma guarda de `movable`). O limite é sobre o **resultado**, não sobre o fator. |
+| Spark (BL123) | Um splat é desenhado com uma escala uniforme. Num nó que é, ou tem abaixo de si, um splat, `x`, `y`, `z` são desabilitados (`splat_non_uniform`); `uniform` funciona e mantém a matriz de mundo uma similaridade. O plano continua recusando com `unsupported` um splat não uniforme que já exista no documento. |
+| Animação | Um canal de performance que escreve `localScale` do nó **substitui** o valor autorado: uma edição não apareceria. O nó é recusado (`animated_scale`) e **nenhuma chave é criada**. Pai animado, e nó com canal só de posição ou rotação, **podem** ser escalados: as matrizes do frame já os incluem. |
+| Press perto da origem | Se o press está a menos de 10% do comprimento do handle (2% de altura de imagem no `uniform`) da origem, a razão não é uma medida: o press é recusado (`refused: degenerate_axis`) antes de abrir gesto. |
+
+### Comandos (também ops JSON)
+
+| Op | Comando | Efeito |
+|---|---|---|
+| `scene.gizmo.tool` | `GizmoCommand::Tool` | agora aceita `scale` (`tools: ["translate","rotate","scale"]`). Continua estado de sessão, não uma edição. A orientação (`space`) vale para `rotate` e `scale`. |
+| `scene.scale` | `GizmoCommand::Scale` | o mesmo resultado **sem ponteiro**: `entity`, `frame`/`time`, `axis` (`x`\|`y`\|`z`\|`uniform`), `factor` finito, `space` opcional (padrão: o da sessão) → `edit_scene` com **um** `set scale`; uma entrada "Edit scene". Resposta: `axis`, `space`, `factor`, `scale` (o vetor gravado), `component` (`x`\|`y`\|`z`\|`all`), `changed`, `document_changed`. |
+| `scene.pointer.*` | `PointerCommand` | com `tool = scale`, `down` num handle abre o gesto "Scale", `move` faz `gesture_update` com **um** `set scale`, `up` confirma (uma entrada). Respostas trazem `tool`, `factor`, `axis`, `space` e `scale`. |
+| `set monitor.gizmo tool scale` | o mesmo `GizmoCommand::Tool` | o nó `monitor.gizmo` lista `scale` nas opções de `tool`. |
+
+`scene.capabilities` lista `scene.scale`. O arrasto e `scene.scale` passam **pelo mesmo** `ScaleFrame::scale`: o documento
+que um arrasto deixa é igual, bit a bit, ao de `scene.scale` com `factor`/`axis`/`space` que o arrasto reportou (teste nas
+duas orientações e nos quatro handles).
+
+### Overlay v1 (aditivo)
+
+Com `tool = scale`, cada eixo tem `kind: "scale_axis"` (da origem à ponta, `metrics.handle_length` de comprimento) e há um
+`scale_uniform`. Os handles que o core **não** oferece neste nó ficam fora de `handles` e em `disabled_handles`
+(`[{id, reason}]`), com o motivo tipado; a página não os desenha nem os acerta. `metrics.uniform_offset` e
+`metrics.scale_limits` `{min, max}` descrevem a geometria e os limites. Nó que não pode ser escalado (animado, escala
+zero, matriz degenerada): `visible:false` e `reason`. Um overlay sem `disabled_handles` é lido como sem desabilitados;
+`tool` desconhecido é lido como `translate`. A mensagem `overlay.drawn` passa a levar `disabled`.
+
+### Recusas tipadas (`not_scalable`, `details.reason`)
+
+Um comando recusado deixa documento, histórico e revisão como estavam, **exceto** pela liquidação de um slider aberto
+("Liquidação de slider aberto", abaixo). Um **arrasto** que cai numa posição recusada responde `applied:false` com o motivo,
+**mantém o último candidato legal** e um release ali confirma o que foi legal por último.
+
+| `reason` | Quando |
+|---|---|
+| `animated_scale` | um canal de performance escreve `localScale` do nó no frame de edição |
+| `world_axis_shear` | `world`: o eixo da cena não corre ao longo de um eixo do nó (shear). Também protege, por defesa, um eixo alinhado dentro de `1e-9` cujo fator seria tão grande que o resíduo passaria de `1e-6` |
+| `splat_non_uniform` | o nó é, ou tem abaixo, um splat e o handle é `x`, `y` ou `z` |
+| `factor_not_positive` | fator `≤ 0` (também o ponteiro que passou da origem) |
+| `below_minimum_scale`, `above_maximum_scale` | o componente resultante sairia de `[1e-3, 1e3]` (afastando-se da faixa, se já estava fora) |
+| `degenerate_result` | o determinante da matriz de mundo resultante cairia abaixo de `1e-12` |
+| `degenerate_transform` | a matriz local ou de mundo não é invertível, inclusive com uma escala autorada de componente zero (teste de integração) |
+| `degenerate_scale`, `not_movable` | guardas defensivas, não alcançáveis por um documento (um componente zero ou não finito já falha antes como `degenerate_transform`; todos os tipos de nó atuais são móveis); só o teste unitário de `ScaleFrame::of` as exercita |
+| `scale_not_authored` | guarda defensiva: a escala do plano não é a autorada (só um frame animado difere, e esse é recusado antes); não alcançável por um documento |
+| `not_a_scale_handle`, `factor_not_finite` | guardas defensivas de `ScaleFrame::scale`: a borda (`scene.scale`, o parser) recusa antes, com `invalid_value`, e o teste unitário as exercita direto |
+
+Outros erros: `invalid_value` (eixo `screen`/desconhecido, fator não finito, ferramenta desconhecida), `invalid_request`
+(`factor` ausente ou não numérico), `unknown_entity`, `gesture_active`, `gesture_invalidated`, `no_drag`.
+
+### Superfícies
+
+| Superfície | Como |
+|---|---|
+| Biblioteca | `GizmoCommand::Tool`/`Scale` e `PointerCommand` via `EditorState::execute`; regras em `scene_interaction::gizmo::scaling` (aritmética pura, sem GPUI) e `scene_project::gizmo` (glue) |
+| CLI headless | as ops acima em `./scripts/headless` (JSONL), sem janela |
+| Janela | botão **Escalar** (probe `control:monitor-gizmo-scale`) e os botões **Mundo**/**Local** (que valem para Girar e Escalar); caixas e hastes desenhadas no canvas da página; o adaptador só traduz `overlay.pointer` |
+
+### Limites desta fatia (continuam pendentes em BL015.1)
+
+Snapping, múltipla seleção, pivôs de grupo, luzes, câmera espacial e FX; escala de um nó cuja escala é animada (edição de
+chave); espelhamento por arrasto; translação em eixos locais; o mouse **físico** na WKWebView (BL015.2/BL043/BL044); o
+**custo de desenho e plano** da escala (medição separada sob o lock de performance, não feita nesta rodada; o custo da rotação
+não prova o da escala).
 
 ## UI e CLI da janela
 
 - **Canvas**: a página cria `<canvas id="overlay">` acima de `#viewport` (`pointer-events: none`
-  até `overlay.enable`). Desenha contorno do plano selecionado, setas dos eixos, handle central e
+  até `overlay.enable`). Desenha contorno do plano selecionado, setas dos eixos (ou anéis, ou hastes com caixa), handle central e
   destaca o handle ativo/sob o cursor (`cursor: grab`).
 - **Ponte v1, aditiva**: página→host `overlay.pointer` (`down|move|up|cancel`, `seq`,
   `point`, `additive`, `reason`), `overlay.layout`, `overlay.drawn` (ack opt-in com
@@ -484,7 +565,7 @@ do runtime (174/174) não foram repetidos: as fontes JS e o bundle são byte a b
 
 Status: **a validar**. Implementado e agora executado em quase todas as superfícies pedidas: core 38/38, host 52/52, janela GPUI 28/28, workspace 1556/0, clippy `-D warnings`, prova semântica
 headless 56/56 e da janela real 84/84, Chrome 15/15 e runtime 174/174, 15 mutações mortas. **Faltam** a prova com ponteiro físico, foco do teclado e captura do gizmo sobre a WKWebView
-(BL015.2, BL043/BL044) e o veredito do coordenador (revisão nova depois destes gates). Limitações: um nó por vez; sem escala nem snapping; a rotação tem anéis em coordenadas de mundo **ou** locais, mas a translação
+(BL015.2, BL043/BL044) e o veredito do coordenador (revisão nova depois destes gates). Limitações desta rodada histórica: um nó por vez; escala foi acrescentada em G1.2, abaixo; snapping segue pendente; a rotação tem anéis em coordenadas de mundo **ou** locais, mas a translação
 continua só em eixos de mundo; rotação animada e pais com escala não uniforme são recusados (tipado); aspecto da imagem vem da câmera da cena.
 
 Harmonização: **S4** (identidade de ativos) — o gizmo só endereça nós pelo `entity` do F039
@@ -510,10 +591,10 @@ valores atravessam o importador até `RotationFrame::of`. `degenerate_rotation` 
 uma guarda defensiva; `not_movable` não é alcançável pelos tipos atuais de nó.
 Nenhum desses ramos é anunciado como recusa exercitada por integração.
 
-### Liquidação de slider aberto por `scene.rotate`/`scene.translate` (regra existente, sem atomicidade)
+### Liquidação de slider aberto por `scene.rotate`/`scene.scale`/`scene.translate` (regra existente, sem atomicidade)
 
 `EditorState::execute` assenta (`settle_property_gesture`, como se o slider fosse solto) um gesto de slider do inspetor ainda
-aberto **antes** de aplicar qualquer comando que tenha `history_label`: `scene.rotate`, `scene.translate`, o release de um
+aberto **antes** de aplicar qualquer comando que tenha `history_label`: `scene.rotate`, `scene.scale`, `scene.translate`, o release de um
 arrasto vivo, `scene.edit`. A liquidação acontece antes de o comando ser validado, então um `scene.rotate` ou `scene.translate`
 que depois é **recusado** (`not_rotatable`, `not_translatable`, `invalid_value`, `unknown_entity`…) já liquidou o slider e essa
 entrada de histórico (se o slider tinha tocado o valor) **permanece**. O texto "um comando recusado deixa documento, histórico e
@@ -522,6 +603,8 @@ aberto. Não há promessa de atomicidade entre "liquidar o slider" e "aplicar o 
 `EditorState::execute`/`is_idle_gizmo_release`), não foi alterada por esta PR e foi lida no código; **nenhum teste executado nesta
 rodada a exercita para a rotação** (o `cargo test` ficou bloqueado, ver abaixo). `scene.gizmo.tool` não tem `history_label`
 (não liquida), e um release sem arrasto vivo é no-op e também não liquida.
+
+**`scene.scale` (G1.2)** herda a mesma regra, sem alteração: o teste `a_scale_is_one_edit_scene_entry_and_settles_an_open_slider_like_every_labelled_command` (`crates/core/tests/scene_gizmo_scale.rs`) a fixa para a escala (um slider aberto vira a sua própria entrada, mesmo quando a escala é recusada; a escala válida é mais uma entrada). Isso **não** satisfaz "não liquidar slider alheio em silêncio": é a limitação existente, documentada, que um release de arrasto e `scene.edit` também têm; mudá-la é uma decisão separada (BL015.1).
 
 ### Rodada de validação do head `ebd1f08` (PR #40): gates pesados BLOQUEADOS
 
@@ -769,3 +852,304 @@ exit, contagens e sha256 do log), `logs/` (20 logs de teste e 2 de build) e `run
 
 **Parecer para o coordenador.** Não houve falha exclusiva do head, então a condição F1 da revisão `5848722632` está **cumprida** e a flaky não bloqueia a integração da #40; ela segue pendente (BL015.15 + BL128) e a #40 não declara o runtime como passe único limpo.
 Isso não altera o status de G1 (**a validar**): ponteiro físico, desempenho do head integrado e a decisão de merge continuam com o coordenador. Nada foi mergeado nem aprovado.
+
+## Evidências de G1.2 (escala de um nó)
+
+Status: **a validar** (revisão independente do coordenador, ponteiro físico e desempenho pendentes). Evidências pequenas
+em [`docs/migration/g12-scale/`](../migration/g12-scale/). Datas em UTC (2026-11-10), diretório
+`/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-3902d1d1`, ramo `t3/gizmo-node-scaling`, base `origin/main`
+`308f1a2`; cargo por `./scripts/cargo` (MBX, alvo padrão, `-j 3`), disco livre ≥ 25 GiB durante os gates.
+
+**Cobertura escrita junto do código**
+
+| Camada | Testes |
+|---|---|
+| Aritmética (`gizmo/scaling.rs`) | 12 testes de unidade (9 do head `2193452`, 1 do semiplano uniforme em `cd265a7`, 2 desta correção: aspecto da face do press e escalas compensatórias): tabela de limites, recusas do `ScaleFrame`, tolerância de alinhamento (`5e-10` aceita, `2e-9` recusa) e quartos de volta, guarda de shear residual, fator, limite do determinante, regras do press, prioridade da caixa uniforme sobre a haste |
+| Core (`tests/scene_gizmo_scale.rs`) | 49 testes de integração (47 do head `2193452` + arrasto uniforme através da origem e escalas compensatórias de pai e filho, ambos pela API pública): ferramenta/espaço/carimbo, overlay contra oráculo e `disabled_handles`, fator/uniforme/undo-redo multiplicativos, eixo local com pais girados/desiguais/espelhados, eixo de mundo `G·W` e shear, sinal e limites, resultado degenerado, no-op e recusas atômicas, arrasto igual a `scene.scale` bit a bit, último candidato legal, cancelamento por todos os motivos, ferramenta imutável sob arrasto, arrasto velho após edição, liquidação de slider, animação e splat, comandos tipados iguais ao JSON, capacidades e sessão JSONL, seleções que não são nó |
+| Página (`runtime`) | 3 testes de `overlay.test.mjs` e 5 de Chrome em `gizmo-overlay.test.mjs` (caixas desenhadas, handles desabilitados, press/arrasto do uniforme, Escape/resize, volta às setas) |
+| Janela (GPUI) | 6 testes em `scene_gizmo_tests.rs` (escolha da ferramenta, arrasto uniforme, Escape, press velho de seta, botões do monitor, translação e rotação depois da escala) |
+
+**Gates do head de código `2193452c0beb84a0dacaa705ce8e26077e0ed11e` (HISTÓRICO: código de produção da escala mudou depois, em `cd265a7` e `e19b7e7`; estes números não valem como gates do código atual, ver a seção final)** (árvore limpa; logs em `/tmp/g12-final`, fora do Git;
+o `66805ce` anterior falhou no clippy, ver abaixo):
+
+| Comando | Resultado |
+|---|---|
+| `cargo fmt --all -- --check` | exit 0 |
+| `./scripts/cargo check --workspace --locked` | exit 0 |
+| `./scripts/cargo clippy --workspace --all-targets --locked -- -D warnings` | **1ª execução (`66805ce`): exit 101** (3× `neg_cmp_op_on_partial_ord` em `scaling.rs`, 1× `bool_assert_comparison` no teste); corrigido em `2193452` sem mudar comportamento (NaN continua recusado); 2ª execução: exit 0 |
+| `TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test --workspace --locked` | exit 0: **2185 passaram, 0 falharam, 12 ignorados** (base `main`: 2123/0/12) |
+| `./scripts/runtime test` | exit 0: **231/231** na primeira execução (sem repetição; a flaky `video B2`, BL015.15/BL128, não apareceu nesta execução e **nada foi relaxado**) |
+| `./scripts/cargo build -p tessel-editor --locked` / `-p tessel-editor-core --bin tessel-headless --locked` | exit 0 / exit 0 |
+| `cargo tree -p tessel-editor-core --locked` | exit 0, **sem** `gpui` nem `wry` |
+
+**Provas de processo** (sobre o head acima, binários do head: `tessel-editor` sha256
+`7127fb494017e330e38eb15cda22238de24d073f2c77fc08cf398b415dfbdfc5`, `tessel-headless`
+`323578b2be5a04da9ecfecd31d9480c75c9d52db3d2263c9a8461e7d573ab58d`; árvore limpa, sem `--allow-dirty`):
+
+| Prova | Headless | Janela nativa | `final_evidence` | Os dois processos concordam |
+|---|---|---|---|---|
+| `scene-gizmo-scale-proof.py` (G1.2) | 53 | 61 | true | true |
+| `scene-gizmo-rotation-proof.py` (regressão G1) | 48 | 54 | true | true |
+| `scene-gizmo-proof.py` (regressão S8, translação) | 56 | 84 | true | true |
+
+Relatórios em `docs/migration/g12-scale/`. A prova da escala, na janela, também compara por oráculo independente **render e
+export com o gizmo na tela e sem nada selecionado**: `scene.render` é bit a bit igual e o export de vídeo, decodificado
+pelo `ffmpeg`, dá os mesmos pixels (com um controle em que a escala de fato muda o export); o gizmo não vai para render nem
+export. A translação e a rotação (`scene.translate`, `scene.rotate`) seguem como eram (regressões acima e testes de core).
+
+**Mutações** (`docs/migration/g12-scale/mutate.py` e relatórios): 29 mutantes (25 em Rust, 4 no `overlay.js`: limites, fator
+zero, banda de no-op, tolerância de alinhamento, guardas de shear/determinante, splat, animação, uniforme só em x, eixos lidos
+por linhas, press na origem, prioridade da caixa, componente escolhido, candidato perdido, entre outros), um por vez, com os
+arquivos restaurados e o hash comparado (`restored: true`). Um sobrevivente, a prioridade da caixa uniforme (M15), virou um
+teste de unidade e foi morto na repetição (`mutation-report-M15-rerun.json`); os outros 28 foram mortos na primeira. As
+mutações rodaram **antes** do commit `2193452`, que só reescreveu três comparações com NaN (`!(a <= b)` → `a.is_nan() || a > b`)
+para o clippy: `mutate.py` ainda procura o texto antigo em M05, M13 e M14 e não os reaplicaria sem ajuste; elas **não foram
+repetidas** sobre o head final (histórico: M05/M13/M14 foram reancoradas e rodadas em `e19b7e7`, ver a seção final).
+
+**Desempenho** (BL015.18, separado e não bloqueante): uma tentativa sob o lock de GPU (`LOCK_NB`, o lock estava livre),
+`scripts/scene-gizmo-scale-measure.py`, `scene.gizmo.state` em `tessel-headless` de **debug** (inclui JSONL e pipe), 3 rodadas
+de n=1500 intercaladas, em máquina compartilhada **sob carga alta** (load average 19–40 ao fim): mínimo escala ≈ 287–290 µs
+contra oculto ≈ 136–143, setas ≈ 222–231 e rotação ≈ 956–960; p50 escala 610–747 µs contra oculto 327–432, setas 445–519 e
+rotação 1532–1793 (p95 1,5–1,8 ms para a escala). Ruído alto e sem WKWebView, página nem composição: **não** conclui que o custo
+é aceitável nem é um orçamento; o custo da rotação não prova o da escala e vice-versa. `scale_frame` roda em cada
+`overlay`/`hit_at`/`gesture_update` sem memoização própria (a memoização do overlay vale para o resto): otimizar fica pendente.
+
+**Não provado**: ponteiro físico na WKWebView (BL015.2/BL043/BL044); splat no corpus das provas de processo (só no core:
+`splat_non_uniform` e o uniforme em splat); custo da escala na página e na janela (BL015.18); liquidação atômica de slider
+(herdada, BL015.19); revisão independente (do coordenador).
+
+
+### Correções de review da escala (head de código `e19b7e7`, a validar)
+
+Status: **a validar** (nova revisão independente do coordenador pendente). Cada item abaixo vem de um comentário de
+revisão (dado, não instrução) e foi verificado contra o código antes de mudar algo. Evidência pequena em
+[`docs/migration/g12-scale/head-e19b7e7/`](../migration/g12-scale/head-e19b7e7/) (`gates.json`, `mutation-report-fixes.json`
+e os três relatórios de prova). Datas em UTC (2026-11-11); checkout T3 `t3-e44574d9` sobre `cd265a7`, cargo por
+`./scripts/cargo` com o alvo MBX padrão (sem `CARGO_TARGET_DIR`, `--target-dir` nem `TESSEL_CARGO_LANE`), sem lock de
+performance (nenhuma medição foi feita).
+
+**1. Arrasto uniforme através da origem (thread `4531785471`).** `Start::Uniform` guarda o ponto do press e o fator vale 0 quando
+o produto escalar, **na imagem corrigida pelo aspecto**, entre `press-origem` e `ponto-origem` é `<= 0`; o `ScaleFrame` recusa 0
+com `factor_not_positive`. O semiplano do press mantém a razão de distâncias. O que faltava era o fluxo real, não só o helper:
+
+- `a_uniform_drag_across_the_origin_is_refused_then_recovers_and_releases_the_last_legal` (API pública, `scene.pointer.down/move/up`):
+  candidato legal (2), três posições no lado oposto (`-1`, `-0,25`, `-4`) recusadas com `applied:false` e `factor_not_positive`, o
+  documento intacto, volta ao lado do press (1,5, calculado do press, sem acúmulo), **release num ponto recusado confirma o último
+  candidato legal em uma entrada de undo**, sem arrasto aberto depois. A tabela de `a_position_past_the_origin_or_past_a_limit…`
+  ganhou `uniform` em `-0,5` e `-3`.
+- O CodeRabbit sugeriu que o teste cobrisse o erro de `begin`; o contrato é outro: o `begin` só recusa o press perto da origem
+  (`a_press_too_close_to_the_origin_does_not_open_a_drag`, já existente, sem gesto aberto); cruzar a origem é **movimento**.
+- `the_uniform_side_is_judged_in_picture_space…` (unidade): ponto `(-0,2; +0,12)` para um press `(+0,1; +0,1)` em alturas de imagem,
+  aspecto 1,5. Corrigido, o produto é `-0,008` (lado oposto); em `u` cru seria `+0,0031` (lado do press).
+- Mutantes (cada um com o arquivo restaurado e o hash comparado): **M26** (guarda do produto removida) morta por três testes,
+  dois de integração e um de unidade; **M27** (aspecto fora do produto) morta pelo teste de unidade. **Correção (achado
+  `4532376209` do CodeRabbit, válido):** `dot <= 0` → `dot < 0` **não é equivalente**. A frase anterior ("na origem exata o produto
+  é 0 e a razão `0/d` também") só olhava a origem; um ponteiro **perpendicular** ao press e fora da origem também dá `dot = 0` com
+  distância positiva: a base recusa (fator 0, `factor_not_positive`) e o mutante aceitaria a razão de distâncias. Agora é o
+  mutante **M31**, morto por `a_pointer_exactly_perpendicular_to_the_press_is_the_far_side_not_a_ratio` (ver a seção
+  "Achado matemático" no fim deste documento).
+
+**2. `mutate.py` (thread `4531785486`).** As âncoras M05, M13 e M14 foram reescritas para as comparações pós-clippy (uma
+ocorrência exata cada; o runner continua tratando 0 ou 2+ como `NOT-APPLICABLE`). Rodaram no head de produção final: M05, M13, M14
+**mortas**, mais M08, M12 e M16 (vizinhas da construção do frame) e M28 (abaixo): todas mortas, `restored: true`. Quatro
+falhas reais do runner, apontadas por revisão em `cd265a7`, foram corrigidas: a raiz agora vem do local do script (antes era o
+caminho de outro worktree: o runner mutaria o checkout alheio), o diretório do relatório é criado, **KILLED exige um teste que
+rodou e falhou pelo nome** (sem `mbx`/`node` ou crash, o resultado é `EXECUTION-ERROR`, provado com `TESSEL_MBX_BIN`
+inexistente: exit 2, arquivo restaurado), e o exit do script é 2 com qualquer resultado que não seja KILLED/SURVIVED.
+O relatório de 29 mutantes do head `2193452` e o do M15 ficam como estavam (histórico: 28 mortas, M15 só depois de ganhar teste).
+
+**3. `scene-gizmo-scale-measure.py` (thread `4531785494`).** Carga do módulo, `mkdtemp` e `Headless` ficam dentro do `try`,
+`surface`/`s8`/`work` começam em `None`; o `finally` para a superfície, remove o diretório e solta o lock em cadeia (um `stop`
+que falhe não impede a remoção nem o `LOCK_UN`) e fecha o arquivo do lock. Um lock ocupado agora fecha o arquivo e sai com 3 sem
+carregar nada. `scripts/scene-gizmo-scale-measure.spec.py` (5 testes, **puros**: `flock` e `LOCK` falsos, nada de binário,
+nenhuma medição e o lock real nunca é aberto) cobre: binário ausente (`FileNotFoundError`), falha do `load`, falha do `mkdtemp`, `stop`
+que falha, lock ocupado. Três mutantes do script (sem `LOCK_UN`, sem `rmtree`, sem `stop_surface`) matam o spec. **Nenhuma
+medição foi executada**; BL015.18 continua pendente e o número antigo continua sendo uma observação ruidosa.
+
+**Falhas reais encontradas além dos 3 threads** (comentários da revisão `5851224189` sobre `cd265a7`, verificados antes de mexer):
+
+- **Base do nó invertida em tamanho absoluto (válido, corrigido).** `ScaleFrame::of` invertia `M = W·S⁻¹` com o corte absoluto
+  `1e-12` de `inverse3`: um filho de `100` sob um pai de `1e-5` tem mundo `1e-3` (legal) e `M` de `1e-15`, e o gizmo sumia e
+  `scene.scale` falhava com `degenerate_transform`. `M` é só uma base (`M⁻¹·a·aᵀ·M` e as direções unitárias não mudam com um
+  fator positivo): agora ela é invertida em volume 1 (`cbrt|det|`); volume 0 ou não finito continua `degenerate_transform`, e o
+  tamanho do mundo continua sendo decidido por `MIN_DETERMINANT` sobre o **resultado**. Testes: unidade e API pública (4 eixos × 2
+  espaços, handles sem `disabled`); mutante **M28** (sem a normalização) morto por ambos. Limite honesto: uma base tão achatada
+  que o `inverse3` do volume 1 ainda falhe segue recusada, sem tentar nada além disso. **Atenção:** a primeira versão desta
+  correção também normalizava as direções LOCAIS na base dividida pelo volume, o que quebrou pais anisotrópicos (achado
+  `4532352759`, corrigido em `0ee2d14`: ver a seção "Achado matemático" no fim).
+- **`scene-gizmo-scale-proof.py` ignorava o `stop` que falha (válido, corrigido).** Só gravava `cleanup_error` e o `main`
+  publicava `ok: true`. Agora `run_surface` levanta `RuntimeError` depois do `finally` (sem esconder uma falha da própria
+  execução), como o driver S8. `scripts/scene-gizmo-scale-proof.spec.py` (3 testes) e um mutante (`if False:`) o provam. A prova
+  de rotação (PR #40) tem o mesmo padrão e **não foi tocada** (fora desta PR).
+- Os três comentários de `mutate.py` da revisão `5851224189` (raiz, `KILLED`, diretório do relatório) são as mesmas falhas do item 2.
+
+**Limite do `skew` (F1).** O ramo `skew.is_nan()` de `world_axis` é defensivo: com matrizes finitas de tamanho razoável o `skew`
+não é NaN (o `inverse3` já recusa determinante não finito) e não há entrada pública que o alcance; **não** foi provado em geral,
+não ganhou teste nem código de produção, e fica registrado aqui em vez de inchar o código.
+
+**Gates do código novo** (head de código `e19b7e7ecd99657b4ffb1740570cf2181bf132d8`, árvore limpa; os gates de `2193452` são só
+histórico e **não** foram herdados): `cargo fmt --all -- --check` exit 0; `./scripts/cargo check --workspace --locked` exit 0;
+`clippy --workspace --all-targets --locked -- -D warnings` exit 0; `TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test --workspace
+--locked` exit 0, **2190 passaram, 0 falharam, 12 ignorados** (111 binários; 2185 + 1 unidade de `cd265a7` + 2 unidade + 2 integração
+desta correção); `./scripts/runtime test` exit 0, **231/231** (Chrome real, execução completa); builds de `tessel-editor` e de
+`tessel-editor-core --bin tessel-headless` exit 0 (sha256 `0c8987e8…` e `53c13729…`); `cargo tree -p tessel-editor-core --locked`
+sem `gpui` nem `wry` (só `flate2`, `serde`, `serde_json`). Provas de processo com esses binários, `final_evidence: true`,
+`surfaces_agree_on_the_drag: true`, sem `--allow-dirty`: escala **53 + 61**, rotação (regressão) **48 + 54**, S8 translação
+(regressão) **56 + 84** (`head` = `e19b7e7` nos relatórios). Specs Python: 5 + 3 + 34 (S8) + 29 (superfície): passam.
+Duas execuções anteriores do `test --workspace` **não contam**: uma foi cortada por queda de stream no binário `scene_export` (95
+binários vistos, 0 falhas) e outra foi parada por mim ao editar o `scaling.rs` durante a execução; ambas estão em `gates.json`.
+
+**Provado vs. não provado.** Provado: o fluxo real do arrasto uniforme (recusa, recuperação, release do último legal), a recusa
+com o aspecto corrigido, as escalas compensatórias na lib (unidade e API pública/JSONL em processo; **não** há prova de processo nem na janela para esse caso), o ciclo de
+vida do script de medição e da prova e a regressão de rotação e translação. **Não provado**: ponteiro físico na WKWebView
+(BL015.2/BL043/BL044); qualquer custo ou desempenho (BL015.18, sem medição e sem lock nesta rodada); splat no corpus das provas
+de processo (só core); liquidação atômica do slider (herdada, BL015.19); a revisão independente (do coordenador). Disco: 29 GiB livres
+no início e 14 GiB ao fim das provas (piso 12; a queda é compartilhada com outros usos do volume; o `mbx` fez a própria
+evicção automática de cache durante o clippy e eu nunca rodei `clean`/`gc`).
+
+### Integração com a `main` viva (merge `5906713`; gates no merge local `3ed7f8b`, a validar)
+
+Status: **a validar** (nova revisão independente do coordenador pendente). Datas em UTC (2026-11-11), checkout T3
+`/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-2b5276ea`, ramo local `t3/integrate-main-validate-pr43`. Cabeça da PR no início: `8a18811`;
+`main`: `bf4347d` (P3: chaves de FX e grão animado, PR #42). Enquanto esta rodada fazia o próprio **merge commit** local (`3ed7f8b`,
+sem rebase, não publicado), outro agente publicou na PR o merge `5906713` e o `aae8747`. As duas árvores diferem **só** em
+`docs/backlog.md` (ordem de dois blocos; `git diff --stat 3ed7f8b 5906713`), portanto os gates abaixo, rodados em `3ed7f8b`, valem para o
+código publicado por esse diff. Esta entrega entra como commit de docs sobre `aae8747`, sem force. Evidência pequena em
+[`docs/migration/g12-scale/head-3ed7f8b/`](../migration/g12-scale/head-3ed7f8b/).
+
+**Conflito e união.** Um único conflito textual, `docs/backlog.md` (as notas finais de P3 e da PR #43), mantido como união. Os
+arquivos compartilhados `ops.rs`, `scene_project/command.rs`, `scene_project/query.rs`, `docs/features/README.md` e `docs/backlog.md`
+foram comparados em 3 vias (linhas acrescentadas por cada lado contra a base `308f1a2`): nenhuma linha de nenhum lado falta no
+resultado. Contratos: `scene.scale` e `scene.fx.seek` ficam na lista de `scene.capabilities`; `SceneCommand::Gizmo(Scale)` mantém o
+rótulo de undo `Edit scene` e `FxSeek`/`base_revision`/`FxInspect.at` não se tocam; o ramo `FxSeek` da leitura é só da `main`. A única mudança da `main`
+em `scene_interaction/` é a intenção do gesto de FX em `gesture.rs` (+15/−1), que o caminho da escala não lê. O ponteiro
+e o inspetor de FX não foram alterados pelo merge.
+
+**Gates do merge local `3ed7f8bc2b1b53d190248ae947317599cd60538e` (código idêntico ao de `5906713`)** (árvore limpa antes e depois; um lote finito aguardado,
+`scripts/disk-guard.sh` com piso 12 GiB antes de cada etapa; alvo MBX padrão, sem lock de performance, sem benchmark):
+
+| Comando | Resultado |
+|---|---|
+| `cargo fmt --all -- --check` | exit 0 |
+| `./scripts/cargo check --workspace --locked` | exit 0 |
+| `./scripts/cargo clippy --workspace --all-targets --locked -- -D warnings` | exit 0 |
+| `TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test --workspace --locked` | exit 0: **2275 passaram, 0 falharam, 13 ignorados**, 114 binários (`main` 2208/0/13 + 67 da PR) |
+| builds de `tessel-editor` e de `tessel-editor-core --bin tessel-headless` | exit 0 / exit 0 (sha256 `6506c537…`, `cb2b4e6b…`) |
+| `cargo tree -p tessel-editor-core --locked` | **sem** `gpui` nem `wry` |
+| `./scripts/runtime test` | exit 0: **243/243** (231 + 12 vindos da `main`), sem SKIPPED |
+
+**Provas de processo** (binários do head acima, `final_evidence: true`, `surfaces_agree_on_the_drag: true`, sem `--allow-dirty`):
+escala **53 + 61**, rotação (regressão) **48 + 54**, S8 (regressão) **56 + 84**; interação com as mudanças da `main`: o teste de
+interação G1 × FX (BL015.13) está nos 2275 e `scene-fx-grain-ui-proof.py` (janela real, instância própria, só `op`/`get`/`set`/`invoke`,
+sem coordenadas) deu **104/104** no mesmo binário que traz o gizmo da escala (prova de que as mudanças de FX da `main` e do gizmo convivem na janela, não do gizmo de escala sobre um clipe de FX). Specs Python: 3 (escala) + 5 (medição) + 5 (FX grão) + 24
+(corpus do grão) + 34 (S8) + 29 (superfície), normal e `-O`.
+
+**O que não foi repetido, e por quê.** As 29 mutações: `git diff e19b7e7 3ed7f8b` é vazio em `scaling.rs`,
+`scene_project/gizmo.rs`, `runtime/src/overlay.js`, `tests/scene_gizmo_scale.rs`, nas provas e na medição da escala e em
+`mutate.py`; o relatório de `e19b7e7` vale por esse diff e os testes que matam os mutantes passaram nos 2275. Nada foi medido (BL015.18).
+
+**Os 5 threads de revisão da PR #43** (CodeRabbit e OpenCodeReview), lidos de novo no head integrado: semiplano uniforme com
+aspecto, base invertida em volume 1 (`scaling.rs`, linhas ~207–215), `mutate.py` (raiz derivada, diretório criado, `KILLED` só com teste que
+falhou), medição (`try`/`finally`) e prova da escala que falha com `stop` falho; todas as correções estão no código integrado. **Nenhum thread foi
+resolvido**: ficam para a nova revisão independente. Pendência nova: **BL015.20** (a prova de rotação da PR #40 tem o mesmo padrão
+de cleanup que o review apontou na da escala; não alterada, só registrada).
+
+**Disco**: a primeira leitura de `df -g` do volume deu 12 GiB e `df -k` segundos depois 21,7 GiB (outros processos da máquina compartilhada); o pesado
+começou depois de uma medição nova de 21,6 GiB (reserva 16) e terminou com 13,8 GiB (piso 12 respeitado; o `test` cresceu o alvo MBX em
+~6 GiB). O `mbx` imprimiu a própria evicção automática de alvos abandonados; nenhum `clean`/`gc` foi rodado por mim.
+
+### Achado matemático da base normalizada por volume (código `0ee2d14`, a validar)
+
+Status: **a validar** (revisão independente do coordenador pendente). Datas em UTC (2026-11-11), checkout T3
+`/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-02ba3f94` (ramo local `t3/scale-frame-math-fixes`, avançado por fast-forward para a
+cabeça da PR `78f8994` e publicado em `t3/gizmo-node-scaling` sem force). `origin/main` conferida viva: `bf4347d`. Os pushes de outro
+agente (`5906713`, `aae8747`) estão no histórico e não foram tocados. Evidência pequena em
+[`docs/migration/g12-scale/head-0ee2d14/`](../migration/g12-scale/head-0ee2d14/) (`gates.json`, `mutation-report-math.json`).
+
+**Achado `4532352759` (OpenCodeReview, válido, reproduzido pela API pública).** `ScaleFrame::of` inverte a base `M = W·S⁻¹` em volume
+1 (correção das escalas compensatórias), mas passou a normalizar também as direções **locais** nessa mesma base. Com pais de
+`(1e-8, 1e8, 1e8)` (ou quatro pais de `(0,01, 100, 100)`, nenhum número extremo no documento) e um nó de escala 1, o determinante do
+mundo é `1e8` (passa `movable`), a coluna `x` de `M` mede `1e-8` (normalizável) e, dividida pelo volume (`≈464`), ficava em
+`2,15e-11`, abaixo do corte absoluto `EPS = 1e-9` de `normalize`: o handle `x` sumia e `scene.scale` respondia `degenerate_transform`
+para um resultado legal. Falha de projeto: o corte absoluto de uma coluna dependia do tamanho das outras.
+
+**Correção.** A inversão em volume 1 continua (ela decide só os eixos de `world`, porque `T = M⁻¹·a·aᵀ·M` não muda com um fator
+positivo; o tamanho do mundo segue sendo `MIN_DETERMINANT` sobre o resultado). A direção `local` agora vem da base **original**,
+coluna a coluna (`column_direction`): divide-se a coluna pela sua maior componente (o comprimento resultante fica em `[1, √3]`, até
+nos subnormais) e só uma coluna zero ou não finita fica sem direção, sem nenhum corte que dependa dos outros eixos. Nada foi
+resolvido aumentando `EPS` nem mascarando a comparação.
+
+**Preservado, com teste.** Inversão em volume para filho `100` sob pai `1e-5` (testes de unidade e de API pública já existentes;
+**M28** morto); volume 0 (pai com eixo achatado): `degenerate_transform` em `local` e `world`, documento intacto; cisalhamento
+(`world_axis_shear`) e limites do resultado (`above_maximum_scale`, `below_minimum_scale`) intactos na cadeia extrema.
+
+**Testes (oráculos escritos nos próprios testes, nunca o código sob teste).**
+
+| Teste | O que prova |
+|---|---|
+| unidade `four_parents_of_anisotropic_scale_leave_every_local_axis_where_the_columns_point` | `M = P·R` com `P = (1e-8, 1e8, 1e8)` (produto de quatro pais) e escala própria 1 ou `(2,3,5)`: a direção de cada coluna bate com a fórmula direta `P·(coluna de R)`; o componente é o próprio e `scale(X, 2)` é o produto simples. Sem giro exato de um quarto de volta (ali o `cos` é ruído e o spread de `1e16` o transforma na direção inteira) |
+| unidade `…keep_the_world_axes_that_run_along_a_node_axis` | `world` com quarto de volta: componente `y`/`x`/`z` conforme a permutação, handles sem `disabled`; 0,3 rad: `x` e `y` recusados com `world_axis_shear`, `z` livre |
+| unidade `…keep_the_limits_and_the_uniform_handle` | limites no componente autoral, `uniform` ×4, pai achatado recusado |
+| unidade `a_column_has_a_direction_from_its_own_length_alone` | colunas de `1e-30`, `1e200`, subnormal; zero, NaN e infinito sem direção (mata **M30**) |
+| API `four_parents_…keep_every_local_handle_and_edit_where_the_oracle_says` | cadeia de quatro pais com rotações e escala `(0,01, 100, 100)`: handles do overlay onde a câmera do teste projeta `unit(coluna de M)`, `scene.scale` em `x/y/z` dá `W·diag(d)` (comparação relativa por linha), pivô e `localScale` autoral; `uniform` = `f·W` em `local` e `world` |
+| API `…without_any_rotation_keep_the_three_axes_in_both_spaces` | `M = diag(1e-8, 1e8, 1e8)`, por quatro pais **e** por um pai que escreve os números extremos, `local` e `world` |
+| API `…keep_the_world_axes_that_run_along_a_node_axis` | quarto de volta no nó (z e y): componente pelo oráculo, `G·W` |
+| API `…with_a_rotation_between_them_refuse_the_world_shear` | **limite honesto, não escondido**: o mesmo quarto de volta no segundo pai não é permutação exata em f64 (`cos 90° ≈ 6e-17`) e ao lado de `1e16` de anisotropia vira um termo de aproximadamente `1e-4` em `T`; o cisalhamento é real e `world` é recusado, tipado, atômico; `local` continua |
+| API `…still_refuse_a_shear_a_limit_and_a_flat_basis` | `world_axis_shear` com nó girado 30°, limites `1e4`/`1e-4`, pai com eixo zero (`degenerate_transform`), `observable` idêntico depois de cada recusa |
+
+**Mutantes (um por vez, arquivo restaurado e hash comparado).** O mutante pedido, que troca a base original pela normalizada por
+volume na direção local (**M29**: `super::normalize` sobre a base dividida pelo volume, o defeito exato), morre por testes
+de unidade e de API (nomes no relatório). **M30** (corte absoluto na coluna) morre pelo teste de colunas. **M31** (`dot < 0`) morre pelo caso exato
+abaixo. Reancorados ao código novo: **M12** (eixos lidos como linhas, agora em `column_direction`) e **M28** (sem a divisão por
+volume). Rodada direcional `M05 M08 M12 M13 M14 M16 M26 M27 M28 M29 M30 M31`: **12/12 mortos, `restored: true`**
+(`mutation-report-math.json`; o hash de `scaling.rs` antes e depois é `a923d2ab…`, o do commit). As outras mutações do conjunto de
+29 **não foram repetidas**: este commit só mudou, em código de produção, a construção dos eixos de `ScaleFrame::of`, o novo
+`column_direction` e a remoção do import de `normalize` (nenhuma linha dos outros mutantes mudou; `git diff e19b7e7 0ee2d14 -- scaling.rs`
+mostra só isso e os testes); o relatório de `e19b7e7` (M01–M25, M27) vale para as linhas não tocadas, e M26/M27/M05/M08/M13/M14/M16
+foram reexecutados acima de qualquer forma.
+
+**Achado `4532376209` (CodeRabbit, válido): `dot <= 0` → `dot < 0` não é equivalente.** O produto escalar do meio-plano do
+`uniform` também é 0 para um ponteiro **perpendicular** ao press e **fora** da origem (distância positiva); aí a base recusa
+(`factor = 0`, `factor_not_positive`) e o mutante aceitaria a razão. Caso exato (`a_pointer_exactly_perpendicular_to_the_press_is_the_far_side_not_a_ratio`,
+aspecto 1,5): o press fica na horizontal da origem (o `v` dele é o da origem, bit a bit) e o ponteiro na vertical (o `u` é o da
+origem): todo termo do produto é um zero exato, sem arredondamento decidindo o lado; a razão de distâncias seria um 2 legal
+(afirmado no teste), e a base devolve `Some(0.0)`; idem com os papéis trocados e nos dois sentidos. Um passo (`1e-6`) para dentro do
+meio-plano do press volta a ser a razão comum. O meio-plano válido, a razão e o último candidato legal / `opposite` / recusa
+no release (testes de API existentes) não mudaram. Limite de cobertura: o caso exato foi exercitado em unidade, não pela API pública.
+Um press não alinhado também pode produzir `dot == 0` exato com coordenadas adequadas;
+a orientação de 45° da caixa não prova que essa fronteira é inalcançável. Os testes de API
+exercitam os lados oposto e vizinho.
+
+**Achado `4532376203` (CodeRabbit, colunas do backlog).** As linhas BL015.16/.17/.18 já estavam corrigidas pelo coordenador em
+`78f8994` (a tabela tem `Depende de` e depois `Responsável`: `BL015.1…` e `Agente G1.2` nas posições certas); conferido, nenhuma
+outra linha editada.
+
+**Gates deste código — o que rodou e o que está BLOQUEADO.** Disco livre na entrada: **13,75 GiB (leitura estável), abaixo da reserva
+de 16 GiB** desta rodada (piso 12); ao fim, 12,13 GiB (volume compartilhado; o alvo do checkout tem 289 MB). Por isso **nenhuma etapa
+pesada foi iniciada** e ficam **BLOQUEADOS** para este head: `check --workspace`, `clippy --workspace`, `TESSEL_REQUIRE_RUNTIME=1 test
+--workspace`, `./scripts/runtime test`, os builds de `tessel-editor` e `tessel-headless` (portanto sem hash de binário novo), a prova de
+processo da escala (headless + janela nativa) e as regressões de rotação, S8 e FX. Executado (só o crate do core, alvo MBX padrão,
+sem lock de performance e sem benchmark, cada etapa depois de `scripts/disk-guard.sh` com piso 12): `cargo fmt --all -- --check` exit 0;
+`clippy -p tessel-editor-core --all-targets --locked -- -D warnings` exit 0; testes `--lib` + `scene_gizmo`, `scene_gizmo_fx`,
+`scene_gizmo_rotation`, `scene_gizmo_scale` no head `0ee2d14` com a árvore limpa, exit 0: **524 + 42 + 5 + 46 + 54 = 671 passaram,
+0 falharam** (a escala de integração tinha 49 e ganhou 5; a unidade ganhou 5); `cargo tree -p tessel-editor-core` sem `gpui` nem `wry`; specs Python
+puros da prova e da medição (3 + 5, normal e `-O`). Duas execuções intermediárias falharam e **são conservadas**: o oráculo de unidade num
+quarto de volta exato (ruído amplificado, erro do teste) e o caso de `world` com rotação entre pais anisotrópicos (a recusa é o
+comportamento correto; o teste foi reescrito e a recusa virou teste). As 2275/0/13 e a prova de processo 53 + 61 / 48 + 54 / 56 + 84 e 104 do grão de FX
+(`3ed7f8b`/`5906713`) e as 2190/0/12 e 231/231 (`e19b7e7`) **continuam como histórico do código anterior e não são atribuídas a `0ee2d14`**.
+A interação FX × gizmo continua exercitada em core por `scene_gizmo_fx` (5/5 acima), não pela janela.
+
+**Provado vs. não provado.** Provado (lib e JSONL em processo, sem GPUI): direção local por coluna sob pais anisotrópicos, `world` onde o
+eixo corre sobre um eixo do nó, recusas e limites preservados, a fronteira exata do semiplano `uniform`. **Não provado** neste head:
+nenhum gate de workspace, runtime, binário, janela nativa ou prova de processo (BLOQUEADOS por disco), o ponteiro físico (BL015.2/BL043/BL044),
+custo (BL015.18, sem medição, sem lock), splat no corpus de processo, liquidação atômica do slider (BL015.19) e a revisão independente.
+
+## Luz pontual (G2.1, F060)
+
+A luz pontual reusa este gizmo sem duplicar matemática: o marcador seleciona, as setas `x/y/z` e o centro são as da translação
+(`scene.translate`), e o puxador novo `range` (handle `kind: "range"`, na direita da luz como a câmera a vê) edita o alcance
+pela **mesma** função pura que o comando numérico `scene.range`. Mesmo ciclo begin/update/commit/cancel, um undo por gesto,
+sem histórico sem mudança, candidato inválido preserva o último legal e as guardas de revisão/quadro/seleção/época. Posição com
+chaves recusa como `animated_position` (como `animated_scale`); rotação e escala dizem por quê (`light_has_no_rotation`,
+`light_has_no_scale`). Overlay v1 aditivo: `sphere`, `light_markers`, `metrics.marker_radius`. Contrato e provas em
+[scene-light.md](scene-light.md).

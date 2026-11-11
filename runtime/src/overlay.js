@@ -1,4 +1,4 @@
-// The gizmo overlay of the directed-scene monitor (F055, BL015/BL042/BL015.1): drawn and hit on a 2D canvas
+// The gizmo overlay of the directed-scene monitor (F055, BL015/BL042/BL015.1, G1.2): drawn and hit on a 2D canvas
 // that sits over the viewport canvas INSIDE the page, so it composes with the picture and can never
 // be an element of the host UI laid over a native WebView.
 //
@@ -34,9 +34,12 @@ export const PALETTE = {
   y: '#30a46c',
   z: '#3e63dd',
   screen: '#f5f5f5',
+  uniform: '#f5f5f5',
   active: '#ffd60a',
   outline: '#4cc2ff',
   shadow: 'rgba(0, 0, 0, 0.55)',
+  // F060: a point light's range knob and sphere, and its marker.
+  range: '#ffb224',
 };
 
 const isObject = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -96,7 +99,7 @@ export const parseOverlay = (raw) => {
   const metrics = isObject(raw.metrics) ? raw.metrics : {};
   const handles = (Array.isArray(raw.handles) ? raw.handles : []).map((handle, index) => {
     if (!isObject(handle) || typeof handle.id !== 'string') throw new Error(`handles[${index}] needs an id`);
-    const kind = handle.kind === 'center' || handle.kind === 'ring' ? handle.kind : 'axis';
+    const kind = ['center', 'ring', 'scale_axis', 'scale_uniform', 'range'].includes(handle.kind) ? handle.kind : 'axis';
     const parsed = { id: handle.id, kind, from: point(handle.from, `handles[${index}].from`), to: point(handle.to, `handles[${index}].to`) };
     if (kind === 'ring') {
       // The polygon of a rotation ring: a point, or `null` where the ring is behind the camera.
@@ -110,16 +113,35 @@ export const parseOverlay = (raw) => {
     if (quad.length !== 4) throw new Error(`outlines[${index}].quad needs four points`);
     return { entity: String(outline.entity ?? ''), quad };
   });
+  // F060, additive: the range sphere of the selected light (three closed great circles, a point or
+  // `null` where the circle is behind the camera) and a marker for every light of the frame.
+  const sphere = (Array.isArray(raw.sphere) ? raw.sphere : []).map((ring, index) => {
+    if (!Array.isArray(ring) || ring.length < 3) throw new Error(`sphere[${index}] needs the polygon of the circle`);
+    return ring.map((value, at) => (value === null ? null : point(value, `sphere[${index}][${at}]`)));
+  });
+  const lightMarkers = (Array.isArray(raw.light_markers) ? raw.light_markers : []).map((marker, index) => {
+    if (!isObject(marker) || typeof marker.entity !== 'string') throw new Error(`light_markers[${index}] needs an entity`);
+    return { entity: marker.entity, at: point(marker.at, `light_markers[${index}].at`), hidden: marker.hidden === true, selected: marker.selected === true };
+  });
   return {
-    // `translate` (arrows and a centre) or `rotate` (one ring per axis); an overlay of the first
-    // slice, which has no `tool`, is the translate one.
-    tool: raw.tool === 'rotate' ? 'rotate' : 'translate',
+    // `translate` (arrows and a centre), `rotate` (one ring per axis) or `scale` (axis handles
+    // ending in a box, and the uniform box); an overlay of the first slice, which has no `tool`,
+    // is the translate one.
+    tool: raw.tool === 'rotate' || raw.tool === 'scale' ? raw.tool : 'translate',
     space: raw.space === 'local' ? 'local' : 'world',
     visible: raw.visible === true,
     entity: typeof raw.entity === 'string' ? raw.entity : null,
     origin: raw.origin ? point(raw.origin, 'origin') : null,
     handles,
+    // Handles of the tool the core did not offer on this node, each with its typed reason: not
+    // drawn and not hit, kept so a probe or a test sees what is missing and why.
+    disabledHandles: (Array.isArray(raw.disabled_handles) ? raw.disabled_handles : [])
+      .filter((entry) => isObject(entry) && typeof entry.id === 'string')
+      .map((entry) => ({ id: entry.id, reason: String(entry.reason ?? '') })),
     outlines,
+    sphere,
+    lightMarkers,
+    markerRadius: finite(metrics.marker_radius) ? metrics.marker_radius : 0.025,
     active: isObject(raw.active) && typeof raw.active.handle === 'string' ? { handle: raw.active.handle, gesture: raw.active.gesture ?? null } : null,
     aspect: raw.aspect,
     // Opaque to the page: echoed in every pointer message and ack so the host can tell an answer
@@ -152,13 +174,21 @@ export const hoverHandle = (overlay, point) => {
   if (!overlay?.visible || !overlay.origin) return null;
   const toHeights = (p) => ({ x: p.u * overlay.aspect, y: p.v });
   const here = toHeights(point);
-  if (overlay.tool !== 'rotate' && Math.hypot(here.x - overlay.origin.u * overlay.aspect, here.y - overlay.origin.v) <= overlay.centerRadius) return 'screen';
+  if (overlay.tool === 'translate' && Math.hypot(here.x - overlay.origin.u * overlay.aspect, here.y - overlay.origin.v) <= overlay.centerRadius) return 'screen';
+  // The scale tool's uniform box wins inside its radius, like the translate centre.
+  if (overlay.tool === 'scale') {
+    const uniform = overlay.handles.find((candidate) => candidate.kind === 'scale_uniform');
+    if (uniform && Math.hypot(here.x - uniform.to.u * overlay.aspect, here.y - uniform.to.v) <= overlay.centerRadius) return uniform.id;
+  }
   let best = null;
-  for (const handle of overlay.handles.filter((candidate) => candidate.kind === 'axis' || candidate.kind === 'ring')) {
+  for (const handle of overlay.handles.filter((candidate) => ['axis', 'ring', 'scale_axis', 'range'].includes(candidate.kind))) {
+    // The range knob is a point on the sphere, not a segment from the centre.
     const distance =
       handle.kind === 'ring'
         ? distanceToRing(here, handle.points, overlay.aspect)
-        : distanceToSegment(here, toHeights(handle.from), toHeights(handle.to));
+        : handle.kind === 'range'
+          ? Math.hypot(here.x - handle.to.u * overlay.aspect, here.y - handle.to.v)
+          : distanceToSegment(here, toHeights(handle.from), toHeights(handle.to));
     if (distance <= overlay.handleRadius && (best === null || distance < best.distance)) best = { distance, id: handle.id };
   }
   return best?.id ?? null;
@@ -292,6 +322,46 @@ const drawArrow = (context, from, to, color, width) => {
   context.fill();
 };
 
+/** A scale handle: the shaft, and a filled box at its end (the uniform one has a dashed shaft). */
+const drawScaleHandle = (context, from, to, color, width, boxRadius, dashed) => {
+  context.lineCap = 'round';
+  context.setLineDash(dashed ? [4, 4] : []);
+  context.strokeStyle = PALETTE.shadow;
+  context.lineWidth = width + 2;
+  context.beginPath();
+  context.moveTo(from.x, from.y);
+  context.lineTo(to.x, to.y);
+  context.stroke();
+  context.strokeStyle = color;
+  context.lineWidth = width;
+  context.beginPath();
+  context.moveTo(from.x, from.y);
+  context.lineTo(to.x, to.y);
+  context.stroke();
+  context.setLineDash([]);
+  context.fillStyle = PALETTE.shadow;
+  context.fillRect(to.x - boxRadius - 1.5, to.y - boxRadius - 1.5, 2 * boxRadius + 3, 2 * boxRadius + 3);
+  context.fillStyle = color;
+  context.fillRect(to.x - boxRadius, to.y - boxRadius, 2 * boxRadius, 2 * boxRadius);
+};
+
+/** The polygon of a circle stroked as it is, with the gaps (behind the camera) left open. */
+const drawRingPath = (context, rect, points) => {
+  context.beginPath();
+  let open = false;
+  for (const point of points) {
+    if (point === null) {
+      open = false;
+      continue;
+    }
+    const at = toPane(rect, point);
+    if (open) context.lineTo(at.x, at.y);
+    else context.moveTo(at.x, at.y);
+    open = true;
+  }
+  context.stroke();
+};
+
 /** One ring: its polygon in the pane, shadowed, with the gaps (behind the camera) left open. */
 const drawRing = (context, rect, points, color, width) => {
   const path = () => {
@@ -321,9 +391,35 @@ const drawRing = (context, rect, points, color, width) => {
   context.stroke();
 };
 
+/** The marker of a light: a small disc with a ring, dimmed and dashed while the light is hidden. */
+const drawMarker = (context, at, radius, { hidden, selected }) => {
+  context.setLineDash([]);
+  context.fillStyle = PALETTE.shadow;
+  context.beginPath();
+  context.arc(at.x, at.y, radius + 1.5, 0, Math.PI * 2);
+  context.fill();
+  context.strokeStyle = selected ? PALETTE.active : PALETTE.range;
+  context.fillStyle = selected ? PALETTE.active : PALETTE.range;
+  context.lineWidth = selected ? 2.5 : 1.75;
+  if (hidden) context.setLineDash([3, 2]);
+  context.globalAlpha = hidden ? 0.55 : 1;
+  context.beginPath();
+  context.arc(at.x, at.y, radius, 0, Math.PI * 2);
+  context.stroke();
+  context.beginPath();
+  context.arc(at.x, at.y, Math.max(2, radius * 0.35), 0, Math.PI * 2);
+  context.fill();
+  context.globalAlpha = 1;
+  context.setLineDash([]);
+};
+
 /** Draws `overlay` into `context` over `rect` (the picture, in CSS px). `hover` is a handle id. */
 export const drawOverlay = (context, rect, overlay, hover = null) => {
   if (!overlay || !rect) return;
+  // Every light of the frame has a marker, selected or not: it is where a press selects it.
+  for (const marker of overlay.lightMarkers) {
+    drawMarker(context, toPane(rect, marker.at), overlay.markerRadius * rect.height * 0.5, marker);
+  }
   for (const outline of overlay.outlines) {
     const corners = outline.quad.map((point) => toPane(rect, point));
     context.strokeStyle = PALETTE.shadow;
@@ -341,6 +437,16 @@ export const drawOverlay = (context, rect, overlay, hover = null) => {
   }
   if (!overlay.visible) return;
   const heightPx = rect.height;
+  // The range sphere of the selected light: three thin great circles, under the handles.
+  for (const ring of overlay.sphere) {
+    context.strokeStyle = PALETTE.range;
+    context.globalAlpha = 0.6;
+    context.lineWidth = 1;
+    context.setLineDash([4, 4]);
+    drawRingPath(context, rect, ring);
+    context.globalAlpha = 1;
+    context.setLineDash([]);
+  }
   for (const handle of overlay.handles) {
     const active = overlay.active?.handle === handle.id;
     const lit = active || hover === handle.id;
@@ -359,8 +465,27 @@ export const drawOverlay = (context, rect, overlay, hover = null) => {
       context.stroke();
       continue;
     }
+    if (handle.kind === 'range') {
+      const knob = toPane(rect, handle.to);
+      const radius = 6;
+      context.fillStyle = PALETTE.shadow;
+      context.beginPath();
+      context.arc(knob.x, knob.y, radius + 2, 0, Math.PI * 2);
+      context.fill();
+      context.fillStyle = lit ? PALETTE.active : PALETTE.range;
+      context.beginPath();
+      context.arc(knob.x, knob.y, radius, 0, Math.PI * 2);
+      context.fill();
+      continue;
+    }
     if (handle.kind === 'ring') {
       drawRing(context, rect, handle.points, color, width);
+      continue;
+    }
+    if (handle.kind === 'scale_axis' || handle.kind === 'scale_uniform') {
+      // The box is smaller than the uniform handle's hit radius on purpose: it is where to grab.
+      const box = handle.kind === 'scale_uniform' ? 6 : 5;
+      drawScaleHandle(context, from, toPane(rect, handle.to), color, width, box, handle.kind === 'scale_uniform');
       continue;
     }
     drawArrow(context, from, toPane(rect, handle.to), color, width);
@@ -443,15 +568,28 @@ export const attachOverlay = ({ canvas, post, win = window, doc = document }) =>
       overlay?.visible && picture
         ? overlay.handles.map((handle) => {
             // A ring is probed on one of its own vertices (the middle of a chord is not on the
-            // stroke); an arrow at the middle of its shaft; the centre at its centre.
+            // stroke); an arrow at the middle of its shaft; the centre at its centre; the box of
+            // a scale handle at the box.
             const vertex = handle.kind === 'ring' ? handle.points[Math.floor(handle.points.length / 8)] ?? handle.points.find((value) => value !== null) : null;
             const middle =
               handle.kind === 'center'
                 ? handle.from
-                : vertex ?? { u: (handle.from.u + handle.to.u) / 2, v: (handle.from.v + handle.to.v) / 2 };
+                : handle.kind === 'scale_uniform' || handle.kind === 'range'
+                  ? handle.to
+                  : vertex ?? { u: (handle.from.u + handle.to.u) / 2, v: (handle.from.v + handle.to.v) / 2 };
             const at = toPane(picture, middle);
             const pixel = context.getImageData(Math.round(at.x * ratio), Math.round(at.y * ratio), 1, 1).data;
             return { id: handle.id, rgba: [...pixel] };
+          })
+        : [];
+    // F060: what the canvas holds at the middle of each light marker (the ring of its disc is
+    // not at the middle, so the probe is the dot inside it).
+    const markerProbes =
+      overlay && picture
+        ? overlay.lightMarkers.map((marker) => {
+            const at = toPane(picture, marker.at);
+            const pixel = context.getImageData(Math.round(at.x * ratio), Math.round(at.y * ratio), 1, 1).data;
+            return { entity: marker.entity, rgba: [...pixel] };
           })
         : [];
     draws += 1;
@@ -465,7 +603,9 @@ export const attachOverlay = ({ canvas, post, win = window, doc = document }) =>
       entity: overlay?.entity ?? null,
       active: overlay?.active?.handle ?? null,
       outlines: overlay?.outlines.length ?? 0,
+      disabled: overlay?.disabledHandles ?? [],
       probes,
+      markers: markerProbes,
     });
   };
 

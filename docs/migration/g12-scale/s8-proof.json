@@ -1,0 +1,797 @@
+{
+  "ok": true,
+  "final_evidence": true,
+  "input": "semantic requests only (JSONL for headless; the direct binary's socket `op`/`get`/`invoke` for native); picture coordinates (u, v), no screen coordinates, no physical pointer",
+  "not_proven": [
+    "a PHYSICAL pointer or a native drag on the WKWebView (BL043/BL044)",
+    "a screen capture of the gizmo over the WKWebView",
+    "the page's own mouse handling (proved in headless Chrome by runtime/test/gizmo-overlay.test.mjs)"
+  ],
+  "surfaces": [
+    "headless",
+    "native"
+  ],
+  "head": "2193452c0beb84a0dacaa705ce8e26077e0ed11e",
+  "tree_clean": true,
+  "binaries": {
+    "tessel-editor": {
+      "path": "/Users/wallyssonnunes/Library/Caches/mbx/targets/v1/59e22e1e43aca34466b29b53156d580e2ea02bc3cd0a28513679b9123239cc2f/debug/tessel-editor",
+      "sha256": "7127fb494017e330e38eb15cda22238de24d073f2c77fc08cf398b415dfbdfc5"
+    },
+    "tessel-headless": {
+      "path": "/Users/wallyssonnunes/Library/Caches/mbx/targets/v1/59e22e1e43aca34466b29b53156d580e2ea02bc3cd0a28513679b9123239cc2f/debug/tessel-headless",
+      "sha256": "323578b2be5a04da9ecfecd31d9480c75c9d52db3d2263c9a8461e7d573ab58d"
+    }
+  },
+  "min_free_gib_seen": 25.1,
+  "headless": {
+    "checks": [
+      {
+        "name": "the corpus bundle loads",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "with nothing selected there is no gizmo and the reason is typed",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a selected node has a gizmo with x, y, z and screen handles",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the node animates at this frame (its world origin differs from frame 0)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the overlay origin is where an independent pinhole puts the node",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the overlay speaks of the picture, not of a pane: its aspect is the output aspect",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the overlay is stamped with scene, session, revision and frame",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "control: before the drag the node is not under the target point",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a press on the centre handle opens a drag and writes nothing",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a move is a candidate: the saved document and the history are untouched",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the overlay of the move follows the candidate and says which handle is active",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the release is one undo entry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the node now projects under the pointer (independent pinhole, plan read after the commit)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the gizmo stands where the node is: no drag, no gesture left open",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "only the hero position changed in the saved document",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "one undo restores the saved document exactly",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "scene.translate with the drag's world delta is one entry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "and it leaves the same saved document as the drag did",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "undo restores it",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "an x drag moves along world x only",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the x drag was only a candidate: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a zero translate is a no-op: no entry, no revision",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "zero translate: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a press released in place is not an edit",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "press released in place: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `escape` ends the drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `escape`: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `blur` ends the drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `blur`: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `pointer_cancel` ends the drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `pointer_cancel`: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `hidden` ends the drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `hidden`: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `unavailable` ends the drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `unavailable`: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `api` ends the drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `api`: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "Escape with nothing to cancel is not an error",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "refused: a press outside the picture (invalid_value)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a press outside the picture: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "refused: a move with no drag (no_drag)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a move with no drag: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "refused: a translate of an unknown node (unknown_entity)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a translate of an unknown node: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "refused: a translate of a camera clip (not_translatable)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a translate of a camera clip: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "refused: a translate whose delta is not a number (invalid_request)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a translate whose delta is not a number: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "refused: an unknown cancel reason (invalid_value)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "an unknown cancel reason: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the edit under the drag is the only change",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a move after the edit is refused with a typed code",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the old candidate never landed",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "and the cancel left history and revision as the edit made them",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "and nothing is left open",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "one undo takes the unrelated edit back",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "work": "/tmp/te-s8-pu8sz8qu",
+    "retained": false,
+    "record": {
+      "world_delta": {
+        "x": 0.6833381044839801,
+        "y": 0.2740208131429739,
+        "z": -0.017126300821436402
+      },
+      "position": {
+        "x": 1.1833381044839801,
+        "y": 0.07402081314297387,
+        "z": -0.017126300821436402
+      }
+    },
+    "passed": 56
+  },
+  "native": {
+    "checks": [
+      {
+        "name": "the corpus bundle loads",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the resources are resolved and applied",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the page announced `overlay.gizmo` and the overlay is on for the shown scene",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the page acknowledged what it drew",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the monitor has a picture to compare with",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the monitor shows the directed scene",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the monitor converged on the animating frame",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the monitor has a picture at the animating frame to compare the drag with",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "with nothing selected there is no gizmo and the reason is typed",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the page drew the selected node's gizmo",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the x axis is painted red and the y axis green on the canvas (alpha > 200)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the semantic node `monitor.gizmo` reports the selection and no drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a selected node has a gizmo with x, y, z and screen handles",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the node animates at this frame (its world origin differs from frame 0)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the overlay origin is where an independent pinhole puts the node",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the overlay speaks of the picture, not of a pane: its aspect is the output aspect",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the overlay is stamped with scene, session, revision and frame",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "control: before the drag the node is not under the target point",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a press on the centre handle opens a drag and writes nothing",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a move is a candidate: the saved document and the history are untouched",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the overlay of the move follows the candidate and says which handle is active",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the page drew the active handle of the drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "`monitor.gizmo` reports the drag (handle, gesture)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the monitor's picture follows the candidate (its hash left the initial one)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the release is one undo entry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the node now projects under the pointer (independent pinhole, plan read after the commit)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the gizmo stands where the node is: no drag, no gesture left open",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "only the hero position changed in the saved document",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "after the release the monitor converged on the committed document",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the committed picture is the candidate picture the user saw",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "`monitor.gizmo` reports no drag after the release",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "one undo restores the saved document exactly",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "after undo the monitor converged",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "and shows the initial picture again",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "scene.translate with the drag's world delta is one entry",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "and it leaves the same saved document as the drag did",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "undo restores it",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "an x drag moves along world x only",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the x drag was only a candidate: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a zero translate is a no-op: no entry, no revision",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "zero translate: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a press released in place is not an edit",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "press released in place: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `escape` ends the drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `escape`: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `blur` ends the drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `blur`: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `pointer_cancel` ends the drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `pointer_cancel`: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `hidden` ends the drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `hidden`: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `unavailable` ends the drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `unavailable`: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `api` ends the drag",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "cancel `api`: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "Escape with nothing to cancel is not an error",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "refused: a press outside the picture (invalid_value)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a press outside the picture: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "refused: a move with no drag (no_drag)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a move with no drag: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "refused: a translate of an unknown node (unknown_entity)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a translate of an unknown node: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "refused: a translate of a camera clip (not_translatable)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a translate of a camera clip: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "refused: a translate whose delta is not a number (invalid_request)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a translate whose delta is not a number: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "refused: an unknown cancel reason (invalid_value)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "an unknown cancel reason: document, undo depth and revision are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the edit under the drag is the only change",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the window settled the dead drag by itself",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a move after the edit is refused with a typed code",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the old candidate never landed",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "and the cancel left history and revision as the edit made them",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "and nothing is left open",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "one undo takes the unrelated edit back",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "a drag is open",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the Open dialog opens (a native view would paint above it)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the WebView is hidden while the dialog is open",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the open drag was cancelled by the hide (never committed)",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the overlay is switched off in the page",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the document and the history are as they were",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the dialog closes",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the WebView and the overlay are back",
+        "ok": true,
+        "detail": ""
+      },
+      {
+        "name": "the gizmo is drawn again for the selection",
+        "ok": true,
+        "detail": ""
+      }
+    ],
+    "work": "/tmp/te-s8-jspfrg3u",
+    "retained": false,
+    "record": {
+      "shown_hash": "84d3a925378a4b25",
+      "initial_hash": "8d4c865fafc56fcc",
+      "drawn_probes": {
+        "x": [
+          229,
+          72,
+          77,
+          255
+        ],
+        "y": [
+          48,
+          164,
+          108,
+          255
+        ],
+        "z": [
+          28,
+          45,
+          100,
+          255
+        ],
+        "screen": [
+          28,
+          45,
+          100,
+          255
+        ]
+      },
+      "candidate_hash": "4d3d6c0654cebfba",
+      "world_delta": {
+        "x": 0.6833381044839801,
+        "y": 0.2740208131429739,
+        "z": -0.017126300821436402
+      },
+      "position": {
+        "x": 1.1833381044839801,
+        "y": 0.07402081314297387,
+        "z": -0.017126300821436402
+      },
+      "stale_messages": 1
+    },
+    "passed": 84
+  },
+  "surfaces_agree_on_the_drag": true,
+  "final_evidence_blockers": []
+}

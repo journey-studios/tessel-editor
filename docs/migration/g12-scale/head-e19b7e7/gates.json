@@ -1,0 +1,112 @@
+{
+  "code_head": "e19b7e7ecd99657b4ffb1740570cf2181bf132d8",
+  "pr_head_before": "cd265a72ab09547292f8a49047dd91f3673c0fc8",
+  "tree": "clean at every gate",
+  "checkout": "/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-e44574d9",
+  "env": "MBX default target (symlink), no CARGO_TARGET_DIR/--target-dir/TESSEL_CARGO_LANE; TESSEL_REQUIRE_RUNTIME=1 for the test run; no perf lock taken",
+  "gates": [
+    {
+      "cmd": "cargo fmt --all -- --check",
+      "exit": 0,
+      "utc": "2026-11-11T00:05:04Z"
+    },
+    {
+      "cmd": "./scripts/cargo check --workspace --locked",
+      "exit": 0
+    },
+    {
+      "cmd": "./scripts/cargo clippy --workspace --all-targets --locked -- -D warnings",
+      "exit": 0,
+      "finished_utc": "2026-11-11T00:06:37Z"
+    },
+    {
+      "cmd": "TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test --workspace --locked",
+      "exit": 0,
+      "passed": 2190,
+      "failed": 0,
+      "ignored": 12,
+      "binaries": 111,
+      "end_utc": "2026-11-11T00:16:06Z",
+      "note": "2185 at 48dc3e8 +1 unit (cd265a7) +2 unit +2 integration (this fix)"
+    },
+    {
+      "cmd": "./scripts/cargo build -p tessel-editor --locked",
+      "exit": 0
+    },
+    {
+      "cmd": "./scripts/cargo build -p tessel-editor-core --bin tessel-headless --locked",
+      "exit": 0
+    },
+    {
+      "cmd": "./scripts/cargo tree -p tessel-editor-core --locked | rg -i \"gpui|wry\"",
+      "matches": 0,
+      "direct_deps": [
+        "flate2",
+        "serde",
+        "serde_json"
+      ]
+    },
+    {
+      "cmd": "./scripts/runtime test",
+      "exit": 0,
+      "tests": 231,
+      "pass": 231,
+      "fail": 0,
+      "start_utc": "2026-11-11T00:16:36Z",
+      "end_utc": "2026-11-11T00:23:58Z"
+    },
+    {
+      "cmd": "scene-gizmo-scale-proof.py",
+      "exit": 0,
+      "headless": 53,
+      "native": 61,
+      "final_evidence": true,
+      "agree": true
+    },
+    {
+      "cmd": "scene-gizmo-rotation-proof.py",
+      "exit": 0,
+      "headless": 48,
+      "native": 54,
+      "final_evidence": true,
+      "agree": true
+    },
+    {
+      "cmd": "scene-gizmo-proof.py",
+      "exit": 0,
+      "headless": 56,
+      "native": 84,
+      "final_evidence": true,
+      "agree": true
+    },
+    {
+      "cmd": "scene-gizmo-scale-measure.spec.py / scene-gizmo-scale-proof.spec.py / scene-gizmo-proof.spec.py / proof-surface.spec.py",
+      "exit": 0,
+      "tests": [
+        5,
+        3,
+        34,
+        29
+      ]
+    }
+  ],
+  "binaries": {
+    "tessel-editor": "0c8987e879de8a9b6ea1513487dc91291e546760d08cae439f7dd89d85bc4c35",
+    "tessel-headless": "53c137292a25f27d08ebccac4ea952999624576a5ef1c8afb04833185e7e40df"
+  },
+  "aborted_runs": [
+    {
+      "cmd": "TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test --workspace --locked",
+      "head": "cd265a7 + working tree",
+      "utc": "2026-11-11T00:00Z (local 20:25)",
+      "result": "interrupted by a stream loss at the scene_export binary (95 binaries seen, 0 failures); not counted as a gate"
+    },
+    {
+      "cmd": "same",
+      "utc": "2026-11-11T00:00:36Z",
+      "result": "stopped by me (kill of my own mbx 26016) because scaling.rs was edited during the run; not counted"
+    }
+  ],
+  "disk": "free 29 GiB at start, 14 GiB at the end of the proofs (floor 12; the drop is shared with other users of the volume); mbx ran its own automatic cache eviction during clippy (I never ran clean/gc)",
+  "not_run": "no benchmark or perf measurement, no lock; no physical WKWebView pointer (BL015.2/BL043/BL044); no splat corpus process proof"
+}

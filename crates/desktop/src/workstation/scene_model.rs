@@ -96,6 +96,7 @@ impl TreeEntry {
             ("scene_instance", _) => format!("Instância {}", self.id),
             ("performance_track", _) => format!("Faixa {}", self.id),
             ("camera_clip", _) => format!("Câmera {}", self.id),
+            ("light", _) => format!("Luz {}", self.id),
             ("shot", _) => format!("Plano {}", self.id),
             ("asset", _) => format!("Asset {}", self.id),
             ("composition_pass", _) => format!("Passe {}", self.id),
@@ -250,6 +251,11 @@ fn label_of(spec: &'static PropertySpec) -> &'static str {
         "start/position" => "Posição inicial",
         "start/target" => "Alvo inicial",
         "start/fov" => "Campo de visão",
+        "intensity" => "Intensidade",
+        "radius" => "Alcance",
+        "color/r" => "Cor · R",
+        "color/g" => "Cor · G",
+        "color/b" => "Cor · B",
         other => other,
     }
 }
@@ -595,6 +601,10 @@ fn is_node_entity(kind: &str) -> bool {
     kind == "node"
 }
 
+fn is_light_entity(kind: &str) -> bool {
+    kind == "light"
+}
+
 fn target_view(
     state: &EditorState,
     scene_id: &str,
@@ -616,12 +626,19 @@ fn target_view(
         .filter(|spec| match spec.applies_to {
             Applicability::Node(_) => is_node_entity(&entry.kind),
             Applicability::CameraClip => is_camera_entity(&entry.kind),
+            Applicability::Light => is_light_entity(&entry.kind),
         })
         .map(|spec| {
             let path = format!("{}/{}", entry.path, spec.name);
             let editable = entry.editable.contains(&path);
             let availability = if editable {
                 Availability::Editable
+            } else if is_light_entity(&entry.kind) {
+                // The light is the right kind: the channel is the one a keyframe track drives,
+                // which the editor never writes (no automatic key writing).
+                Availability::Unavailable(
+                    "Canal animado por keyframes da luz; o editor não escreve keys".to_string(),
+                )
             } else {
                 Availability::Unavailable(format!(
                     "Só se aplica a {}; esta entidade é {}",

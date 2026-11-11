@@ -581,8 +581,8 @@ fn build_monitor(state: &EditorState, nodes: &mut Vec<Node>) {
     );
     // F055: the gizmo is drawn and hit on a canvas inside the page, so it has no control of its
     // own to click: this node shows what the core holds for it, and the semantic way to drive a
-    // drag is `scene.pointer.*` / `scene.translate` / `scene.rotate` (`ui op`, `scripts/headless`).
-    // BL015.1: the tool (translate/rotate) and the space of the rotate axes are its two fields
+    // drag is `scene.pointer.*` / `scene.translate` / `scene.rotate` / `scene.scale` / `scene.range` (`ui op`, `scripts/headless`).
+    // BL015.1: the tool (translate/rotate/scale) and the space of the rotate and scale axes are its two fields
     // (`set monitor.gizmo tool rotate`), the same `scene.gizmo.tool` command a script sends.
     // Only with a scene attached, so the tree of a project without scenes is what it always was.
     if !state.scenes.is_empty() {
@@ -1174,7 +1174,7 @@ mod tests {
         assert_eq!(
             fields,
             [
-                ("tool", vec!["translate", "rotate"]),
+                ("tool", vec!["translate", "rotate", "scale"]),
                 ("space", vec!["world", "local"])
             ]
         );
@@ -1190,6 +1190,12 @@ mod tests {
         let rotating = node(&state, "monitor.gizmo");
         assert_eq!(rotating["state"]["tool"], "rotate");
         assert_eq!(rotating["state"]["space"], "local");
+        // BL015.1 (G1.2): the third tool is reachable the same way.
+        run(
+            &mut state,
+            json!({"op":"set","target":"monitor.gizmo","field":"tool","value":"scale"}),
+        );
+        assert_eq!(node(&state, "monitor.gizmo")["state"]["tool"], "scale");
     }
 
     #[test]

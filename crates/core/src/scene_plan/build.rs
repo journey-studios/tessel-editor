@@ -5,13 +5,15 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use serde_json::Value;
 
 use crate::directed_scene::fx::Fx;
+use crate::directed_scene::lighting::{Lighting, LightingRefusal};
 use crate::directed_scene::{
     AssetAlpha, Bundle, CameraState, DirectedScene, FrameEvaluation, NodeKind, Parent, SceneGraph,
+    Vec3,
 };
 
 use super::model::{
-    Domain, PlanFrame, PlanLayer, PlanNode, PlanOutput, PlanParent, PlanResource, PlanSource,
-    PlanSplat, ScenePlan, UninterpretedField, UninterpretedReason, UnsupportedDomain,
+    Domain, PlanFrame, PlanLayer, PlanLight, PlanNode, PlanOutput, PlanParent, PlanResource,
+    PlanSource, PlanSplat, ScenePlan, UninterpretedField, UninterpretedReason, UnsupportedDomain,
 };
 use super::validate::{derive_requires, derive_splat_slots};
 use super::{PLAN_VERSION, PlanError};
@@ -92,17 +94,31 @@ fn output_alpha(document: &Value) -> Result<AssetAlpha, PlanError> {
 fn unsupported_domains(
     unevaluated: &[&'static str],
     raw_nodes: &[Value],
+    lighting_refusals: &[LightingRefusal],
 ) -> Vec<UnsupportedDomain> {
     let mut found: BTreeSet<UnsupportedDomain> = BTreeSet::new();
     for label in unevaluated {
         // The node-level labels (`nodes[].rigBind`...) do not parse as a domain on purpose: they
         // are handled by the scan of the nodes below.
         if let Some(domain) = Domain::parse(label).filter(|domain| !domain.is_node_level()) {
+            // Point lights are evaluated (F060): a `lighting` section is only refused for the
+            // typed reasons `Lighting::read` found, one entry per reason, never as a whole.
+            if domain == Domain::Lighting {
+                continue;
+            }
             found.insert(UnsupportedDomain {
                 domain,
                 subject: None,
+                reason: None,
             });
         }
+    }
+    for refusal in lighting_refusals {
+        found.insert(UnsupportedDomain {
+            domain: Domain::Lighting,
+            subject: None,
+            reason: Some(refusal.reason),
+        });
     }
     for raw in raw_nodes {
         let Some(node_id) = raw.get("id").and_then(Value::as_str) else {
@@ -113,6 +129,7 @@ fn unsupported_domains(
                 found.insert(UnsupportedDomain {
                     domain,
                     subject: Some(node_id.to_string()),
+                    reason: None,
                 });
             }
         }
@@ -127,6 +144,7 @@ fn unsupported_domains(
             found.insert(UnsupportedDomain {
                 domain,
                 subject: None,
+                reason: None,
             });
         }
     }
@@ -273,6 +291,9 @@ pub(super) struct Prepared<'a> {
     definition: &'a Value,
     graph: &'a SceneGraph,
     unsupported: Vec<UnsupportedDomain>,
+    /// The supported `lighting` section of the definition (F060), if it declares one and every
+    /// part of it is supported; a refused section leaves this `None` and `unsupported` says why.
+    lighting: Option<Lighting>,
 }
 
 impl<'a> Prepared<'a> {
@@ -297,14 +318,51 @@ impl<'a> Prepared<'a> {
             .ok_or_else(|| PlanError::MalformedDocument {
                 pointer: format!("/sceneDefinitions/{definition_index}/nodes"),
             })?;
-        let unsupported = unsupported_domains(&frame.unevaluated, raw_nodes);
+        let (lighting, refusals) =
+            match Lighting::read(definition, &format!("/sceneDefinitions/{definition_index}")) {
+                Ok(lighting) => (lighting, Vec::new()),
+                Err(refusals) => (None, refusals),
+            };
+        let unsupported = unsupported_domains(&frame.unevaluated, raw_nodes, &refusals);
         Ok(Self {
             definition_id,
             definition_index,
             definition,
             graph,
             unsupported,
+            lighting,
         })
+    }
+
+    /// The point lights at the frame (F060): keys resolved, parent added, flicker applied.
+    /// `anchor` of a light is the translation column of its parent's world matrix of the frame.
+    pub(super) fn lights_at(&self, frame: &FrameEvaluation<'_>) -> Vec<PlanLight> {
+        let Some(lighting) = &self.lighting else {
+            return Vec::new();
+        };
+        let anchor = |id: &str| {
+            frame.nodes.node(id).map(|state| Vec3 {
+                x: state.world_matrix.0[12],
+                y: state.world_matrix.0[13],
+                z: state.world_matrix.0[14],
+            })
+        };
+        lighting
+            .evaluate(
+                edit_frame_i64(frame),
+                frame.mapping.edit_time.to_f64(),
+                anchor,
+            )
+            .into_iter()
+            .map(|state| PlanLight {
+                id: state.id,
+                position: state.position,
+                color: state.color,
+                intensity: state.intensity,
+                radius: state.radius,
+                hidden: state.hidden,
+            })
+            .collect()
     }
 
     /// A complete plan of a frame that declares domains the plan does not evaluate is refused.
@@ -341,7 +399,15 @@ impl<'a> Prepared<'a> {
             self.definition,
         );
         let fx = bundle.fx.resolve(edit_frame_i64(frame));
-        let requires = derive_requires(&nodes, &layers, &splats, &frame.node_animation, &fx);
+        let lights = self.lights_at(frame);
+        let requires = derive_requires(
+            &nodes,
+            &layers,
+            &splats,
+            &frame.node_animation,
+            &fx,
+            &lights,
+        );
 
         let profile = &bundle.render_profile;
         let mapping = &frame.mapping;
@@ -366,6 +432,7 @@ impl<'a> Prepared<'a> {
             layers,
             splats,
             fx,
+            lights,
             resources,
             requires,
             unsupported: self.unsupported.clone(),
@@ -424,6 +491,22 @@ impl ScenePlan {
         Ok(plan)
     }
 
+    /// This plan with the lights of another frame: the lights are a function of the edit frame
+    /// (keys, flicker) and of the parents' positions, so the shot's template does not carry them
+    /// over, and `requires` follows them.
+    pub(super) fn relit(mut self, lights: Vec<PlanLight>) -> Self {
+        self.lights = lights;
+        self.requires = derive_requires(
+            &self.nodes,
+            &self.layers,
+            &self.splats,
+            &self.animation,
+            &self.fx,
+            &self.lights,
+        );
+        self
+    }
+
     /// This plan moved to another frame of the same shot: what the frame changes (times, camera,
     /// the nodes' transforms and matrices) is taken from `frame`; everything else is this plan's.
     ///
@@ -469,6 +552,7 @@ impl ScenePlan {
             &plan.splats,
             &plan.animation,
             &plan.fx,
+            &plan.lights,
         );
         // The same refusal as `build_with` gives for this frame (the template may be of a frame
         // whose splat matrices were fine).

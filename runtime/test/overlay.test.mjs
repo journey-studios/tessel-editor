@@ -304,3 +304,85 @@ test('drawing a ring strokes its polygon in the axis colour and opens one subpat
   drawOverlay(context, rect, parseOverlay(ringsJson({ active: { handle: 'z', gesture: 'g' } })), null);
   assert.ok(calls.some(([name, key, value]) => name === 'set' && key === 'strokeStyle' && value === '#ffd60a'));
 });
+
+// ---- BL015.1 (G1.2): the scale tool's handles --------------------------------------------------
+
+const scaleJson = (extra = {}) =>
+  overlayJson({
+    tool: 'scale',
+    space: 'local',
+    aspect: ASPECT,
+    handles: [
+      { id: 'x', kind: 'scale_axis', from: { u: 0.5, v: 0.5 }, to: { u: 0.62, v: 0.5 } },
+      { id: 'y', kind: 'scale_axis', from: { u: 0.5, v: 0.5 }, to: { u: 0.5, v: 0.36 } },
+      { id: 'z', kind: 'scale_axis', from: { u: 0.5, v: 0.5 }, to: { u: 0.45, v: 0.58 } },
+      { id: 'uniform', kind: 'scale_uniform', from: { u: 0.5, v: 0.5 }, to: { u: 0.5 + 0.0636 / ASPECT, v: 0.5 - 0.0636 } },
+    ],
+    disabled_handles: [],
+    metrics: { hit_radius: 0.025, center_radius: 0.03, uniform_offset: 0.09, scale_limits: { min: 0.001, max: 1000 }, unit: 'picture_height' },
+    ...extra,
+  });
+
+test('a scale overlay carries the tool, its handle kinds and the handles the core disabled with their reason', () => {
+  const overlay = parseOverlay(scaleJson({ disabled_handles: [{ id: 'x', reason: 'world_axis_shear' }, { id: 'y', reason: 'splat_non_uniform' }] }));
+  assert.equal(overlay.tool, 'scale');
+  assert.equal(overlay.space, 'local');
+  assert.deepEqual(overlay.handles.map((h) => [h.id, h.kind]), [['x', 'scale_axis'], ['y', 'scale_axis'], ['z', 'scale_axis'], ['uniform', 'scale_uniform']]);
+  assert.deepEqual(overlay.disabledHandles, [{ id: 'x', reason: 'world_axis_shear' }, { id: 'y', reason: 'splat_non_uniform' }]);
+  // An overlay of another tool, or without the field, has none; a malformed entry is dropped, not half read.
+  assert.deepEqual(parseOverlay(overlayJson()).disabledHandles, []);
+  assert.deepEqual(parseOverlay(scaleJson({ disabled_handles: [null, { reason: 'x' }, { id: 7 }, { id: 'z' }] })).disabledHandles, [{ id: 'z', reason: '' }]);
+  assert.equal(parseOverlay({ ...scaleJson(), tool: 'resize' }).tool, 'translate', 'an unknown tool is the first slice');
+});
+
+test('hover on the scale handles: the uniform box first, then the nearest axis; the centre is no handle', () => {
+  const overlay = parseOverlay(scaleJson());
+  const at = (handle) => handle.to;
+  assert.equal(hoverHandle(overlay, at(overlay.handles[0])), 'x');
+  assert.equal(hoverHandle(overlay, at(overlay.handles[1])), 'y');
+  assert.equal(hoverHandle(overlay, at(overlay.handles[2])), 'z');
+  assert.equal(hoverHandle(overlay, at(overlay.handles[3])), 'uniform');
+  // Halfway on a shaft is that axis; the shaft of the uniform handle is no place to grab.
+  assert.equal(hoverHandle(overlay, { u: 0.56, v: 0.5 }), 'x');
+  const half = { u: 0.5 + 0.0318 / ASPECT, v: 0.5 - 0.0318 };
+  assert.notEqual(hoverHandle(overlay, half), 'uniform');
+  // The node's centre is neither `screen` nor the uniform handle.
+  assert.equal(hoverHandle(overlay, { u: 0.5, v: 0.5 }), 'x', 'on the origin the tie goes to the first axis, as in the core');
+  const centred = parseOverlay(scaleJson({ handles: [{ id: 'uniform', kind: 'scale_uniform', from: { u: 0.5, v: 0.5 }, to: { u: 0.55, v: 0.45 } }] }));
+  assert.equal(hoverHandle(centred, { u: 0.5, v: 0.5 }), null);
+  // The uniform box wins where an axis handle ends under it.
+  const under = parseOverlay(scaleJson({
+    handles: [
+      { id: 'x', kind: 'scale_axis', from: { u: 0.5, v: 0.5 }, to: { u: 0.6, v: 0.45 } },
+      { id: 'uniform', kind: 'scale_uniform', from: { u: 0.5, v: 0.5 }, to: { u: 0.6, v: 0.45 } },
+    ],
+  }));
+  assert.equal(hoverHandle(under, { u: 0.6, v: 0.45 }), 'uniform');
+  // A disabled handle was not sent, so nothing is hovered where it would be.
+  const without = parseOverlay(scaleJson({ handles: [scaleJson().handles[3]], disabled_handles: [{ id: 'x', reason: 'world_axis_shear' }] }));
+  assert.equal(hoverHandle(without, { u: 0.56, v: 0.5 }), null);
+  // Other tools do not take the box.
+  assert.notEqual(hoverHandle(parseOverlay(scaleJson({ tool: 'translate' })), at(overlay.handles[3])), 'uniform');
+});
+
+test('drawing the scale handles: a box at every tip, a dashed shaft for the uniform one, no disc and no arrow', () => {
+  const calls = [];
+  const context = new Proxy({}, { get: (_, name) => (...args) => calls.push([String(name), ...args]), set: (_, name, value) => { calls.push(['set', String(name), value]); return true; } });
+  const rect = { x: 0, y: 75, width: 800, height: 450 };
+  drawOverlay(context, rect, parseOverlay(scaleJson()), null);
+  // Shadow box + colour box per handle.
+  assert.equal(calls.filter(([name]) => name === 'fillRect').length, 8);
+  assert.equal(calls.filter(([name]) => name === 'arc').length, 0, 'no centre disc');
+  assert.equal(calls.filter(([name]) => name === 'closePath').length, 0, 'no arrow head');
+  const dashes = calls.filter(([name]) => name === 'setLineDash').map(([, value]) => value.length);
+  assert.ok(dashes.includes(2), 'the uniform shaft is dashed');
+  assert.ok(calls.some(([name, key, value]) => name === 'set' && key === 'strokeStyle' && value === '#3e63dd'), 'z is blue');
+  // The hovered or active handle is in the active colour.
+  calls.length = 0;
+  drawOverlay(context, rect, parseOverlay(scaleJson({ active: { handle: 'uniform', gesture: 'g' } })), null);
+  assert.ok(calls.some(([name, key, value]) => name === 'set' && key === 'fillStyle' && value === '#ffd60a'));
+  // A hidden overlay draws nothing of the handles.
+  calls.length = 0;
+  drawOverlay(context, rect, parseOverlay(scaleJson({ visible: false, reason: 'animated_scale' })), null);
+  assert.equal(calls.filter(([name]) => name === 'fillRect').length, 0);
+});

@@ -1,0 +1,129 @@
+{
+  "restored": true,
+  "hashes": {
+    "crates/core/src/scene_interaction/gizmo/scaling.rs": "a923d2ab894e57b50e05996e327bd128d446bc789992b02a35fbceebaa0cc93d",
+    "crates/core/src/scene_project/gizmo.rs": "c0e1052c9932b77f2e16e5ef853bddccdfc9ca50a698d994318f00473fade171",
+    "runtime/src/overlay.js": "d5c1b717ff38b08fd4cad7415b1aa1864c1add73c8031ad4b90a241b8a02b069"
+  },
+  "mutants": [
+    {
+      "mutant": "M05 alignment never refused",
+      "result": "KILLED",
+      "failed": [
+        "four_parents_of_anisotropic_scale_still_refuse_a_shear_a_limit_and_a_flat_basis",
+        "scene_interaction::gizmo::scaling::tests::a_world_axis_counts_as_aligned_only_within_numeric_noise",
+        "scene_interaction::gizmo::scaling::tests::four_parents_of_anisotropic_scale_keep_the_world_axes_that_run_along_a_node_axis",
+        "the_world_handles_the_node_cannot_hold_are_disabled_with_the_reason_and_not_drawn"
+      ],
+      "seconds": 8
+    },
+    {
+      "mutant": "M08 determinant bound off",
+      "result": "KILLED",
+      "failed": [
+        "a_result_whose_world_matrix_would_not_be_invertible_is_refused_even_inside_the_range",
+        "scene_interaction::gizmo::scaling::tests::the_world_determinant_bound_is_on_the_world_matrix_not_on_the_components"
+      ],
+      "seconds": 5
+    },
+    {
+      "mutant": "M12 local axes read as rows",
+      "result": "KILLED",
+      "failed": [
+        "a_handle_drag_and_scene_scale_leave_the_same_document_in_both_spaces",
+        "dragging_a_handle_scales_by_the_ratio_the_pointer_swept_in_both_spaces",
+        "four_parents_of_anisotropic_scale_keep_every_local_handle_and_edit_where_the_oracle_says",
+        "scene_interaction::gizmo::scaling::tests::a_column_has_a_direction_from_its_own_length_alone",
+        "scene_interaction::gizmo::scaling::tests::four_parents_of_anisotropic_scale_leave_every_local_axis_where_the_columns_point",
+        "the_scale_overlay_has_three_axis_handles_and_the_uniform_one_where_the_oracle_puts_them"
+      ],
+      "seconds": 4
+    },
+    {
+      "mutant": "M13 press at the origin allowed (axis)",
+      "result": "KILLED",
+      "failed": [
+        "a_press_too_close_to_the_origin_does_not_open_a_drag",
+        "scene_interaction::gizmo::scaling::tests::a_press_that_does_not_fix_a_ratio_does_not_open_a_drag"
+      ],
+      "seconds": 4
+    },
+    {
+      "mutant": "M14 press at the origin allowed (uniform)",
+      "result": "KILLED",
+      "failed": [
+        "scene_interaction::gizmo::scaling::tests::a_press_that_does_not_fix_a_ratio_does_not_open_a_drag"
+      ],
+      "seconds": 4
+    },
+    {
+      "mutant": "M16 component picked by the smallest diagonal",
+      "result": "KILLED",
+      "failed": [
+        "a_factor_multiplies_the_authored_component_and_touches_nothing_else",
+        "a_handle_drag_and_scene_scale_leave_the_same_document_in_both_spaces",
+        "a_world_axis_along_a_node_axis_scales_that_component_and_the_matrix_is_g_times_w",
+        "a_world_axis_through_an_unevenly_scaled_parent_is_legal_when_it_runs_along_a_node_axis",
+        "compensating_scales_of_a_parent_and_its_child_stay_scalable_in_every_space",
+        "dragging_a_handle_scales_by_the_ratio_the_pointer_swept_in_both_spaces"
+      ],
+      "seconds": 4
+    },
+    {
+      "mutant": "M26 uniform far side counts as the press side",
+      "result": "KILLED",
+      "failed": [
+        "a_position_past_the_origin_or_past_a_limit_is_refused_and_the_last_legal_candidate_stays",
+        "a_uniform_drag_across_the_origin_is_refused_then_recovers_and_releases_the_last_legal",
+        "scene_interaction::gizmo::scaling::tests::a_pointer_exactly_perpendicular_to_the_press_is_the_far_side_not_a_ratio",
+        "scene_interaction::gizmo::scaling::tests::the_uniform_side_is_judged_in_picture_space_not_in_normalised_coordinates",
+        "scene_interaction::gizmo::scaling::tests::uniform_scaling_refuses_the_opposite_side_without_changing_valid_ratios"
+      ],
+      "seconds": 4
+    },
+    {
+      "mutant": "M27 uniform side judged without the aspect",
+      "result": "KILLED",
+      "failed": [
+        "scene_interaction::gizmo::scaling::tests::the_uniform_side_is_judged_in_picture_space_not_in_normalised_coordinates"
+      ],
+      "seconds": 4
+    },
+    {
+      "mutant": "M28 the basis is inverted at its own size",
+      "result": "KILLED",
+      "failed": [
+        "compensating_scales_of_a_parent_and_its_child_stay_scalable_in_every_space",
+        "scene_interaction::gizmo::scaling::tests::compensating_scales_of_a_child_and_its_parent_do_not_hide_the_handles"
+      ],
+      "seconds": 5
+    },
+    {
+      "mutant": "M29 local axes judged on the unit-volume basis (the 4532352759 defect)",
+      "result": "KILLED",
+      "failed": [
+        "four_parents_of_anisotropic_scale_still_refuse_a_shear_a_limit_and_a_flat_basis",
+        "four_parents_of_anisotropic_scale_without_any_rotation_keep_the_three_axes_in_both_spaces",
+        "scene_interaction::gizmo::scaling::tests::four_parents_of_anisotropic_scale_keep_the_limits_and_the_uniform_handle",
+        "scene_interaction::gizmo::scaling::tests::four_parents_of_anisotropic_scale_leave_every_local_axis_where_the_columns_point"
+      ],
+      "seconds": 5
+    },
+    {
+      "mutant": "M30 a column below an absolute length has no direction",
+      "result": "KILLED",
+      "failed": [
+        "scene_interaction::gizmo::scaling::tests::a_column_has_a_direction_from_its_own_length_alone"
+      ],
+      "seconds": 4
+    },
+    {
+      "mutant": "M31 uniform pointer exactly perpendicular is the press side (dot < 0)",
+      "result": "KILLED",
+      "failed": [
+        "scene_interaction::gizmo::scaling::tests::a_pointer_exactly_perpendicular_to_the_press_is_the_far_side_not_a_ratio"
+      ],
+      "seconds": 4
+    }
+  ]
+}

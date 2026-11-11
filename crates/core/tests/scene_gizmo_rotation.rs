@@ -471,7 +471,7 @@ fn the_tool_defaults_to_translate_in_world_space_and_the_overlay_says_so() {
     assert_eq!(tool["tool"], "translate");
     assert_eq!(tool["space"], "world");
     assert_eq!(tool["changed"], false);
-    assert_eq!(tool["tools"], json!(["translate", "rotate"]));
+    assert_eq!(tool["tools"], json!(["translate", "rotate", "scale"]));
     assert_eq!(tool["spaces"], json!(["world", "local"]));
     select(&mut state, FIGURE);
     let shown = overlay(&mut state);
@@ -530,7 +530,7 @@ fn choosing_the_tool_and_the_space_is_session_state_not_an_edit() {
     );
     // Unknown names are typed errors that leave the state alone.
     for request in [
-        json!({"op":"scene.gizmo.tool","tool":"scale"}),
+        json!({"op":"scene.gizmo.tool","tool":"resize"}),
         json!({"op":"scene.gizmo.tool","space":"screen"}),
         json!({"op":"scene.gizmo.tool","tool":7}),
     ] {
@@ -580,7 +580,7 @@ fn the_tool_is_settable_like_any_control_through_set() {
     assert_eq!(state.scene_interaction.space(), GizmoSpace::Local);
     let bad = err(
         &mut state,
-        json!({"op":"set","target":"monitor.gizmo","field":"tool","value":"scale"}),
+        json!({"op":"set","target":"monitor.gizmo","field":"tool","value":"resize"}),
     );
     assert_eq!(bad.code, "invalid_value");
     assert_eq!(state.scene_interaction.tool(), GizmoTool::Rotate);

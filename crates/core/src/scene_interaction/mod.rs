@@ -46,8 +46,11 @@ pub use frame::frame_json;
 pub use gesture::{Gesture, GestureKind, GestureSlot, Invalidation, Refusal};
 pub use gizmo::{
     Anchor, CENTER_RADIUS, GizmoSpace, GizmoTool, HANDLE_LENGTH, HIT_RADIUS, Handle, Hidden,
-    Layout, OUTSIDE_LIMIT, Overlay, Point, RING_RADIUS, RING_SEGMENTS, RingAnchor, RotationFrame,
-    View, local_delta, movable, outline, pick_plane, quat_json, refusal, world_origin,
+    Layout, LightMarker, MARKER_RADIUS, MAX_RADIUS, MAX_SCALE, MIN_SCALE, OUTSIDE_LIMIT, Overlay,
+    Point, RING_RADIUS, RING_SEGMENTS, RangeAnchor, RingAnchor, RotationFrame, ScaleAnchor,
+    ScaleFrame, UNIFORM_OFFSET, View, light_position, light_range, light_refusal, local_delta,
+    marker_at, movable, outline, pick_marker, pick_plane, quat_json, refusal, scale_refusal,
+    world_origin,
 };
 pub use selection::{Dropped, MAX_SELECTION, SUMMARY_LIMIT, Selected, Selection};
 pub use tree::{MAX_TREE_DEPTH, tree_json};
@@ -64,7 +67,7 @@ pub struct SceneInteraction {
     /// What the handles of the selected node do (BL015.1). Session state like the selection: not
     /// in the document, not in an undo snapshot, reset by a new project.
     pub(crate) tool: GizmoTool,
-    /// The orientation of the rotate tool's axes.
+    /// The orientation of the rotate and scale tools' axes.
     pub(crate) space: GizmoSpace,
 }
 
@@ -80,7 +83,8 @@ pub struct Drag {
     /// The edit frame the press was made at: the camera and the hierarchy of the whole drag.
     pub(crate) frame: i64,
     /// The node as evaluated at the press (its local/world matrices convert a world delta).
-    pub(crate) node: crate::scene_plan::PlanNode,
+    /// `None` for the drag of a light (F060): its position is not behind a node's matrices.
+    pub(crate) node: Option<crate::scene_plan::PlanNode>,
     /// What the press is bound to, by tool.
     pub(crate) action: DragAction,
     /// What the last accepted update computed.
@@ -100,6 +104,23 @@ pub(crate) enum DragAction {
         /// The node's axes, parent rotation and authored rotation at the press.
         frame: Box<RotationFrame>,
     },
+    Scale {
+        anchor: ScaleAnchor,
+        /// What each handle does and the authored `localScale`, at the press.
+        frame: Box<ScaleFrame>,
+    },
+    /// A point light's arrows (F060): the translate math on the light's own `position`.
+    LightTranslate {
+        anchor: Anchor,
+        /// The document's `position` of the light at the press.
+        base_position: crate::directed_scene::Vec3,
+    },
+    /// A point light's range knob (F060): the radius follows the pointer along the camera's right.
+    LightRange {
+        anchor: RangeAnchor,
+        /// The document's `radius` of the light at the press.
+        base_radius: f64,
+    },
 }
 
 /// What an update of a drag accepted.
@@ -113,6 +134,18 @@ pub(crate) enum Applied {
         degrees: f64,
         rotation: crate::directed_scene::Quat,
     },
+    Scale {
+        factor: f64,
+        scale: crate::directed_scene::Vec3,
+    },
+    LightTranslate {
+        world_delta: crate::directed_scene::Vec3,
+        position: crate::directed_scene::Vec3,
+    },
+    LightRange {
+        delta: f64,
+        radius: f64,
+    },
 }
 
 impl Drag {
@@ -122,16 +155,23 @@ impl Drag {
 
     pub fn handle(&self) -> Handle {
         match &self.action {
-            DragAction::Translate { anchor, .. } => anchor.handle,
+            DragAction::Translate { anchor, .. } | DragAction::LightTranslate { anchor, .. } => {
+                anchor.handle
+            }
             DragAction::Rotate { ring, .. } => ring.handle,
+            DragAction::Scale { anchor, .. } => anchor.handle,
+            DragAction::LightRange { .. } => Handle::Range,
         }
     }
 
     /// The tool the drag was pressed with.
     pub fn tool(&self) -> GizmoTool {
         match &self.action {
-            DragAction::Translate { .. } => GizmoTool::Translate,
+            DragAction::Translate { .. }
+            | DragAction::LightTranslate { .. }
+            | DragAction::LightRange { .. } => GizmoTool::Translate,
             DragAction::Rotate { .. } => GizmoTool::Rotate,
+            DragAction::Scale { .. } => GizmoTool::Scale,
         }
     }
 
@@ -161,7 +201,7 @@ impl SceneInteraction {
         self.tool
     }
 
-    /// The orientation of the rotate tool's axes.
+    /// The orientation of the rotate and scale tools' axes.
     pub fn space(&self) -> GizmoSpace {
         self.space
     }

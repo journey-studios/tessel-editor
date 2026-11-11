@@ -351,6 +351,7 @@ fn a_partial_or_unresolved_scene_never_reaches_the_runtime_as_a_picture() {
         .push(tessel_editor_core::scene_plan::UnsupportedDomain {
             domain: tessel_editor_core::scene_plan::Domain::ALL[0],
             subject: None,
+            reason: None,
         });
     let map = resources(1, &plan);
     let error = renderer

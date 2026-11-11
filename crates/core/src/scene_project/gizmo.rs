@@ -20,23 +20,31 @@
 //! on press, one `set rotation` per move, `commit` on release), and `scene.rotate` is its
 //! pointer-free equivalent. The conventions and the arithmetic are
 //! `scene_interaction::gizmo::rotation`; here is only the glue.
+//!
+//! BL015.1 (G1.2) adds the **scale tool**, again on the same rails: a handle drag is the same gesture
+//! (`begin`, one `set scale` per move, `commit`), a refused position keeps the last legal candidate,
+//! and `scene.scale` is the pointer-free equivalent. The conventions, the limits and the arithmetic
+//! are `scene_interaction::gizmo::scaling`; here is only the glue.
 
 use std::sync::Arc;
 
 use serde_json::{Value, json};
 
 use crate::directed_scene::{
-    ChannelProperty, DirectedScene, Entity, EntityKind, NodeAnimation, Quat, Vec3,
+    ChannelProperty, DirectedScene, Entity, EntityKind, NodeAnimation, NodeKind, Quat, Vec3,
 };
 use crate::scene_edit::{EditOp, NodeProperty, PropertyRef, PropertyValue, read_property};
 use crate::scene_interaction::{
     Anchor, Applied, CancelReason, Drag, DragAction, FrameAt, GizmoCommand, GizmoSpace, GizmoTool,
-    Handle, Hidden, Layout, Overlay, Point, PointerCommand, RingAnchor, RotationFrame, SelectMode,
-    View, ensure_exists, entity_path, local_delta, movable, outline, parse_entity, pick_plane,
-    quat_json, refusal, world_origin,
+    Handle, Hidden, Layout, Overlay, Point, PointerCommand, RingAnchor, RotationFrame, ScaleAnchor,
+    ScaleFrame, SelectMode, View, ensure_exists, entity_path, local_delta, movable, outline,
+    parse_entity, pick_plane, quat_json, refusal, scale_refusal, world_origin,
 };
 use crate::scene_plan::{PlanNode, PlanOptions, ScenePlan};
 use crate::state::{CommandError, EditorState};
+
+mod light;
+use light::{light_at_point, light_layout, light_markers};
 
 /// The plan the gizmo works on. Partial on purpose: picking and handles need only the camera and
 /// the nodes, so a scene with a domain the renderer cannot draw yet can still be selected and
@@ -104,14 +112,23 @@ fn read_rotation(scene: &DirectedScene, property: &PropertyRef) -> Result<Quat, 
 /// offset. The plan keeps only "animated or not", so the channels are asked again, and only when
 /// the frame is animated at all. When the frame cannot be evaluated the node is refused too.
 fn animates_rotation(scene: &DirectedScene, plan: &ScenePlan, frame: i64, node: &str) -> bool {
+    animates(scene, plan, frame, node, ChannelProperty::LocalRotation)
+}
+
+/// Whether a performance channel writes `property` of `node` at `frame` (see
+/// [`animates_rotation`]; the scale tool asks the same of `LocalScale`, which a channel replaces).
+fn animates(
+    scene: &DirectedScene,
+    plan: &ScenePlan,
+    frame: i64,
+    node: &str,
+    property: ChannelProperty,
+) -> bool {
     if matches!(plan.animation, NodeAnimation::Static) {
         return false;
     }
     match scene.bundle().evaluate_frame(frame) {
-        Ok(evaluated) => evaluated
-            .nodes
-            .override_of(node, ChannelProperty::LocalRotation)
-            .is_some(),
+        Ok(evaluated) => evaluated.nodes.override_of(node, property).is_some(),
         Err(_) => true,
     }
 }
@@ -129,6 +146,70 @@ fn rotation_frame(
         .map_err(|_| refusal::DEGENERATE_ROTATION)?;
     let animated = animates_rotation(document, plan, frame, &node.id);
     RotationFrame::of(node, authored, space, animated)
+}
+
+fn scale_ref(plan: &ScenePlan, node: &str) -> PropertyRef {
+    PropertyRef::node(&plan.source.scene_definition_id, node, NodeProperty::Scale)
+}
+
+fn read_scale(scene: &DirectedScene, property: &PropertyRef) -> Result<Vec3, CommandError> {
+    match read_property(scene, property)? {
+        PropertyValue::Vec3(scale) => Ok(scale),
+        _ => Err(CommandError::new(
+            "internal",
+            "`scale` is not a vector in the catalog",
+        )),
+    }
+}
+
+/// Whether `node` is a splat or has one below it in the hierarchy: Spark draws one uniform scale
+/// per splat (BL123), so such a node only scales uniformly. Walks each splat's parent chain, bounded
+/// by the number of nodes (the plan has no cycle, the bound only makes the walk total).
+fn splat_in_subtree(plan: &ScenePlan, node: &PlanNode) -> bool {
+    plan.nodes
+        .iter()
+        .filter(|candidate| candidate.kind == NodeKind::Splat)
+        .any(|splat| {
+            let mut current = splat;
+            for _ in 0..=plan.nodes.len() {
+                if current.id == node.id {
+                    return true;
+                }
+                match current
+                    .parent
+                    .as_ref()
+                    .and_then(|parent| plan.node(&parent.node_id))
+                {
+                    Some(parent) => current = parent,
+                    None => return false,
+                }
+            }
+            false
+        })
+}
+
+/// The frame of a scale of `node` in the document the plan was built from: what each handle does
+/// and the authored `localScale`, or the reason the node cannot be scaled.
+fn scale_frame(
+    document: &DirectedScene,
+    plan: &ScenePlan,
+    frame: i64,
+    node: &PlanNode,
+    space: GizmoSpace,
+) -> Result<ScaleFrame, &'static str> {
+    let base = read_scale(document, &scale_ref(plan, &node.id))
+        .map_err(|_| scale_refusal::DEGENERATE_SCALE)?;
+    let animated = animates(document, plan, frame, &node.id, ChannelProperty::LocalScale);
+    ScaleFrame::of(node, base, space, animated, splat_in_subtree(plan, node))
+}
+
+fn not_scalable(entity: &str, reason: &str) -> CommandError {
+    CommandError::new(
+        "not_scalable",
+        format!("`{entity}` cannot be scaled: {reason}"),
+    )
+    .target(entity)
+    .details(json!({ "reason": reason }))
 }
 
 fn not_rotatable(entity: &str, reason: &str) -> CommandError {
@@ -172,7 +253,7 @@ impl Scene3d {
     }
 
     /// The handles of `node` for the active tool, or `None` when the tool has none for it (the
-    /// rotate tool refuses the node: see [`rotation_frame`]). `document` is the scene the plan
+    /// rotate and scale tools refuse the node: see [`rotation_frame`], [`scale_frame`]). `document` is the scene the plan
     /// was built from.
     fn layout(
         &self,
@@ -187,6 +268,10 @@ impl Scene3d {
             GizmoTool::Rotate => {
                 let frame = rotation_frame(document, &self.plan, self.frame, node, space).ok()?;
                 Layout::rings_at(view, world_origin(node), &frame)
+            }
+            GizmoTool::Scale => {
+                let frame = scale_frame(document, &self.plan, self.frame, node, space).ok()?;
+                Layout::scale_handles(view, world_origin(node), &frame)
             }
         }
     }
@@ -234,12 +319,26 @@ impl EditorState {
                 degrees,
                 space,
             } => self.scene_rotate(&scene, &entity, &at, axis, degrees, space),
+            GizmoCommand::Scale {
+                scene,
+                entity,
+                at,
+                axis,
+                factor,
+                space,
+            } => self.scene_scale(&scene, &entity, &at, axis, factor, space),
+            GizmoCommand::Range {
+                scene,
+                entity,
+                at,
+                delta,
+            } => self.scene_range(&scene, &entity, &at, delta),
             GizmoCommand::Tool { tool, space } => self.gizmo_tool(tool, space),
         }
     }
 
-    /// `scene.gizmo.tool`: reads, and with a field sets, the tool and the space of the rotate
-    /// axes. Session state, never an edit. Refused while a drag is open: the handle under the
+    /// `scene.gizmo.tool`: reads, and with a field sets, the tool and the space of the rotate and
+    /// scale axes. Session state, never an edit. Refused while a drag is open: the handle under the
     /// pointer would change meaning, and the drag's candidate belongs to the tool that began it.
     fn gizmo_tool(
         &mut self,
@@ -400,6 +499,7 @@ impl EditorState {
         }
 
         let (tool, space) = (self.scene_interaction.tool, self.scene_interaction.space);
+        let markers = light_markers(&world, view, &selected);
         let mut overlay = Overlay {
             tool,
             space,
@@ -407,15 +507,31 @@ impl EditorState {
             layout: None,
             hidden: None,
             outlines,
+            markers,
             active: dragging
                 .as_ref()
                 .map(|drag| (drag.handle(), drag.gesture.clone())),
             aspect: view.map_or(1.0, View::aspect),
             stamp: self.gizmo_stamp(scene_id, frame),
         };
+        // A point light (F060) has its own handles: the one dragged, else the single selected one.
+        let light = match (&dragging, selected.as_slice()) {
+            (Some(drag), _) => parse_entity(&drag.entity)
+                .ok()
+                .filter(|entity| entity.kind == EntityKind::Light),
+            (None, [entity]) if entity.kind == EntityKind::Light => Some((*entity).clone()),
+            _ => None,
+        };
+        if let Some(entity) = light {
+            if entity.scope.as_deref() != Some(definition) {
+                overlay.hidden = Some(Hidden::NotInFrame);
+                return Ok(overlay);
+            }
+            return Ok(self.light_overlay(overlay, &world, &shown, &entity));
+        }
         // The node the handles belong to: the one being dragged, else the single selected node.
         let node_id = match (&dragging, selected.as_slice()) {
-            (Some(drag), _) => Some(drag.node.id.clone()),
+            (Some(drag), _) => drag.node.as_ref().map(|node| node.id.clone()),
             (None, []) => {
                 overlay.hidden = Some(Hidden::NoSelection);
                 None
@@ -457,6 +573,13 @@ impl EditorState {
                     // unevenly...): no rings, and the reason is in the overlay, never a silent
                     // gizmo that would then refuse the press.
                     overlay.hidden = Some(Hidden::NotRotatable(reason));
+                    return Ok(overlay);
+                }
+                if tool == GizmoTool::Scale
+                    && let Err(reason) = scale_frame(&shown, &world.plan, world.frame, node, space)
+                {
+                    // Scale is refused the same way: no handles, and the reason in the overlay.
+                    overlay.hidden = Some(Hidden::NotScalable(reason));
                     return Ok(overlay);
                 }
                 match world.layout(&shown, view, node, tool, space) {
@@ -509,6 +632,28 @@ impl EditorState {
                 ));
             }
             handles = Some((layout, entity));
+        }
+        if let [one] = selected.as_slice()
+            && one.kind == EntityKind::Light
+            && one.scope.as_deref() == Some(definition)
+            && self.scene_interaction.tool == GizmoTool::Translate
+            && let Ok(layout) = light_layout(world, view, &document, one)
+        {
+            let entity = entity_path(one);
+            if let Some(handle) = layout.hit(view, point) {
+                return Ok((
+                    Hit::Handle {
+                        handle,
+                        entity: entity.clone(),
+                    },
+                    Some((layout, entity)),
+                ));
+            }
+            handles = Some((layout, entity));
+        }
+        // A light's marker is above the image planes it is drawn over.
+        if let Some(entity) = light_at_point(world, view, point) {
+            return Ok((Hit::Entity { entity }, handles));
         }
         let hit = match pick_plane(&world.plan, view, point) {
             Some(node) => Hit::Entity {
@@ -594,6 +739,16 @@ impl EditorState {
     ) -> Result<(), CommandError> {
         let view = world.view.as_ref().map_err(Clone::clone)?;
         let parsed = parse_entity(entity)?;
+        if parsed.kind == EntityKind::Light {
+            if self.scene_interaction.tool != GizmoTool::Translate {
+                return Err(CommandError::invalid_value(
+                    "A light has handles with the translate tool only",
+                    json!({ "options": [GizmoTool::Translate.as_str()] }),
+                )
+                .target("tool"));
+            }
+            return self.begin_light_drag(scene, world, handle, &parsed, point, answer);
+        }
         let node = world
             .plan
             .node(&parsed.id)
@@ -642,11 +797,45 @@ impl EditorState {
                     frame: Box::new(frame),
                 }
             }
+            GizmoTool::Scale => {
+                let space = self.scene_interaction.space;
+                // The same refusals the overlay shows as `hidden` or `disabled_handles`; checked
+                // here again because a press may come from a script that never read the overlay.
+                let frame = scale_frame(&document, &world.plan, world.frame, node, space)
+                    .map_err(|reason| not_scalable(entity, reason))?;
+                let direction = match handle {
+                    Handle::Uniform => None,
+                    Handle::X | Handle::Y | Handle::Z => {
+                        Some(frame.direction(handle).ok_or_else(|| {
+                            not_scalable(
+                                entity,
+                                frame.disabled(handle).unwrap_or("handle_unavailable"),
+                            )
+                        })?)
+                    }
+                    Handle::Screen | Handle::Range => {
+                        return Err(CommandError::invalid_value(
+                            "The scale tool has handles `x`, `y`, `z` and `uniform` only",
+                            json!({ "options": ["x", "y", "z", "uniform"] }),
+                        )
+                        .target("handle"));
+                    }
+                };
+                let Some(anchor) = ScaleAnchor::begin(view, origin, handle, direction, point)
+                else {
+                    return Self::refused_press(answer);
+                };
+                DragAction::Scale {
+                    anchor,
+                    frame: Box::new(frame),
+                }
+            }
         };
         let frame = i64::try_from(world.plan.frame.edit_frame).unwrap_or(i64::MAX);
         let label = match tool {
             GizmoTool::Translate => "Move",
             GizmoTool::Rotate => "Rotate",
+            GizmoTool::Scale => "Scale",
         };
         let begun = self.gesture_begin(scene, &[entity.to_string()], Some(label.to_string()))?;
         let gesture = begun["gesture"].as_str().unwrap_or_default().to_string();
@@ -655,7 +844,7 @@ impl EditorState {
             scene: scene.to_string(),
             entity: entity.to_string(),
             frame,
-            node: node.clone(),
+            node: Some(node.clone()),
             action,
             last: None,
         });
@@ -703,6 +892,15 @@ impl EditorState {
                 base_position,
             } => self.translate_update(drag, anchor, *base_position, point),
             DragAction::Rotate { ring, frame } => self.rotate_update(drag, ring, frame, point),
+            DragAction::Scale { anchor, frame } => self.scale_update(drag, anchor, frame, point),
+            DragAction::LightTranslate {
+                anchor,
+                base_position,
+            } => self.light_translate_update(drag, anchor, *base_position, point),
+            DragAction::LightRange {
+                anchor,
+                base_radius,
+            } => self.light_range_update(drag, anchor, *base_radius, point),
         }
     }
 
@@ -718,7 +916,10 @@ impl EditorState {
             // candidate stays where the last good position put it.
             return Ok(json!({ "applied": false, "reason": "degenerate_pointer" }));
         };
-        let local = local_delta(&drag.node, world_delta).ok_or_else(|| {
+        let Some(node) = drag.node.as_ref() else {
+            return Ok(json!({ "applied": false, "reason": "no_node" }));
+        };
+        let local = local_delta(node, world_delta).ok_or_else(|| {
             CommandError::new(
                 "not_translatable",
                 "The node's transform cannot be inverted",
@@ -785,6 +986,42 @@ impl EditorState {
         Ok(json!({
             "applied": true, "degrees": degrees, "axis": ring.handle.as_str(),
             "space": frame.space().as_str(), "rotation": quat_json(rotation),
+            "would_change": update["would_change"], "changes": update["changes"],
+        }))
+    }
+
+    /// One handle position: the ratio of the pointer to the press becomes the candidate scale,
+    /// computed by the same [`ScaleFrame::scale`] `scene.scale` uses, so the two roads give the
+    /// same vector bit for bit. A position the rules refuse (the pointer crossed the origin, a
+    /// limit, a degenerate result) is `applied: false` with the typed reason and the last legal
+    /// candidate stays, so a release there still commits what was last legal.
+    fn scale_update(
+        &mut self,
+        drag: &Drag,
+        anchor: &ScaleAnchor,
+        frame: &ScaleFrame,
+        point: Point,
+    ) -> Result<Value, CommandError> {
+        let Some(factor) = anchor.factor(point) else {
+            return Ok(json!({ "applied": false, "reason": "degenerate_pointer" }));
+        };
+        let scale = match frame.scale(anchor.handle, factor) {
+            Ok(scale) => scale,
+            Err(reason) => {
+                return Ok(json!({ "applied": false, "reason": reason, "factor": factor }));
+            }
+        };
+        let property = PropertyRef::parse(&format!("{}/scale", drag.entity))?;
+        let update = self.gesture_update(
+            &drag.gesture,
+            vec![EditOp::set(property, PropertyValue::Vec3(scale))],
+        )?;
+        if let Some(open) = self.scene_interaction.drag.as_mut() {
+            open.last = Some(Applied::Scale { factor, scale });
+        }
+        Ok(json!({
+            "applied": true, "factor": factor, "axis": anchor.handle.as_str(),
+            "space": frame.space().as_str(), "scale": scale.to_json(),
             "would_change": update["would_change"], "changes": update["changes"],
         }))
     }
@@ -869,6 +1106,25 @@ impl EditorState {
                 if let DragAction::Rotate { frame, .. } = &drag.action {
                     answer["space"] = json!(frame.space().as_str());
                 }
+            }
+            Some(Applied::Scale { factor, scale }) => {
+                answer["factor"] = json!(factor);
+                answer["axis"] = json!(drag.handle().as_str());
+                answer["scale"] = scale.to_json();
+                if let DragAction::Scale { frame, .. } = &drag.action {
+                    answer["space"] = json!(frame.space().as_str());
+                }
+            }
+            Some(Applied::LightTranslate {
+                world_delta,
+                position,
+            }) => {
+                answer["world_delta"] = world_delta.to_json();
+                answer["position"] = position.to_json();
+            }
+            Some(Applied::LightRange { delta, radius }) => {
+                answer["delta"] = json!(delta);
+                answer["radius"] = json!(radius);
             }
             None => {}
         }
@@ -964,6 +1220,77 @@ impl EditorState {
         Ok(answer)
     }
 
+    /// `scene.scale`: the handle drag without the pointer. One node, one handle, a multiplicative
+    /// factor, written by `edit_scene` (the path `scene.edit` and a gesture commit share), so the
+    /// same factor gives the same document by either road and a factor of 1 writes nothing (no
+    /// history entry).
+    pub(super) fn scene_scale(
+        &mut self,
+        scene: &str,
+        entity: &str,
+        at: &FrameAt,
+        axis: Handle,
+        factor: f64,
+        space: Option<GizmoSpace>,
+    ) -> Result<Value, CommandError> {
+        let parsed = parse_entity(entity)?;
+        let entry = self.attached_scene(scene)?;
+        let document = Arc::clone(&entry.scene);
+        ensure_exists(document.bundle(), &parsed)?;
+        if parsed.kind != EntityKind::Node {
+            return Err(not_scalable(entity, "only a node has a scale"));
+        }
+        if axis == Handle::Screen {
+            return Err(CommandError::invalid_value(
+                "`axis` must be `x`, `y`, `z` or `uniform`: the screen handle is not a scale handle",
+                json!({ "options": ["x", "y", "z", "uniform"] }),
+            )
+            .target("axis"));
+        }
+        if !factor.is_finite() {
+            return Err(CommandError::invalid_value(
+                "`factor` must be a finite number",
+                json!("number"),
+            )
+            .target("factor"));
+        }
+        let space = space.unwrap_or(self.scene_interaction.space);
+        let frame = frame_of(&document, at)?;
+        let plan = plan_of(&document, frame)?;
+        let node = plan
+            .node(&parsed.id)
+            .filter(|_| parsed.scope.as_deref() == Some(plan.source.scene_definition_id.as_str()))
+            .ok_or_else(|| {
+                not_scalable(
+                    entity,
+                    "the node is in another scene definition than the one shown at this frame",
+                )
+            })?;
+        let scaling = scale_frame(&document, &plan, frame, node, space)
+            .map_err(|reason| not_scalable(entity, reason))?;
+        let scale = scaling
+            .scale(axis, factor)
+            .map_err(|reason| not_scalable(entity, reason))?;
+        let property = scale_ref(&plan, &node.id);
+        let mut answer = self.edit_scene(
+            scene,
+            &[EditOp::set(property, PropertyValue::Vec3(scale))],
+            false,
+        )?;
+        answer["action"] = json!("scene.scale");
+        answer["entity"] = json!(entity);
+        answer["frame"] = json!(frame);
+        answer["axis"] = json!(axis.as_str());
+        answer["space"] = json!(space.as_str());
+        answer["factor"] = json!(factor);
+        answer["scale"] = scale.to_json();
+        // The component the factor landed on (in `world`, a node turned a quarter turn writes
+        // another one than the handle's letter), or `all` for the uniform handle.
+        answer["component"] = json!(scaling.component(axis).unwrap_or("all"));
+        answer["document_changed"] = answer["changed"].clone();
+        Ok(answer)
+    }
+
     pub(super) fn scene_translate(
         &mut self,
         scene: &str,
@@ -983,8 +1310,11 @@ impl EditorState {
             .target(entity)
             .details(json!({ "reason": why }))
         };
+        if parsed.kind == EntityKind::Light {
+            return self.scene_translate_light(scene, &parsed, at, delta);
+        }
         if parsed.kind != EntityKind::Node {
-            return Err(not_translatable("only a node has a position"));
+            return Err(not_translatable("only a node or a light has a position"));
         }
         if !finite(delta) {
             return Err(CommandError::invalid_value(

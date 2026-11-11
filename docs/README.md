@@ -18,10 +18,13 @@ cada acesso pela UI, CLI com UI, CLI headless e biblioteca Rust.
 - [Backlog compartilhado](backlog.md): registro único de pendências, responsáveis, dependências e aceite; obrigatório para todos os agentes.
 - [Inventário de migração do Scene Studio](migration/README.md): 121 itens classificados,
   evidências na origem, diferenças do branch piloto, matriz de migração e fatias sugeridas.
+- [Triagem dos docs do piloto](migration/pilot-docs-triage-2026-11-11.md): 52 documentos avaliados, o que veio, o que ficou de fora e por quê.
+- [Especificações da origem](migration/origin-specs/README.md): dez documentos do piloto copiados literalmente (efeitos, comandos de câmera, ripple, fronteira Studio/core, glossário), somente leitura.
+- [Projetos locais](../projects/README.md): `projects/<nome>/` guarda projetos privados ou pesados e é ignorado pelo Git.
 - [Fade de entrada e saída em clipe de áudio (BL142)](features/audio-fades.md): rampa linear de ganho relativa ao clipe, mix em blocos = mix inteiro, sobreposição encurtada.
 - [Recursos da cena dirigida](features/scene-resources.md): manifesto, preflight e materialização inicial; identidade por assetId, transporte parcial e pacote ainda protegido pelas guardas.
 - [Interação de cenas dirigidas](features/scene-interaction.md): seleção, árvore, avaliação e gestos via comandos; gate local da rodada passou; inspector parcial em F039-UI.
-- [Gizmo de translação e rotação no canvas](features/scene-gizmo.md) (F055, S8/BL015/BL042): overlay e arrasto no core, canvas dentro da WebView, `scene.translate` equivalente; implementado e a validar: workspace, clippy, Chrome e runtime executados no head de código `db02923`; build, prova nativa+headless com `final_evidence` e as mutações Rust executados depois, no head `fb268bb` (mesmas fontes de produção, um teste a mais; ver BL015.6), sem ponteiro físico.
+- [Gizmo de translação, rotação e escala no canvas](features/scene-gizmo.md) (F055, S8/BL015/BL042): overlay e arrasto no core, canvas dentro da WebView, `scene.translate` equivalente; implementado e a validar: workspace, clippy, Chrome e runtime executados no head de código `db02923`; build, prova nativa+headless com `final_evidence` e as mutações Rust executados depois, no head `fb268bb` (mesmas fontes de produção, um teste a mais; ver BL015.6), sem ponteiro físico. G1.2 (BL015.1) acrescenta a escala de um nó (`scene.scale`, ferramenta `scale`), a validar: [seção](features/scene-gizmo.md#escala-de-um-nó-g12-bl0151).
 - [Plano avaliado de cena dirigida](features/scene-plan.md): contrato core → runtime e recursos por assetId; gate local da rodada passou; consumido pelo renderer F041.
 - [Cenas no projeto e CLI](features/scene-project.md): attach, lotes, histórico, save/reopen
   e JSONL sem janela; inspector e render dirigido integrados; diálogo de anexar pendente.

@@ -335,7 +335,7 @@ def scenario(surface, check, scratch, record):
                              'frame': FRAME, 'axis': 'z', 'degrees': 10}, 'unknown_entity'),
         ('a camera clip', {'op': 'scene.rotate', 'scene': SCENE, 'entity': 'camera/cam-main', 'frame': FRAME,
                            'axis': 'z', 'degrees': 10}, 'not_rotatable'),
-        ('an unknown tool', {'op': 'scene.gizmo.tool', 'tool': 'scale'}, 'invalid_value'),
+        ('an unknown tool', {'op': 'scene.gizmo.tool', 'tool': 'resize'}, 'invalid_value'),
     ):
         error = refused(request)
         check(f'refused: {name} ({code})', error['code'] == code, error)

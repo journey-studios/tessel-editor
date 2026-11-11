@@ -1,0 +1,277 @@
+{
+  "restored": true,
+  "hashes": {
+    "crates/core/src/scene_interaction/gizmo/scaling.rs": "b733817b258ddba3f904c09aace103f9d6aea70d039c7cb4dc2a88ec5fb6bf3b",
+    "crates/core/src/scene_project/gizmo.rs": "c0e1052c9932b77f2e16e5ef853bddccdfc9ca50a698d994318f00473fade171",
+    "runtime/src/overlay.js": "d5c1b717ff38b08fd4cad7415b1aa1864c1add73c8031ad4b90a241b8a02b069"
+  },
+  "mutants": [
+    {
+      "mutant": "M01 no maximum limit",
+      "result": "KILLED",
+      "failed": [
+        "a_component_the_document_holds_outside_the_range_may_only_move_towards_it",
+        "a_position_past_the_origin_or_past_a_limit_is_refused_and_the_last_legal_candidate_stays",
+        "scene_interaction::gizmo::scaling::tests::the_limits_are_decided_on_the_magnitude_and_only_against_moving_away_from_the_range",
+        "the_limits_are_inclusive_one_thousand_and_one_thousandth_in_either_direction"
+      ],
+      "seconds": 18
+    },
+    {
+      "mutant": "M02 no minimum limit",
+      "result": "KILLED",
+      "failed": [
+        "a_component_the_document_holds_outside_the_range_may_only_move_towards_it",
+        "scene_interaction::gizmo::scaling::tests::the_limits_are_decided_on_the_magnitude_and_only_against_moving_away_from_the_range",
+        "the_limits_are_inclusive_one_thousand_and_one_thousandth_in_either_direction"
+      ],
+      "seconds": 18
+    },
+    {
+      "mutant": "M03 zero factor allowed through",
+      "result": "KILLED",
+      "failed": [
+        "a_negative_scale_keeps_its_sign_and_no_mirror_is_created_by_a_factor",
+        "a_position_past_the_origin_or_past_a_limit_is_refused_and_the_last_legal_candidate_stays",
+        "scene_interaction::gizmo::scaling::tests::the_factor_is_checked_before_anything_is_computed"
+      ],
+      "seconds": 10
+    },
+    {
+      "mutant": "M04 no-change band removed",
+      "result": "KILLED",
+      "failed": [
+        "a_factor_of_one_is_a_no_op_with_the_same_bits_no_history_and_no_revision",
+        "scene_interaction::gizmo::scaling::tests::the_factor_is_checked_before_anything_is_computed"
+      ],
+      "seconds": 9
+    },
+    {
+      "mutant": "M05 alignment never refused",
+      "result": "KILLED",
+      "failed": [
+        "scene_interaction::gizmo::scaling::tests::a_world_axis_counts_as_aligned_only_within_numeric_noise",
+        "the_world_handles_the_node_cannot_hold_are_disabled_with_the_reason_and_not_drawn"
+      ],
+      "seconds": 10
+    },
+    {
+      "mutant": "M06 alignment tolerance loose",
+      "result": "KILLED",
+      "failed": [
+        "scene_interaction::gizmo::scaling::tests::a_world_axis_counts_as_aligned_only_within_numeric_noise"
+      ],
+      "seconds": 10
+    },
+    {
+      "mutant": "M07 residual shear guard off",
+      "result": "KILLED",
+      "failed": [
+        "scene_interaction::gizmo::scaling::tests::the_residual_shear_guard_bounds_what_a_huge_factor_could_add_to_an_aligned_axis"
+      ],
+      "seconds": 9
+    },
+    {
+      "mutant": "M08 determinant bound off",
+      "result": "KILLED",
+      "failed": [
+        "a_result_whose_world_matrix_would_not_be_invertible_is_refused_even_inside_the_range",
+        "scene_interaction::gizmo::scaling::tests::the_world_determinant_bound_is_on_the_world_matrix_not_on_the_components"
+      ],
+      "seconds": 9
+    },
+    {
+      "mutant": "M09 splat axes allowed",
+      "result": "KILLED",
+      "failed": [
+        "a_group_with_a_splat_below_it_only_scales_uniformly_and_a_plain_sibling_is_unaffected",
+        "a_splat_has_no_axis_handles_and_a_non_uniform_scale_of_it_is_refused_explicitly",
+        "scene_interaction::gizmo::scaling::tests::a_frame_refuses_what_cannot_be_scaled_with_the_typed_reason"
+      ],
+      "seconds": 7
+    },
+    {
+      "mutant": "M10 animated scale allowed",
+      "result": "KILLED",
+      "failed": [
+        "a_node_whose_scale_is_animated_is_refused_and_nothing_is_keyed",
+        "another_node_a_swinging_node_and_an_animated_parent_can_still_be_scaled",
+        "scene_interaction::gizmo::scaling::tests::a_frame_refuses_what_cannot_be_scaled_with_the_typed_reason"
+      ],
+      "seconds": 8
+    },
+    {
+      "mutant": "M11 uniform scales x only",
+      "result": "KILLED",
+      "failed": [
+        "a_component_the_document_holds_outside_the_range_may_only_move_towards_it",
+        "a_group_with_a_splat_below_it_only_scales_uniformly_and_a_plain_sibling_is_unaffected",
+        "a_json_lines_session_runs_the_whole_scale_flow_in_process",
+        "a_moving_node_is_scaled_because_only_a_scale_channel_is_in_the_way",
+        "a_negative_scale_keeps_its_sign_and_no_mirror_is_created_by_a_factor",
+        "a_result_whose_world_matrix_would_not_be_invertible_is_refused_even_inside_the_range"
+      ],
+      "seconds": 6
+    },
+    {
+      "mutant": "M12 local axes read as rows",
+      "result": "KILLED",
+      "failed": [
+        "a_handle_drag_and_scene_scale_leave_the_same_document_in_both_spaces",
+        "dragging_a_handle_scales_by_the_ratio_the_pointer_swept_in_both_spaces",
+        "the_scale_overlay_has_three_axis_handles_and_the_uniform_one_where_the_oracle_puts_them"
+      ],
+      "seconds": 5
+    },
+    {
+      "mutant": "M13 press at the origin allowed (axis)",
+      "result": "KILLED",
+      "failed": [
+        "a_press_too_close_to_the_origin_does_not_open_a_drag",
+        "scene_interaction::gizmo::scaling::tests::a_press_that_does_not_fix_a_ratio_does_not_open_a_drag"
+      ],
+      "seconds": 5
+    },
+    {
+      "mutant": "M14 press at the origin allowed (uniform)",
+      "result": "KILLED",
+      "failed": [
+        "scene_interaction::gizmo::scaling::tests::a_press_that_does_not_fix_a_ratio_does_not_open_a_drag"
+      ],
+      "seconds": 5
+    },
+    {
+      "mutant": "M15 uniform box does not win",
+      "result": "SURVIVED",
+      "failed": [],
+      "seconds": 7
+    },
+    {
+      "mutant": "M16 component picked by the smallest diagonal",
+      "result": "KILLED",
+      "failed": [
+        "a_factor_multiplies_the_authored_component_and_touches_nothing_else",
+        "a_handle_drag_and_scene_scale_leave_the_same_document_in_both_spaces",
+        "a_world_axis_along_a_node_axis_scales_that_component_and_the_matrix_is_g_times_w",
+        "a_world_axis_through_an_unevenly_scaled_parent_is_legal_when_it_runs_along_a_node_axis",
+        "dragging_a_handle_scales_by_the_ratio_the_pointer_swept_in_both_spaces",
+        "scene_interaction::gizmo::scaling::tests::a_world_axis_counts_as_aligned_only_within_numeric_noise"
+      ],
+      "seconds": 5
+    },
+    {
+      "mutant": "M17 shown-vs-authored guard off",
+      "result": "KILLED",
+      "failed": [
+        "scene_interaction::gizmo::scaling::tests::a_frame_refuses_what_cannot_be_scaled_with_the_typed_reason"
+      ],
+      "seconds": 7
+    },
+    {
+      "mutant": "M18 non-finite product not refused",
+      "result": "KILLED",
+      "failed": [
+        "scene_interaction::gizmo::scaling::tests::the_limits_are_decided_on_the_magnitude_and_only_against_moving_away_from_the_range"
+      ],
+      "seconds": 8
+    },
+    {
+      "mutant": "M19 refused move drops the candidate",
+      "result": "KILLED",
+      "failed": [
+        "a_position_past_the_origin_or_past_a_limit_is_refused_and_the_last_legal_candidate_stays"
+      ],
+      "seconds": 10
+    },
+    {
+      "mutant": "M20 screen handle reaches the frame",
+      "result": "KILLED",
+      "failed": [
+        "the_typed_commands_match_the_json_ones"
+      ],
+      "seconds": 8
+    },
+    {
+      "mutant": "M21 non-finite factor reaches the frame",
+      "result": "KILLED",
+      "failed": [
+        "a_non_finite_factor_through_the_typed_api_is_refused_without_a_trace"
+      ],
+      "seconds": 10
+    },
+    {
+      "mutant": "M22 splat below not seen",
+      "result": "KILLED",
+      "failed": [
+        "a_group_with_a_splat_below_it_only_scales_uniformly_and_a_plain_sibling_is_unaffected",
+        "a_splat_has_no_axis_handles_and_a_non_uniform_scale_of_it_is_refused_explicitly"
+      ],
+      "seconds": 8
+    },
+    {
+      "mutant": "M23 animated scale looks at rotation",
+      "result": "KILLED",
+      "failed": [
+        "a_node_whose_scale_is_animated_is_refused_and_nothing_is_keyed",
+        "another_node_a_swinging_node_and_an_animated_parent_can_still_be_scaled"
+      ],
+      "seconds": 6
+    },
+    {
+      "mutant": "M24 scale writes to the wrong component (uniform)",
+      "result": "KILLED",
+      "failed": [
+        "a_component_the_document_holds_outside_the_range_may_only_move_towards_it",
+        "a_factor_multiplies_the_authored_component_and_touches_nothing_else",
+        "a_json_lines_session_runs_the_whole_scale_flow_in_process",
+        "a_local_axis_scales_the_node_for_any_parent_and_the_world_matrix_is_w_times_diag",
+        "a_moving_node_is_scaled_because_only_a_scale_channel_is_in_the_way",
+        "a_negative_scale_keeps_its_sign_and_no_mirror_is_created_by_a_factor"
+      ],
+      "seconds": 5
+    },
+    {
+      "mutant": "M25 limits judged on factor not result",
+      "result": "KILLED",
+      "failed": [
+        "a_component_the_document_holds_outside_the_range_may_only_move_towards_it",
+        "a_position_past_the_origin_or_past_a_limit_is_refused_and_the_last_legal_candidate_stays",
+        "the_limits_are_inclusive_one_thousand_and_one_thousandth_in_either_direction"
+      ],
+      "seconds": 6
+    },
+    {
+      "mutant": "J01 uniform box does not win in hover",
+      "result": "KILLED",
+      "failed": [
+        "hover on the scale handles: the uniform box first, then the nearest axis; the centre is no handle"
+      ],
+      "seconds": 0
+    },
+    {
+      "mutant": "J02 scale axes not hoverable",
+      "result": "KILLED",
+      "failed": [
+        "hover on the scale handles: the uniform box first, then the nearest axis; the centre is no handle"
+      ],
+      "seconds": 0
+    },
+    {
+      "mutant": "J03 disabled handles dropped",
+      "result": "KILLED",
+      "failed": [
+        "a scale overlay carries the tool, its handle kinds and the handles the core disabled with their reason"
+      ],
+      "seconds": 0
+    },
+    {
+      "mutant": "J04 scale tool unknown to the parser",
+      "result": "KILLED",
+      "failed": [
+        "a scale overlay carries the tool, its handle kinds and the handles the core disabled with their reason",
+        "hover on the scale handles: the uniform box first, then the nearest axis; the centre is no handle"
+      ],
+      "seconds": 0
+    }
+  ]
+}
