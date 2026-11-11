@@ -1,5 +1,6 @@
 """Tests of the shared core of the A/B runners (`scripts/ab/`): project reading, stats, plays and gaps, validity, charts and the batch loop.
 Pure logic; no editor, GPU, runtime page or private media is started."""
+import hashlib
 import itertools
 import json
 import os
@@ -79,6 +80,31 @@ class ProjectTests(unittest.TestCase):
             checked = PR.check_sources([{"kind": "splat", "path": path}])
             self.assertEqual(checked[0]["size"], 10)
             self.assertEqual(len(checked[0]["head_tail_sha256"]), 64)
+
+
+class HeadTailHashTests(unittest.TestCase):
+    CHUNK = 8
+
+    def hashed(self, content):
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "a.bin")
+            Path(path).write_bytes(content)
+            return PR.head_tail_hash(path, chunk=self.CHUNK)
+
+    def test_a_file_between_one_and_two_chunks_has_its_last_byte_read(self):
+        for size in range(self.CHUNK + 1, 2 * self.CHUNK + 1):
+            with self.subTest(size=size):
+                content = bytes(range(size))
+                self.assertNotEqual(self.hashed(content), self.hashed(content[:-1] + b"\xff"), "the last byte is part of the identity")
+                self.assertEqual(self.hashed(content), (size, hashlib.sha256(content).hexdigest()), "head and tail together are the file, each byte once")
+
+    def test_a_file_that_fits_a_chunk_is_read_whole_and_a_larger_one_by_its_head_and_its_tail(self):
+        self.assertNotEqual(self.hashed(b"abcdefg"), self.hashed(b"abcdefh"))
+        long = bytes(range(40))
+        self.assertNotEqual(self.hashed(long), self.hashed(long[:-1] + b"\xff"), "the tail")
+        self.assertNotEqual(self.hashed(long), self.hashed(b"\xff" + long[1:]), "the head")
+        self.assertEqual(self.hashed(long), self.hashed(long[:self.CHUNK] + b"\xff" * 24 + long[-self.CHUNK:]), "the middle is not read: the hash is an identity, not a checksum")
+        self.assertEqual(self.hashed(long)[0], 40)
 
 
 class GapTests(unittest.TestCase):

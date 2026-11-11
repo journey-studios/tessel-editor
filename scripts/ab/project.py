@@ -47,13 +47,14 @@ def parse_project(document):
 
 
 def head_tail_hash(path, chunk=1 << 20):
-    """sha256 of the first and last MiB plus the size: identity enough to notice another file, without reading 66 MiB."""
+    """sha256 of the first and last MiB plus the size: identity enough to notice another file, without reading 66 MiB. The tail starts where the head
+    ends, so a file between one and two chunks has every byte read once and one that fits in a chunk is read whole."""
     digest = hashlib.sha256()
     size = os.path.getsize(path)
     with open(path, "rb") as handle:
         digest.update(handle.read(chunk))
-        if size > 2 * chunk:
-            handle.seek(size - chunk)
+        if size > chunk:
+            handle.seek(max(chunk, size - chunk))
             digest.update(handle.read(chunk))
     return size, digest.hexdigest()
 

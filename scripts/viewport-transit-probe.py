@@ -4,8 +4,7 @@
     python3 scripts/viewport-transit-probe.py loop    --binary target/release/tessel-editor --project P.tessel.json --out DIR
                   [--io async|sync] [--iterations 3] [--from F] [--to T] [--report-dir DIR2]
     python3 scripts/viewport-transit-probe.py ab      --binary ... --project P.tessel.json --out DIR [--pairs 4] [--io async]
-    python3 scripts/viewport-transit-probe.py ab-report --out DIR
-    python3 scripts/viewport-transit-probe.py analyze --out DIR [--report-dir DIR2]
+    python3 scripts/viewport-transit-probe.py analyze --out DIR [--report-dir DIR2]   (loop or ab: the manifest says which)
 
 `loop` plays a WINDOW of the real project (default: from 3 s before the first cut to a second after it, where the
 instrumented runs found the long pauses) in a FRESH editor per iteration (fresh, because the pause follows the first load of a
@@ -210,8 +209,6 @@ def ab_markdown(report):
              "- every run is a fresh editor: all are FIRST plays of a cold process; a repeated play in one process is not measured here", "",
              "| pair | order | arm | valid | class | pictures | gap p50 | gap p95 | gap max | slow gaps (from→to ms) | UI blocks | page stalls ≥40 (n/max ms) | gpu finish max ms (frames ≥20 ms) |",
              "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
-    if m.get("raw_rebuild"):
-        lines[3:3] = [f"- Raw rebuild: {m['raw_rebuild']}"]
     for run in report["runs"]:
         s = run["summary"]
         g = s["gap_ms"] or {}
@@ -250,30 +247,6 @@ def ab_verdict(runs):
             "Correlation under a causal arm; the arm adds its own wait, so it does not show this is the whole stall, and it is not a display or photon latency.")
 
 
-def cmd_ab_report(args):
-    """Recompute current rules only from a complete raw archive of the saved batch.
-    Ignore leftovers from other batches; if any expected raw run is missing, preserve all summaries and label that limit."""
-    out = pathlib.Path(args.out)
-    report = json.loads((out / "ab.json").read_text())
-    # The saved batch defines the runs. Globbing can import leftovers from an older, larger batch.
-    expected = [(run, out / f"pair-{run['pair']}-{run['arm']}.json") for run in report["runs"]]
-    missing = [path.name for _, path in expected if not path.is_file()]
-    if expected and not missing:
-        runs = []
-        for saved, path in expected:
-            record = json.loads(path.read_text())
-            runs.append({**saved, "summary": arm_summary(record)})
-        report["runs"] = runs
-        report["manifest"]["raw_rebuild"] = "complete saved batch; current summary rules"
-    else:
-        report["manifest"]["raw_rebuild"] = "raw archive incomplete: summaries as saved, verdict recomputed"
-    report["verdict"] = ab_verdict(report["runs"])
-    (out / "ab.json").write_text(json.dumps(report, indent=2))
-    (out / "ab.md").write_text(ab_markdown(report))
-    print(ab_markdown(report))
-    return 0
-
-
 # --------------------------------------------------------------------------------------------------- commands
 def build_ab(records, project, manifest):
     runs = [{"pair": record["pair"], "order": "AB" if record["pair"] % 2 == 0 else "BA", "arm": record["arm"], "summary": arm_summary(record)} for record in records]
@@ -284,6 +257,7 @@ LOOP = Experiment(record="iteration-{index:02d}.json", build=build_report, markd
                   ok=lambda report: not report["red_iterations"] and report["all_valid"])
 AB = Experiment(record="pair-{pair}-{arm}.json", build=build_ab, markdown=ab_markdown, stem="ab",
                 ok=lambda report: all(run["summary"]["valid"] for run in report["runs"]))
+EXPERIMENTS = {"loop": LOOP, "ab": AB}
 
 
 def window_of(args, project):
@@ -296,7 +270,7 @@ def cmd_loop(args):
         return 2
     W = warm_proof()
     window = window_of(args, run.project)
-    manifest = manifest_of(run, ["loop"] * args.iterations, io=args.io, window=list(window), iterations=args.iterations, label=args.label)
+    manifest = manifest_of(run, ["loop"] * args.iterations, kind="loop", io=args.io, window=list(window), iterations=args.iterations, label=args.label)
 
     def session(index, _):
         return run_session(W, run.binary, run.document, {"iteration": index, "io": args.io, "window": list(window)}, session_env(args.io),
@@ -316,7 +290,7 @@ def cmd_ab(args):
         return 2
     W = warm_proof()
     window = window_of(args, run.project)
-    manifest = manifest_of(run, arm_order(("A", "B"), args.pairs), io=args.io, window=list(window), pairs=args.pairs,
+    manifest = manifest_of(run, arm_order(("A", "B"), args.pairs), kind="ab", io=args.io, window=list(window), pairs=args.pairs,
                            arm_a="trace + page timing (the probe's own cost in both arms)",
                            arm_b="arm A + the page waits for the GPU after each draw (TESSEL_VIEWPORT_PROBE_GPU_FINISH=1)", label=args.label)
 
@@ -351,15 +325,13 @@ def main():
             p.add_argument("--iterations", type=int, default=3)
         else:
             p.add_argument("--pairs", type=int, default=4)
-    rep = sub.add_parser("ab-report")
-    rep.add_argument("--out", required=True)
     ana = sub.add_parser("analyze")
     ana.add_argument("--out", required=True)
     ana.add_argument("--report-dir")
     args = parser.parse_args()
     if args.command in ("loop", "ab") and (args.start is None) != (args.end is None):
         parser.error("--from and --to go together: give both or neither (neither measures the default window around the first cut)")
-    return {"loop": cmd_loop, "ab": cmd_ab, "ab-report": cmd_ab_report, "analyze": lambda a: analyze(LOOP, a)}[args.command](args)
+    return {"loop": cmd_loop, "ab": cmd_ab, "analyze": lambda a: analyze(EXPERIMENTS, a)}[args.command](args)
 
 
 if __name__ == "__main__":

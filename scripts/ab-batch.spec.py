@@ -263,6 +263,124 @@ class AnalysisTests(Folder):
         self.assertEqual(len((out / "runs.sha256").read_text().splitlines()), 4)
 
 
+class LoadBatchTests(Folder):
+    """Reading a saved batch back: exactly the records of the manifest's order, every one of them from that batch."""
+
+    def saved(self, names=None, manifest=None, stamp=None):
+        out = Path(self.args.out)
+        out.mkdir(exist_ok=True)
+        manifest = manifest or {"order": ORDER, "batch_id": "b" * 32}
+        for name in names if names is not None else EXPERIMENT.names(manifest["order"]):
+            record = {"name": name} if stamp is False else {"name": name, "batch_id": stamp or manifest.get("batch_id")}
+            (out / name).write_text(json.dumps(record))
+        return out, manifest
+
+    def refused(self, out, manifest):
+        with self.assertRaises(SystemExit) as raised:
+            B.load_batch(out, EXPERIMENT, manifest)
+        return str(raised.exception)
+
+    def test_the_records_of_the_batch_come_back_in_the_order_of_its_manifest(self):
+        out, manifest = self.saved()
+        self.assertEqual([record["name"] for record in B.load_batch(out, EXPERIMENT, manifest)], EXPERIMENT.names(ORDER))
+        self.assertEqual(len(B.load_batch(out, EXPERIMENT, manifest)), len(ORDER))
+
+    def test_a_missing_record_is_refused_and_named(self):
+        names = EXPERIMENT.names(ORDER)
+        out, manifest = self.saved(names=names[:-1])
+        text = self.refused(out, manifest)
+        self.assertIn("refused", text)
+        self.assertIn(names[-1], text)
+
+    def test_an_extra_record_from_a_bigger_older_batch_is_refused_and_named(self):
+        out, manifest = self.saved(names=EXPERIMENT.names(ORDER) + ["run-09-first.json"])
+        self.assertIn("run-09-first.json", self.refused(out, manifest))
+
+    def test_a_record_of_another_batch_is_refused_even_under_the_right_name(self):
+        out, manifest = self.saved()
+        name = EXPERIMENT.names(ORDER)[1]
+        (out / name).write_text(json.dumps({"name": name, "batch_id": "a" * 32}))
+        text = self.refused(out, manifest)
+        self.assertIn(name, text)
+        self.assertIn("batch_id", text)
+
+    def test_a_lot_from_before_batches_were_stamped_is_refused_whole(self):
+        out, manifest = self.saved(manifest={"order": ORDER}, stamp=False)
+        self.assertIn("batch_id", self.refused(out, manifest))
+        out, manifest = self.saved(manifest={"order": ORDER, "batch_id": "b" * 32}, stamp=False)
+        self.assertIn("batch_id", self.refused(out, manifest))
+
+    def test_a_manifest_without_a_batch_refuses_records_that_carry_none_too(self):
+        out, manifest = self.saved(manifest={"order": ORDER}, stamp=None)
+        self.assertIn("batch_id", self.refused(out, manifest), "two missing identities are not the same identity")
+
+    def test_other_files_of_the_folder_are_not_records(self):
+        out, manifest = self.saved()
+        (out / "manifest.json").write_text("{}")
+        (out / "analysis.json").write_text("{}")
+        (out / "runs.sha256").write_text("")
+        self.assertEqual(len(B.load_batch(out, EXPERIMENT, manifest)), len(ORDER))
+
+
+class AnalyzeFolderTests(Folder):
+    """`analyze` over a folder a run wrote: the document must be the one the sessions played, and the experiment the manifest names."""
+
+    def ran(self, **manifest_extra):
+        run, _ = self.prerequisites(Warm())
+        manifest = B.manifest_of(run, ORDER, runtime_js=None, **manifest_extra)
+        with contextlib.redirect_stdout(io.StringIO()):
+            B.run_arms(run, Path(self.args.out), manifest, EXPERIMENT, lambda index, arm: {"number": index})
+        return manifest
+
+    def analyze(self, experiments=EXPERIMENT):
+        with contextlib.redirect_stdout(io.StringIO()):
+            return B.analyze(experiments, self.args)
+
+    def test_the_document_the_sessions_played_is_the_one_analysed_with(self):
+        self.ran()
+        parsed = []
+        with mock.patch.object(B, "parse_project", side_effect=lambda document: parsed.append(document) or PROJECT):
+            self.assertEqual(self.analyze(), 0)
+        self.assertEqual(parsed, [{}])
+        self.assertTrue(json.loads((Path(self.args.out) / "analysis.json").read_text())["project"])
+
+    def test_another_document_is_refused_before_anything_is_read_or_written(self):
+        self.ran()
+        out = Path(self.args.out)
+        (out / "analysis.json").write_text("old")
+        self.document.write_text('{"another": "document"}')
+        with self.assertRaises(SystemExit) as raised, mock.patch.object(B, "parse_project") as parse:
+            self.analyze()
+        self.assertIn("not the document", str(raised.exception))
+        parse.assert_not_called()
+        self.assertEqual((out / "analysis.json").read_text(), "old")
+
+    def test_without_a_document_the_analysis_has_no_project_and_asks_nothing_of_it(self):
+        self.ran()
+        self.args.project = None
+        self.assertEqual(self.analyze(), 0)
+        self.assertFalse(json.loads((Path(self.args.out) / "analysis.json").read_text())["project"])
+
+    def test_a_runner_with_several_experiments_analyses_the_one_its_manifest_names(self):
+        self.ran(kind="second")
+        built = []
+
+        def experiment(name):
+            return B.Experiment(record=EXPERIMENT.record, build=lambda records, project, manifest: built.append(name) or build(records, project, manifest),
+                                markdown=EXPERIMENT.markdown, ok=EXPERIMENT.ok, stem=name)
+
+        self.assertEqual(self.analyze({"first": experiment("first"), "second": experiment("second")}), 0)
+        self.assertEqual(built, ["second"])
+        self.assertTrue((Path(self.args.out) / "second.json").exists())
+        self.assertFalse((Path(self.args.out) / "first.json").exists())
+
+    def test_a_manifest_that_names_no_known_kind_is_refused(self):
+        self.ran()
+        with self.assertRaises(SystemExit) as raised:
+            self.analyze({"first": EXPERIMENT})
+        self.assertIn("kind", str(raised.exception))
+
+
 class LockFileTests(unittest.TestCase):
     def test_a_run_releases_its_locks_and_never_deletes_the_lock_files(self):
         proof = warm_proof()

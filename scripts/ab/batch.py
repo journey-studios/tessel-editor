@@ -141,11 +141,17 @@ def finish(experiment, out, records, project, manifest, report_dir=None, charts=
     return 0 if experiment.ok(report) else 1
 
 
-def analyze(experiment, args):
+def analyze(experiments, args):
     """`analyze --out DIR [--project DOC] [--report-dir DIR2]`: the same analysis as the run, from the saved batch. `--project` must be the document the
-    sessions played (its sha256 is the manifest's)."""
+    sessions played (its sha256 is the manifest's). `experiments` is the runner's one `Experiment`, or, for a runner with several, a dict by the `kind`
+    its manifests carry: there is one way to analyse a batch, never one per command."""
     out = pathlib.Path(args.out)
     manifest = json.loads((out / "manifest.json").read_text())
+    experiment = experiments
+    if not isinstance(experiments, Experiment):
+        experiment = experiments.get(manifest.get("kind"))
+        if experiment is None:
+            raise SystemExit(f"refused: the manifest's kind {manifest.get('kind')!r} is not one of {sorted(experiments)}")
     project = None
     if getattr(args, "project", None):
         document = pathlib.Path(args.project)

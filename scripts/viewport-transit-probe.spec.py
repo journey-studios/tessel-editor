@@ -1,9 +1,12 @@
 """Pure-logic tests of the BL157.2 transit probe; no editor, GPU, runtime page or private media is started."""
+import contextlib
 import importlib.util
+import inspect
 import json
 import os
 import unittest
 import tempfile
+from io import StringIO
 from types import SimpleNamespace
 from unittest import mock
 from unittest.mock import patch
@@ -23,37 +26,70 @@ def event(name, t, **fields):
     return {"kind": name, "t_ms": t, "seq": int(t), "fields": fields}
 
 
-class BatchRebuildTests(unittest.TestCase):
-    def test_the_markdown_exposes_a_partial_archive_warning(self):
-        manifest = {'git': {'sha': 'a' * 40, 'dirty_files': 0}, 'binary_sha256': 'b' * 64,
-                    'runtime_sha256': 'c' * 64, 'document_sha256': 'd' * 64, 'io': 'async',
-                    'window': [1, 2], 'arm_a': 'control', 'arm_b': 'probe', 'pairs': 0,
-                    'raw_rebuild': 'raw archive incomplete: summaries as saved'}
-        text = probe.ab_markdown({'manifest': manifest, 'runs': [], 'verdict': 'inconclusive'})
-        self.assertIn('raw archive incomplete: summaries as saved', text)
+class AnalyzeTests(unittest.TestCase):
+    """`analyze` is the one way to read a saved batch: the manifest says whether it was a loop or an A/B, and the folder must hold exactly that batch."""
+    ORDER = ["A", "B"]
+    BATCH = "b" * 32
 
-    def rebuild(self, raw_names):
-        saved = [{'pair': 0, 'arm': arm, 'order': 'AB', 'summary': {'saved': arm}} for arm in ('A', 'B')]
+    def folder(self, directory, names=("pair-0-A.json", "pair-0-B.json"), kind="ab"):
+        out = Path(directory)
+        manifest = {"kind": kind, "batch_id": self.BATCH, "order": self.ORDER, "git": {"sha": "a" * 40, "dirty_files": 0}, "binary_sha256": "b" * 64,
+                    "runtime_sha256": "c" * 64, "document_sha256": "d" * 64, "io": "async", "window": [1, 2], "arm_a": "control", "arm_b": "probe", "pairs": 1}
+        if kind is None:
+            del manifest["kind"]
+        (out / "manifest.json").write_text(json.dumps(manifest))
+        for name in names:
+            arm = name.split("-")[2].split(".")[0]
+            (out / name).write_text(json.dumps({"name": name, "arm": arm, "pair": int(name.split("-")[1]), "batch_id": self.BATCH}))
+        return out
+
+    def analyze(self, out):
+        shown = StringIO()
+        with patch.object(probe, "arm_summary", side_effect=lambda record: {"valid": True, "invalid_reasons": [], "class": "quiet", "pictures": 1, "gap_ms": None,
+                                                                            "slow_gaps": 0, "ui_blocks": 0, "page_stalls_ge_40": {"n": 0, "max_ms": None},
+                                                                            "gpu_finish": {"n": 0, "ge_20": [], "max_ms": None}, "gaps_over": [], "from": record["name"]}), \
+                contextlib.redirect_stdout(shown):
+            return probe.analyze(probe.EXPERIMENTS, SimpleNamespace(out=str(out), report_dir=None))
+
+    def test_an_ab_batch_is_analysed_from_its_own_records_in_the_order_of_its_manifest(self):
         with tempfile.TemporaryDirectory() as directory:
-            out = Path(directory)
-            (out / 'ab.json').write_text(json.dumps({'manifest': {}, 'runs': saved, 'verdict': 'old'}))
-            for name in raw_names:
-                (out / name).write_text(json.dumps({'name': name}))
-            with patch.object(probe, 'arm_summary', side_effect=lambda record: {'raw': record['name']}), \
-                    patch.object(probe, 'ab_verdict', return_value='recomputed'), \
-                    patch.object(probe, 'ab_markdown', return_value='report'):
-                probe.cmd_ab_report(SimpleNamespace(out=str(out)))
-            return saved, json.loads((out / 'ab.json').read_text())
+            out = self.folder(directory)
+            self.assertEqual(self.analyze(out), 0)
+            report = json.loads((out / "ab.json").read_text())
+            self.assertEqual([(run["pair"], run["arm"], run["summary"]["from"]) for run in report["runs"]], [(0, "A", "pair-0-A.json"), (0, "B", "pair-0-B.json")])
+            self.assertEqual(sorted(path.name for path in out.glob("*.sha256")), ["runs.sha256"])
 
-    def test_partial_raw_archive_preserves_every_saved_run(self):
-        saved, report = self.rebuild(['pair-0-A.json'])
-        self.assertEqual(report['runs'], saved)
-        self.assertIn('incomplete', report['manifest']['raw_rebuild'])
+    def test_a_folder_that_holds_leftovers_of_another_batch_is_refused_not_analysed_around_them(self):
+        with tempfile.TemporaryDirectory() as directory:
+            out = self.folder(directory, names=("pair-0-A.json", "pair-0-B.json", "pair-9-A.json"))
+            with self.assertRaises(SystemExit) as refused:
+                self.analyze(out)
+            self.assertIn("pair-9-A.json", str(refused.exception))
+            self.assertFalse((out / "ab.json").exists())
 
-    def test_old_files_from_another_batch_never_enter_the_saved_batch(self):
-        _, report = self.rebuild(['pair-0-A.json', 'pair-0-B.json', 'pair-9-A.json'])
-        self.assertEqual([(r['pair'], r['arm']) for r in report['runs']], [(0, 'A'), (0, 'B')])
-        self.assertEqual([r['summary']['raw'] for r in report['runs']], ['pair-0-A.json', 'pair-0-B.json'])
+    def test_a_folder_that_lost_a_record_is_refused_not_rebuilt_from_the_summaries_as_saved(self):
+        with tempfile.TemporaryDirectory() as directory:
+            out = self.folder(directory, names=("pair-0-A.json",))
+            (out / "ab.json").write_text(json.dumps({"runs": [], "verdict": "old"}))
+            with self.assertRaises(SystemExit) as refused:
+                self.analyze(out)
+            self.assertIn("pair-0-B.json", str(refused.exception))
+            self.assertEqual(json.loads((out / "ab.json").read_text())["verdict"], "old", "nothing was rewritten")
+
+    def test_a_manifest_that_does_not_say_what_was_run_is_refused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(SystemExit) as refused:
+                self.analyze(self.folder(directory, kind=None))
+            self.assertIn("kind", str(refused.exception))
+
+    def test_the_manifest_of_every_command_names_its_kind(self):
+        self.assertEqual(sorted(probe.EXPERIMENTS), ["ab", "loop"])
+        self.assertIs(probe.EXPERIMENTS["ab"], probe.AB)
+        self.assertIs(probe.EXPERIMENTS["loop"], probe.LOOP)
+        source = inspect.getsource(probe)
+        self.assertIn('kind="loop"', source)
+        self.assertIn('kind="ab"', source)
+        self.assertNotIn("ab-report", source, "a second way to analyse a batch is a second way to be wrong about it")
 
 
 class AbTests(unittest.TestCase):
