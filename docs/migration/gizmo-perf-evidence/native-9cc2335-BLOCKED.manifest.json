@@ -1,0 +1,97 @@
+{
+ "binary": "/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-c84f4f8b/target/release/tessel-editor",
+ "binary_sha256": "6807cbf79c442d188c51aba1e3aa48c529597f7655b03898f6da57522481583c",
+ "command": [
+  "scripts/gizmo-perf/native.py",
+  "--out",
+  "/tmp/gizmo-perf-native-final"
+ ],
+ "corpus": {
+  "corpusVersion": 1,
+  "files": {
+   "deep.bundle.json": {
+    "bytes": 27080,
+    "sha256": "28e21da6baefb887eff30a88189ed801194fbaa9b01285ab2bfd39aadc14e784"
+   },
+   "dense.bundle.json": {
+    "bytes": 491475,
+    "sha256": "26c257121d0937f073fbc4a3291be380a379d3bbfa80768fcd7948805d41511f"
+   }
+  },
+  "gaps": [
+   "no splat case: the corpus has no splat asset (core tests cover the refusals)"
+  ],
+  "generator": {
+   "file": "scripts/gizmo-perf/corpus.py",
+   "sha256": "178d2da3b26f5b6e1d890fcf4f1dde1f5a017083764fa7c3ac1c1d59122b5dfc"
+  },
+  "journey": {
+   "file": "docs/migration/fixtures/gizmo-perf/journey.json",
+   "sha256": "2218c395051e90127df0920354a6fdeed207fbf00bade8880a38af20ef609d9c"
+  },
+  "nodes": {
+   "deep.bundle.json": 44,
+   "dense.bundle.json": 618,
+   "small": 6
+  },
+  "private_media": false,
+  "source": {
+   "file": "scripts/directed-scene-proof/corpus/bundle.json",
+   "sha256": "6f2086eb2ffa919c93f74531145c2e3601ee91bd4c948b1965b67f5effc4c93b"
+  }
+ },
+ "cwd": "/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-c84f4f8b",
+ "identity": {
+  "branch": "t3/gizmo-performance-regression-suite",
+  "dirty": "",
+  "head": "9cc233514c70f4d694de5219a7eedaafc61f4feb",
+  "tree": "a7b35b39d742fcc43956dee435ef865f6958b2f0"
+ },
+ "limits": [
+  "the compositor / GPU scan-out is not observable; directed-scene pictures carry no presented-frame stamp (the session trace's frames_total is 0), so core->host->runtime is measured, the last hop is not",
+  "a socket reply and the page's frame.done are not proof of painting; the picture hash is the runtime read-back",
+  "the OS capture is observational (one window witness per corpus), never an assertion",
+  "no physical pointer, keyboard or popover focus is used: BL015.2, BL043, BL044 remain pending",
+  "client_ms includes the socket round trip and the client process: it is not the host cost",
+  "observations of one machine/backend; nothing is budgeted and no A/B against a baseline native binary exists yet"
+ ],
+ "machine_before": {
+  "cpu": "Apple M3 Pro",
+  "cpus": 11,
+  "free_gib": 8.39,
+  "loadavg": [
+   2.97705078125,
+   7.40234375,
+   12.34912109375
+  ],
+  "machine": "arm64",
+  "memory_bytes": "19327352832",
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "power": [
+   "Now drawing from 'AC Power'",
+   " -InternalBattery-0 (id=21889123)\t100%; charged; 0:00 remaining present: true"
+  ],
+  "thermal": "Note: No thermal warning level has been recorded\nNote: No performance warning level has been recorded\nNote: No CPU power status has been recorded",
+  "top_cpu_processes": [
+   "PID  %CPU COMM",
+   "  396  33.1 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer",
+   "88309  16.3 /opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/Resources/Python.app/Contents/MacOS/Python",
+   "34613   9.6 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/157.0.8103.40/Helpers/Google Chrome Helper (Aperitif).app/Contents/MacOS/Google Chrome Helper (Aperitif)",
+   "49969   5.6 /Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Framework.framework/Versions/157.0.8103.40/Helpers/Google Chrome Helper (Aperitif Renderer).app/Contents/MacOS/Google Chrome Helper (Aperitif Renderer)",
+   "23664   3.1 /Users/wallyssonnunes/.t3/worktrees/tesselapp/t3-3362aec7/node_modules/.pnpm/@esbuild+darwin-arm64@0.27.3/node_modules/@esbuild/darwin-arm64/bin/esbuild",
+   "59434   3.0 /Applications/WhatsApp.app/Contents/MacOS/WhatsApp",
+   "  601   2.4 /System/Library/DriverExtensions/com.apple.DriverKit-AppleBCMWLAN.dext/com.apple.DriverKit-AppleBCMWLAN"
+  ],
+  "utc": "2026-11-11T03:26:58Z"
+ },
+ "measurement": true,
+ "reason": "only 8.39 GiB free (floor 12)",
+ "runtime_sha256": "636c0d9fc3af852f299af3419f5a1f4d1f7f1b1c7d70c9b2afeb2cdc6d1c5d9e",
+ "status": "BLOCKED",
+ "suite": "gizmo-perf-native",
+ "toolchain": {
+  "cargo": "cargo 1.99.1 (5f94df478 2026-08-27)",
+  "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)"
+ },
+ "utc_start": "2026-11-11T03:26:58Z"
+}
