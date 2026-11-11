@@ -1094,7 +1094,7 @@ resolvido aumentando `EPS` nem mascarando a comparação.
 | API `four_parents_…keep_every_local_handle_and_edit_where_the_oracle_says` | cadeia de quatro pais com rotações e escala `(0,01, 100, 100)`: handles do overlay onde a câmera do teste projeta `unit(coluna de M)`, `scene.scale` em `x/y/z` dá `W·diag(d)` (comparação relativa por linha), pivô e `localScale` autoral; `uniform` = `f·W` em `local` e `world` |
 | API `…without_any_rotation_keep_the_three_axes_in_both_spaces` | `M = diag(1e-8, 1e8, 1e8)`, por quatro pais **e** por um pai que escreve os números extremos, `local` e `world` |
 | API `…keep_the_world_axes_that_run_along_a_node_axis` | quarto de volta no nó (z e y): componente pelo oráculo, `G·W` |
-| API `…with_a_rotation_between_them_refuse_the_world_shear` | **limite honesto, não escondido**: o mesmo quarto de volta no segundo pai não é permutação exata em f64 (`cos 90° ≈ 6e-17`) e ao lado de `1e16` de anisotropia vira um termo de ordem 1 em `T`; o cisalhamento é real e `world` é recusado, tipado, atômico; `local` continua |
+| API `…with_a_rotation_between_them_refuse_the_world_shear` | **limite honesto, não escondido**: o mesmo quarto de volta no segundo pai não é permutação exata em f64 (`cos 90° ≈ 6e-17`) e ao lado de `1e16` de anisotropia vira um termo de aproximadamente `1e-4` em `T`; o cisalhamento é real e `world` é recusado, tipado, atômico; `local` continua |
 | API `…still_refuse_a_shear_a_limit_and_a_flat_basis` | `world_axis_shear` com nó girado 30°, limites `1e4`/`1e-4`, pai com eixo zero (`degenerate_transform`), `observable` idêntico depois de cada recusa |
 
 **Mutantes (um por vez, arquivo restaurado e hash comparado).** O mutante pedido, que troca a base original pela normalizada por
@@ -1115,9 +1115,10 @@ aspecto 1,5): o press fica na horizontal da origem (o `v` dele é o da origem, b
 origem): todo termo do produto é um zero exato, sem arredondamento decidindo o lado; a razão de distâncias seria um 2 legal
 (afirmado no teste), e a base devolve `Some(0.0)`; idem com os papéis trocados e nos dois sentidos. Um passo (`1e-6`) para dentro do
 meio-plano do press volta a ser a razão comum. O meio-plano válido, a razão e o último candidato legal / `opposite` / recusa
-no release (testes de API existentes) não mudaram. Limite: o `dot` exatamente zero só se alcança com um press alinhado a um eixo da
-imagem, que a API pública não produz (a caixa `uniform` está a 45°); por isso o caso exato é de unidade e o de API segue com os lados
-oposto e vizinho.
+no release (testes de API existentes) não mudaram. Limite de cobertura: o caso exato foi exercitado em unidade, não pela API pública.
+Um press não alinhado também pode produzir `dot == 0` exato com coordenadas adequadas;
+a orientação de 45° da caixa não prova que essa fronteira é inalcançável. Os testes de API
+exercitam os lados oposto e vizinho.
 
 **Achado `4532376203` (CodeRabbit, colunas do backlog).** As linhas BL015.16/.17/.18 já estavam corrigidas pelo coordenador em
 `78f8994` (a tabela tem `Depende de` e depois `Responsável`: `BL015.1…` e `Agente G1.2` nas posições certas); conferido, nenhuma

@@ -946,7 +946,7 @@ fn four_parents_of_anisotropic_scale_keep_the_world_axes_that_run_along_a_node_a
 #[test]
 fn four_parents_of_anisotropic_scale_with_a_rotation_between_them_refuse_the_world_shear() {
     // The same quarter turn on the SECOND parent: in f64 it is a permutation plus ~1e-17 noise, and
-    // the parents' 1e16 spread turns that noise into an off-diagonal of order one in
+    // the parents' 1e16 spread turns that noise into an off-diagonal of approximately 1e-4 in
     // `T = M⁻¹·a·aᵀ·M` (a rotation between two anisotropic scales does not commute with them). The
     // matrix really is sheared for the scene's axes: they are refused, typed, and the local axes,
     // which never depend on that, stay.
