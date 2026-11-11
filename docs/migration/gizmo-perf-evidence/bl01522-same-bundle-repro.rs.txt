@@ -1,0 +1,107 @@
+//! SCRATCH investigation of BL015.22 (NOT to be committed): where does `monitor.show_scene` of a scene that
+//! shares its bundle with the shown one go wrong? Read-only on the product: only public/test entry points.
+use core::prelude::v1::test;
+use serde_json::{Value, json};
+
+use super::input_tests::fixture;
+use super::ops::OpReply;
+use super::*;
+
+fn abs(relative: &str) -> String {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(relative)
+        .canonicalize()
+        .unwrap()
+        .display()
+        .to_string()
+}
+
+fn settle_jobs(view: &Entity<Workstation>, cx: &mut VisualTestContext) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    loop {
+        view.update(cx, |view, cx| view.workflow_tick(cx));
+        cx.run_until_parked();
+        if view.read_with(cx, |view, _| view.workflow.jobs_line().is_none()) {
+            break;
+        }
+        assert!(std::time::Instant::now() < deadline, "the resolve job never ended");
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+    view.update(cx, |view, cx| view.workflow_tick(cx));
+    cx.run_until_parked();
+}
+
+fn call(view: &Entity<Workstation>, cx: &mut VisualTestContext, request: Value) -> Value {
+    let answer = view.update(cx, |view, cx| view.run_op(&request, cx));
+    cx.run_until_parked();
+    let value = match answer {
+        Ok(OpReply::Done(value)) => value,
+        Ok(OpReply::Pending(_)) => panic!("pending"),
+        Err(error) => panic!("{request}: {} {}", error.code, error.message),
+    };
+    if request["op"] == "scene.resources.resolve" {
+        settle_jobs(view, cx);
+    }
+    value
+}
+
+fn shown(view: &Entity<Workstation>, cx: &mut VisualTestContext) -> Option<String> {
+    view.read_with(cx, |view, _| view.viewport.directed_scene().map(str::to_owned))
+}
+
+/// The three parts of the monitor's dedupe key (`ViewportHost::render_scene`): plan JSON, resource map, options.
+fn key_parts(view: &Entity<Workstation>, cx: &mut VisualTestContext, scene: &str) -> (String, String, String) {
+    let frame = view
+        .read_with(cx, |view, _| view.state.scene_frame_at_playhead(scene))
+        .unwrap();
+    view.update(cx, |view, _| {
+        let session = view.workflow.scene_resources();
+        let request = json!({ "scene": scene, "frame": frame, "width": 960, "height": 540 });
+        let (plan, map, options) =
+            tessel_editor_render::scene_operation::prepare(&mut view.state, &request, &session).unwrap();
+        (plan.to_json().to_string(), format!("{map:?}"), format!("{options:?}"))
+    })
+}
+
+#[gpui_kit::test]
+fn scratch_bl01522_where_the_scene_stays(cx: &mut TestAppContext) {
+    let (view, cx) = fixture(cx);
+    view.update(cx, |view, _| view.viewport.pretend_overlay_supported(true));
+    let deep = abs("docs/migration/fixtures/gizmo-perf/deep.bundle.json");
+    let small = abs("scripts/directed-scene-proof/corpus/bundle.json");
+    let base = abs("scripts/directed-scene-proof/corpus");
+
+    call(&view, cx, json!({"op": "project.create", "name": "scratch"}));
+    call(&view, cx, json!({"op": "scene.attach", "id": "proof-b", "path": deep}));
+    call(&view, cx, json!({"op": "scene.resources.resolve", "scene": "proof-b", "base": base}));
+    call(&view, cx, json!({"op": "monitor.show_scene", "scene": "proof-b"}));
+    eprintln!("E1 show proof-b                      -> directed = {:?}", shown(&view, cx));
+
+    call(&view, cx, json!({"op": "scene.attach", "id": "proof-c", "path": deep}));
+    call(&view, cx, json!({"op": "scene.resources.resolve", "scene": "proof-c", "base": base}));
+    let reply = call(&view, cx, json!({"op": "monitor.show_scene", "scene": "proof-c"}));
+    eprintln!("E2 show proof-c (same bundle file)   -> reply {reply} directed = {:?}", shown(&view, cx));
+
+    let b = key_parts(&view, cx, "proof-b");
+    let c = key_parts(&view, cx, "proof-c");
+    eprintln!(
+        "E3 dedupe key parts of proof-b vs proof-c: plan_json equal = {}, resource_map equal = {}, options equal = {}",
+        b.0 == c.0,
+        b.1 == c.1,
+        b.2 == c.2
+    );
+    if b.0 != c.0 {
+        eprintln!("   plan_json b = {}\n   plan_json c = {}", &b.0[..b.0.len().min(400)], &c.0[..c.0.len().min(400)]);
+    }
+
+    // Control: a scene whose plan differs (another bundle) is shown normally, and then the same-plan scene is not.
+    call(&view, cx, json!({"op": "scene.attach", "id": "proof", "path": small}));
+    call(&view, cx, json!({"op": "scene.resources.resolve", "scene": "proof", "base": base}));
+    call(&view, cx, json!({"op": "monitor.show_scene", "scene": "proof"}));
+    eprintln!("E4a show proof (another bundle)      -> directed = {:?}", shown(&view, cx));
+    call(&view, cx, json!({"op": "monitor.show_scene", "scene": "proof-c"}));
+    eprintln!("E4b show proof-c after proof         -> directed = {:?}", shown(&view, cx));
+    call(&view, cx, json!({"op": "monitor.show_scene", "scene": "proof-b"}));
+    eprintln!("E5 show proof-b after proof-c        -> directed = {:?}", shown(&view, cx));
+}

@@ -1,0 +1,61 @@
+E.EF.......EE....
+======================================================================
+ERROR: test_a_base_picture_that_never_converged_stops_the_gesture_before_the_press (__main__.DragBase.test_a_base_picture_that_never_converged_stops_the_gesture_before_the_press)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/gizmo-perf-pr44-a/old/scripts/gizmo-perf/gizmo-perf.spec.py", line 752, in test_a_base_picture_that_never_converged_stops_the_gesture_before_the_press
+    window, checks = self.run_drag([seen(None, 3, 'stale')])
+                     ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/gizmo-perf-pr44-a/old/scripts/gizmo-perf/gizmo-perf.spec.py", line 747, in run_drag
+    native.drag(window, timed, check, self.STEP, 'proof', {'frame': 24}, 'n', [], [],
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                {'steps': {self.STEP['id']: {}}}, {})
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/gizmo-perf-pr44-a/old/scripts/gizmo-perf/native.py", line 633, in drag
+    ms_c, state_c, info_c = window.settle(scene, frame, after=start_mark, seconds=2)
+                            ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/private/tmp/gizmo-perf-pr44-a/old/scripts/gizmo-perf/gizmo-perf.spec.py", line 711, in settle
+    return self.settles.pop(0)
+           ~~~~~~~~~~~~~~~~^^^
+IndexError: pop from empty list
+
+======================================================================
+ERROR: test_a_cancel_that_converged_on_the_base_picture_passes_every_check (__main__.DragBase.test_a_cancel_that_converged_on_the_base_picture_passes_every_check)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/gizmo-perf-pr44-a/old/scripts/gizmo-perf/gizmo-perf.spec.py", line 767, in test_a_cancel_that_converged_on_the_base_picture_passes_every_check
+    self.assertTrue(checks[self.BASE_CHECK] and checks[self.CANCEL_IS_BASE])
+                    ~~~~~~^^^^^^^^^^^^^^^^^
+KeyError: 'drag.translate.cancel: the picture before the gesture converged (it is the base of the pixel checks)'
+
+======================================================================
+ERROR: test_the_noise_limit_follows_the_file_and_refuses_anything_that_is_not_a_fraction (__main__.Judge.test_the_noise_limit_follows_the_file_and_refuses_anything_that_is_not_a_fraction)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/gizmo-perf-pr44-a/old/scripts/gizmo-perf/gizmo-perf.spec.py", line 190, in test_the_noise_limit_follows_the_file_and_refuses_anything_that_is_not_a_fraction
+    self.assertEqual(ab.max_unstable_fraction(path), 0.4)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'ab' has no attribute 'max_unstable_fraction'
+
+======================================================================
+ERROR: test_the_noise_limit_of_the_reference_is_the_one_budgets_json_declares (__main__.Judge.test_the_noise_limit_of_the_reference_is_the_one_budgets_json_declares)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/gizmo-perf-pr44-a/old/scripts/gizmo-perf/gizmo-perf.spec.py", line 180, in test_the_noise_limit_of_the_reference_is_the_one_budgets_json_declares
+    declared = json.loads(ab.BUDGETS_FILE.read_text())['reference']['max_unstable_blocks']
+                          ^^^^^^^^^^^^^^^
+AttributeError: module 'ab' has no attribute 'BUDGETS_FILE'
+
+======================================================================
+FAIL: test_a_cancel_that_never_converged_cannot_pass_on_the_stale_hash_of_the_base (__main__.DragBase.test_a_cancel_that_never_converged_cannot_pass_on_the_stale_hash_of_the_base)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/private/tmp/gizmo-perf-pr44-a/old/scripts/gizmo-perf/gizmo-perf.spec.py", line 762, in test_a_cancel_that_never_converged_cannot_pass_on_the_stale_hash_of_the_base
+    self.assertFalse(checks[self.CANCEL_IS_BASE])
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: True is not false
+
+----------------------------------------------------------------------
+Ran 17 tests in 0.003s
+
+FAILED (failures=1, errors=4)

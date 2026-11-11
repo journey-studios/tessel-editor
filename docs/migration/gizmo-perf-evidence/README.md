@@ -16,11 +16,19 @@ para o head final da PR (os gates funcionais do head e o que não pôde rodar es
 | `native-functional-only-small.tgz` | jornada na janela real, só o corpus `small`, **sem lock e sem guarda (não é medição)**: 160 verificações funcionais, 0 falhas (transformada/undo = golden, pixels, overlay confirmado pela página) | build release de `9cc2335`-pré (jornada ainda com `scene_b` = mesmo bundle: o relatório mostra o efeito) | FUNCTIONAL_ONLY_NOT_A_MEASUREMENT | só funcional, só `small`, revisão anterior do `native.py` (a de `last_frame` foi só compilada) |
 | `workspace-test-5cded7e-2294-1-16.log.gz` | `TESSEL_REQUIRE_RUNTIME=1 cargo test --workspace --no-fail-fast --locked` | `5cded7e` + `native.py` não rastreado | 2294 passaram, **1 falhou** (`the_journey_leaves_the_transform…`: ordem das chaves com `preserve_order` unificado no workspace; **corrigido** no `9cc2335`), 16 `ignored` | nunca foi repetido por inteiro depois da correção (disco) |
 | `budget-audit-final1-5cded7e.json` | auditoria de folga dos orçamentos sobre o relatório retido do `5cded7e` (`scripts/gizmo-perf/audit.py`): 22/60 tipos em que um plano extra passa em tempo; 17/60 com folga p95 ≥ 2×; 6/60 ≥ 3×; 1 tipo (`dense/cold.attach`) em que 1 ms passa | `5cded7e` (análise offline, sem medir nada) | propriedade do orçamento, não prova de desempenho | só os orçamentos de `budgets.json` |
+| `rust-gates-a97a0a7.txt` | **primeira execução do Rust novo** (BL015.21): comando, exit, contagens, disco livre e carga de cada passo (`fmt`, `clippy -p tessel-editor-core --all-targets`, estrutural 7, threads 1, core inteiro, `cargo tree` completo, host 4 e o de mesmo bundle isolado) e o resultado Python | `a97a0a7` (as fontes Rust do head que carrega este arquivo são as mesmas: só Python e docs mudaram) | core: tudo exit 0 (estrutural 7/0/0, threads 1/0/0, inteiro 1267 passaram/0 falharam/7 ignorados, `cargo tree` sem gpui/wry); **host: 3 passaram, 1 FALHOU** (BL015.22); spec 76/76 | só que o Rust compila e o que esses testes dizem; **nenhuma medição de tempo**, nenhum A/B, nenhum mutante de tempo, nenhuma janela nativa, nada de desempenho |
+| `bl01522-same-bundle-repro.log`, `bl01522-same-bundle-repro.rs.txt` | BL015.22: reprodutor mínimo (módulo de teste descartável, só o fonte em `.rs.txt`) e sua saída com o produto intacto, a falha do teste commitado, e o **diagnóstico descartável** (id da cena na chave do dedupe do monitor; revertido, nunca commitado) com o diff | `a97a0a7` | defeito de produto **reproduzido** e causa raiz demonstrada (chave de dedupe sem o id da cena: plano, mapa e opções iguais; `directed.scene` não troca); com o diagnóstico os 4 testes do host passam | o host (sem WebView): **não** o efeito no gizmo da janela real, só lido no código; a decisão de produto é do coordenador |
+| `spec-new-tests-vs-a97a0a7-runners.log` | os 6 testes novos da spec (`DragBase`, `Judge`) contra os `native.py`/`ab.py` **de `a97a0a7`**: 1 FAIL + 4 ERROR (o 6º é um controle que vale nos dois) | `a97a0a7` (runners) + spec desta rodada | controle negativo dos testes | que os testes novos discriminam as correções; nada sobre desempenho |
 
-Gates do head `9cc2335` (um head ANTERIOR ao desta entrega): `fmt --check`, `git diff --check`, `clippy --workspace
---all-targets -D warnings`, testes estruturais do core 7/7 e do host 3/3. Para o head desta entrega só rodaram os
-testes Python dos runners (70) e `rustfmt --check` + `git diff --check`. **Não** repetidos: `cargo tree -p
-tessel-editor-core` (a alegação "sem gpui/wry" não tem log final), workspace inteiro (o do `5cded7e` teve 1 falha e não
-é um PASS final), builds dos binários, provas de processo da escala `0ee2d14` (seguem pendentes) e tudo o que compila o
-Rust novo desta entrega (`scene_gizmo_perf_threads.rs`, o teste do host de mesmo bundle, o `within()` que não mascara
-FAIL e o contador por processo) — BLOCKED: disco 15,09 GiB < 16 GiB e carga 15,9 em 11 CPUs.
+Gates do head `9cc2335` (um head ANTERIOR): `fmt --check`, `git diff --check`, `clippy --workspace --all-targets -D warnings`,
+testes estruturais do core 7/7 e do host 3/3.
+
+Gates de `a97a0a7` (o código do head atual; detalhe e saída em [`rust-gates-a97a0a7.txt`](rust-gates-a97a0a7.txt)): `cargo fmt
+--all -- --check` exit 0; `clippy -p tessel-editor-core --all-targets --locked -D warnings` exit 0; `--test
+scene_gizmo_perf_structure` 7 passaram; `--test scene_gizmo_perf_threads` 1 passou; `cargo test -p tessel-editor-core --locked
+--no-fail-fast` 54 binários, 1267 passaram, 0 falharam, 7 ignorados; `cargo tree -p tessel-editor-core --locked` sem gpui/wry
+(a alegação agora **tem log**); host GPUI `scene_gizmo_perf`: **3 passaram, 1 falhou** (BL015.22, defeito de produto anterior à
+PR; ver `bl01522-same-bundle-repro.log`); spec Python 76/76. **Não** rodados neste head: workspace inteiro (o do `5cded7e` teve
+1 falha e não é um PASS final), `clippy` do host e do workspace, builds dos binários, provas de processo da escala `0ee2d14`
+(seguem pendentes), `run.py`, `ab.py`, `mutate.py` e `native.py` (tempo, A/B, mutantes de tempo e janela). O teste
+`within()` do orçamento está compilado, não executado.
