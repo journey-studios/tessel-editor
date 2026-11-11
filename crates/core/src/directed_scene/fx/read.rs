@@ -8,15 +8,17 @@ use std::collections::HashSet;
 
 use serde_json::Value;
 
-use crate::directed_scene::issue::{INVALID_TYPE, INVALID_VALUE};
+use crate::directed_scene::issue::{INVALID_TYPE, INVALID_VALUE, MISSING_FIELD};
 use crate::directed_scene::read::{Bound, Obj, Sink, at, child, kind_of};
 
 use super::catalog::{EffectSpec, ParamKind, ParamSpec, effect};
 use super::{
     CATALOG_TOO_NEW, DUPLICATE_ID, ENVELOPE_TOO_LONG, FX_CATALOG_VERSION, FX_CLIP_EMPTY,
-    FX_CLIP_OUT_OF_RANGE, FX_CLIP_OVERLAP, FX_KEYS_NOT_YET, FX_LIMIT, FX_SCOPE_NOT_YET,
-    FX_TRANSITION_NOT_YET, Fx, FxClip, FxTrack, FxValue, MAX_FX_CLIPS_PER_TRACK, MAX_FX_TRACKS,
-    PARAM_OUT_OF_RANGE, PARAM_TYPE, UNKNOWN_EFFECT, UNKNOWN_PARAM, id_problem,
+    FX_CLIP_OUT_OF_RANGE, FX_CLIP_OVERLAP, FX_LIMIT, FX_SCOPE_NOT_YET, FX_TRANSITION_NOT_YET, Fx,
+    FxClip, FxEasing, FxKey, FxTrack, FxValue, KEY_OUT_OF_CLIP, KEYFRAME_ORDER,
+    MAX_FX_CLIPS_PER_TRACK, MAX_FX_KEYS_PER_CLIP, MAX_FX_KEYS_PER_CURVE, MAX_FX_KEYS_PER_LAYER,
+    MAX_FX_TRACKS, PARAM_OUT_OF_RANGE, PARAM_TYPE, ParamKeys, UNKNOWN_EFFECT,
+    UNKNOWN_KEYFRAME_EASING, UNKNOWN_PARAM, id_problem,
 };
 
 /// Why a parameter value is refused: a code and a message naming what was expected.
@@ -86,6 +88,17 @@ pub fn parse_param(spec: &ParamSpec, value: &Value) -> Result<FxValue, ParamProb
                 b: channel("b")?,
             })
         }
+        ParamKind::Bool { .. } => match value {
+            Value::Bool(flag) => Ok(FxValue::Bool(*flag)),
+            other => Err((
+                PARAM_TYPE,
+                format!(
+                    "`{}` must be true or false, got {}",
+                    spec.id,
+                    kind_of(other)
+                ),
+            )),
+        },
         ParamKind::Point { min, max, .. } => {
             let map = strict_object(value, &format!("`{}`", spec.id), &["x", "y"])?;
             let axis = |key: &str| {
@@ -186,27 +199,190 @@ fn read_scope(raw: Option<&Value>, path: &str, sink: &Sink) -> bool {
     }
 }
 
-fn read_keys(raw: Option<&Value>, path: &str, sink: &Sink) -> bool {
-    match raw {
-        None => true,
-        Some(Value::Object(map)) if map.is_empty() => true,
-        Some(Value::Object(_)) => {
+/// The `keys` of a clip: one list per keyed parameter, each key `{frame, value, easing?}`.
+///
+/// The import validates what it is given and never repairs it: no sorting, no dropping of a
+/// duplicate, no clamping into the clip. Every problem is reported with its JSON Pointer; the
+/// size of a list is judged before its entries are read, so an oversized document costs a
+/// comparison, not an allocation per key.
+fn read_keys(
+    spec: Option<&'static EffectSpec>,
+    raw: Option<&Value>,
+    path: &str,
+    duration: Option<i64>,
+    sink: &Sink,
+) -> Option<Vec<ParamKeys>> {
+    let Some(raw) = raw else {
+        return Some(Vec::new());
+    };
+    let Some(map) = raw.as_object() else {
+        sink.issue(
+            INVALID_TYPE,
+            path,
+            format!("expected object, got {}", kind_of(raw)),
+        );
+        return None;
+    };
+    let mut curves: Vec<ParamKeys> = Vec::new();
+    let mut clean = true;
+    let mut total: usize = 0;
+    for (name, list) in map {
+        let curve_path = child(path, name);
+        let Some(spec) = spec else {
+            // The effect itself was reported; its parameters cannot be judged.
+            clean = false;
+            continue;
+        };
+        let Some((index, param)) = spec.param(name) else {
             sink.issue(
-                FX_KEYS_NOT_YET,
-                path,
-                "parameter keyframes are not interpreted yet; give fixed `params`",
+                UNKNOWN_PARAM,
+                &curve_path,
+                format!(
+                    "`{name}` is not a parameter of {}; known: {}",
+                    spec.id,
+                    spec.params
+                        .iter()
+                        .map(|param| param.id)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
             );
-            false
-        }
-        Some(other) => {
+            clean = false;
+            continue;
+        };
+        let Some(items) = list.as_array() else {
             sink.issue(
                 INVALID_TYPE,
-                path,
-                format!("expected object, got {}", kind_of(other)),
+                &curve_path,
+                format!("expected array, got {}", kind_of(list)),
             );
-            false
+            clean = false;
+            continue;
+        };
+        if items.is_empty() {
+            sink.issue(
+                INVALID_VALUE,
+                &curve_path,
+                "a curve holds at least one key (leave the parameter out of `keys` instead)",
+            );
+            clean = false;
+            continue;
+        }
+        if items.len() > MAX_FX_KEYS_PER_CURVE {
+            sink.issue(
+                FX_LIMIT,
+                &curve_path,
+                format!(
+                    "{} keys on `{name}`; a curve holds at most {MAX_FX_KEYS_PER_CURVE}",
+                    items.len()
+                ),
+            );
+            clean = false;
+            continue;
+        }
+        total += items.len();
+        if total > MAX_FX_KEYS_PER_CLIP {
+            sink.issue(
+                FX_LIMIT,
+                path,
+                format!("a clip holds at most {MAX_FX_KEYS_PER_CLIP} keys over all its curves"),
+            );
+            return None;
+        }
+        match read_curve(param, items, &curve_path, duration, sink) {
+            Some(keys) => curves.push(ParamKeys { param: index, keys }),
+            None => clean = false,
         }
     }
+    curves.sort_by_key(|curve| curve.param);
+    clean.then_some(curves)
+}
+
+fn read_curve(
+    param: &ParamSpec,
+    items: &[Value],
+    path: &str,
+    duration: Option<i64>,
+    sink: &Sink,
+) -> Option<Vec<FxKey>> {
+    let mut keys = Vec::with_capacity(items.len());
+    let mut clean = true;
+    let mut previous: Option<i64> = None;
+    for (index, item) in items.iter().enumerate() {
+        let key_path = at(path, index);
+        let Some(obj) = Obj::open(item, key_path.clone(), sink) else {
+            clean = false;
+            continue;
+        };
+        let frame = obj.int("frame", Bound::Any);
+        let value = match obj.deferred("value") {
+            Some(raw) => match parse_param(param, raw) {
+                Ok(value) => Some(value),
+                Err((code, message)) => {
+                    obj.sink_issue(code, "value", message);
+                    None
+                }
+            },
+            None => {
+                sink.issue(MISSING_FIELD, &key_path, "missing required field `value`");
+                None
+            }
+        };
+        let easing = match obj.opt_text("easing") {
+            // `None` is an invalid type already reported; an absent easing is linear.
+            None => None,
+            Some(None) => Some(FxEasing::Linear),
+            Some(Some(name)) => match FxEasing::parse(name) {
+                Some(easing) => Some(easing),
+                None => {
+                    obj.sink_issue(
+                        UNKNOWN_KEYFRAME_EASING,
+                        "easing",
+                        format!(
+                            "easing `{name}` is not supported; use {}",
+                            super::FX_EASINGS.join(", ")
+                        ),
+                    );
+                    None
+                }
+            },
+        };
+        if let Some(frame) = frame {
+            if frame < 0 || duration.is_some_and(|length| frame >= length) {
+                obj.sink_issue(
+                    KEY_OUT_OF_CLIP,
+                    "frame",
+                    match duration {
+                        Some(length) => format!(
+                            "key {index} is at frame {frame}, outside the clip (0 to {}); key frames count from the clip's own first frame",
+                            length - 1
+                        ),
+                        None => format!("key {index} is at frame {frame}, before the clip starts"),
+                    },
+                );
+                clean = false;
+            } else if previous.is_some_and(|before| frame <= before) {
+                obj.sink_issue(
+                    KEYFRAME_ORDER,
+                    "frame",
+                    format!(
+                        "key {index} is at frame {frame}; keys sit on whole frames, each after the one before (no duplicates, no reordering is done for you)"
+                    ),
+                );
+                clean = false;
+            }
+            previous = Some(frame);
+        }
+        match (frame, value, easing) {
+            (Some(frame), Some(value), Some(easing)) => keys.push(FxKey {
+                frame,
+                value,
+                easing,
+            }),
+            _ => clean = false,
+        }
+    }
+    clean.then_some(keys)
 }
 
 fn read_clip(obj: &Obj<'_>, sink: &Sink) -> Option<FxClip> {
@@ -239,7 +415,13 @@ fn read_clip(obj: &Obj<'_>, sink: &Sink) -> Option<FxClip> {
     let duration = obj.int("durationFrames", Bound::Any);
     let params = obj.deferred("params");
     let params_path = obj.field_path("params");
-    let keys_ok = read_keys(obj.deferred("keys"), &obj.field_path("keys"), sink);
+    let keys = read_keys(
+        spec,
+        obj.deferred("keys"),
+        &obj.field_path("keys"),
+        duration,
+        sink,
+    );
     let scope_ok = read_scope(obj.deferred("scope"), &obj.field_path("scope"), sink);
     let seed = obj.opt_int("seed", Bound::NonNegative);
     if let Some(Some(seed)) = seed
@@ -258,15 +440,17 @@ fn read_clip(obj: &Obj<'_>, sink: &Sink) -> Option<FxClip> {
     let values = spec.and_then(|spec| read_params(spec, params, &params_path, sink));
     let seed = seed?.and_then(|seed| u32::try_from(seed).ok());
     let (id, spec, start, duration, values) = (id?, spec?, start?, duration?, values?);
-    if !(keys_ok && scope_ok) || id_problem(id).is_some() {
+    if !scope_ok || id_problem(id).is_some() {
         return None;
     }
+    let keys = keys?;
     Some(FxClip {
         id: id.to_string(),
         effect: spec,
         start_frame: start,
         duration_frames: duration,
         params: values,
+        keys,
         fade_in_frames: fade_in?.unwrap_or(0),
         fade_out_frames: fade_out?.unwrap_or(0),
         seed,
@@ -315,6 +499,26 @@ fn read_track(obj: &Obj<'_>, sink: &Sink) -> Option<FxTrack> {
 fn check_layer(fx: &Fx, path: &str, edit_duration: Option<u64>, sink: &Sink) -> bool {
     let before = sink_len(sink);
     let mut seen: HashSet<&str> = HashSet::new();
+    let layer_keys: usize = fx
+        .tracks
+        .iter()
+        .flat_map(|track| &track.clips)
+        .map(|clip| {
+            clip.keys
+                .iter()
+                .map(|curve| curve.keys.len())
+                .sum::<usize>()
+        })
+        .sum();
+    if layer_keys > MAX_FX_KEYS_PER_LAYER {
+        sink.issue(
+            FX_LIMIT,
+            path,
+            format!(
+                "{layer_keys} keys in the effects layer; a bundle holds at most {MAX_FX_KEYS_PER_LAYER}"
+            ),
+        );
+    }
     let tracks_path = child(path, "tracks");
     for (track_index, track) in fx.tracks.iter().enumerate() {
         let track_path = at(&tracks_path, track_index);

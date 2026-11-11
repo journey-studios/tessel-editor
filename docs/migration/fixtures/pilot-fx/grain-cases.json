@@ -1,0 +1,8010 @@
+{
+  "grain_defaults": {
+    "amount": 0.25,
+    "colored": false,
+    "intensity": 1.0,
+    "luma": 0.7,
+    "size": 1.4
+  },
+  "grain_param_order": [
+    "amount",
+    "size",
+    "luma",
+    "colored",
+    "intensity"
+  ],
+  "hashes": {
+    "colored": [
+      {
+        "bits": [
+          3209227561,
+          1054644856,
+          1056473584
+        ],
+        "hash": 15379717
+      },
+      {
+        "bits": [
+          3178499696,
+          3193035780,
+          1021403904
+        ],
+        "hash": 108173849
+      },
+      {
+        "bits": [
+          3188429172,
+          3196891350,
+          1057719132
+        ],
+        "hash": 321340419
+      },
+      {
+        "bits": [
+          3183258840,
+          1060243820,
+          1040734800
+        ],
+        "hash": 333406308
+      },
+      {
+        "bits": [
+          1029812416,
+          3207352003,
+          3198212050
+        ],
+        "hash": 378486154
+      },
+      {
+        "bits": [
+          3202364208,
+          1046477272,
+          3206956846
+        ],
+        "hash": 422799409
+      },
+      {
+        "bits": [
+          1034771712,
+          1054306728,
+          1046440656
+        ],
+        "hash": 546299871
+      },
+      {
+        "bits": [
+          3185113832,
+          3188280060,
+          1061373708
+        ],
+        "hash": 547932978
+      }
+    ],
+    "fnv1a32": [
+      {
+        "hash": 2166136261,
+        "text": ""
+      },
+      {
+        "hash": 3826002220,
+        "text": "a"
+      },
+      {
+        "hash": 3214735720,
+        "text": "foobar"
+      },
+      {
+        "hash": 419953240,
+        "text": "viñeta"
+      },
+      {
+        "hash": 3286700573,
+        "text": "fx-01"
+      },
+      {
+        "hash": 1697369554,
+        "text": "transition-01"
+      },
+      {
+        "hash": 580913553,
+        "text": "grão-ñ-日本-🎞"
+      },
+      {
+        "hash": 4281220673,
+        "text": "a-much-longer-clip-id-with-numbers-123456"
+      }
+    ],
+    "hash_pixel": [
+      {
+        "hash": 597091982,
+        "seed": 3801556156,
+        "x": 8731,
+        "y": 25470
+      },
+      {
+        "hash": 547932978,
+        "seed": 2563813461,
+        "x": 1456,
+        "y": 3407
+      },
+      {
+        "hash": 3110598366,
+        "seed": 1298393698,
+        "x": 1625,
+        "y": 3044
+      },
+      {
+        "hash": 2579169103,
+        "seed": 2551068147,
+        "x": 28486,
+        "y": 2717
+      },
+      {
+        "hash": 3105419025,
+        "seed": 1601755992,
+        "x": 1751,
+        "y": 46618
+      },
+      {
+        "hash": 1079029410,
+        "seed": 3486388513,
+        "x": 2060,
+        "y": 1019
+      },
+      {
+        "hash": 1546011164,
+        "seed": 1121007902,
+        "x": 30869,
+        "y": 1536
+      },
+      {
+        "hash": 2338082401,
+        "seed": 2908512607,
+        "x": 3890,
+        "y": 1257
+      },
+      {
+        "hash": 4021720502,
+        "seed": 158751028,
+        "x": 771,
+        "y": 42966
+      },
+      {
+        "hash": 15379717,
+        "seed": 4009683501,
+        "x": 9496,
+        "y": 3303
+      },
+      {
+        "hash": 1144024257,
+        "seed": 1797653786,
+        "x": 433,
+        "y": 3932
+      },
+      {
+        "hash": 1718206863,
+        "seed": 3851088651,
+        "x": 3310,
+        "y": 3957
+      },
+      {
+        "hash": 1367898383,
+        "seed": 2890783312,
+        "x": 63343,
+        "y": 29442
+      },
+      {
+        "hash": 546299871,
+        "seed": 376711033,
+        "x": 2692,
+        "y": 1043
+      },
+      {
+        "hash": 2508794921,
+        "seed": 1702079062,
+        "x": 3517,
+        "y": 1016
+      },
+      {
+        "hash": 2096696106,
+        "seed": 3209459447,
+        "x": 9034,
+        "y": 1601
+      },
+      {
+        "hash": 2969916106,
+        "seed": 3949124268,
+        "x": 1563,
+        "y": 36462
+      },
+      {
+        "hash": 2974348535,
+        "seed": 2649552133,
+        "x": 672,
+        "y": 1407
+      },
+      {
+        "hash": 333406308,
+        "seed": 1203160274,
+        "x": 44121,
+        "y": 4052
+      },
+      {
+        "hash": 422799409,
+        "seed": 1623177507,
+        "x": 3110,
+        "y": 1357
+      },
+      {
+        "hash": 4103185661,
+        "seed": 1452938824,
+        "x": 1287,
+        "y": 10170
+      },
+      {
+        "hash": 788300096,
+        "seed": 3504520913,
+        "x": 17788,
+        "y": 3371
+      },
+      {
+        "hash": 2688907455,
+        "seed": 2312319118,
+        "x": 3733,
+        "y": 3824
+      },
+      {
+        "hash": 3386616220,
+        "seed": 874235279,
+        "x": 1442,
+        "y": 2201
+      },
+      {
+        "hash": 378486154,
+        "seed": 1383434532,
+        "x": 29235,
+        "y": 66406
+      },
+      {
+        "hash": 2519958441,
+        "seed": 517288157,
+        "x": 3224,
+        "y": 1815
+      },
+      {
+        "hash": 108173849,
+        "seed": 433064330,
+        "x": 2913,
+        "y": 3404
+      },
+      {
+        "hash": 1498314001,
+        "seed": 110880827,
+        "x": 12686,
+        "y": 3109
+      },
+      {
+        "hash": 1778186651,
+        "seed": 1332768576,
+        "x": 2463,
+        "y": 39954
+      },
+      {
+        "hash": 3317834585,
+        "seed": 3956684585,
+        "x": 1652,
+        "y": 3907
+      },
+      {
+        "hash": 3960614236,
+        "seed": 894675910,
+        "x": 35709,
+        "y": 1768
+      },
+      {
+        "hash": 1134793073,
+        "seed": 1974185255,
+        "x": 2138,
+        "y": 3057
+      },
+      {
+        "hash": 3587973138,
+        "seed": 211502236,
+        "x": 1867,
+        "y": 44638
+      },
+      {
+        "hash": 3019020795,
+        "seed": 1834352053,
+        "x": 6576,
+        "y": 431
+      },
+      {
+        "hash": 588291921,
+        "seed": 3831477058,
+        "x": 2489,
+        "y": 1988
+      },
+      {
+        "hash": 2569698363,
+        "seed": 3058884691,
+        "x": 2454,
+        "y": 1021
+      },
+      {
+        "hash": 904168248,
+        "seed": 3782722872,
+        "x": 52135,
+        "y": 16250
+      },
+      {
+        "hash": 1485787401,
+        "seed": 1060040833,
+        "x": 4076,
+        "y": 2651
+      },
+      {
+        "hash": 4119796827,
+        "seed": 827128830,
+        "x": 837,
+        "y": 3040
+      },
+      {
+        "hash": 4183253465,
+        "seed": 48336319,
+        "x": 11730,
+        "y": 73
+      },
+      {
+        "hash": 3762778224,
+        "seed": 1259662612,
+        "x": 1379,
+        "y": 53190
+      },
+      {
+        "hash": 321340419,
+        "seed": 2633087885,
+        "x": 1928,
+        "y": 1351
+      },
+      {
+        "hash": 2660614251,
+        "seed": 2047320570,
+        "x": 6049,
+        "y": 3900
+      },
+      {
+        "hash": 4271265388,
+        "seed": 987496811,
+        "x": 1998,
+        "y": 3285
+      },
+      {
+        "hash": 2078907317,
+        "seed": 946534448,
+        "x": 3535,
+        "y": 63154
+      },
+      {
+        "hash": 1473585810,
+        "seed": 1802586841,
+        "x": 16036,
+        "y": 3699
+      },
+      {
+        "hash": 3743594637,
+        "seed": 1988821302,
+        "x": 1821,
+        "y": 3544
+      },
+      {
+        "hash": 2071311686,
+        "seed": 2166802263,
+        "x": 3274,
+        "y": 1441
+      },
+      {
+        "hash": 2926543089,
+        "seed": 0,
+        "x": 0,
+        "y": 0
+      },
+      {
+        "hash": 885923909,
+        "seed": 4294967295,
+        "x": 4294967295,
+        "y": 4294967295
+      },
+      {
+        "hash": 1261368615,
+        "seed": 1,
+        "x": 0,
+        "y": 65535
+      },
+      {
+        "hash": 4099155433,
+        "seed": 1,
+        "x": 65535,
+        "y": 0
+      },
+      {
+        "hash": 3342258810,
+        "seed": 7,
+        "x": 1,
+        "y": 65536
+      },
+      {
+        "hash": 3932834097,
+        "seed": 123456789,
+        "x": 3,
+        "y": 5
+      }
+    ],
+    "lowbias32": [
+      {
+        "in": 0,
+        "out": 0
+      },
+      {
+        "in": 1,
+        "out": 1753845952
+      },
+      {
+        "in": 2,
+        "out": 3507691905
+      },
+      {
+        "in": 42,
+        "out": 388445122
+      },
+      {
+        "in": 12345,
+        "out": 2435775735
+      },
+      {
+        "in": 3735928559,
+        "out": 3861431939
+      },
+      {
+        "in": 4294967295,
+        "out": 1734902346
+      },
+      {
+        "in": 2147483648,
+        "out": 3427483940
+      },
+      {
+        "in": 2147483647,
+        "out": 2368339896
+      }
+    ],
+    "seed_for": [
+      {
+        "base": 0,
+        "frame": 0,
+        "reseed": "per-frame",
+        "seed": 0
+      },
+      {
+        "base": 0,
+        "frame": 1,
+        "reseed": "per-frame",
+        "seed": 1753845952
+      },
+      {
+        "base": 0,
+        "frame": 7,
+        "reseed": "per-frame",
+        "seed": 2492178918
+      },
+      {
+        "base": 0,
+        "frame": 95,
+        "reseed": "per-frame",
+        "seed": 1783676198
+      },
+      {
+        "base": 0,
+        "frame": 2147483648,
+        "reseed": "per-frame",
+        "seed": 3427483940
+      },
+      {
+        "base": 0,
+        "frame": 4294967301,
+        "reseed": "per-frame",
+        "seed": 1548080446
+      },
+      {
+        "base": 0,
+        "frame": 4294967295,
+        "reseed": "per-frame",
+        "seed": 1734902346
+      },
+      {
+        "base": 7,
+        "frame": 0,
+        "reseed": "per-frame",
+        "seed": 2492178918
+      },
+      {
+        "base": 7,
+        "frame": 1,
+        "reseed": "per-frame",
+        "seed": 2816725947
+      },
+      {
+        "base": 7,
+        "frame": 7,
+        "reseed": "per-frame",
+        "seed": 0
+      },
+      {
+        "base": 7,
+        "frame": 95,
+        "reseed": "per-frame",
+        "seed": 3856952608
+      },
+      {
+        "base": 7,
+        "frame": 2147483648,
+        "reseed": "per-frame",
+        "seed": 953679857
+      },
+      {
+        "base": 7,
+        "frame": 4294967301,
+        "reseed": "per-frame",
+        "seed": 3507691905
+      },
+      {
+        "base": 7,
+        "frame": 4294967295,
+        "reseed": "per-frame",
+        "seed": 998818299
+      },
+      {
+        "base": 1506257062,
+        "frame": 0,
+        "reseed": "per-frame",
+        "seed": 3040034105
+      },
+      {
+        "base": 1506257062,
+        "frame": 1,
+        "reseed": "per-frame",
+        "seed": 4288345134
+      },
+      {
+        "base": 1506257062,
+        "frame": 7,
+        "reseed": "per-frame",
+        "seed": 725332244
+      },
+      {
+        "base": 1506257062,
+        "frame": 95,
+        "reseed": "per-frame",
+        "seed": 3751363413
+      },
+      {
+        "base": 1506257062,
+        "frame": 2147483648,
+        "reseed": "per-frame",
+        "seed": 3909040550
+      },
+      {
+        "base": 1506257062,
+        "frame": 4294967301,
+        "reseed": "per-frame",
+        "seed": 1019155049
+      },
+      {
+        "base": 1506257062,
+        "frame": 4294967295,
+        "reseed": "per-frame",
+        "seed": 3093379937
+      },
+      {
+        "base": 3735928559,
+        "frame": 0,
+        "reseed": "per-frame",
+        "seed": 3861431939
+      },
+      {
+        "base": 3735928559,
+        "frame": 1,
+        "reseed": "per-frame",
+        "seed": 1318293601
+      },
+      {
+        "base": 3735928559,
+        "frame": 7,
+        "reseed": "per-frame",
+        "seed": 2728726832
+      },
+      {
+        "base": 3735928559,
+        "frame": 95,
+        "reseed": "per-frame",
+        "seed": 2323162804
+      },
+      {
+        "base": 3735928559,
+        "frame": 2147483648,
+        "reseed": "per-frame",
+        "seed": 697330998
+      },
+      {
+        "base": 3735928559,
+        "frame": 4294967301,
+        "reseed": "per-frame",
+        "seed": 3621094565
+      },
+      {
+        "base": 3735928559,
+        "frame": 4294967295,
+        "reseed": "per-frame",
+        "seed": 496786033
+      },
+      {
+        "base": 4294967295,
+        "frame": 0,
+        "reseed": "per-frame",
+        "seed": 1734902346
+      },
+      {
+        "base": 4294967295,
+        "frame": 1,
+        "reseed": "per-frame",
+        "seed": 2543912538
+      },
+      {
+        "base": 4294967295,
+        "frame": 7,
+        "reseed": "per-frame",
+        "seed": 998818299
+      },
+      {
+        "base": 4294967295,
+        "frame": 95,
+        "reseed": "per-frame",
+        "seed": 492692465
+      },
+      {
+        "base": 4294967295,
+        "frame": 2147483648,
+        "reseed": "per-frame",
+        "seed": 2368339896
+      },
+      {
+        "base": 4294967295,
+        "frame": 4294967301,
+        "reseed": "per-frame",
+        "seed": 3751074121
+      },
+      {
+        "base": 4294967295,
+        "frame": 4294967295,
+        "reseed": "per-frame",
+        "seed": 0
+      },
+      {
+        "base": 0,
+        "frame": 0,
+        "reseed": "static",
+        "seed": 0
+      },
+      {
+        "base": 0,
+        "frame": 1,
+        "reseed": "static",
+        "seed": 0
+      },
+      {
+        "base": 0,
+        "frame": 7,
+        "reseed": "static",
+        "seed": 0
+      },
+      {
+        "base": 0,
+        "frame": 95,
+        "reseed": "static",
+        "seed": 0
+      },
+      {
+        "base": 0,
+        "frame": 2147483648,
+        "reseed": "static",
+        "seed": 0
+      },
+      {
+        "base": 0,
+        "frame": 4294967301,
+        "reseed": "static",
+        "seed": 0
+      },
+      {
+        "base": 0,
+        "frame": 4294967295,
+        "reseed": "static",
+        "seed": 0
+      },
+      {
+        "base": 7,
+        "frame": 0,
+        "reseed": "static",
+        "seed": 2492178918
+      },
+      {
+        "base": 7,
+        "frame": 1,
+        "reseed": "static",
+        "seed": 2492178918
+      },
+      {
+        "base": 7,
+        "frame": 7,
+        "reseed": "static",
+        "seed": 2492178918
+      },
+      {
+        "base": 7,
+        "frame": 95,
+        "reseed": "static",
+        "seed": 2492178918
+      },
+      {
+        "base": 7,
+        "frame": 2147483648,
+        "reseed": "static",
+        "seed": 2492178918
+      },
+      {
+        "base": 7,
+        "frame": 4294967301,
+        "reseed": "static",
+        "seed": 2492178918
+      },
+      {
+        "base": 7,
+        "frame": 4294967295,
+        "reseed": "static",
+        "seed": 2492178918
+      },
+      {
+        "base": 1506257062,
+        "frame": 0,
+        "reseed": "static",
+        "seed": 3040034105
+      },
+      {
+        "base": 1506257062,
+        "frame": 1,
+        "reseed": "static",
+        "seed": 3040034105
+      },
+      {
+        "base": 1506257062,
+        "frame": 7,
+        "reseed": "static",
+        "seed": 3040034105
+      },
+      {
+        "base": 1506257062,
+        "frame": 95,
+        "reseed": "static",
+        "seed": 3040034105
+      },
+      {
+        "base": 1506257062,
+        "frame": 2147483648,
+        "reseed": "static",
+        "seed": 3040034105
+      },
+      {
+        "base": 1506257062,
+        "frame": 4294967301,
+        "reseed": "static",
+        "seed": 3040034105
+      },
+      {
+        "base": 1506257062,
+        "frame": 4294967295,
+        "reseed": "static",
+        "seed": 3040034105
+      },
+      {
+        "base": 3735928559,
+        "frame": 0,
+        "reseed": "static",
+        "seed": 3861431939
+      },
+      {
+        "base": 3735928559,
+        "frame": 1,
+        "reseed": "static",
+        "seed": 3861431939
+      },
+      {
+        "base": 3735928559,
+        "frame": 7,
+        "reseed": "static",
+        "seed": 3861431939
+      },
+      {
+        "base": 3735928559,
+        "frame": 95,
+        "reseed": "static",
+        "seed": 3861431939
+      },
+      {
+        "base": 3735928559,
+        "frame": 2147483648,
+        "reseed": "static",
+        "seed": 3861431939
+      },
+      {
+        "base": 3735928559,
+        "frame": 4294967301,
+        "reseed": "static",
+        "seed": 3861431939
+      },
+      {
+        "base": 3735928559,
+        "frame": 4294967295,
+        "reseed": "static",
+        "seed": 3861431939
+      },
+      {
+        "base": 4294967295,
+        "frame": 0,
+        "reseed": "static",
+        "seed": 1734902346
+      },
+      {
+        "base": 4294967295,
+        "frame": 1,
+        "reseed": "static",
+        "seed": 1734902346
+      },
+      {
+        "base": 4294967295,
+        "frame": 7,
+        "reseed": "static",
+        "seed": 1734902346
+      },
+      {
+        "base": 4294967295,
+        "frame": 95,
+        "reseed": "static",
+        "seed": 1734902346
+      },
+      {
+        "base": 4294967295,
+        "frame": 2147483648,
+        "reseed": "static",
+        "seed": 1734902346
+      },
+      {
+        "base": 4294967295,
+        "frame": 4294967301,
+        "reseed": "static",
+        "seed": 1734902346
+      },
+      {
+        "base": 4294967295,
+        "frame": 4294967295,
+        "reseed": "static",
+        "seed": 1734902346
+      }
+    ],
+    "triangular": [
+      {
+        "bits": 3209227561,
+        "hash": 15379717,
+        "value": -0.7848687767982483
+      },
+      {
+        "bits": 3178499696,
+        "hash": 108173849,
+        "value": -0.059584081172943115
+      },
+      {
+        "bits": 3188429172,
+        "hash": 321340419,
+        "value": -0.1362970471382141
+      },
+      {
+        "bits": 3183258840,
+        "hash": 333406308,
+        "value": -0.09212654829025269
+      },
+      {
+        "bits": 1029812416,
+        "hash": 378486154,
+        "value": 0.055100202560424805
+      },
+      {
+        "bits": 3202364208,
+        "hash": 422799409,
+        "value": -0.43789052963256836
+      },
+      {
+        "bits": 1034771712,
+        "hash": 546299871,
+        "value": 0.08465003967285156
+      },
+      {
+        "bits": 3185113832,
+        "hash": 547932978,
+        "value": -0.10594731569290161
+      },
+      {
+        "bits": 1018494464,
+        "hash": 588291921,
+        "value": 0.022093772888183594
+      },
+      {
+        "bits": 3208450203,
+        "hash": 597091982,
+        "value": -0.7385346293449402
+      },
+      {
+        "bits": 3200397576,
+        "hash": 788300096,
+        "value": -0.37928032875061035
+      },
+      {
+        "bits": 3206034443,
+        "hash": 885923909,
+        "value": -0.5945441126823425
+      },
+      {
+        "bits": 3201818008,
+        "hash": 904168248,
+        "value": -0.4216125011444092
+      },
+      {
+        "bits": 3206265151,
+        "hash": 1079029410,
+        "value": -0.6082953810691833
+      },
+      {
+        "bits": 3204754935,
+        "hash": 1134793073,
+        "value": -0.518279492855072
+      },
+      {
+        "bits": 3196405434,
+        "hash": 1144024257,
+        "value": -0.2603052258491516
+      },
+      {
+        "bits": 3171715008,
+        "hash": 1261368615,
+        "value": -0.03430914878845215
+      },
+      {
+        "bits": 1050404296,
+        "hash": 1367898383,
+        "value": 0.3044874668121338
+      },
+      {
+        "bits": 1032314288,
+        "hash": 1473585810,
+        "value": 0.06634080410003662
+      },
+      {
+        "bits": 3187724936,
+        "hash": 1485787401,
+        "value": -0.1258031129837036
+      },
+      {
+        "bits": 1039947392,
+        "hash": 1498314001,
+        "value": 0.12321186065673828
+      },
+      {
+        "bits": 1045840080,
+        "hash": 1546011164,
+        "value": 0.20923161506652832
+      },
+      {
+        "bits": 3204813825,
+        "hash": 1718206863,
+        "value": -0.5217896103858948
+      },
+      {
+        "bits": 3203067920,
+        "hash": 1778186651,
+        "value": -0.4588627815246582
+      },
+      {
+        "bits": 3208097998,
+        "hash": 0,
+        "value": -0.7175415754318237
+      },
+      {
+        "bits": 3168016704,
+        "hash": 1,
+        "value": -0.02589094638824463
+      },
+      {
+        "bits": 1063797876,
+        "hash": 4294967295,
+        "value": 0.907294511795044
+      },
+      {
+        "bits": 3195047208,
+        "hash": 2147483648,
+        "value": -0.23491346836090088
+      }
+    ]
+  },
+  "keys": [
+    {
+      "id": "number-three-easings",
+      "keys": [
+        {
+          "frame": 4,
+          "value": 0.3
+        },
+        {
+          "easing": "easeOutCubic",
+          "frame": 14,
+          "value": 0.9
+        },
+        {
+          "easing": "easeInOutCubic",
+          "frame": 30,
+          "value": 0.2
+        },
+        {
+          "easing": "linear",
+          "frame": 39,
+          "value": 1.0
+        }
+      ],
+      "param": "amount",
+      "queries": [
+        {
+          "exact": true,
+          "frame": -5,
+          "value": 0.3
+        },
+        {
+          "exact": true,
+          "frame": 0,
+          "value": 0.3
+        },
+        {
+          "exact": true,
+          "frame": 1,
+          "value": 0.3
+        },
+        {
+          "exact": true,
+          "frame": 3,
+          "value": 0.3
+        },
+        {
+          "exact": true,
+          "frame": 4,
+          "value": 0.3
+        },
+        {
+          "exact": false,
+          "frame": 5,
+          "value": 0.46259999999999996
+        },
+        {
+          "exact": false,
+          "frame": 9,
+          "value": 0.8250000000000002
+        },
+        {
+          "exact": false,
+          "frame": 11,
+          "value": 0.8838000000000001
+        },
+        {
+          "exact": false,
+          "frame": 13,
+          "value": 0.8994
+        },
+        {
+          "exact": true,
+          "frame": 14,
+          "value": 0.9
+        },
+        {
+          "exact": false,
+          "frame": 15,
+          "value": 0.89931640625
+        },
+        {
+          "exact": false,
+          "frame": 24,
+          "value": 0.3476562500000001
+        },
+        {
+          "exact": false,
+          "frame": 26,
+          "value": 0.24375000000000002
+        },
+        {
+          "exact": false,
+          "frame": 29,
+          "value": 0.2006835937500001
+        },
+        {
+          "exact": true,
+          "frame": 30,
+          "value": 0.2
+        },
+        {
+          "exact": false,
+          "frame": 31,
+          "value": 0.2888888888888889
+        },
+        {
+          "exact": false,
+          "frame": 38,
+          "value": 0.9111111111111112
+        },
+        {
+          "exact": true,
+          "frame": 39,
+          "value": 1.0
+        },
+        {
+          "exact": true,
+          "frame": 40,
+          "value": 1.0
+        },
+        {
+          "exact": true,
+          "frame": 100,
+          "value": 1.0
+        }
+      ]
+    },
+    {
+      "id": "number-first-key-easing-is-unused",
+      "keys": [
+        {
+          "easing": "easeOutCubic",
+          "frame": 2,
+          "value": 1.0
+        },
+        {
+          "frame": 12,
+          "value": 3.0
+        }
+      ],
+      "param": "size",
+      "queries": [
+        {
+          "exact": true,
+          "frame": -5,
+          "value": 1.0
+        },
+        {
+          "exact": true,
+          "frame": 0,
+          "value": 1.0
+        },
+        {
+          "exact": true,
+          "frame": 1,
+          "value": 1.0
+        },
+        {
+          "exact": true,
+          "frame": 2,
+          "value": 1.0
+        },
+        {
+          "exact": false,
+          "frame": 3,
+          "value": 1.2
+        },
+        {
+          "exact": false,
+          "frame": 9,
+          "value": 2.4
+        },
+        {
+          "exact": false,
+          "frame": 11,
+          "value": 2.8
+        },
+        {
+          "exact": true,
+          "frame": 12,
+          "value": 3.0
+        },
+        {
+          "exact": true,
+          "frame": 13,
+          "value": 3.0
+        },
+        {
+          "exact": true,
+          "frame": 24,
+          "value": 3.0
+        },
+        {
+          "exact": true,
+          "frame": 26,
+          "value": 3.0
+        },
+        {
+          "exact": true,
+          "frame": 38,
+          "value": 3.0
+        },
+        {
+          "exact": true,
+          "frame": 39,
+          "value": 3.0
+        },
+        {
+          "exact": true,
+          "frame": 100,
+          "value": 3.0
+        }
+      ]
+    },
+    {
+      "id": "number-single-key-holds-everywhere",
+      "keys": [
+        {
+          "frame": 5,
+          "value": 0.42
+        }
+      ],
+      "param": "luma",
+      "queries": [
+        {
+          "exact": true,
+          "frame": -5,
+          "value": 0.42
+        },
+        {
+          "exact": true,
+          "frame": 0,
+          "value": 0.42
+        },
+        {
+          "exact": true,
+          "frame": 1,
+          "value": 0.42
+        },
+        {
+          "exact": true,
+          "frame": 3,
+          "value": 0.42
+        },
+        {
+          "exact": true,
+          "frame": 4,
+          "value": 0.42
+        },
+        {
+          "exact": true,
+          "frame": 5,
+          "value": 0.42
+        },
+        {
+          "exact": true,
+          "frame": 6,
+          "value": 0.42
+        },
+        {
+          "exact": true,
+          "frame": 9,
+          "value": 0.42
+        },
+        {
+          "exact": true,
+          "frame": 11,
+          "value": 0.42
+        },
+        {
+          "exact": true,
+          "frame": 13,
+          "value": 0.42
+        },
+        {
+          "exact": true,
+          "frame": 24,
+          "value": 0.42
+        },
+        {
+          "exact": true,
+          "frame": 26,
+          "value": 0.42
+        },
+        {
+          "exact": true,
+          "frame": 38,
+          "value": 0.42
+        },
+        {
+          "exact": true,
+          "frame": 39,
+          "value": 0.42
+        },
+        {
+          "exact": true,
+          "frame": 100,
+          "value": 0.42
+        }
+      ]
+    },
+    {
+      "id": "number-unrepresentable-key-values",
+      "keys": [
+        {
+          "frame": 0,
+          "value": 0.1
+        },
+        {
+          "frame": 10,
+          "value": 0.3
+        },
+        {
+          "frame": 20,
+          "value": 0.7
+        }
+      ],
+      "param": "amount",
+      "queries": [
+        {
+          "exact": true,
+          "frame": -5,
+          "value": 0.1
+        },
+        {
+          "exact": true,
+          "frame": -1,
+          "value": 0.1
+        },
+        {
+          "exact": true,
+          "frame": 0,
+          "value": 0.1
+        },
+        {
+          "exact": false,
+          "frame": 1,
+          "value": 0.12000000000000001
+        },
+        {
+          "exact": false,
+          "frame": 3,
+          "value": 0.16
+        },
+        {
+          "exact": false,
+          "frame": 9,
+          "value": 0.28
+        },
+        {
+          "exact": true,
+          "frame": 10,
+          "value": 0.3
+        },
+        {
+          "exact": false,
+          "frame": 11,
+          "value": 0.33999999999999997
+        },
+        {
+          "exact": false,
+          "frame": 13,
+          "value": 0.42
+        },
+        {
+          "exact": false,
+          "frame": 19,
+          "value": 0.6599999999999999
+        },
+        {
+          "exact": true,
+          "frame": 20,
+          "value": 0.7
+        },
+        {
+          "exact": true,
+          "frame": 21,
+          "value": 0.7
+        },
+        {
+          "exact": true,
+          "frame": 24,
+          "value": 0.7
+        },
+        {
+          "exact": true,
+          "frame": 26,
+          "value": 0.7
+        },
+        {
+          "exact": true,
+          "frame": 38,
+          "value": 0.7
+        },
+        {
+          "exact": true,
+          "frame": 39,
+          "value": 0.7
+        },
+        {
+          "exact": true,
+          "frame": 100,
+          "value": 0.7
+        }
+      ]
+    },
+    {
+      "id": "boolean-steps-on-the-next-key",
+      "keys": [
+        {
+          "frame": 0,
+          "value": false
+        },
+        {
+          "frame": 10,
+          "value": true
+        },
+        {
+          "easing": "easeOutCubic",
+          "frame": 25,
+          "value": false
+        }
+      ],
+      "param": "colored",
+      "queries": [
+        {
+          "exact": true,
+          "frame": -5,
+          "value": false
+        },
+        {
+          "exact": true,
+          "frame": -1,
+          "value": false
+        },
+        {
+          "exact": true,
+          "frame": 0,
+          "value": false
+        },
+        {
+          "exact": false,
+          "frame": 1,
+          "value": false
+        },
+        {
+          "exact": false,
+          "frame": 3,
+          "value": false
+        },
+        {
+          "exact": false,
+          "frame": 9,
+          "value": false
+        },
+        {
+          "exact": true,
+          "frame": 10,
+          "value": true
+        },
+        {
+          "exact": false,
+          "frame": 11,
+          "value": true
+        },
+        {
+          "exact": false,
+          "frame": 13,
+          "value": true
+        },
+        {
+          "exact": false,
+          "frame": 24,
+          "value": true
+        },
+        {
+          "exact": true,
+          "frame": 25,
+          "value": false
+        },
+        {
+          "exact": true,
+          "frame": 26,
+          "value": false
+        },
+        {
+          "exact": true,
+          "frame": 38,
+          "value": false
+        },
+        {
+          "exact": true,
+          "frame": 39,
+          "value": false
+        },
+        {
+          "exact": true,
+          "frame": 100,
+          "value": false
+        }
+      ]
+    },
+    {
+      "id": "colour-channels-mix-linearly",
+      "keys": [
+        {
+          "frame": 0,
+          "value": {
+            "b": 0.0,
+            "g": 0.0,
+            "r": 0.0
+          }
+        },
+        {
+          "easing": "easeInOutCubic",
+          "frame": 10,
+          "value": {
+            "b": 1.0,
+            "g": 1.0,
+            "r": 1.0
+          }
+        }
+      ],
+      "param": "color",
+      "queries": [
+        {
+          "exact": true,
+          "frame": -5,
+          "value": {
+            "b": 0.0,
+            "g": 0.0,
+            "r": 0.0
+          }
+        },
+        {
+          "exact": true,
+          "frame": -1,
+          "value": {
+            "b": 0.0,
+            "g": 0.0,
+            "r": 0.0
+          }
+        },
+        {
+          "exact": true,
+          "frame": 0,
+          "value": {
+            "b": 0.0,
+            "g": 0.0,
+            "r": 0.0
+          }
+        },
+        {
+          "exact": false,
+          "frame": 1,
+          "value": {
+            "b": 0.004000000000000001,
+            "g": 0.004000000000000001,
+            "r": 0.004000000000000001
+          }
+        },
+        {
+          "exact": false,
+          "frame": 3,
+          "value": {
+            "b": 0.108,
+            "g": 0.108,
+            "r": 0.108
+          }
+        },
+        {
+          "exact": false,
+          "frame": 9,
+          "value": {
+            "b": 0.996,
+            "g": 0.996,
+            "r": 0.996
+          }
+        },
+        {
+          "exact": true,
+          "frame": 10,
+          "value": {
+            "b": 1.0,
+            "g": 1.0,
+            "r": 1.0
+          }
+        },
+        {
+          "exact": true,
+          "frame": 11,
+          "value": {
+            "b": 1.0,
+            "g": 1.0,
+            "r": 1.0
+          }
+        },
+        {
+          "exact": true,
+          "frame": 13,
+          "value": {
+            "b": 1.0,
+            "g": 1.0,
+            "r": 1.0
+          }
+        },
+        {
+          "exact": true,
+          "frame": 24,
+          "value": {
+            "b": 1.0,
+            "g": 1.0,
+            "r": 1.0
+          }
+        },
+        {
+          "exact": true,
+          "frame": 26,
+          "value": {
+            "b": 1.0,
+            "g": 1.0,
+            "r": 1.0
+          }
+        },
+        {
+          "exact": true,
+          "frame": 38,
+          "value": {
+            "b": 1.0,
+            "g": 1.0,
+            "r": 1.0
+          }
+        },
+        {
+          "exact": true,
+          "frame": 39,
+          "value": {
+            "b": 1.0,
+            "g": 1.0,
+            "r": 1.0
+          }
+        },
+        {
+          "exact": true,
+          "frame": 100,
+          "value": {
+            "b": 1.0,
+            "g": 1.0,
+            "r": 1.0
+          }
+        }
+      ]
+    },
+    {
+      "id": "point-parts-mix-linearly",
+      "keys": [
+        {
+          "frame": 0,
+          "value": {
+            "x": 0.0,
+            "y": 1.0
+          }
+        },
+        {
+          "easing": "easeOutCubic",
+          "frame": 8,
+          "value": {
+            "x": 1.0,
+            "y": 0.0
+          }
+        }
+      ],
+      "param": "center",
+      "queries": [
+        {
+          "exact": true,
+          "frame": -5,
+          "value": {
+            "x": 0.0,
+            "y": 1.0
+          }
+        },
+        {
+          "exact": true,
+          "frame": -1,
+          "value": {
+            "x": 0.0,
+            "y": 1.0
+          }
+        },
+        {
+          "exact": true,
+          "frame": 0,
+          "value": {
+            "x": 0.0,
+            "y": 1.0
+          }
+        },
+        {
+          "exact": false,
+          "frame": 1,
+          "value": {
+            "x": 0.330078125,
+            "y": 0.669921875
+          }
+        },
+        {
+          "exact": false,
+          "frame": 3,
+          "value": {
+            "x": 0.755859375,
+            "y": 0.244140625
+          }
+        },
+        {
+          "exact": false,
+          "frame": 7,
+          "value": {
+            "x": 0.998046875,
+            "y": 0.001953125
+          }
+        },
+        {
+          "exact": true,
+          "frame": 8,
+          "value": {
+            "x": 1.0,
+            "y": 0.0
+          }
+        },
+        {
+          "exact": true,
+          "frame": 9,
+          "value": {
+            "x": 1.0,
+            "y": 0.0
+          }
+        },
+        {
+          "exact": true,
+          "frame": 11,
+          "value": {
+            "x": 1.0,
+            "y": 0.0
+          }
+        },
+        {
+          "exact": true,
+          "frame": 13,
+          "value": {
+            "x": 1.0,
+            "y": 0.0
+          }
+        },
+        {
+          "exact": true,
+          "frame": 24,
+          "value": {
+            "x": 1.0,
+            "y": 0.0
+          }
+        },
+        {
+          "exact": true,
+          "frame": 26,
+          "value": {
+            "x": 1.0,
+            "y": 0.0
+          }
+        },
+        {
+          "exact": true,
+          "frame": 38,
+          "value": {
+            "x": 1.0,
+            "y": 0.0
+          }
+        },
+        {
+          "exact": true,
+          "frame": 39,
+          "value": {
+            "x": 1.0,
+            "y": 0.0
+          }
+        },
+        {
+          "exact": true,
+          "frame": 100,
+          "value": {
+            "x": 1.0,
+            "y": 0.0
+          }
+        }
+      ]
+    }
+  ],
+  "note": "Generated by scripts/pilot-grain-corpus.py; edit nothing by hand (verify fails).",
+  "pixels": [
+    {
+      "height": 720,
+      "id": "grain-mono-fractional-cell",
+      "identity": false,
+      "params": {
+        "amount": 1.0,
+        "colored": false,
+        "intensity": 1.0,
+        "luma": 0.7,
+        "size": 1.4
+      },
+      "pass_amount": 1.0,
+      "probes": [
+        {
+          "cell": [
+            0,
+            513
+          ],
+          "expected": [
+            160.649162347,
+            160.649162347,
+            160.649162347
+          ],
+          "hash": 3748161082,
+          "noise_bits": [
+            1061841680,
+            1061841680,
+            1061841680
+          ],
+          "x": 0,
+          "y": 0
+        },
+        {
+          "cell": [
+            1,
+            513
+          ],
+          "expected": [
+            130.431198065,
+            130.431198065,
+            130.431198065
+          ],
+          "hash": 3899179875,
+          "noise_bits": [
+            1030826688,
+            1030826688,
+            1030826688
+          ],
+          "x": 1,
+          "y": 0
+        },
+        {
+          "cell": [
+            1,
+            513
+          ],
+          "expected": [
+            130.431198065,
+            130.431198065,
+            130.431198065
+          ],
+          "hash": 3899179875,
+          "noise_bits": [
+            1030826688,
+            1030826688,
+            1030826688
+          ],
+          "x": 2,
+          "y": 0
+        },
+        {
+          "cell": [
+            2,
+            513
+          ],
+          "expected": [
+            96.153035552,
+            96.153035552,
+            96.153035552
+          ],
+          "hash": 480056251,
+          "noise_bits": [
+            3208999387,
+            3208999387,
+            3208999387
+          ],
+          "x": 3,
+          "y": 0
+        },
+        {
+          "cell": [
+            3,
+            513
+          ],
+          "expected": [
+            142.975143435,
+            142.975143435,
+            142.975143435
+          ],
+          "hash": 3051253510,
+          "noise_bits": [
+            1052356492,
+            1052356492,
+            1052356492
+          ],
+          "x": 4,
+          "y": 0
+        },
+        {
+          "cell": [
+            3,
+            513
+          ],
+          "expected": [
+            142.975143435,
+            142.975143435,
+            142.975143435
+          ],
+          "hash": 3051253510,
+          "noise_bits": [
+            1052356492,
+            1052356492,
+            1052356492
+          ],
+          "x": 5,
+          "y": 0
+        },
+        {
+          "cell": [
+            23,
+            513
+          ],
+          "expected": [
+            153.022423479,
+            153.022423479,
+            153.022423479
+          ],
+          "hash": 4144240564,
+          "noise_bits": [
+            1058742860,
+            1058742860,
+            1058742860
+          ],
+          "x": 33,
+          "y": 0
+        },
+        {
+          "cell": [
+            33,
+            513
+          ],
+          "expected": [
+            151.40326063,
+            151.40326063,
+            151.40326063
+          ],
+          "hash": 4267660793,
+          "noise_bits": [
+            1058084978,
+            1058084978,
+            1058084978
+          ],
+          "x": 47,
+          "y": 0
+        },
+        {
+          "cell": [
+            0,
+            513
+          ],
+          "expected": [
+            160.649162347,
+            160.649162347,
+            160.649162347
+          ],
+          "hash": 3748161082,
+          "noise_bits": [
+            1061841680,
+            1061841680,
+            1061841680
+          ],
+          "x": 0,
+          "y": 1
+        },
+        {
+          "cell": [
+            1,
+            513
+          ],
+          "expected": [
+            130.431198065,
+            130.431198065,
+            130.431198065
+          ],
+          "hash": 3899179875,
+          "noise_bits": [
+            1030826688,
+            1030826688,
+            1030826688
+          ],
+          "x": 1,
+          "y": 1
+        },
+        {
+          "cell": [
+            1,
+            513
+          ],
+          "expected": [
+            130.431198065,
+            130.431198065,
+            130.431198065
+          ],
+          "hash": 3899179875,
+          "noise_bits": [
+            1030826688,
+            1030826688,
+            1030826688
+          ],
+          "x": 2,
+          "y": 1
+        },
+        {
+          "cell": [
+            2,
+            513
+          ],
+          "expected": [
+            96.153035552,
+            96.153035552,
+            96.153035552
+          ],
+          "hash": 480056251,
+          "noise_bits": [
+            3208999387,
+            3208999387,
+            3208999387
+          ],
+          "x": 3,
+          "y": 1
+        },
+        {
+          "cell": [
+            3,
+            513
+          ],
+          "expected": [
+            142.975143435,
+            142.975143435,
+            142.975143435
+          ],
+          "hash": 3051253510,
+          "noise_bits": [
+            1052356492,
+            1052356492,
+            1052356492
+          ],
+          "x": 4,
+          "y": 1
+        },
+        {
+          "cell": [
+            3,
+            513
+          ],
+          "expected": [
+            142.975143435,
+            142.975143435,
+            142.975143435
+          ],
+          "hash": 3051253510,
+          "noise_bits": [
+            1052356492,
+            1052356492,
+            1052356492
+          ],
+          "x": 5,
+          "y": 1
+        },
+        {
+          "cell": [
+            23,
+            513
+          ],
+          "expected": [
+            153.022423479,
+            153.022423479,
+            153.022423479
+          ],
+          "hash": 4144240564,
+          "noise_bits": [
+            1058742860,
+            1058742860,
+            1058742860
+          ],
+          "x": 33,
+          "y": 1
+        },
+        {
+          "cell": [
+            33,
+            513
+          ],
+          "expected": [
+            151.40326063,
+            151.40326063,
+            151.40326063
+          ],
+          "hash": 4267660793,
+          "noise_bits": [
+            1058084978,
+            1058084978,
+            1058084978
+          ],
+          "x": 47,
+          "y": 1
+        },
+        {
+          "cell": [
+            0,
+            512
+          ],
+          "expected": [
+            111.719695368,
+            111.719695368,
+            111.719695368
+          ],
+          "hash": 1249553394,
+          "noise_bits": [
+            3200900740,
+            3200900740,
+            3200900740
+          ],
+          "x": 0,
+          "y": 2
+        },
+        {
+          "cell": [
+            1,
+            512
+          ],
+          "expected": [
+            129.5600848,
+            129.5600848,
+            129.5600848
+          ],
+          "hash": 1901221827,
+          "noise_bits": [
+            1025163616,
+            1025163616,
+            1025163616
+          ],
+          "x": 1,
+          "y": 2
+        },
+        {
+          "cell": [
+            1,
+            512
+          ],
+          "expected": [
+            129.5600848,
+            129.5600848,
+            129.5600848
+          ],
+          "hash": 1901221827,
+          "noise_bits": [
+            1025163616,
+            1025163616,
+            1025163616
+          ],
+          "x": 2,
+          "y": 2
+        },
+        {
+          "cell": [
+            2,
+            512
+          ],
+          "expected": [
+            145.369113764,
+            145.369113764,
+            145.369113764
+          ],
+          "hash": 2889238137,
+          "noise_bits": [
+            1054301880,
+            1054301880,
+            1054301880
+          ],
+          "x": 3,
+          "y": 2
+        },
+        {
+          "cell": [
+            3,
+            512
+          ],
+          "expected": [
+            128.132174952,
+            128.132174952,
+            128.132174952
+          ],
+          "hash": 2001620837,
+          "noise_bits": [
+            995215360,
+            995215360,
+            995215360
+          ],
+          "x": 4,
+          "y": 2
+        },
+        {
+          "cell": [
+            3,
+            512
+          ],
+          "expected": [
+            128.132174952,
+            128.132174952,
+            128.132174952
+          ],
+          "hash": 2001620837,
+          "noise_bits": [
+            995215360,
+            995215360,
+            995215360
+          ],
+          "x": 5,
+          "y": 2
+        },
+        {
+          "cell": [
+            23,
+            512
+          ],
+          "expected": [
+            112.870929747,
+            112.870929747,
+            112.870929747
+          ],
+          "hash": 2342816810,
+          "noise_bits": [
+            3199965224,
+            3199965224,
+            3199965224
+          ],
+          "x": 33,
+          "y": 2
+        },
+        {
+          "cell": [
+            33,
+            512
+          ],
+          "expected": [
+            154.752147239,
+            154.752147239,
+            154.752147239
+          ],
+          "hash": 3100136547,
+          "noise_bits": [
+            1059445664,
+            1059445664,
+            1059445664
+          ],
+          "x": 47,
+          "y": 2
+        },
+        {
+          "cell": [
+            0,
+            511
+          ],
+          "expected": [
+            134.864325866,
+            134.864325866,
+            134.864325866
+          ],
+          "hash": 1843603556,
+          "noise_bits": [
+            1042954960,
+            1042954960,
+            1042954960
+          ],
+          "x": 0,
+          "y": 3
+        },
+        {
+          "cell": [
+            1,
+            511
+          ],
+          "expected": [
+            121.986426097,
+            121.986426097,
+            121.986426097
+          ],
+          "hash": 2558310986,
+          "noise_bits": [
+            3189055932,
+            3189055932,
+            3189055932
+          ],
+          "x": 1,
+          "y": 3
+        },
+        {
+          "cell": [
+            1,
+            511
+          ],
+          "expected": [
+            121.986426097,
+            121.986426097,
+            121.986426097
+          ],
+          "hash": 2558310986,
+          "noise_bits": [
+            3189055932,
+            3189055932,
+            3189055932
+          ],
+          "x": 2,
+          "y": 3
+        },
+        {
+          "cell": [
+            2,
+            511
+          ],
+          "expected": [
+            154.446794157,
+            154.446794157,
+            154.446794157
+          ],
+          "hash": 3677588950,
+          "noise_bits": [
+            1059321596,
+            1059321596,
+            1059321596
+          ],
+          "x": 3,
+          "y": 3
+        },
+        {
+          "cell": [
+            3,
+            511
+          ],
+          "expected": [
+            132.362127819,
+            132.362127819,
+            132.362127819
+          ],
+          "hash": 4003109451,
+          "noise_bits": [
+            1037589184,
+            1037589184,
+            1037589184
+          ],
+          "x": 4,
+          "y": 3
+        },
+        {
+          "cell": [
+            3,
+            511
+          ],
+          "expected": [
+            132.362127819,
+            132.362127819,
+            132.362127819
+          ],
+          "hash": 4003109451,
+          "noise_bits": [
+            1037589184,
+            1037589184,
+            1037589184
+          ],
+          "x": 5,
+          "y": 3
+        },
+        {
+          "cell": [
+            23,
+            511
+          ],
+          "expected": [
+            138.104940457,
+            138.104940457,
+            138.104940457
+          ],
+          "hash": 2189422886,
+          "noise_bits": [
+            1048221736,
+            1048221736,
+            1048221736
+          ],
+          "x": 33,
+          "y": 3
+        },
+        {
+          "cell": [
+            33,
+            511
+          ],
+          "expected": [
+            100.867015436,
+            100.867015436,
+            100.867015436
+          ],
+          "hash": 273997953,
+          "noise_bits": [
+            3207084050,
+            3207084050,
+            3207084050
+          ],
+          "x": 47,
+          "y": 3
+        },
+        {
+          "cell": [
+            0,
+            258
+          ],
+          "expected": [
+            111.809476577,
+            111.809476577,
+            111.809476577
+          ],
+          "hash": 1149200068,
+          "noise_bits": [
+            3200827782,
+            3200827782,
+            3200827782
+          ],
+          "x": 0,
+          "y": 358
+        },
+        {
+          "cell": [
+            1,
+            258
+          ],
+          "expected": [
+            130.481046707,
+            130.481046707,
+            130.481046707
+          ],
+          "hash": 4278562034,
+          "noise_bits": [
+            1031150752,
+            1031150752,
+            1031150752
+          ],
+          "x": 1,
+          "y": 358
+        },
+        {
+          "cell": [
+            1,
+            258
+          ],
+          "expected": [
+            130.481046707,
+            130.481046707,
+            130.481046707
+          ],
+          "hash": 4278562034,
+          "noise_bits": [
+            1031150752,
+            1031150752,
+            1031150752
+          ],
+          "x": 2,
+          "y": 358
+        },
+        {
+          "cell": [
+            2,
+            258
+          ],
+          "expected": [
+            136.902277361,
+            136.902277361,
+            136.902277361
+          ],
+          "hash": 1346001993,
+          "noise_bits": [
+            1046267120,
+            1046267120,
+            1046267120
+          ],
+          "x": 3,
+          "y": 358
+        },
+        {
+          "cell": [
+            3,
+            258
+          ],
+          "expected": [
+            112.894717006,
+            112.894717006,
+            112.894717006
+          ],
+          "hash": 584062086,
+          "noise_bits": [
+            3199945894,
+            3199945894,
+            3199945894
+          ],
+          "x": 4,
+          "y": 358
+        },
+        {
+          "cell": [
+            3,
+            258
+          ],
+          "expected": [
+            112.894717006,
+            112.894717006,
+            112.894717006
+          ],
+          "hash": 584062086,
+          "noise_bits": [
+            3199945894,
+            3199945894,
+            3199945894
+          ],
+          "x": 5,
+          "y": 358
+        },
+        {
+          "cell": [
+            23,
+            258
+          ],
+          "expected": [
+            125.785262292,
+            125.785262292,
+            125.785262292
+          ],
+          "hash": 1054224776,
+          "noise_bits": [
+            3176903136,
+            3176903136,
+            3176903136
+          ],
+          "x": 33,
+          "y": 358
+        },
+        {
+          "cell": [
+            33,
+            258
+          ],
+          "expected": [
+            122.334532253,
+            122.334532253,
+            122.334532253
+          ],
+          "hash": 138174164,
+          "noise_bits": [
+            3188490176,
+            3188490176,
+            3188490176
+          ],
+          "x": 47,
+          "y": 358
+        },
+        {
+          "cell": [
+            0,
+            257
+          ],
+          "expected": [
+            117.393568028,
+            117.393568028,
+            117.393568028
+          ],
+          "hash": 778885557,
+          "noise_bits": [
+            3196290038,
+            3196290038,
+            3196290038
+          ],
+          "x": 0,
+          "y": 359
+        },
+        {
+          "cell": [
+            1,
+            257
+          ],
+          "expected": [
+            105.067862445,
+            105.067862445,
+            105.067862445
+          ],
+          "hash": 467424089,
+          "noise_bits": [
+            3205377204,
+            3205377204,
+            3205377204
+          ],
+          "x": 1,
+          "y": 359
+        },
+        {
+          "cell": [
+            1,
+            257
+          ],
+          "expected": [
+            105.067862445,
+            105.067862445,
+            105.067862445
+          ],
+          "hash": 467424089,
+          "noise_bits": [
+            3205377204,
+            3205377204,
+            3205377204
+          ],
+          "x": 2,
+          "y": 359
+        },
+        {
+          "cell": [
+            2,
+            257
+          ],
+          "expected": [
+            119.279874214,
+            119.279874214,
+            119.279874214
+          ],
+          "hash": 3182460420,
+          "noise_bits": [
+            3193454728,
+            3193454728,
+            3193454728
+          ],
+          "x": 3,
+          "y": 359
+        },
+        {
+          "cell": [
+            3,
+            257
+          ],
+          "expected": [
+            122.21877334,
+            122.21877334,
+            122.21877334
+          ],
+          "hash": 1954435887,
+          "noise_bits": [
+            3188678312,
+            3188678312,
+            3188678312
+          ],
+          "x": 4,
+          "y": 359
+        },
+        {
+          "cell": [
+            3,
+            257
+          ],
+          "expected": [
+            122.21877334,
+            122.21877334,
+            122.21877334
+          ],
+          "hash": 1954435887,
+          "noise_bits": [
+            3188678312,
+            3188678312,
+            3188678312
+          ],
+          "x": 5,
+          "y": 359
+        },
+        {
+          "cell": [
+            23,
+            257
+          ],
+          "expected": [
+            138.890532807,
+            138.890532807,
+            138.890532807
+          ],
+          "hash": 2347648720,
+          "noise_bits": [
+            1049037256,
+            1049037256,
+            1049037256
+          ],
+          "x": 33,
+          "y": 359
+        },
+        {
+          "cell": [
+            33,
+            257
+          ],
+          "expected": [
+            133.307253544,
+            133.307253544,
+            133.307253544
+          ],
+          "hash": 3470328650,
+          "noise_bits": [
+            1040424344,
+            1040424344,
+            1040424344
+          ],
+          "x": 47,
+          "y": 359
+        },
+        {
+          "cell": [
+            0,
+            256
+          ],
+          "expected": [
+            121.849523228,
+            121.849523228,
+            121.849523228
+          ],
+          "hash": 1149114264,
+          "noise_bits": [
+            3189278432,
+            3189278432,
+            3189278432
+          ],
+          "x": 0,
+          "y": 360
+        },
+        {
+          "cell": [
+            1,
+            256
+          ],
+          "expected": [
+            155.591678705,
+            155.591678705,
+            155.591678705
+          ],
+          "hash": 3929351545,
+          "noise_bits": [
+            1059786774,
+            1059786774,
+            1059786774
+          ],
+          "x": 1,
+          "y": 360
+        },
+        {
+          "cell": [
+            1,
+            256
+          ],
+          "expected": [
+            155.591678705,
+            155.591678705,
+            155.591678705
+          ],
+          "hash": 3929351545,
+          "noise_bits": [
+            1059786774,
+            1059786774,
+            1059786774
+          ],
+          "x": 2,
+          "y": 360
+        },
+        {
+          "cell": [
+            2,
+            256
+          ],
+          "expected": [
+            143.299216215,
+            143.299216215,
+            143.299216215
+          ],
+          "hash": 3892369184,
+          "noise_bits": [
+            1052619840,
+            1052619840,
+            1052619840
+          ],
+          "x": 3,
+          "y": 360
+        },
+        {
+          "cell": [
+            3,
+            256
+          ],
+          "expected": [
+            131.622091821,
+            131.622091821,
+            131.622091821
+          ],
+          "hash": 2245533741,
+          "noise_bits": [
+            1035183712,
+            1035183712,
+            1035183712
+          ],
+          "x": 4,
+          "y": 360
+        },
+        {
+          "cell": [
+            3,
+            256
+          ],
+          "expected": [
+            131.622091821,
+            131.622091821,
+            131.622091821
+          ],
+          "hash": 2245533741,
+          "noise_bits": [
+            1035183712,
+            1035183712,
+            1035183712
+          ],
+          "x": 5,
+          "y": 360
+        },
+        {
+          "cell": [
+            23,
+            256
+          ],
+          "expected": [
+            142.036525057,
+            142.036525057,
+            142.036525057
+          ],
+          "hash": 2792285051,
+          "noise_bits": [
+            1051593752,
+            1051593752,
+            1051593752
+          ],
+          "x": 33,
+          "y": 360
+        },
+        {
+          "cell": [
+            33,
+            256
+          ],
+          "expected": [
+            114.525065896,
+            114.525065896,
+            114.525065896
+          ],
+          "hash": 1583259751,
+          "noise_bits": [
+            3198621040,
+            3198621040,
+            3198621040
+          ],
+          "x": 47,
+          "y": 360
+        },
+        {
+          "cell": [
+            0,
+            2
+          ],
+          "expected": [
+            147.862796145,
+            147.862796145,
+            147.862796145
+          ],
+          "hash": 3795102854,
+          "noise_bits": [
+            1056328296,
+            1056328296,
+            1056328296
+          ],
+          "x": 0,
+          "y": 716
+        },
+        {
+          "cell": [
+            1,
+            2
+          ],
+          "expected": [
+            129.648632961,
+            129.648632961,
+            129.648632961
+          ],
+          "hash": 223996021,
+          "noise_bits": [
+            1025739264,
+            1025739264,
+            1025739264
+          ],
+          "x": 1,
+          "y": 716
+        },
+        {
+          "cell": [
+            1,
+            2
+          ],
+          "expected": [
+            129.648632961,
+            129.648632961,
+            129.648632961
+          ],
+          "hash": 223996021,
+          "noise_bits": [
+            1025739264,
+            1025739264,
+            1025739264
+          ],
+          "x": 2,
+          "y": 716
+        },
+        {
+          "cell": [
+            2,
+            2
+          ],
+          "expected": [
+            143.903739907,
+            143.903739907,
+            143.903739907
+          ],
+          "hash": 2790644843,
+          "noise_bits": [
+            1053111088,
+            1053111088,
+            1053111088
+          ],
+          "x": 3,
+          "y": 716
+        },
+        {
+          "cell": [
+            3,
+            2
+          ],
+          "expected": [
+            128.437468966,
+            128.437468966,
+            128.437468966
+          ],
+          "hash": 1121395552,
+          "noise_bits": [
+            1009620224,
+            1009620224,
+            1009620224
+          ],
+          "x": 4,
+          "y": 716
+        },
+        {
+          "cell": [
+            3,
+            2
+          ],
+          "expected": [
+            128.437468966,
+            128.437468966,
+            128.437468966
+          ],
+          "hash": 1121395552,
+          "noise_bits": [
+            1009620224,
+            1009620224,
+            1009620224
+          ],
+          "x": 5,
+          "y": 716
+        },
+        {
+          "cell": [
+            23,
+            2
+          ],
+          "expected": [
+            106.071940699,
+            106.071940699,
+            106.071940699
+          ],
+          "hash": 110931323,
+          "noise_bits": [
+            3204969237,
+            3204969237,
+            3204969237
+          ],
+          "x": 33,
+          "y": 716
+        },
+        {
+          "cell": [
+            33,
+            2
+          ],
+          "expected": [
+            135.099023531,
+            135.099023531,
+            135.099023531
+          ],
+          "hash": 3299374005,
+          "noise_bits": [
+            1043336400,
+            1043336400,
+            1043336400
+          ],
+          "x": 47,
+          "y": 716
+        },
+        {
+          "cell": [
+            0,
+            1
+          ],
+          "expected": [
+            117.514827668,
+            117.514827668,
+            117.514827668
+          ],
+          "hash": 442228309,
+          "noise_bits": [
+            3196191500,
+            3196191500,
+            3196191500
+          ],
+          "x": 0,
+          "y": 717
+        },
+        {
+          "cell": [
+            1,
+            1
+          ],
+          "expected": [
+            132.714381055,
+            132.714381055,
+            132.714381055
+          ],
+          "hash": 4064391269,
+          "noise_bits": [
+            1038734176,
+            1038734176,
+            1038734176
+          ],
+          "x": 1,
+          "y": 717
+        },
+        {
+          "cell": [
+            1,
+            1
+          ],
+          "expected": [
+            132.714381055,
+            132.714381055,
+            132.714381055
+          ],
+          "hash": 4064391269,
+          "noise_bits": [
+            1038734176,
+            1038734176,
+            1038734176
+          ],
+          "x": 2,
+          "y": 717
+        },
+        {
+          "cell": [
+            2,
+            1
+          ],
+          "expected": [
+            106.374175472,
+            106.374175472,
+            106.374175472
+          ],
+          "hash": 1643620322,
+          "noise_bits": [
+            3204846436,
+            3204846436,
+            3204846436
+          ],
+          "x": 3,
+          "y": 717
+        },
+        {
+          "cell": [
+            3,
+            1
+          ],
+          "expected": [
+            124.644438683,
+            124.644438683,
+            124.644438683
+          ],
+          "hash": 804599425,
+          "noise_bits": [
+            3181801008,
+            3181801008,
+            3181801008
+          ],
+          "x": 4,
+          "y": 717
+        },
+        {
+          "cell": [
+            3,
+            1
+          ],
+          "expected": [
+            124.644438683,
+            124.644438683,
+            124.644438683
+          ],
+          "hash": 804599425,
+          "noise_bits": [
+            3181801008,
+            3181801008,
+            3181801008
+          ],
+          "x": 5,
+          "y": 717
+        },
+        {
+          "cell": [
+            23,
+            1
+          ],
+          "expected": [
+            131.538707206,
+            131.538707206,
+            131.538707206
+          ],
+          "hash": 3245143141,
+          "noise_bits": [
+            1034912672,
+            1034912672,
+            1034912672
+          ],
+          "x": 33,
+          "y": 717
+        },
+        {
+          "cell": [
+            33,
+            1
+          ],
+          "expected": [
+            95.106076243,
+            95.106076243,
+            95.106076243
+          ],
+          "hash": 312654065,
+          "noise_bits": [
+            3209424777,
+            3209424777,
+            3209424777
+          ],
+          "x": 47,
+          "y": 717
+        },
+        {
+          "cell": [
+            0,
+            1
+          ],
+          "expected": [
+            117.514827668,
+            117.514827668,
+            117.514827668
+          ],
+          "hash": 442228309,
+          "noise_bits": [
+            3196191500,
+            3196191500,
+            3196191500
+          ],
+          "x": 0,
+          "y": 718
+        },
+        {
+          "cell": [
+            1,
+            1
+          ],
+          "expected": [
+            132.714381055,
+            132.714381055,
+            132.714381055
+          ],
+          "hash": 4064391269,
+          "noise_bits": [
+            1038734176,
+            1038734176,
+            1038734176
+          ],
+          "x": 1,
+          "y": 718
+        },
+        {
+          "cell": [
+            1,
+            1
+          ],
+          "expected": [
+            132.714381055,
+            132.714381055,
+            132.714381055
+          ],
+          "hash": 4064391269,
+          "noise_bits": [
+            1038734176,
+            1038734176,
+            1038734176
+          ],
+          "x": 2,
+          "y": 718
+        },
+        {
+          "cell": [
+            2,
+            1
+          ],
+          "expected": [
+            106.374175472,
+            106.374175472,
+            106.374175472
+          ],
+          "hash": 1643620322,
+          "noise_bits": [
+            3204846436,
+            3204846436,
+            3204846436
+          ],
+          "x": 3,
+          "y": 718
+        },
+        {
+          "cell": [
+            3,
+            1
+          ],
+          "expected": [
+            124.644438683,
+            124.644438683,
+            124.644438683
+          ],
+          "hash": 804599425,
+          "noise_bits": [
+            3181801008,
+            3181801008,
+            3181801008
+          ],
+          "x": 4,
+          "y": 718
+        },
+        {
+          "cell": [
+            3,
+            1
+          ],
+          "expected": [
+            124.644438683,
+            124.644438683,
+            124.644438683
+          ],
+          "hash": 804599425,
+          "noise_bits": [
+            3181801008,
+            3181801008,
+            3181801008
+          ],
+          "x": 5,
+          "y": 718
+        },
+        {
+          "cell": [
+            23,
+            1
+          ],
+          "expected": [
+            131.538707206,
+            131.538707206,
+            131.538707206
+          ],
+          "hash": 3245143141,
+          "noise_bits": [
+            1034912672,
+            1034912672,
+            1034912672
+          ],
+          "x": 33,
+          "y": 718
+        },
+        {
+          "cell": [
+            33,
+            1
+          ],
+          "expected": [
+            95.106076243,
+            95.106076243,
+            95.106076243
+          ],
+          "hash": 312654065,
+          "noise_bits": [
+            3209424777,
+            3209424777,
+            3209424777
+          ],
+          "x": 47,
+          "y": 718
+        },
+        {
+          "cell": [
+            0,
+            0
+          ],
+          "expected": [
+            111.753287948,
+            111.753287948,
+            111.753287948
+          ],
+          "hash": 1312815374,
+          "noise_bits": [
+            3200873442,
+            3200873442,
+            3200873442
+          ],
+          "x": 0,
+          "y": 719
+        },
+        {
+          "cell": [
+            1,
+            0
+          ],
+          "expected": [
+            115.892219173,
+            115.892219173,
+            115.892219173
+          ],
+          "hash": 2589351931,
+          "noise_bits": [
+            3197510064,
+            3197510064,
+            3197510064
+          ],
+          "x": 1,
+          "y": 719
+        },
+        {
+          "cell": [
+            1,
+            0
+          ],
+          "expected": [
+            115.892219173,
+            115.892219173,
+            115.892219173
+          ],
+          "hash": 2589351931,
+          "noise_bits": [
+            3197510064,
+            3197510064,
+            3197510064
+          ],
+          "x": 2,
+          "y": 719
+        },
+        {
+          "cell": [
+            2,
+            0
+          ],
+          "expected": [
+            146.74208526,
+            146.74208526,
+            146.74208526
+          ],
+          "hash": 3631999760,
+          "noise_bits": [
+            1055417584,
+            1055417584,
+            1055417584
+          ],
+          "x": 3,
+          "y": 719
+        },
+        {
+          "cell": [
+            3,
+            0
+          ],
+          "expected": [
+            116.048107548,
+            116.048107548,
+            116.048107548
+          ],
+          "hash": 1400355805,
+          "noise_bits": [
+            3197383386,
+            3197383386,
+            3197383386
+          ],
+          "x": 4,
+          "y": 719
+        },
+        {
+          "cell": [
+            3,
+            0
+          ],
+          "expected": [
+            116.048107548,
+            116.048107548,
+            116.048107548
+          ],
+          "hash": 1400355805,
+          "noise_bits": [
+            3197383386,
+            3197383386,
+            3197383386
+          ],
+          "x": 5,
+          "y": 719
+        },
+        {
+          "cell": [
+            23,
+            0
+          ],
+          "expected": [
+            136.456883411,
+            136.456883411,
+            136.456883411
+          ],
+          "hash": 2096617789,
+          "noise_bits": [
+            1045543248,
+            1045543248,
+            1045543248
+          ],
+          "x": 33,
+          "y": 719
+        },
+        {
+          "cell": [
+            33,
+            0
+          ],
+          "expected": [
+            155.779584507,
+            155.779584507,
+            155.779584507
+          ],
+          "hash": 3977416700,
+          "noise_bits": [
+            1059863122,
+            1059863122,
+            1059863122
+          ],
+          "x": 47,
+          "y": 719
+        }
+      ],
+      "seed": 123456789,
+      "source_alpha": 255,
+      "source_rgb": [
+        128,
+        128,
+        128
+      ],
+      "title": "720 rows, size 1.4: a 1.4 px cell, so cell borders fall between pixels",
+      "tolerance_per_channel": 1.5,
+      "width": 48
+    },
+    {
+      "height": 720,
+      "id": "grain-colored-channels",
+      "identity": false,
+      "params": {
+        "amount": 1.0,
+        "colored": true,
+        "intensity": 1.0,
+        "luma": 0.7,
+        "size": 1.4
+      },
+      "pass_amount": 1.0,
+      "probes": [
+        {
+          "cell": [
+            0,
+            513
+          ],
+          "expected": [
+            131.018247414,
+            109.054321407,
+            110.514327441
+          ],
+          "hash": 2069643859,
+          "noise_bits": [
+            1033220928,
+            3203066676,
+            3201880246
+          ],
+          "x": 0,
+          "y": 0
+        },
+        {
+          "cell": [
+            1,
+            513
+          ],
+          "expected": [
+            134.083109485,
+            113.119190949,
+            115.962798294
+          ],
+          "hash": 4181880440,
+          "noise_bits": [
+            1041685296,
+            3199763482,
+            3197452710
+          ],
+          "x": 1,
+          "y": 0
+        },
+        {
+          "cell": [
+            5,
+            513
+          ],
+          "expected": [
+            97.900767731,
+            120.230719711,
+            116.271966198
+          ],
+          "hash": 453057033,
+          "noise_bits": [
+            3208289266,
+            3191909376,
+            3197201474
+          ],
+          "x": 7,
+          "y": 0
+        },
+        {
+          "cell": [
+            6,
+            513
+          ],
+          "expected": [
+            136.108932309,
+            102.044965872,
+            114.524202023
+          ],
+          "hash": 1267584337,
+          "noise_bits": [
+            1044977744,
+            3206605437,
+            3198621742
+          ],
+          "x": 8,
+          "y": 0
+        },
+        {
+          "cell": [
+            33,
+            513
+          ],
+          "expected": [
+            162.666932205,
+            140.245754307,
+            118.889610589
+          ],
+          "hash": 4211085345,
+          "noise_bits": [
+            1062661520,
+            1050138536,
+            3194089000
+          ],
+          "x": 47,
+          "y": 0
+        },
+        {
+          "cell": [
+            0,
+            513
+          ],
+          "expected": [
+            131.018247414,
+            109.054321407,
+            110.514327441
+          ],
+          "hash": 2069643859,
+          "noise_bits": [
+            1033220928,
+            3203066676,
+            3201880246
+          ],
+          "x": 0,
+          "y": 1
+        },
+        {
+          "cell": [
+            1,
+            513
+          ],
+          "expected": [
+            134.083109485,
+            113.119190949,
+            115.962798294
+          ],
+          "hash": 4181880440,
+          "noise_bits": [
+            1041685296,
+            3199763482,
+            3197452710
+          ],
+          "x": 1,
+          "y": 1
+        },
+        {
+          "cell": [
+            5,
+            513
+          ],
+          "expected": [
+            97.900767731,
+            120.230719711,
+            116.271966198
+          ],
+          "hash": 453057033,
+          "noise_bits": [
+            3208289266,
+            3191909376,
+            3197201474
+          ],
+          "x": 7,
+          "y": 1
+        },
+        {
+          "cell": [
+            6,
+            513
+          ],
+          "expected": [
+            136.108932309,
+            102.044965872,
+            114.524202023
+          ],
+          "hash": 1267584337,
+          "noise_bits": [
+            1044977744,
+            3206605437,
+            3198621742
+          ],
+          "x": 8,
+          "y": 1
+        },
+        {
+          "cell": [
+            33,
+            513
+          ],
+          "expected": [
+            162.666932205,
+            140.245754307,
+            118.889610589
+          ],
+          "hash": 4211085345,
+          "noise_bits": [
+            1062661520,
+            1050138536,
+            3194089000
+          ],
+          "x": 47,
+          "y": 1
+        },
+        {
+          "cell": [
+            0,
+            256
+          ],
+          "expected": [
+            126.854106371,
+            124.901594572,
+            100.825443726
+          ],
+          "hash": 2553792657,
+          "noise_bits": [
+            3169015424,
+            3180965128,
+            3207100941
+          ],
+          "x": 0,
+          "y": 360
+        },
+        {
+          "cell": [
+            1,
+            256
+          ],
+          "expected": [
+            159.162110459,
+            137.981458375,
+            156.953353406
+          ],
+          "hash": 3755602042,
+          "noise_bits": [
+            1061237476,
+            1048021048,
+            1060340036
+          ],
+          "x": 1,
+          "y": 360
+        },
+        {
+          "cell": [
+            5,
+            256
+          ],
+          "expected": [
+            127.980450886,
+            100.007656743,
+            113.936606294
+          ],
+          "hash": 626750810,
+          "noise_bits": [
+            3120052224,
+            3207433216,
+            3199099234
+          ],
+          "x": 7,
+          "y": 360
+        },
+        {
+          "cell": [
+            6,
+            256
+          ],
+          "expected": [
+            146.169163057,
+            138.121479554,
+            101.664807831
+          ],
+          "hash": 3395864482,
+          "noise_bits": [
+            1054952016,
+            1048248616,
+            3206759899
+          ],
+          "x": 8,
+          "y": 360
+        },
+        {
+          "cell": [
+            33,
+            256
+          ],
+          "expected": [
+            133.445807862,
+            117.046182996,
+            115.415661824
+          ],
+          "hash": 3148125864,
+          "noise_bits": [
+            1040649528,
+            3196572330,
+            3197897324
+          ],
+          "x": 47,
+          "y": 360
+        },
+        {
+          "cell": [
+            0,
+            0
+          ],
+          "expected": [
+            146.009728129,
+            114.301226936,
+            163.440469719
+          ],
+          "hash": 2731388632,
+          "noise_bits": [
+            1054822456,
+            3198802936,
+            1062975816
+          ],
+          "x": 0,
+          "y": 719
+        },
+        {
+          "cell": [
+            1,
+            0
+          ],
+          "expected": [
+            107.185654463,
+            143.676317476,
+            149.68677307
+          ],
+          "hash": 1313183956,
+          "noise_bits": [
+            3204516724,
+            1052926280,
+            1057387552
+          ],
+          "x": 1,
+          "y": 719
+        },
+        {
+          "cell": [
+            5,
+            0
+          ],
+          "expected": [
+            105.933359309,
+            119.102083842,
+            128.691856032
+          ],
+          "hash": 1755586494,
+          "noise_bits": [
+            3205025544,
+            3193743680,
+            1015628416
+          ],
+          "x": 7,
+          "y": 719
+        },
+        {
+          "cell": [
+            6,
+            0
+          ],
+          "expected": [
+            108.244833507,
+            147.898837594,
+            118.741853937
+          ],
+          "hash": 825444351,
+          "noise_bits": [
+            3203724482,
+            1056357584,
+            3194329140
+          ],
+          "x": 8,
+          "y": 719
+        },
+        {
+          "cell": [
+            33,
+            0
+          ],
+          "expected": [
+            117.350504846,
+            117.097030875,
+            139.43162217
+          ],
+          "hash": 3003605149,
+          "noise_bits": [
+            3196325032,
+            3196531010,
+            1049476956
+          ],
+          "x": 47,
+          "y": 719
+        }
+      ],
+      "seed": 987654321,
+      "source_alpha": 255,
+      "source_rgb": [
+        128,
+        128,
+        128
+      ],
+      "title": "the three channels draw three different triangular noises",
+      "tolerance_per_channel": 1.5,
+      "width": 48
+    },
+    {
+      "height": 1440,
+      "id": "grain-scale-applies-once-on-a-tall-picture",
+      "identity": false,
+      "params": {
+        "amount": 1.0,
+        "colored": false,
+        "intensity": 1.0,
+        "luma": 0.7,
+        "size": 2.0
+      },
+      "pass_amount": 1.0,
+      "probes": [
+        {
+          "cell": [
+            0,
+            359
+          ],
+          "expected": [
+            145.939230227,
+            145.939230227,
+            145.939230227
+          ],
+          "hash": 2585397382,
+          "noise_bits": [
+            1054765168,
+            1054765168,
+            1054765168
+          ],
+          "x": 0,
+          "y": 0
+        },
+        {
+          "cell": [
+            0,
+            359
+          ],
+          "expected": [
+            145.939230227,
+            145.939230227,
+            145.939230227
+          ],
+          "hash": 2585397382,
+          "noise_bits": [
+            1054765168,
+            1054765168,
+            1054765168
+          ],
+          "x": 1,
+          "y": 0
+        },
+        {
+          "cell": [
+            0,
+            359
+          ],
+          "expected": [
+            145.939230227,
+            145.939230227,
+            145.939230227
+          ],
+          "hash": 2585397382,
+          "noise_bits": [
+            1054765168,
+            1054765168,
+            1054765168
+          ],
+          "x": 3,
+          "y": 0
+        },
+        {
+          "cell": [
+            1,
+            359
+          ],
+          "expected": [
+            152.289652871,
+            152.289652871,
+            152.289652871
+          ],
+          "hash": 4242034111,
+          "noise_bits": [
+            1058445128,
+            1058445128,
+            1058445128
+          ],
+          "x": 4,
+          "y": 0
+        },
+        {
+          "cell": [
+            1,
+            359
+          ],
+          "expected": [
+            152.289652871,
+            152.289652871,
+            152.289652871
+          ],
+          "hash": 4242034111,
+          "noise_bits": [
+            1058445128,
+            1058445128,
+            1058445128
+          ],
+          "x": 5,
+          "y": 0
+        },
+        {
+          "cell": [
+            1,
+            359
+          ],
+          "expected": [
+            152.289652871,
+            152.289652871,
+            152.289652871
+          ],
+          "hash": 4242034111,
+          "noise_bits": [
+            1058445128,
+            1058445128,
+            1058445128
+          ],
+          "x": 7,
+          "y": 0
+        },
+        {
+          "cell": [
+            2,
+            359
+          ],
+          "expected": [
+            110.523460862,
+            110.523460862,
+            110.523460862
+          ],
+          "hash": 860109990,
+          "noise_bits": [
+            3201872824,
+            3201872824,
+            3201872824
+          ],
+          "x": 8,
+          "y": 0
+        },
+        {
+          "cell": [
+            2,
+            359
+          ],
+          "expected": [
+            110.523460862,
+            110.523460862,
+            110.523460862
+          ],
+          "hash": 860109990,
+          "noise_bits": [
+            3201872824,
+            3201872824,
+            3201872824
+          ],
+          "x": 9,
+          "y": 0
+        },
+        {
+          "cell": [
+            0,
+            359
+          ],
+          "expected": [
+            145.939230227,
+            145.939230227,
+            145.939230227
+          ],
+          "hash": 2585397382,
+          "noise_bits": [
+            1054765168,
+            1054765168,
+            1054765168
+          ],
+          "x": 0,
+          "y": 1
+        },
+        {
+          "cell": [
+            0,
+            359
+          ],
+          "expected": [
+            145.939230227,
+            145.939230227,
+            145.939230227
+          ],
+          "hash": 2585397382,
+          "noise_bits": [
+            1054765168,
+            1054765168,
+            1054765168
+          ],
+          "x": 1,
+          "y": 1
+        },
+        {
+          "cell": [
+            0,
+            359
+          ],
+          "expected": [
+            145.939230227,
+            145.939230227,
+            145.939230227
+          ],
+          "hash": 2585397382,
+          "noise_bits": [
+            1054765168,
+            1054765168,
+            1054765168
+          ],
+          "x": 3,
+          "y": 1
+        },
+        {
+          "cell": [
+            1,
+            359
+          ],
+          "expected": [
+            152.289652871,
+            152.289652871,
+            152.289652871
+          ],
+          "hash": 4242034111,
+          "noise_bits": [
+            1058445128,
+            1058445128,
+            1058445128
+          ],
+          "x": 4,
+          "y": 1
+        },
+        {
+          "cell": [
+            1,
+            359
+          ],
+          "expected": [
+            152.289652871,
+            152.289652871,
+            152.289652871
+          ],
+          "hash": 4242034111,
+          "noise_bits": [
+            1058445128,
+            1058445128,
+            1058445128
+          ],
+          "x": 5,
+          "y": 1
+        },
+        {
+          "cell": [
+            1,
+            359
+          ],
+          "expected": [
+            152.289652871,
+            152.289652871,
+            152.289652871
+          ],
+          "hash": 4242034111,
+          "noise_bits": [
+            1058445128,
+            1058445128,
+            1058445128
+          ],
+          "x": 7,
+          "y": 1
+        },
+        {
+          "cell": [
+            2,
+            359
+          ],
+          "expected": [
+            110.523460862,
+            110.523460862,
+            110.523460862
+          ],
+          "hash": 860109990,
+          "noise_bits": [
+            3201872824,
+            3201872824,
+            3201872824
+          ],
+          "x": 8,
+          "y": 1
+        },
+        {
+          "cell": [
+            2,
+            359
+          ],
+          "expected": [
+            110.523460862,
+            110.523460862,
+            110.523460862
+          ],
+          "hash": 860109990,
+          "noise_bits": [
+            3201872824,
+            3201872824,
+            3201872824
+          ],
+          "x": 9,
+          "y": 1
+        },
+        {
+          "cell": [
+            0,
+            359
+          ],
+          "expected": [
+            145.939230227,
+            145.939230227,
+            145.939230227
+          ],
+          "hash": 2585397382,
+          "noise_bits": [
+            1054765168,
+            1054765168,
+            1054765168
+          ],
+          "x": 0,
+          "y": 3
+        },
+        {
+          "cell": [
+            0,
+            359
+          ],
+          "expected": [
+            145.939230227,
+            145.939230227,
+            145.939230227
+          ],
+          "hash": 2585397382,
+          "noise_bits": [
+            1054765168,
+            1054765168,
+            1054765168
+          ],
+          "x": 1,
+          "y": 3
+        },
+        {
+          "cell": [
+            0,
+            359
+          ],
+          "expected": [
+            145.939230227,
+            145.939230227,
+            145.939230227
+          ],
+          "hash": 2585397382,
+          "noise_bits": [
+            1054765168,
+            1054765168,
+            1054765168
+          ],
+          "x": 3,
+          "y": 3
+        },
+        {
+          "cell": [
+            1,
+            359
+          ],
+          "expected": [
+            152.289652871,
+            152.289652871,
+            152.289652871
+          ],
+          "hash": 4242034111,
+          "noise_bits": [
+            1058445128,
+            1058445128,
+            1058445128
+          ],
+          "x": 4,
+          "y": 3
+        },
+        {
+          "cell": [
+            1,
+            359
+          ],
+          "expected": [
+            152.289652871,
+            152.289652871,
+            152.289652871
+          ],
+          "hash": 4242034111,
+          "noise_bits": [
+            1058445128,
+            1058445128,
+            1058445128
+          ],
+          "x": 5,
+          "y": 3
+        },
+        {
+          "cell": [
+            1,
+            359
+          ],
+          "expected": [
+            152.289652871,
+            152.289652871,
+            152.289652871
+          ],
+          "hash": 4242034111,
+          "noise_bits": [
+            1058445128,
+            1058445128,
+            1058445128
+          ],
+          "x": 7,
+          "y": 3
+        },
+        {
+          "cell": [
+            2,
+            359
+          ],
+          "expected": [
+            110.523460862,
+            110.523460862,
+            110.523460862
+          ],
+          "hash": 860109990,
+          "noise_bits": [
+            3201872824,
+            3201872824,
+            3201872824
+          ],
+          "x": 8,
+          "y": 3
+        },
+        {
+          "cell": [
+            2,
+            359
+          ],
+          "expected": [
+            110.523460862,
+            110.523460862,
+            110.523460862
+          ],
+          "hash": 860109990,
+          "noise_bits": [
+            3201872824,
+            3201872824,
+            3201872824
+          ],
+          "x": 9,
+          "y": 3
+        },
+        {
+          "cell": [
+            0,
+            358
+          ],
+          "expected": [
+            148.807749587,
+            148.807749587,
+            148.807749587
+          ],
+          "hash": 3863134062,
+          "noise_bits": [
+            1057030396,
+            1057030396,
+            1057030396
+          ],
+          "x": 0,
+          "y": 4
+        },
+        {
+          "cell": [
+            0,
+            358
+          ],
+          "expected": [
+            148.807749587,
+            148.807749587,
+            148.807749587
+          ],
+          "hash": 3863134062,
+          "noise_bits": [
+            1057030396,
+            1057030396,
+            1057030396
+          ],
+          "x": 1,
+          "y": 4
+        },
+        {
+          "cell": [
+            0,
+            358
+          ],
+          "expected": [
+            148.807749587,
+            148.807749587,
+            148.807749587
+          ],
+          "hash": 3863134062,
+          "noise_bits": [
+            1057030396,
+            1057030396,
+            1057030396
+          ],
+          "x": 3,
+          "y": 4
+        },
+        {
+          "cell": [
+            1,
+            358
+          ],
+          "expected": [
+            116.260007348,
+            116.260007348,
+            116.260007348
+          ],
+          "hash": 1319634741,
+          "noise_bits": [
+            3197211192,
+            3197211192,
+            3197211192
+          ],
+          "x": 4,
+          "y": 4
+        },
+        {
+          "cell": [
+            1,
+            358
+          ],
+          "expected": [
+            116.260007348,
+            116.260007348,
+            116.260007348
+          ],
+          "hash": 1319634741,
+          "noise_bits": [
+            3197211192,
+            3197211192,
+            3197211192
+          ],
+          "x": 5,
+          "y": 4
+        },
+        {
+          "cell": [
+            1,
+            358
+          ],
+          "expected": [
+            116.260007348,
+            116.260007348,
+            116.260007348
+          ],
+          "hash": 1319634741,
+          "noise_bits": [
+            3197211192,
+            3197211192,
+            3197211192
+          ],
+          "x": 7,
+          "y": 4
+        },
+        {
+          "cell": [
+            2,
+            358
+          ],
+          "expected": [
+            132.113214406,
+            132.113214406,
+            132.113214406
+          ],
+          "hash": 1118079884,
+          "noise_bits": [
+            1036780096,
+            1036780096,
+            1036780096
+          ],
+          "x": 8,
+          "y": 4
+        },
+        {
+          "cell": [
+            2,
+            358
+          ],
+          "expected": [
+            132.113214406,
+            132.113214406,
+            132.113214406
+          ],
+          "hash": 1118079884,
+          "noise_bits": [
+            1036780096,
+            1036780096,
+            1036780096
+          ],
+          "x": 9,
+          "y": 4
+        },
+        {
+          "cell": [
+            0,
+            358
+          ],
+          "expected": [
+            148.807749587,
+            148.807749587,
+            148.807749587
+          ],
+          "hash": 3863134062,
+          "noise_bits": [
+            1057030396,
+            1057030396,
+            1057030396
+          ],
+          "x": 0,
+          "y": 5
+        },
+        {
+          "cell": [
+            0,
+            358
+          ],
+          "expected": [
+            148.807749587,
+            148.807749587,
+            148.807749587
+          ],
+          "hash": 3863134062,
+          "noise_bits": [
+            1057030396,
+            1057030396,
+            1057030396
+          ],
+          "x": 1,
+          "y": 5
+        },
+        {
+          "cell": [
+            0,
+            358
+          ],
+          "expected": [
+            148.807749587,
+            148.807749587,
+            148.807749587
+          ],
+          "hash": 3863134062,
+          "noise_bits": [
+            1057030396,
+            1057030396,
+            1057030396
+          ],
+          "x": 3,
+          "y": 5
+        },
+        {
+          "cell": [
+            1,
+            358
+          ],
+          "expected": [
+            116.260007348,
+            116.260007348,
+            116.260007348
+          ],
+          "hash": 1319634741,
+          "noise_bits": [
+            3197211192,
+            3197211192,
+            3197211192
+          ],
+          "x": 4,
+          "y": 5
+        },
+        {
+          "cell": [
+            1,
+            358
+          ],
+          "expected": [
+            116.260007348,
+            116.260007348,
+            116.260007348
+          ],
+          "hash": 1319634741,
+          "noise_bits": [
+            3197211192,
+            3197211192,
+            3197211192
+          ],
+          "x": 5,
+          "y": 5
+        },
+        {
+          "cell": [
+            1,
+            358
+          ],
+          "expected": [
+            116.260007348,
+            116.260007348,
+            116.260007348
+          ],
+          "hash": 1319634741,
+          "noise_bits": [
+            3197211192,
+            3197211192,
+            3197211192
+          ],
+          "x": 7,
+          "y": 5
+        },
+        {
+          "cell": [
+            2,
+            358
+          ],
+          "expected": [
+            132.113214406,
+            132.113214406,
+            132.113214406
+          ],
+          "hash": 1118079884,
+          "noise_bits": [
+            1036780096,
+            1036780096,
+            1036780096
+          ],
+          "x": 8,
+          "y": 5
+        },
+        {
+          "cell": [
+            2,
+            358
+          ],
+          "expected": [
+            132.113214406,
+            132.113214406,
+            132.113214406
+          ],
+          "hash": 1118079884,
+          "noise_bits": [
+            1036780096,
+            1036780096,
+            1036780096
+          ],
+          "x": 9,
+          "y": 5
+        },
+        {
+          "cell": [
+            0,
+            1
+          ],
+          "expected": [
+            115.488113899,
+            115.488113899,
+            115.488113899
+          ],
+          "hash": 2907201524,
+          "noise_bits": [
+            3197838448,
+            3197838448,
+            3197838448
+          ],
+          "x": 0,
+          "y": 1435
+        },
+        {
+          "cell": [
+            0,
+            1
+          ],
+          "expected": [
+            115.488113899,
+            115.488113899,
+            115.488113899
+          ],
+          "hash": 2907201524,
+          "noise_bits": [
+            3197838448,
+            3197838448,
+            3197838448
+          ],
+          "x": 1,
+          "y": 1435
+        },
+        {
+          "cell": [
+            0,
+            1
+          ],
+          "expected": [
+            115.488113899,
+            115.488113899,
+            115.488113899
+          ],
+          "hash": 2907201524,
+          "noise_bits": [
+            3197838448,
+            3197838448,
+            3197838448
+          ],
+          "x": 3,
+          "y": 1435
+        },
+        {
+          "cell": [
+            1,
+            1
+          ],
+          "expected": [
+            143.737453067,
+            143.737453067,
+            143.737453067
+          ],
+          "hash": 3915735912,
+          "noise_bits": [
+            1052975960,
+            1052975960,
+            1052975960
+          ],
+          "x": 4,
+          "y": 1435
+        },
+        {
+          "cell": [
+            1,
+            1
+          ],
+          "expected": [
+            143.737453067,
+            143.737453067,
+            143.737453067
+          ],
+          "hash": 3915735912,
+          "noise_bits": [
+            1052975960,
+            1052975960,
+            1052975960
+          ],
+          "x": 5,
+          "y": 1435
+        },
+        {
+          "cell": [
+            1,
+            1
+          ],
+          "expected": [
+            143.737453067,
+            143.737453067,
+            143.737453067
+          ],
+          "hash": 3915735912,
+          "noise_bits": [
+            1052975960,
+            1052975960,
+            1052975960
+          ],
+          "x": 7,
+          "y": 1435
+        },
+        {
+          "cell": [
+            2,
+            1
+          ],
+          "expected": [
+            150.372431863,
+            150.372431863,
+            150.372431863
+          ],
+          "hash": 3976415698,
+          "noise_bits": [
+            1057666142,
+            1057666142,
+            1057666142
+          ],
+          "x": 8,
+          "y": 1435
+        },
+        {
+          "cell": [
+            2,
+            1
+          ],
+          "expected": [
+            150.372431863,
+            150.372431863,
+            150.372431863
+          ],
+          "hash": 3976415698,
+          "noise_bits": [
+            1057666142,
+            1057666142,
+            1057666142
+          ],
+          "x": 9,
+          "y": 1435
+        },
+        {
+          "cell": [
+            0,
+            0
+          ],
+          "expected": [
+            91.759385002,
+            91.759385002,
+            91.759385002
+          ],
+          "hash": 511883974,
+          "noise_bits": [
+            3210784571,
+            3210784571,
+            3210784571
+          ],
+          "x": 0,
+          "y": 1436
+        },
+        {
+          "cell": [
+            0,
+            0
+          ],
+          "expected": [
+            91.759385002,
+            91.759385002,
+            91.759385002
+          ],
+          "hash": 511883974,
+          "noise_bits": [
+            3210784571,
+            3210784571,
+            3210784571
+          ],
+          "x": 1,
+          "y": 1436
+        },
+        {
+          "cell": [
+            0,
+            0
+          ],
+          "expected": [
+            91.759385002,
+            91.759385002,
+            91.759385002
+          ],
+          "hash": 511883974,
+          "noise_bits": [
+            3210784571,
+            3210784571,
+            3210784571
+          ],
+          "x": 3,
+          "y": 1436
+        },
+        {
+          "cell": [
+            1,
+            0
+          ],
+          "expected": [
+            111.42174304,
+            111.42174304,
+            111.42174304
+          ],
+          "hash": 34027463,
+          "noise_bits": [
+            3201142862,
+            3201142862,
+            3201142862
+          ],
+          "x": 4,
+          "y": 1436
+        },
+        {
+          "cell": [
+            1,
+            0
+          ],
+          "expected": [
+            111.42174304,
+            111.42174304,
+            111.42174304
+          ],
+          "hash": 34027463,
+          "noise_bits": [
+            3201142862,
+            3201142862,
+            3201142862
+          ],
+          "x": 5,
+          "y": 1436
+        },
+        {
+          "cell": [
+            1,
+            0
+          ],
+          "expected": [
+            111.42174304,
+            111.42174304,
+            111.42174304
+          ],
+          "hash": 34027463,
+          "noise_bits": [
+            3201142862,
+            3201142862,
+            3201142862
+          ],
+          "x": 7,
+          "y": 1436
+        },
+        {
+          "cell": [
+            2,
+            0
+          ],
+          "expected": [
+            119.613833536,
+            119.613833536,
+            119.613833536
+          ],
+          "hash": 43844608,
+          "noise_bits": [
+            3192911964,
+            3192911964,
+            3192911964
+          ],
+          "x": 8,
+          "y": 1436
+        },
+        {
+          "cell": [
+            2,
+            0
+          ],
+          "expected": [
+            119.613833536,
+            119.613833536,
+            119.613833536
+          ],
+          "hash": 43844608,
+          "noise_bits": [
+            3192911964,
+            3192911964,
+            3192911964
+          ],
+          "x": 9,
+          "y": 1436
+        },
+        {
+          "cell": [
+            0,
+            0
+          ],
+          "expected": [
+            91.759385002,
+            91.759385002,
+            91.759385002
+          ],
+          "hash": 511883974,
+          "noise_bits": [
+            3210784571,
+            3210784571,
+            3210784571
+          ],
+          "x": 0,
+          "y": 1439
+        },
+        {
+          "cell": [
+            0,
+            0
+          ],
+          "expected": [
+            91.759385002,
+            91.759385002,
+            91.759385002
+          ],
+          "hash": 511883974,
+          "noise_bits": [
+            3210784571,
+            3210784571,
+            3210784571
+          ],
+          "x": 1,
+          "y": 1439
+        },
+        {
+          "cell": [
+            0,
+            0
+          ],
+          "expected": [
+            91.759385002,
+            91.759385002,
+            91.759385002
+          ],
+          "hash": 511883974,
+          "noise_bits": [
+            3210784571,
+            3210784571,
+            3210784571
+          ],
+          "x": 3,
+          "y": 1439
+        },
+        {
+          "cell": [
+            1,
+            0
+          ],
+          "expected": [
+            111.42174304,
+            111.42174304,
+            111.42174304
+          ],
+          "hash": 34027463,
+          "noise_bits": [
+            3201142862,
+            3201142862,
+            3201142862
+          ],
+          "x": 4,
+          "y": 1439
+        },
+        {
+          "cell": [
+            1,
+            0
+          ],
+          "expected": [
+            111.42174304,
+            111.42174304,
+            111.42174304
+          ],
+          "hash": 34027463,
+          "noise_bits": [
+            3201142862,
+            3201142862,
+            3201142862
+          ],
+          "x": 5,
+          "y": 1439
+        },
+        {
+          "cell": [
+            1,
+            0
+          ],
+          "expected": [
+            111.42174304,
+            111.42174304,
+            111.42174304
+          ],
+          "hash": 34027463,
+          "noise_bits": [
+            3201142862,
+            3201142862,
+            3201142862
+          ],
+          "x": 7,
+          "y": 1439
+        },
+        {
+          "cell": [
+            2,
+            0
+          ],
+          "expected": [
+            119.613833536,
+            119.613833536,
+            119.613833536
+          ],
+          "hash": 43844608,
+          "noise_bits": [
+            3192911964,
+            3192911964,
+            3192911964
+          ],
+          "x": 8,
+          "y": 1439
+        },
+        {
+          "cell": [
+            2,
+            0
+          ],
+          "expected": [
+            119.613833536,
+            119.613833536,
+            119.613833536
+          ],
+          "hash": 43844608,
+          "noise_bits": [
+            3192911964,
+            3192911964,
+            3192911964
+          ],
+          "x": 9,
+          "y": 1439
+        }
+      ],
+      "seed": 4242,
+      "source_alpha": 255,
+      "source_rgb": [
+        128,
+        128,
+        128
+      ],
+      "title": "1440 rows, size 2: the cell is 4 px (2 x 1440 / 720), not 8 and not 2",
+      "tolerance_per_channel": 1.5,
+      "width": 32
+    },
+    {
+      "height": 90,
+      "id": "grain-small-picture-clamps-the-cell-to-one-pixel",
+      "identity": false,
+      "params": {
+        "amount": 1.0,
+        "colored": false,
+        "intensity": 1.0,
+        "luma": 0.7,
+        "size": 1.4
+      },
+      "pass_amount": 1.0,
+      "probes": [
+        {
+          "cell": [
+            0,
+            89
+          ],
+          "expected": [
+            119.440667711,
+            119.440667711,
+            119.440667711
+          ],
+          "hash": 1815045078,
+          "noise_bits": [
+            3193193400,
+            3193193400,
+            3193193400
+          ],
+          "x": 0,
+          "y": 0
+        },
+        {
+          "cell": [
+            1,
+            89
+          ],
+          "expected": [
+            150.380524207,
+            150.380524207,
+            150.380524207
+          ],
+          "hash": 3850824323,
+          "noise_bits": [
+            1057669430,
+            1057669430,
+            1057669430
+          ],
+          "x": 1,
+          "y": 0
+        },
+        {
+          "cell": [
+            2,
+            89
+          ],
+          "expected": [
+            125.639996349,
+            125.639996349,
+            125.639996349
+          ],
+          "hash": 2625458130,
+          "noise_bits": [
+            3177847504,
+            3177847504,
+            3177847504
+          ],
+          "x": 2,
+          "y": 0
+        },
+        {
+          "cell": [
+            39,
+            89
+          ],
+          "expected": [
+            134.848722015,
+            134.848722015,
+            134.848722015
+          ],
+          "hash": 4036504420,
+          "noise_bits": [
+            1042929600,
+            1042929600,
+            1042929600
+          ],
+          "x": 39,
+          "y": 0
+        },
+        {
+          "cell": [
+            0,
+            88
+          ],
+          "expected": [
+            122.766480803,
+            122.766480803,
+            122.766480803
+          ],
+          "hash": 478803520,
+          "noise_bits": [
+            3187788156,
+            3187788156,
+            3187788156
+          ],
+          "x": 0,
+          "y": 1
+        },
+        {
+          "cell": [
+            1,
+            88
+          ],
+          "expected": [
+            153.640887267,
+            153.640887267,
+            153.640887267
+          ],
+          "hash": 3176482437,
+          "noise_bits": [
+            1058994148,
+            1058994148,
+            1058994148
+          ],
+          "x": 1,
+          "y": 1
+        },
+        {
+          "cell": [
+            2,
+            88
+          ],
+          "expected": [
+            141.160789704,
+            141.160789704,
+            141.160789704
+          ],
+          "hash": 1883609599,
+          "noise_bits": [
+            1050882112,
+            1050882112,
+            1050882112
+          ],
+          "x": 2,
+          "y": 1
+        },
+        {
+          "cell": [
+            39,
+            88
+          ],
+          "expected": [
+            148.131935495,
+            148.131935495,
+            148.131935495
+          ],
+          "hash": 3454023819,
+          "noise_bits": [
+            1056547004,
+            1056547004,
+            1056547004
+          ],
+          "x": 39,
+          "y": 1
+        },
+        {
+          "cell": [
+            0,
+            87
+          ],
+          "expected": [
+            128.065851203,
+            128.065851203,
+            128.065851203
+          ],
+          "hash": 1048461236,
+          "noise_bits": [
+            986777600,
+            986777600,
+            986777600
+          ],
+          "x": 0,
+          "y": 2
+        },
+        {
+          "cell": [
+            1,
+            87
+          ],
+          "expected": [
+            134.937841168,
+            134.937841168,
+            134.937841168
+          ],
+          "hash": 2474141875,
+          "noise_bits": [
+            1043074440,
+            1043074440,
+            1043074440
+          ],
+          "x": 1,
+          "y": 2
+        },
+        {
+          "cell": [
+            2,
+            87
+          ],
+          "expected": [
+            134.068362123,
+            134.068362123,
+            134.068362123
+          ],
+          "hash": 3151265650,
+          "noise_bits": [
+            1041661328,
+            1041661328,
+            1041661328
+          ],
+          "x": 2,
+          "y": 2
+        },
+        {
+          "cell": [
+            39,
+            87
+          ],
+          "expected": [
+            129.267278789,
+            129.267278789,
+            129.267278789
+          ],
+          "hash": 4100650906,
+          "noise_bits": [
+            1023110016,
+            1023110016,
+            1023110016
+          ],
+          "x": 39,
+          "y": 2
+        },
+        {
+          "cell": [
+            0,
+            1
+          ],
+          "expected": [
+            107.726606,
+            107.726606,
+            107.726606
+          ],
+          "hash": 281446161,
+          "noise_bits": [
+            3204145604,
+            3204145604,
+            3204145604
+          ],
+          "x": 0,
+          "y": 88
+        },
+        {
+          "cell": [
+            1,
+            1
+          ],
+          "expected": [
+            115.335973894,
+            115.335973894,
+            115.335973894
+          ],
+          "hash": 2442989254,
+          "noise_bits": [
+            3197962080,
+            3197962080,
+            3197962080
+          ],
+          "x": 1,
+          "y": 88
+        },
+        {
+          "cell": [
+            2,
+            1
+          ],
+          "expected": [
+            117.940342706,
+            117.940342706,
+            117.940342706
+          ],
+          "hash": 2786401426,
+          "noise_bits": [
+            3195631788,
+            3195631788,
+            3195631788
+          ],
+          "x": 2,
+          "y": 88
+        },
+        {
+          "cell": [
+            39,
+            1
+          ],
+          "expected": [
+            119.227515174,
+            119.227515174,
+            119.227515174
+          ],
+          "hash": 2748115694,
+          "noise_bits": [
+            3193539824,
+            3193539824,
+            3193539824
+          ],
+          "x": 39,
+          "y": 88
+        },
+        {
+          "cell": [
+            0,
+            0
+          ],
+          "expected": [
+            128.77761322,
+            128.77761322,
+            128.77761322
+          ],
+          "hash": 2242130007,
+          "noise_bits": [
+            1016743424,
+            1016743424,
+            1016743424
+          ],
+          "x": 0,
+          "y": 89
+        },
+        {
+          "cell": [
+            1,
+            0
+          ],
+          "expected": [
+            92.566350197,
+            92.566350197,
+            92.566350197
+          ],
+          "hash": 5305586,
+          "noise_bits": [
+            3210456693,
+            3210456693,
+            3210456693
+          ],
+          "x": 1,
+          "y": 89
+        },
+        {
+          "cell": [
+            2,
+            0
+          ],
+          "expected": [
+            139.047939726,
+            139.047939726,
+            139.047939726
+          ],
+          "hash": 3367137807,
+          "noise_bits": [
+            1049165168,
+            1049165168,
+            1049165168
+          ],
+          "x": 2,
+          "y": 89
+        },
+        {
+          "cell": [
+            39,
+            0
+          ],
+          "expected": [
+            124.162885148,
+            124.162885148,
+            124.162885148
+          ],
+          "hash": 1252899304,
+          "noise_bits": [
+            3183366288,
+            3183366288,
+            3183366288
+          ],
+          "x": 39,
+          "y": 89
+        }
+      ],
+      "seed": 5,
+      "source_alpha": 255,
+      "source_rgb": [
+        128,
+        128,
+        128
+      ],
+      "title": "90 rows, size 1.4: 0.175 px is clamped to a whole pixel",
+      "tolerance_per_channel": 1.5,
+      "width": 40
+    },
+    {
+      "height": 720,
+      "id": "grain-luma-weighs-the-shadows",
+      "identity": false,
+      "params": {
+        "amount": 1.0,
+        "colored": false,
+        "intensity": 1.0,
+        "luma": 1.0,
+        "size": 1.4
+      },
+      "pass_amount": 1.0,
+      "probes": [
+        {
+          "cell": [
+            0,
+            513
+          ],
+          "expected": [
+            1.999767478,
+            1.999767478,
+            1.999767478
+          ],
+          "hash": 642051737,
+          "noise_bits": [
+            3197173204,
+            3197173204,
+            3197173204
+          ],
+          "x": 0,
+          "y": 0
+        },
+        {
+          "cell": [
+            1,
+            513
+          ],
+          "expected": [
+            35.573459644,
+            35.573459644,
+            35.573459644
+          ],
+          "hash": 1651573079,
+          "noise_bits": [
+            1048240968,
+            1048240968,
+            1048240968
+          ],
+          "x": 1,
+          "y": 0
+        },
+        {
+          "cell": [
+            1,
+            513
+          ],
+          "expected": [
+            35.573459644,
+            35.573459644,
+            35.573459644
+          ],
+          "hash": 1651573079,
+          "noise_bits": [
+            1048240968,
+            1048240968,
+            1048240968
+          ],
+          "x": 2,
+          "y": 0
+        },
+        {
+          "cell": [
+            2,
+            513
+          ],
+          "expected": [
+            20.72102739,
+            20.72102739,
+            20.72102739
+          ],
+          "hash": 4254082436,
+          "noise_bits": [
+            1010424320,
+            1010424320,
+            1010424320
+          ],
+          "x": 3,
+          "y": 0
+        },
+        {
+          "cell": [
+            0,
+            513
+          ],
+          "expected": [
+            1.999767478,
+            1.999767478,
+            1.999767478
+          ],
+          "hash": 642051737,
+          "noise_bits": [
+            3197173204,
+            3197173204,
+            3197173204
+          ],
+          "x": 0,
+          "y": 1
+        },
+        {
+          "cell": [
+            1,
+            513
+          ],
+          "expected": [
+            35.573459644,
+            35.573459644,
+            35.573459644
+          ],
+          "hash": 1651573079,
+          "noise_bits": [
+            1048240968,
+            1048240968,
+            1048240968
+          ],
+          "x": 1,
+          "y": 1
+        },
+        {
+          "cell": [
+            1,
+            513
+          ],
+          "expected": [
+            35.573459644,
+            35.573459644,
+            35.573459644
+          ],
+          "hash": 1651573079,
+          "noise_bits": [
+            1048240968,
+            1048240968,
+            1048240968
+          ],
+          "x": 2,
+          "y": 1
+        },
+        {
+          "cell": [
+            2,
+            513
+          ],
+          "expected": [
+            20.72102739,
+            20.72102739,
+            20.72102739
+          ],
+          "hash": 4254082436,
+          "noise_bits": [
+            1010424320,
+            1010424320,
+            1010424320
+          ],
+          "x": 3,
+          "y": 1
+        },
+        {
+          "cell": [
+            0,
+            512
+          ],
+          "expected": [
+            6.883073155,
+            6.883073155,
+            6.883073155
+          ],
+          "hash": 128937979,
+          "noise_bits": [
+            3193131052,
+            3193131052,
+            3193131052
+          ],
+          "x": 0,
+          "y": 2
+        },
+        {
+          "cell": [
+            1,
+            512
+          ],
+          "expected": [
+            51.983167395,
+            51.983167395,
+            51.983167395
+          ],
+          "hash": 2813294797,
+          "noise_bits": [
+            1057017816,
+            1057017816,
+            1057017816
+          ],
+          "x": 1,
+          "y": 2
+        },
+        {
+          "cell": [
+            1,
+            512
+          ],
+          "expected": [
+            51.983167395,
+            51.983167395,
+            51.983167395
+          ],
+          "hash": 2813294797,
+          "noise_bits": [
+            1057017816,
+            1057017816,
+            1057017816
+          ],
+          "x": 2,
+          "y": 2
+        },
+        {
+          "cell": [
+            2,
+            512
+          ],
+          "expected": [
+            2.865218572,
+            2.865218572,
+            2.865218572
+          ],
+          "hash": 1504810986,
+          "noise_bits": [
+            3196716340,
+            3196716340,
+            3196716340
+          ],
+          "x": 3,
+          "y": 2
+        },
+        {
+          "cell": [
+            0,
+            511
+          ],
+          "expected": [
+            7.127877396,
+            7.127877396,
+            7.127877396
+          ],
+          "hash": 1049752310,
+          "noise_bits": [
+            3192872592,
+            3192872592,
+            3192872592
+          ],
+          "x": 0,
+          "y": 3
+        },
+        {
+          "cell": [
+            1,
+            511
+          ],
+          "expected": [
+            0.986676107,
+            0.986676107,
+            0.986676107
+          ],
+          "hash": 2037551323,
+          "noise_bits": [
+            3197708006,
+            3197708006,
+            3197708006
+          ],
+          "x": 1,
+          "y": 3
+        },
+        {
+          "cell": [
+            1,
+            511
+          ],
+          "expected": [
+            0.986676107,
+            0.986676107,
+            0.986676107
+          ],
+          "hash": 2037551323,
+          "noise_bits": [
+            3197708006,
+            3197708006,
+            3197708006
+          ],
+          "x": 2,
+          "y": 3
+        },
+        {
+          "cell": [
+            2,
+            511
+          ],
+          "expected": [
+            37.776512172,
+            37.776512172,
+            37.776512172
+          ],
+          "hash": 2056302544,
+          "noise_bits": [
+            1049571456,
+            1049571456,
+            1049571456
+          ],
+          "x": 3,
+          "y": 3
+        }
+      ],
+      "seed": 99,
+      "source_alpha": 255,
+      "source_rgb": [
+        20,
+        20,
+        20
+      ],
+      "title": "luma 1: the noise weighs more in the shadows than in the highlights",
+      "tolerance_per_channel": 1.5,
+      "width": 24
+    },
+    {
+      "height": 720,
+      "id": "grain-luma-highlights",
+      "identity": false,
+      "params": {
+        "amount": 1.0,
+        "colored": false,
+        "intensity": 1.0,
+        "luma": 1.0,
+        "size": 1.4
+      },
+      "pass_amount": 1.0,
+      "probes": [
+        {
+          "cell": [
+            0,
+            513
+          ],
+          "expected": [
+            244.997547024,
+            239.997547024,
+            234.997547024
+          ],
+          "hash": 642051737,
+          "noise_bits": [
+            3197173204,
+            3197173204,
+            3197173204
+          ],
+          "x": 0,
+          "y": 0
+        },
+        {
+          "cell": [
+            1,
+            513
+          ],
+          "expected": [
+            245.002122268,
+            240.002122268,
+            235.002122268
+          ],
+          "hash": 1651573079,
+          "noise_bits": [
+            1048240968,
+            1048240968,
+            1048240968
+          ],
+          "x": 1,
+          "y": 0
+        },
+        {
+          "cell": [
+            1,
+            513
+          ],
+          "expected": [
+            245.002122268,
+            240.002122268,
+            235.002122268
+          ],
+          "hash": 1651573079,
+          "noise_bits": [
+            1048240968,
+            1048240968,
+            1048240968
+          ],
+          "x": 2,
+          "y": 0
+        },
+        {
+          "cell": [
+            2,
+            513
+          ],
+          "expected": [
+            245.000098258,
+            240.000098258,
+            235.000098258
+          ],
+          "hash": 4254082436,
+          "noise_bits": [
+            1010424320,
+            1010424320,
+            1010424320
+          ],
+          "x": 3,
+          "y": 0
+        },
+        {
+          "cell": [
+            0,
+            513
+          ],
+          "expected": [
+            244.997547024,
+            239.997547024,
+            234.997547024
+          ],
+          "hash": 642051737,
+          "noise_bits": [
+            3197173204,
+            3197173204,
+            3197173204
+          ],
+          "x": 0,
+          "y": 1
+        },
+        {
+          "cell": [
+            1,
+            513
+          ],
+          "expected": [
+            245.002122268,
+            240.002122268,
+            235.002122268
+          ],
+          "hash": 1651573079,
+          "noise_bits": [
+            1048240968,
+            1048240968,
+            1048240968
+          ],
+          "x": 1,
+          "y": 1
+        },
+        {
+          "cell": [
+            1,
+            513
+          ],
+          "expected": [
+            245.002122268,
+            240.002122268,
+            235.002122268
+          ],
+          "hash": 1651573079,
+          "noise_bits": [
+            1048240968,
+            1048240968,
+            1048240968
+          ],
+          "x": 2,
+          "y": 1
+        },
+        {
+          "cell": [
+            2,
+            513
+          ],
+          "expected": [
+            245.000098258,
+            240.000098258,
+            235.000098258
+          ],
+          "hash": 4254082436,
+          "noise_bits": [
+            1010424320,
+            1010424320,
+            1010424320
+          ],
+          "x": 3,
+          "y": 1
+        },
+        {
+          "cell": [
+            0,
+            512
+          ],
+          "expected": [
+            244.998212495,
+            239.998212495,
+            234.998212495
+          ],
+          "hash": 128937979,
+          "noise_bits": [
+            3193131052,
+            3193131052,
+            3193131052
+          ],
+          "x": 0,
+          "y": 2
+        },
+        {
+          "cell": [
+            1,
+            512
+          ],
+          "expected": [
+            245.004358496,
+            240.004358496,
+            235.004358496
+          ],
+          "hash": 2813294797,
+          "noise_bits": [
+            1057017816,
+            1057017816,
+            1057017816
+          ],
+          "x": 1,
+          "y": 2
+        },
+        {
+          "cell": [
+            1,
+            512
+          ],
+          "expected": [
+            245.004358496,
+            240.004358496,
+            235.004358496
+          ],
+          "hash": 2813294797,
+          "noise_bits": [
+            1057017816,
+            1057017816,
+            1057017816
+          ],
+          "x": 2,
+          "y": 2
+        },
+        {
+          "cell": [
+            2,
+            512
+          ],
+          "expected": [
+            244.997664963,
+            239.997664963,
+            234.997664963
+          ],
+          "hash": 1504810986,
+          "noise_bits": [
+            3196716340,
+            3196716340,
+            3196716340
+          ],
+          "x": 3,
+          "y": 2
+        },
+        {
+          "cell": [
+            0,
+            511
+          ],
+          "expected": [
+            244.998245856,
+            239.998245856,
+            234.998245856
+          ],
+          "hash": 1049752310,
+          "noise_bits": [
+            3192872592,
+            3192872592,
+            3192872592
+          ],
+          "x": 0,
+          "y": 3
+        },
+        {
+          "cell": [
+            1,
+            511
+          ],
+          "expected": [
+            244.997408965,
+            239.997408965,
+            234.997408965
+          ],
+          "hash": 2037551323,
+          "noise_bits": [
+            3197708006,
+            3197708006,
+            3197708006
+          ],
+          "x": 1,
+          "y": 3
+        },
+        {
+          "cell": [
+            1,
+            511
+          ],
+          "expected": [
+            244.997408965,
+            239.997408965,
+            234.997408965
+          ],
+          "hash": 2037551323,
+          "noise_bits": [
+            3197708006,
+            3197708006,
+            3197708006
+          ],
+          "x": 2,
+          "y": 3
+        },
+        {
+          "cell": [
+            2,
+            511
+          ],
+          "expected": [
+            245.002422489,
+            240.002422489,
+            235.002422489
+          ],
+          "hash": 2056302544,
+          "noise_bits": [
+            1049571456,
+            1049571456,
+            1049571456
+          ],
+          "x": 3,
+          "y": 3
+        }
+      ],
+      "seed": 99,
+      "source_alpha": 255,
+      "source_rgb": [
+        245,
+        240,
+        235
+      ],
+      "title": "luma 1 on a bright picture: almost no grain",
+      "tolerance_per_channel": 1.5,
+      "width": 24
+    },
+    {
+      "height": 720,
+      "id": "grain-luma-zero-is-uniform",
+      "identity": false,
+      "params": {
+        "amount": 1.0,
+        "colored": false,
+        "intensity": 1.0,
+        "luma": 0.0,
+        "size": 1.4
+      },
+      "pass_amount": 1.0,
+      "probes": [
+        {
+          "cell": [
+            0,
+            513
+          ],
+          "expected": [
+            1.946857125,
+            1.946857125,
+            1.946857125
+          ],
+          "hash": 642051737,
+          "noise_bits": [
+            3197173204,
+            3197173204,
+            3197173204
+          ],
+          "x": 0,
+          "y": 0
+        },
+        {
+          "cell": [
+            1,
+            513
+          ],
+          "expected": [
+            35.619236678,
+            35.619236678,
+            35.619236678
+          ],
+          "hash": 1651573079,
+          "noise_bits": [
+            1048240968,
+            1048240968,
+            1048240968
+          ],
+          "x": 1,
+          "y": 0
+        },
+        {
+          "cell": [
+            1,
+            513
+          ],
+          "expected": [
+            35.619236678,
+            35.619236678,
+            35.619236678
+          ],
+          "hash": 1651573079,
+          "noise_bits": [
+            1048240968,
+            1048240968,
+            1048240968
+          ],
+          "x": 2,
+          "y": 0
+        },
+        {
+          "cell": [
+            2,
+            513
+          ],
+          "expected": [
+            20.723146796,
+            20.723146796,
+            20.723146796
+          ],
+          "hash": 4254082436,
+          "noise_bits": [
+            1010424320,
+            1010424320,
+            1010424320
+          ],
+          "x": 3,
+          "y": 0
+        },
+        {
+          "cell": [
+            0,
+            513
+          ],
+          "expected": [
+            1.946857125,
+            1.946857125,
+            1.946857125
+          ],
+          "hash": 642051737,
+          "noise_bits": [
+            3197173204,
+            3197173204,
+            3197173204
+          ],
+          "x": 0,
+          "y": 1
+        },
+        {
+          "cell": [
+            1,
+            513
+          ],
+          "expected": [
+            35.619236678,
+            35.619236678,
+            35.619236678
+          ],
+          "hash": 1651573079,
+          "noise_bits": [
+            1048240968,
+            1048240968,
+            1048240968
+          ],
+          "x": 1,
+          "y": 1
+        },
+        {
+          "cell": [
+            1,
+            513
+          ],
+          "expected": [
+            35.619236678,
+            35.619236678,
+            35.619236678
+          ],
+          "hash": 1651573079,
+          "noise_bits": [
+            1048240968,
+            1048240968,
+            1048240968
+          ],
+          "x": 2,
+          "y": 1
+        },
+        {
+          "cell": [
+            2,
+            513
+          ],
+          "expected": [
+            20.723146796,
+            20.723146796,
+            20.723146796
+          ],
+          "hash": 4254082436,
+          "noise_bits": [
+            1010424320,
+            1010424320,
+            1010424320
+          ],
+          "x": 3,
+          "y": 1
+        },
+        {
+          "cell": [
+            0,
+            512
+          ],
+          "expected": [
+            6.844516918,
+            6.844516918,
+            6.844516918
+          ],
+          "hash": 128937979,
+          "noise_bits": [
+            3193131052,
+            3193131052,
+            3193131052
+          ],
+          "x": 0,
+          "y": 2
+        },
+        {
+          "cell": [
+            1,
+            512
+          ],
+          "expected": [
+            52.077179551,
+            52.077179551,
+            52.077179551
+          ],
+          "hash": 2813294797,
+          "noise_bits": [
+            1057017816,
+            1057017816,
+            1057017816
+          ],
+          "x": 1,
+          "y": 2
+        },
+        {
+          "cell": [
+            1,
+            512
+          ],
+          "expected": [
+            52.077179551,
+            52.077179551,
+            52.077179551
+          ],
+          "hash": 2813294797,
+          "noise_bits": [
+            1057017816,
+            1057017816,
+            1057017816
+          ],
+          "x": 2,
+          "y": 2
+        },
+        {
+          "cell": [
+            2,
+            512
+          ],
+          "expected": [
+            2.814852148,
+            2.814852148,
+            2.814852148
+          ],
+          "hash": 1504810986,
+          "noise_bits": [
+            3196716340,
+            3196716340,
+            3196716340
+          ],
+          "x": 3,
+          "y": 2
+        },
+        {
+          "cell": [
+            0,
+            511
+          ],
+          "expected": [
+            7.090040743,
+            7.090040743,
+            7.090040743
+          ],
+          "hash": 1049752310,
+          "noise_bits": [
+            3192872592,
+            3192872592,
+            3192872592
+          ],
+          "x": 0,
+          "y": 3
+        },
+        {
+          "cell": [
+            1,
+            511
+          ],
+          "expected": [
+            0.930787846,
+            0.930787846,
+            0.930787846
+          ],
+          "hash": 2037551323,
+          "noise_bits": [
+            3197708006,
+            3197708006,
+            3197708006
+          ],
+          "x": 1,
+          "y": 3
+        },
+        {
+          "cell": [
+            1,
+            511
+          ],
+          "expected": [
+            0.930787846,
+            0.930787846,
+            0.930787846
+          ],
+          "hash": 2037551323,
+          "noise_bits": [
+            3197708006,
+            3197708006,
+            3197708006
+          ],
+          "x": 2,
+          "y": 3
+        },
+        {
+          "cell": [
+            2,
+            511
+          ],
+          "expected": [
+            37.828764915,
+            37.828764915,
+            37.828764915
+          ],
+          "hash": 2056302544,
+          "noise_bits": [
+            1049571456,
+            1049571456,
+            1049571456
+          ],
+          "x": 3,
+          "y": 3
+        }
+      ],
+      "seed": 99,
+      "source_alpha": 255,
+      "source_rgb": [
+        20,
+        20,
+        20
+      ],
+      "title": "luma 0: the response is 1 whatever the picture",
+      "tolerance_per_channel": 1.5,
+      "width": 24
+    },
+    {
+      "height": 720,
+      "id": "grain-half-pass-amount-mixes-in-linear-light",
+      "identity": false,
+      "params": {
+        "amount": 1.0,
+        "colored": false,
+        "intensity": 1.0,
+        "luma": 0.7,
+        "size": 1.4
+      },
+      "pass_amount": 0.5,
+      "probes": [
+        {
+          "cell": [
+            0,
+            513
+          ],
+          "expected": [
+            194.264973033,
+            154.292302407,
+            74.421024138
+          ],
+          "hash": 2063120625,
+          "noise_bits": [
+            3200139994,
+            3200139994,
+            3200139994
+          ],
+          "x": 0,
+          "y": 0
+        },
+        {
+          "cell": [
+            1,
+            513
+          ],
+          "expected": [
+            193.906251173,
+            153.937306325,
+            74.083883519
+          ],
+          "hash": 1395900081,
+          "noise_bits": [
+            3200937430,
+            3200937430,
+            3200937430
+          ],
+          "x": 1,
+          "y": 0
+        },
+        {
+          "cell": [
+            1,
+            513
+          ],
+          "expected": [
+            193.906251173,
+            153.937306325,
+            74.083883519
+          ],
+          "hash": 1395900081,
+          "noise_bits": [
+            3200937430,
+            3200937430,
+            3200937430
+          ],
+          "x": 2,
+          "y": 0
+        },
+        {
+          "cell": [
+            2,
+            513
+          ],
+          "expected": [
+            207.46400363,
+            167.501066209,
+            87.662516482
+          ],
+          "hash": 2437239289,
+          "noise_bits": [
+            1055737720,
+            1055737720,
+            1055737720
+          ],
+          "x": 3,
+          "y": 0
+        },
+        {
+          "cell": [
+            0,
+            513
+          ],
+          "expected": [
+            194.264973033,
+            154.292302407,
+            74.421024138
+          ],
+          "hash": 2063120625,
+          "noise_bits": [
+            3200139994,
+            3200139994,
+            3200139994
+          ],
+          "x": 0,
+          "y": 1
+        },
+        {
+          "cell": [
+            1,
+            513
+          ],
+          "expected": [
+            193.906251173,
+            153.937306325,
+            74.083883519
+          ],
+          "hash": 1395900081,
+          "noise_bits": [
+            3200937430,
+            3200937430,
+            3200937430
+          ],
+          "x": 1,
+          "y": 1
+        },
+        {
+          "cell": [
+            1,
+            513
+          ],
+          "expected": [
+            193.906251173,
+            153.937306325,
+            74.083883519
+          ],
+          "hash": 1395900081,
+          "noise_bits": [
+            3200937430,
+            3200937430,
+            3200937430
+          ],
+          "x": 2,
+          "y": 1
+        },
+        {
+          "cell": [
+            2,
+            513
+          ],
+          "expected": [
+            207.46400363,
+            167.501066209,
+            87.662516482
+          ],
+          "hash": 2437239289,
+          "noise_bits": [
+            1055737720,
+            1055737720,
+            1055737720
+          ],
+          "x": 3,
+          "y": 1
+        },
+        {
+          "cell": [
+            0,
+            512
+          ],
+          "expected": [
+            213.109719146,
+            173.214505455,
+            93.656510353
+          ],
+          "hash": 3449598473,
+          "noise_bits": [
+            1062023900,
+            1062023900,
+            1062023900
+          ],
+          "x": 0,
+          "y": 2
+        },
+        {
+          "cell": [
+            1,
+            512
+          ],
+          "expected": [
+            205.523209774,
+            165.544142755,
+            85.636369942
+          ],
+          "hash": 2070176973,
+          "noise_bits": [
+            1051759356,
+            1051759356,
+            1051759356
+          ],
+          "x": 1,
+          "y": 2
+        },
+        {
+          "cell": [
+            1,
+            512
+          ],
+          "expected": [
+            205.523209774,
+            165.544142755,
+            85.636369942
+          ],
+          "hash": 2070176973,
+          "noise_bits": [
+            1051759356,
+            1051759356,
+            1051759356
+          ],
+          "x": 2,
+          "y": 2
+        },
+        {
+          "cell": [
+            2,
+            512
+          ],
+          "expected": [
+            205.622808516,
+            165.64446851,
+            85.739843009
+          ],
+          "hash": 3156161327,
+          "noise_bits": [
+            1051964568,
+            1051964568,
+            1051964568
+          ],
+          "x": 3,
+          "y": 2
+        },
+        {
+          "cell": [
+            0,
+            511
+          ],
+          "expected": [
+            210.420026063,
+            170.488997821,
+            90.784379637
+          ],
+          "hash": 4097021857,
+          "noise_bits": [
+            1059341450,
+            1059341450,
+            1059341450
+          ],
+          "x": 0,
+          "y": 3
+        },
+        {
+          "cell": [
+            1,
+            511
+          ],
+          "expected": [
+            202.224915936,
+            162.228500989,
+            82.24460714
+          ],
+          "hash": 2356579484,
+          "noise_bits": [
+            1041215920,
+            1041215920,
+            1041215920
+          ],
+          "x": 1,
+          "y": 3
+        },
+        {
+          "cell": [
+            1,
+            511
+          ],
+          "expected": [
+            202.224915936,
+            162.228500989,
+            82.24460714
+          ],
+          "hash": 2356579484,
+          "noise_bits": [
+            1041215920,
+            1041215920,
+            1041215920
+          ],
+          "x": 2,
+          "y": 3
+        },
+        {
+          "cell": [
+            2,
+            511
+          ],
+          "expected": [
+            199.608611229,
+            159.608727156,
+            79.609256151
+          ],
+          "hash": 3548315061,
+          "noise_bits": [
+            3167481216,
+            3167481216,
+            3167481216
+          ],
+          "x": 3,
+          "y": 3
+        }
+      ],
+      "seed": 31337,
+      "source_alpha": 255,
+      "source_rgb": [
+        200,
+        160,
+        80
+      ],
+      "title": "intensity x weight 0.5: the mix is in linear light, once",
+      "tolerance_per_channel": 1.5,
+      "width": 24
+    },
+    {
+      "height": 720,
+      "id": "grain-seed-uint32-edges",
+      "identity": false,
+      "params": {
+        "amount": 1.0,
+        "colored": false,
+        "intensity": 1.0,
+        "luma": 0.7,
+        "size": 1.4
+      },
+      "pass_amount": 1.0,
+      "probes": [
+        {
+          "cell": [
+            0,
+            513
+          ],
+          "expected": [
+            110.886777081,
+            110.886777081,
+            110.886777081
+          ],
+          "hash": 1740894210,
+          "noise_bits": [
+            3201577586,
+            3201577586,
+            3201577586
+          ],
+          "x": 0,
+          "y": 0
+        },
+        {
+          "cell": [
+            1,
+            513
+          ],
+          "expected": [
+            146.885827735,
+            146.885827735,
+            146.885827735
+          ],
+          "hash": 3482707262,
+          "noise_bits": [
+            1055534392,
+            1055534392,
+            1055534392
+          ],
+          "x": 1,
+          "y": 0
+        },
+        {
+          "cell": [
+            1,
+            513
+          ],
+          "expected": [
+            146.885827735,
+            146.885827735,
+            146.885827735
+          ],
+          "hash": 3482707262,
+          "noise_bits": [
+            1055534392,
+            1055534392,
+            1055534392
+          ],
+          "x": 2,
+          "y": 0
+        },
+        {
+          "cell": [
+            2,
+            513
+          ],
+          "expected": [
+            161.529421339,
+            161.529421339,
+            161.529421339
+          ],
+          "hash": 3824717414,
+          "noise_bits": [
+            1062199338,
+            1062199338,
+            1062199338
+          ],
+          "x": 3,
+          "y": 0
+        },
+        {
+          "cell": [
+            0,
+            513
+          ],
+          "expected": [
+            110.886777081,
+            110.886777081,
+            110.886777081
+          ],
+          "hash": 1740894210,
+          "noise_bits": [
+            3201577586,
+            3201577586,
+            3201577586
+          ],
+          "x": 0,
+          "y": 1
+        },
+        {
+          "cell": [
+            1,
+            513
+          ],
+          "expected": [
+            146.885827735,
+            146.885827735,
+            146.885827735
+          ],
+          "hash": 3482707262,
+          "noise_bits": [
+            1055534392,
+            1055534392,
+            1055534392
+          ],
+          "x": 1,
+          "y": 1
+        },
+        {
+          "cell": [
+            1,
+            513
+          ],
+          "expected": [
+            146.885827735,
+            146.885827735,
+            146.885827735
+          ],
+          "hash": 3482707262,
+          "noise_bits": [
+            1055534392,
+            1055534392,
+            1055534392
+          ],
+          "x": 2,
+          "y": 1
+        },
+        {
+          "cell": [
+            2,
+            513
+          ],
+          "expected": [
+            161.529421339,
+            161.529421339,
+            161.529421339
+          ],
+          "hash": 3824717414,
+          "noise_bits": [
+            1062199338,
+            1062199338,
+            1062199338
+          ],
+          "x": 3,
+          "y": 1
+        },
+        {
+          "cell": [
+            0,
+            512
+          ],
+          "expected": [
+            139.028033741,
+            139.028033741,
+            139.028033741
+          ],
+          "hash": 4253368776,
+          "noise_bits": [
+            1049148992,
+            1049148992,
+            1049148992
+          ],
+          "x": 0,
+          "y": 2
+        },
+        {
+          "cell": [
+            1,
+            512
+          ],
+          "expected": [
+            119.43090669,
+            119.43090669,
+            119.43090669
+          ],
+          "hash": 1891731534,
+          "noise_bits": [
+            3193209264,
+            3193209264,
+            3193209264
+          ],
+          "x": 1,
+          "y": 2
+        },
+        {
+          "cell": [
+            1,
+            512
+          ],
+          "expected": [
+            119.43090669,
+            119.43090669,
+            119.43090669
+          ],
+          "hash": 1891731534,
+          "noise_bits": [
+            3193209264,
+            3193209264,
+            3193209264
+          ],
+          "x": 2,
+          "y": 2
+        },
+        {
+          "cell": [
+            2,
+            512
+          ],
+          "expected": [
+            126.53359245,
+            126.53359245,
+            126.53359245
+          ],
+          "hash": 3596768737,
+          "noise_bits": [
+            3172038272,
+            3172038272,
+            3172038272
+          ],
+          "x": 3,
+          "y": 2
+        },
+        {
+          "cell": [
+            0,
+            511
+          ],
+          "expected": [
+            131.943078288,
+            131.943078288,
+            131.943078288
+          ],
+          "hash": 1348318887,
+          "noise_bits": [
+            1036227072,
+            1036227072,
+            1036227072
+          ],
+          "x": 0,
+          "y": 3
+        },
+        {
+          "cell": [
+            1,
+            511
+          ],
+          "expected": [
+            135.182624729,
+            135.182624729,
+            135.182624729
+          ],
+          "hash": 1342495269,
+          "noise_bits": [
+            1043472272,
+            1043472272,
+            1043472272
+          ],
+          "x": 1,
+          "y": 3
+        },
+        {
+          "cell": [
+            1,
+            511
+          ],
+          "expected": [
+            135.182624729,
+            135.182624729,
+            135.182624729
+          ],
+          "hash": 1342495269,
+          "noise_bits": [
+            1043472272,
+            1043472272,
+            1043472272
+          ],
+          "x": 2,
+          "y": 3
+        },
+        {
+          "cell": [
+            2,
+            511
+          ],
+          "expected": [
+            99.667546945,
+            99.667546945,
+            99.667546945
+          ],
+          "hash": 997584808,
+          "noise_bits": [
+            3207571406,
+            3207571406,
+            3207571406
+          ],
+          "x": 3,
+          "y": 3
+        }
+      ],
+      "seed": 4294967295,
+      "source_alpha": 255,
+      "source_rgb": [
+        128,
+        128,
+        128
+      ],
+      "title": "the largest seed is a seed",
+      "tolerance_per_channel": 1.5,
+      "width": 24
+    },
+    {
+      "height": 720,
+      "id": "grain-seed-zero",
+      "identity": false,
+      "params": {
+        "amount": 1.0,
+        "colored": false,
+        "intensity": 1.0,
+        "luma": 0.7,
+        "size": 1.4
+      },
+      "pass_amount": 1.0,
+      "probes": [
+        {
+          "cell": [
+            0,
+            513
+          ],
+          "expected": [
+            105.769272759,
+            105.769272759,
+            105.769272759
+          ],
+          "hash": 1164869224,
+          "noise_bits": [
+            3205092214,
+            3205092214,
+            3205092214
+          ],
+          "x": 0,
+          "y": 0
+        },
+        {
+          "cell": [
+            1,
+            513
+          ],
+          "expected": [
+            118.401131306,
+            118.401131306,
+            118.401131306
+          ],
+          "hash": 2437583013,
+          "noise_bits": [
+            3194882896,
+            3194882896,
+            3194882896
+          ],
+          "x": 1,
+          "y": 0
+        },
+        {
+          "cell": [
+            1,
+            513
+          ],
+          "expected": [
+            118.401131306,
+            118.401131306,
+            118.401131306
+          ],
+          "hash": 2437583013,
+          "noise_bits": [
+            3194882896,
+            3194882896,
+            3194882896
+          ],
+          "x": 2,
+          "y": 0
+        },
+        {
+          "cell": [
+            2,
+            513
+          ],
+          "expected": [
+            119.157273234,
+            119.157273234,
+            119.157273234
+          ],
+          "hash": 2707697486,
+          "noise_bits": [
+            3193653984,
+            3193653984,
+            3193653984
+          ],
+          "x": 3,
+          "y": 0
+        },
+        {
+          "cell": [
+            0,
+            513
+          ],
+          "expected": [
+            105.769272759,
+            105.769272759,
+            105.769272759
+          ],
+          "hash": 1164869224,
+          "noise_bits": [
+            3205092214,
+            3205092214,
+            3205092214
+          ],
+          "x": 0,
+          "y": 1
+        },
+        {
+          "cell": [
+            1,
+            513
+          ],
+          "expected": [
+            118.401131306,
+            118.401131306,
+            118.401131306
+          ],
+          "hash": 2437583013,
+          "noise_bits": [
+            3194882896,
+            3194882896,
+            3194882896
+          ],
+          "x": 1,
+          "y": 1
+        },
+        {
+          "cell": [
+            1,
+            513
+          ],
+          "expected": [
+            118.401131306,
+            118.401131306,
+            118.401131306
+          ],
+          "hash": 2437583013,
+          "noise_bits": [
+            3194882896,
+            3194882896,
+            3194882896
+          ],
+          "x": 2,
+          "y": 1
+        },
+        {
+          "cell": [
+            2,
+            513
+          ],
+          "expected": [
+            119.157273234,
+            119.157273234,
+            119.157273234
+          ],
+          "hash": 2707697486,
+          "noise_bits": [
+            3193653984,
+            3193653984,
+            3193653984
+          ],
+          "x": 3,
+          "y": 1
+        },
+        {
+          "cell": [
+            0,
+            512
+          ],
+          "expected": [
+            142.291300989,
+            142.291300989,
+            142.291300989
+          ],
+          "hash": 1722827053,
+          "noise_bits": [
+            1051800788,
+            1051800788,
+            1051800788
+          ],
+          "x": 0,
+          "y": 2
+        },
+        {
+          "cell": [
+            1,
+            512
+          ],
+          "expected": [
+            153.660015521,
+            153.660015521,
+            153.660015521
+          ],
+          "hash": 4130142928,
+          "noise_bits": [
+            1059001920,
+            1059001920,
+            1059001920
+          ],
+          "x": 1,
+          "y": 2
+        },
+        {
+          "cell": [
+            1,
+            512
+          ],
+          "expected": [
+            153.660015521,
+            153.660015521,
+            153.660015521
+          ],
+          "hash": 4130142928,
+          "noise_bits": [
+            1059001920,
+            1059001920,
+            1059001920
+          ],
+          "x": 2,
+          "y": 2
+        },
+        {
+          "cell": [
+            2,
+            512
+          ],
+          "expected": [
+            100.752944889,
+            100.752944889,
+            100.752944889
+          ],
+          "hash": 1051033891,
+          "noise_bits": [
+            3207130398,
+            3207130398,
+            3207130398
+          ],
+          "x": 3,
+          "y": 2
+        },
+        {
+          "cell": [
+            0,
+            511
+          ],
+          "expected": [
+            134.339682075,
+            134.339682075,
+            134.339682075
+          ],
+          "hash": 1105847135,
+          "noise_bits": [
+            1042102288,
+            1042102288,
+            1042102288
+          ],
+          "x": 0,
+          "y": 3
+        },
+        {
+          "cell": [
+            1,
+            511
+          ],
+          "expected": [
+            129.608230309,
+            129.608230309,
+            129.608230309
+          ],
+          "hash": 1471647471,
+          "noise_bits": [
+            1025476608,
+            1025476608,
+            1025476608
+          ],
+          "x": 1,
+          "y": 3
+        },
+        {
+          "cell": [
+            1,
+            511
+          ],
+          "expected": [
+            129.608230309,
+            129.608230309,
+            129.608230309
+          ],
+          "hash": 1471647471,
+          "noise_bits": [
+            1025476608,
+            1025476608,
+            1025476608
+          ],
+          "x": 2,
+          "y": 3
+        },
+        {
+          "cell": [
+            2,
+            511
+          ],
+          "expected": [
+            161.134845734,
+            161.134845734,
+            161.134845734
+          ],
+          "hash": 4273931125,
+          "noise_bits": [
+            1062039018,
+            1062039018,
+            1062039018
+          ],
+          "x": 3,
+          "y": 3
+        }
+      ],
+      "seed": 0,
+      "source_alpha": 255,
+      "source_rgb": [
+        128,
+        128,
+        128
+      ],
+      "title": "seed 0 is a seed",
+      "tolerance_per_channel": 1.5,
+      "width": 24
+    },
+    {
+      "height": 720,
+      "id": "grain-amount-zero-is-the-baseline",
+      "identity": true,
+      "params": {
+        "amount": 0.0,
+        "colored": false,
+        "intensity": 1.0,
+        "luma": 0.7,
+        "size": 1.4
+      },
+      "pass_amount": 1.0,
+      "probes": [
+        {
+          "expected": [
+            200.0,
+            160.0,
+            80.0
+          ],
+          "x": 0,
+          "y": 0
+        },
+        {
+          "expected": [
+            200.0,
+            160.0,
+            80.0
+          ],
+          "x": 1,
+          "y": 0
+        },
+        {
+          "expected": [
+            200.0,
+            160.0,
+            80.0
+          ],
+          "x": 2,
+          "y": 0
+        },
+        {
+          "expected": [
+            200.0,
+            160.0,
+            80.0
+          ],
+          "x": 3,
+          "y": 0
+        },
+        {
+          "expected": [
+            200.0,
+            160.0,
+            80.0
+          ],
+          "x": 0,
+          "y": 1
+        },
+        {
+          "expected": [
+            200.0,
+            160.0,
+            80.0
+          ],
+          "x": 1,
+          "y": 1
+        },
+        {
+          "expected": [
+            200.0,
+            160.0,
+            80.0
+          ],
+          "x": 2,
+          "y": 1
+        },
+        {
+          "expected": [
+            200.0,
+            160.0,
+            80.0
+          ],
+          "x": 3,
+          "y": 1
+        },
+        {
+          "expected": [
+            200.0,
+            160.0,
+            80.0
+          ],
+          "x": 0,
+          "y": 2
+        },
+        {
+          "expected": [
+            200.0,
+            160.0,
+            80.0
+          ],
+          "x": 1,
+          "y": 2
+        },
+        {
+          "expected": [
+            200.0,
+            160.0,
+            80.0
+          ],
+          "x": 2,
+          "y": 2
+        },
+        {
+          "expected": [
+            200.0,
+            160.0,
+            80.0
+          ],
+          "x": 3,
+          "y": 2
+        },
+        {
+          "expected": [
+            200.0,
+            160.0,
+            80.0
+          ],
+          "x": 0,
+          "y": 3
+        },
+        {
+          "expected": [
+            200.0,
+            160.0,
+            80.0
+          ],
+          "x": 1,
+          "y": 3
+        },
+        {
+          "expected": [
+            200.0,
+            160.0,
+            80.0
+          ],
+          "x": 2,
+          "y": 3
+        },
+        {
+          "expected": [
+            200.0,
+            160.0,
+            80.0
+          ],
+          "x": 3,
+          "y": 3
+        }
+      ],
+      "seed": 7,
+      "source_alpha": 255,
+      "source_rgb": [
+        200,
+        160,
+        80
+      ],
+      "title": "amount 0: the exact input bytes",
+      "tolerance_per_channel": 1.5,
+      "width": 24
+    },
+    {
+      "height": 720,
+      "id": "grain-pass-amount-zero-is-the-baseline",
+      "identity": true,
+      "params": {
+        "amount": 1.0,
+        "colored": false,
+        "intensity": 1.0,
+        "luma": 0.7,
+        "size": 1.4
+      },
+      "pass_amount": 0.0,
+      "probes": [
+        {
+          "expected": [
+            200.0,
+            160.0,
+            80.0
+          ],
+          "x": 0,
+          "y": 0
+        },
+        {
+          "expected": [
+            200.0,
+            160.0,
+            80.0
+          ],
+          "x": 1,
+          "y": 0
+        },
+        {
+          "expected": [
+            200.0,
+            160.0,
+            80.0
+          ],
+          "x": 2,
+          "y": 0
+        },
+        {
+          "expected": [
+            200.0,
+            160.0,
+            80.0
+          ],
+          "x": 3,
+          "y": 0
+        },
+        {
+          "expected": [
+            200.0,
+            160.0,
+            80.0
+          ],
+          "x": 0,
+          "y": 1
+        },
+        {
+          "expected": [
+            200.0,
+            160.0,
+            80.0
+          ],
+          "x": 1,
+          "y": 1
+        },
+        {
+          "expected": [
+            200.0,
+            160.0,
+            80.0
+          ],
+          "x": 2,
+          "y": 1
+        },
+        {
+          "expected": [
+            200.0,
+            160.0,
+            80.0
+          ],
+          "x": 3,
+          "y": 1
+        },
+        {
+          "expected": [
+            200.0,
+            160.0,
+            80.0
+          ],
+          "x": 0,
+          "y": 2
+        },
+        {
+          "expected": [
+            200.0,
+            160.0,
+            80.0
+          ],
+          "x": 1,
+          "y": 2
+        },
+        {
+          "expected": [
+            200.0,
+            160.0,
+            80.0
+          ],
+          "x": 2,
+          "y": 2
+        },
+        {
+          "expected": [
+            200.0,
+            160.0,
+            80.0
+          ],
+          "x": 3,
+          "y": 2
+        },
+        {
+          "expected": [
+            200.0,
+            160.0,
+            80.0
+          ],
+          "x": 0,
+          "y": 3
+        },
+        {
+          "expected": [
+            200.0,
+            160.0,
+            80.0
+          ],
+          "x": 1,
+          "y": 3
+        },
+        {
+          "expected": [
+            200.0,
+            160.0,
+            80.0
+          ],
+          "x": 2,
+          "y": 3
+        },
+        {
+          "expected": [
+            200.0,
+            160.0,
+            80.0
+          ],
+          "x": 3,
+          "y": 3
+        }
+      ],
+      "seed": 7,
+      "source_alpha": 255,
+      "source_rgb": [
+        200,
+        160,
+        80
+      ],
+      "title": "intensity x weight 0: the exact input bytes",
+      "tolerance_per_channel": 1.5,
+      "width": 24
+    },
+    {
+      "height": 720,
+      "id": "grain-alpha-is-preserved",
+      "identity": false,
+      "params": {
+        "amount": 1.0,
+        "colored": false,
+        "intensity": 1.0,
+        "luma": 0.7,
+        "size": 1.4
+      },
+      "pass_amount": 1.0,
+      "probes": [
+        {
+          "cell": [
+            0,
+            513
+          ],
+          "expected": [
+            142.806370808,
+            142.806370808,
+            142.806370808
+          ],
+          "hash": 2997468929,
+          "noise_bits": [
+            1052219344,
+            1052219344,
+            1052219344
+          ],
+          "x": 0,
+          "y": 0
+        },
+        {
+          "cell": [
+            1,
+            513
+          ],
+          "expected": [
+            118.364102926,
+            118.364102926,
+            118.364102926
+          ],
+          "hash": 361202638,
+          "noise_bits": [
+            3194943076,
+            3194943076,
+            3194943076
+          ],
+          "x": 1,
+          "y": 0
+        },
+        {
+          "cell": [
+            0,
+            513
+          ],
+          "expected": [
+            142.806370808,
+            142.806370808,
+            142.806370808
+          ],
+          "hash": 2997468929,
+          "noise_bits": [
+            1052219344,
+            1052219344,
+            1052219344
+          ],
+          "x": 0,
+          "y": 1
+        },
+        {
+          "cell": [
+            1,
+            513
+          ],
+          "expected": [
+            118.364102926,
+            118.364102926,
+            118.364102926
+          ],
+          "hash": 361202638,
+          "noise_bits": [
+            3194943076,
+            3194943076,
+            3194943076
+          ],
+          "x": 1,
+          "y": 1
+        }
+      ],
+      "seed": 11,
+      "source_alpha": 128,
+      "source_rgb": [
+        128,
+        128,
+        128
+      ],
+      "title": "the editor keeps the alpha of the picture (the pilot writes 1)",
+      "tolerance_per_channel": 1.5,
+      "width": 24
+    }
+  ],
+  "reference_height": 720,
+  "schema": 1
+}

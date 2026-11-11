@@ -2,13 +2,13 @@
 //!
 //! Data only, like the origin's `defineFxEffect` (pilot `scene-engine/src/fx/catalog/*`): the code
 //! that draws an effect lives in the runtime, never in the bundle, and a bundle that names an
-//! effect this catalog does not list is refused (`UNKNOWN_EFFECT`), not ignored. One effect is
-//! entered so far (`vignette`); the table is the extension point (a second look is one more
-//! `EffectSpec`, one more runtime shader and its pixel test).
+//! effect this catalog does not list is refused (`UNKNOWN_EFFECT`), not ignored. Three looks are
+//! entered so far (`vignette`, `fade`, `filmGrain`); the table is the extension point (a look is
+//! one more `EffectSpec`, one more runtime shader and its pixel test).
 
 use serde_json::{Value, json};
 
-use super::FxValue;
+use super::{FxValue, Reseed};
 
 /// A language the editor can print the catalog in. `pt-br` is the editor's own; `en` and `es` are
 /// the other two languages of the pilot's catalog.
@@ -97,6 +97,8 @@ pub enum ParamKind {
         max: f64,
         default: [f64; 2],
     },
+    /// `true | false` (the pilot's `boolean`). A number is never a boolean: `0`/`1` are refused.
+    Bool { default: bool },
 }
 
 impl ParamKind {
@@ -105,6 +107,7 @@ impl ParamKind {
             Self::Number { .. } => "number",
             Self::Color { .. } => "color",
             Self::Point { .. } => "vec2",
+            Self::Bool { .. } => "boolean",
         }
     }
 
@@ -120,6 +123,7 @@ impl ParamKind {
                 x: default[0],
                 y: default[1],
             },
+            Self::Bool { default } => FxValue::Bool(default),
         }
     }
 }
@@ -134,6 +138,9 @@ pub struct EffectSpec {
     pub summary: Labels,
     /// A typical length in frames, the default of a clip added without one.
     pub typical_duration_frames: i64,
+    /// Whether the effect draws noise and how its seed moves over the clip (the pilot's
+    /// `needs: ["seed"]` and `reseed`). Only effects that need a seed carry one in the plan.
+    pub reseed: Reseed,
     pub params: &'static [ParamSpec],
 }
 
@@ -152,6 +159,12 @@ impl EffectSpec {
             "label": self.label.to_json(),
             "summary": self.summary.to_json(),
             "typical_duration_frames": self.typical_duration_frames,
+            "needs_seed": self.reseed != Reseed::Never,
+            "reseed": match self.reseed {
+                Reseed::Never => "none",
+                Reseed::Static => "static",
+                Reseed::PerFrame => "per-frame",
+            },
             "params": self.params.iter().map(param_json).collect::<Vec<_>>(),
         })
     }
@@ -176,6 +189,10 @@ fn param_json(param: &ParamSpec) -> Value {
         ParamKind::Point { min, max, default } => json!({
             "id": param.id, "label": param.label.to_json(), "kind": "vec2", "min": min,
             "max": max, "default": { "x": default[0], "y": default[1] },
+        }),
+        ParamKind::Bool { default } => json!({
+            "id": param.id, "label": param.label.to_json(), "kind": "boolean",
+            "default": default,
         }),
     }
 }
@@ -202,6 +219,7 @@ pub static VIGNETTE: EffectSpec = EffectSpec {
         "Oscurece los bordes del cuadro con una caída elíptica y suave.",
     ),
     typical_duration_frames: 96,
+    reseed: Reseed::Never,
     params: &[
         ParamSpec {
             id: "radius",
@@ -275,9 +293,9 @@ pub const FADE_INTENSITY: usize = 2;
 
 /// `fade`: mixes the whole picture toward `color` by `amount × intensity × envelope`, in linear
 /// light (the pilot's `fade` shader: `mix(source, color, amount × uAmount)`, `uAmount` being the
-/// pass's `intensity × weight`). Exactly the identity when any of the three is 0. Without keys
-/// (P3) a clip's `amount` is one number; the clip's `fadeInFrames`/`fadeOutFrames` envelope is
-/// what opens from or closes to the colour.
+/// pass's `intensity × weight`). Exactly the identity when any of the three is 0. `amount` is
+/// keyable (P3: two keys fade to black and back); the clip's `fadeInFrames`/`fadeOutFrames`
+/// envelope is what opens from or closes to the colour.
 pub static FADE: EffectSpec = EffectSpec {
     id: "fade",
     family: "look",
@@ -288,6 +306,7 @@ pub static FADE: EffectSpec = EffectSpec {
         "Mezcla la imagen con un color, con cantidad fija y una envolvente de entrada y salida.",
     ),
     typical_duration_frames: 24,
+    reseed: Reseed::Never,
     params: &[
         ParamSpec {
             id: "color",
@@ -321,7 +340,88 @@ pub static FADE: EffectSpec = EffectSpec {
     ],
 };
 
-static CATALOG: [&EffectSpec; 2] = [&VIGNETTE, &FADE];
+/// Parameter order of the film grain: `amount`, `size`, `luma`, `colored`, then the shared
+/// `intensity` the pilot's `defineFxEffect` appends. Indices into `FILM_GRAIN.params`.
+pub const FILM_GRAIN_AMOUNT: usize = 0;
+pub const FILM_GRAIN_SIZE: usize = 1;
+pub const FILM_GRAIN_LUMA: usize = 2;
+pub const FILM_GRAIN_COLORED: usize = 3;
+pub const FILM_GRAIN_INTENSITY: usize = 4;
+
+/// `filmGrain`: triangular noise from the integer hash of `(seed, cell)` added to the picture in
+/// the **encoded (perceptual) sRGB space**, weighed more in the shadows by `luma`, then mixed back
+/// in linear light by the pass's `amount × intensity × envelope` (the pilot's `filmGrain` shader).
+/// The seed moves on every frame (`per-frame`) yet is a pure function of the frame, so a seek draws
+/// what playback drew. `size` is in pixels **at 720p** and scales with the height of the picture.
+pub static FILM_GRAIN: EffectSpec = EffectSpec {
+    id: "filmGrain",
+    family: "look",
+    label: Labels::new("Grão de filme", "Film grain", "Grano de película"),
+    summary: Labels::new(
+        "Grão de película que ferve a cada quadro, mais forte nas sombras.",
+        "Film grain that boils every frame, stronger in the shadows.",
+        "Grano de película que hierve en cada cuadro, más fuerte en las sombras.",
+    ),
+    typical_duration_frames: 96,
+    reseed: Reseed::PerFrame,
+    params: &[
+        ParamSpec {
+            id: "amount",
+            label: Labels::new("Quantidade", "Amount", "Cantidad"),
+            kind: ParamKind::Number {
+                min: 0.0,
+                max: 1.0,
+                default: 0.25,
+                step: 0.01,
+                unit: "ratio",
+            },
+        },
+        ParamSpec {
+            id: "size",
+            label: Labels::new("Tamanho", "Size", "Tamaño"),
+            kind: ParamKind::Number {
+                min: 0.5,
+                max: 4.0,
+                default: 1.4,
+                step: 0.1,
+                unit: "px",
+            },
+        },
+        ParamSpec {
+            id: "luma",
+            label: Labels::new(
+                "Resposta de luminância",
+                "Luminance response",
+                "Respuesta de luminancia",
+            ),
+            kind: ParamKind::Number {
+                min: 0.0,
+                max: 1.0,
+                default: 0.7,
+                step: 0.01,
+                unit: "ratio",
+            },
+        },
+        ParamSpec {
+            id: "colored",
+            label: Labels::new("Colorido", "Colored", "Coloreado"),
+            kind: ParamKind::Bool { default: false },
+        },
+        ParamSpec {
+            id: "intensity",
+            label: Labels::new("Intensidade", "Intensity", "Intensidad"),
+            kind: ParamKind::Number {
+                min: 0.0,
+                max: 1.0,
+                default: 1.0,
+                step: 0.01,
+                unit: "ratio",
+            },
+        },
+    ],
+};
+
+static CATALOG: [&EffectSpec; 3] = [&VIGNETTE, &FADE, &FILM_GRAIN];
 
 /// Every effect of this build, in catalog order.
 pub fn catalog() -> &'static [&'static EffectSpec] {

@@ -134,6 +134,9 @@ pub(super) fn derive_requires(
     if !fx.is_empty() {
         found.insert(Capability::OutputFx);
     }
+    if fx.iter().any(|pass| pass.seed.is_some()) {
+        found.insert(Capability::FxNoise);
+    }
     for layer in layers {
         found.insert(match layer.alpha {
             AssetAlpha::Straight => Capability::StraightAlpha,
@@ -463,6 +466,16 @@ impl ScenePlan {
                 return Err(PlanError::invalid(
                     format!("{at}/frameInClip"),
                     "must not be negative",
+                ));
+            }
+            if (spec.reseed != crate::directed_scene::fx::Reseed::Never) != pass.seed.is_some() {
+                return Err(PlanError::invalid(
+                    format!("{at}/seed"),
+                    if pass.seed.is_some() {
+                        "only an effect that draws noise carries a seed"
+                    } else {
+                        "an effect that draws noise needs the seed the core resolved for this frame"
+                    },
                 ));
             }
             if pass.params.len() != spec.params.len() {

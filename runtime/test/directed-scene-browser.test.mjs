@@ -106,7 +106,7 @@ test('the plan is drawn as listed: orientation, straight and opaque alpha, paint
     const ready = await runtime.hello();
     assert.ok(ready.capabilities.features.includes('directed_scene'));
     assert.equal(ready.capabilities.directed_scene.plan_kind, 'tessel-scene-plan');
-    assert.deepEqual(ready.capabilities.directed_scene.capabilities.length, 10);
+    assert.deepEqual(ready.capabilities.directed_scene.capabilities.length, 11);
     const refs = await loadAll(runtime, paths);
 
     // Orientation: image top is plane top (the V axis is flipped on purpose), left is left.

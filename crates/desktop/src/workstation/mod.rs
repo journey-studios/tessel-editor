@@ -21,6 +21,8 @@ mod perf_history_view;
 mod perf_meter;
 mod playback;
 mod scene_fx;
+mod scene_fx_editors;
+mod scene_fx_keys;
 mod scene_gesture;
 mod scene_gizmo;
 mod scene_import;
@@ -362,7 +364,11 @@ impl Workstation {
         cx: &mut Context<Self>,
     ) -> Result<Value, CommandError> {
         let ordinary_preview = matches!(command, Command::SetPreview { .. });
-        let moved_playhead = matches!(command, Command::SetPlayhead { .. });
+        let moved_playhead = matches!(
+            command,
+            Command::SetPlayhead { .. }
+                | Command::Scene(tessel_editor_core::scene_project::SceneCommand::FxSeek { .. })
+        );
         let result = self.state.execute(command);
         if result.is_ok() && moved_playhead {
             // The history's event line: a gesture or `ui set` moved the playhead on purpose.
@@ -847,6 +853,10 @@ mod input_tests;
 mod perf_history_tests;
 #[cfg(test)]
 mod perf_tests;
+#[cfg(test)]
+mod scene_fx_editors_tests;
+#[cfg(test)]
+mod scene_fx_keys_tests;
 #[cfg(test)]
 mod scene_fx_tests;
 #[cfg(test)]
