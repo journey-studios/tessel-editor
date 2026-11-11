@@ -5,17 +5,20 @@
 // a_scene_of_the_same_bundle --nocapture` with the OLD dedupe key (`bl01522-host-tests-vs-old-key.log`) and with the
 // fixed one (`bl01522-host-scratch-with-fix.log`), and were removed before the commit.
 //
-// Question they answer: the review of a97a0a7 said the retained native report did not show the defect "because the
-// first scene had been edited, so its key did not match". Two experiments on the host:
-//   * `scratch_bl01522_native_story`: do the plan, resource map and options (the three parts of the old key besides the
-//     scene) of a scene differ between the pristine scene, the scene edited by a drag and the scene after the undo?
-//     Result: edited != pristine, but the undone scene equals the pristine one (true, true, true) and equals `proof-d`,
-//     the scene attached from the same bundle: an edit-and-undo does not make the keys differ.
-//   * `scratch_bl01522_old_journey_story`: run the journey up to `state.hidden`, then attach `proof-b` from the SAME file
-//     as `proof` and `monitor.show_scene proof-b`. Old key: the directed scene stays `proof`. Fixed key: `proof-b`.
-// The explanation of the review is therefore not what this host reproduces; why the retained native report (journey of
-// 037eda5, where `switch.attach` used the same file as the first scene) does show the monitor going to `proof-b` is not
-// explained by these experiments (see `docs/features/scene-gizmo-performance.md`, BL015.22).
+// What they measured, on the host (no WebView; the test window's timer does not tick):
+//   * `scratch_bl01522_native_story`: the plan JSON, the resource map and the frame options (the three parts of the old
+//     key besides the scene) of the scene as attached (`k0`), after a translate drag (`k1`), after the undo (`k2`), and
+//     of a second scene attached from the same file (`kd`). Output (either key, the experiment does not depend on it):
+//     k0 == kd in the three parts; k1 vs kd: plan differs, map and options equal; k2 == kd and k2 == k0 in the three parts.
+//   * `scratch_bl01522_old_journey_story`: the journey up to (not including) its `switch.attach` step, then
+//     `scene.attach proof-b` from the SAME file as `proof`, `scene.resources.resolve`, `monitor.show_scene proof-b`.
+//     Output: the directed scene before those requests is `proof`; after them it is `proof` with the OLD key and
+//     `proof-b` with the fixed key.
+//
+// What they do NOT show: why the retained native report (`native-functional-only-small.tgz`, journey of 037eda5, where
+// `switch.attach` used the same file as the first scene) has `directed_scene: "proof-b"` after `switch.show`. One
+// candidate, NOT tested: the native monitor re-renders after edits (a new key) while this host's test window does not
+// tick. Nothing here proves or refutes it (see `docs/features/scene-gizmo-performance.md`, BL015.22).
 //
 // (Compiles only inside `scene_gizmo_perf_tests.rs`: it uses that file's `fixture`, `HostSurface`, `Journey`, `support`.)
 

@@ -1,9 +1,11 @@
 # F055 (desempenho) — Suíte de regressão de performance dos gizmos e da abertura (BL015.21)
 
 Complementa [F055](scene-gizmo.md). Pedido: "garantir que não perdemos performance e que validamos o mesmo
-cenário de abrir o app visualmente; o que for possível por teste unitário". Nada aqui muda o produto: o único
-código de produção tocado é o contador de layouts (`scene_plan::probe` + a chamada em `ScenePlan::build_with`, ver
-abaixo). O custo desse contador **não é assumido nulo**: só o A/B o mede (e ele ainda não foi medido).
+cenário de abrir o app visualmente; o que for possível por teste unitário". O código de produção tocado é o contador de
+layouts (`scene_plan::probe` + a chamada em `ScenePlan::build_with`, ver abaixo) e, desde a rodada 2 de correções, **uma
+mudança de comportamento do monitor** (`scene_monitor_host.rs`): o id da cena entra na chave de deduplicação de `ViewportHost::render_scene`
+(BL015.22, um defeito de produto anterior à PR que a própria jornada encontrou; ver "Achados e pendências"). O custo do
+contador **não é assumido nulo**: só o A/B o mede (e ele ainda não foi medido).
 
 ## Objetivo e limites
 
@@ -35,7 +37,7 @@ mesmo undo), `presentation` (precisa de uma janela que apresente) ou `presentati
 | Superfície | Onde | O que prova | O que **não** prova |
 |---|---|---|---|
 | Core (lib) | `crates/core/tests/gizmo_perf_support` + `scene_gizmo_perf_structure.rs` (7 testes, **sempre** rodam, determinísticos), `scene_gizmo_perf_threads.rs` (1 teste: nenhum layout escapa da thread lida; **executado e passa em `a97a0a7`**) e `scene_gizmo_perf_budget.rs` (`#[ignore]`, opt-in controlado; **compilado** pelo `clippy --all-targets` e pelo `cargo test`, onde seus 3 testes aparecem como `ignored`, **nunca executado neste head**) | transformada/undo/redo idênticos ao golden (`journey.expected.json`), cancelar não muda nada, desfazer restaura o valor exato; **planos por requisição** (`scene_plan::probe::layouts_built`), independência do tamanho da cena, 60 moves = 60 plans, chave da memória do overlay; tempo em release | janela, GPU, página |
-| Host GPUI | `crates/desktop/src/workstation/scene_gizmo_perf_tests.rs` (4 testes; em `a97a0a7` **3 passam e o 4º FALHA** (`showing_a_scene_that_shares_its_bundle_with_the_shown_one_shows_it`): é um defeito de produto anterior à PR, BL015.22, ver "Achados e pendências") | a MESMA jornada por `Workstation::run_op` (mesmo golden), incluindo `monitor.show_scene` e resize; layouts por requisição **no host** (orçamento = o medido); janela parada (100 ticks do timer = 0 layouts; **no máximo 1 layout por sync** do mesmo estado — o do próprio monitor —, ou seja ≤ 20 para 20 syncs, que é o que o teste afirma (`<= SYNCS`); 0 pedidos do overlay, só `memo_hits`). O texto anterior ("20 syncs = no máximo 1 layout") não era o que o teste verificava; o contrato é o do teste (uma cota agregada de 1 por sync, não uma checagem sync a sync: um sync com 2 layouts compensado por outro com 0 passaria). Também a cena de **mesmo bundle** (`same.*`, BL015.22) | WebView, GPU, compositor, ponteiro físico; o diálogo (precisa do `Root` do Kit: é da janela nativa) |
+| Host GPUI | `crates/desktop/src/workstation/scene_gizmo_perf_tests.rs` (5 testes, **todos passam em `c3ae380`**; em `a97a0a7` eram 4 e o 4º (`showing_a_scene_that_shares_its_bundle_with_the_shown_one_shows_it`) **falhava**: defeito de produto anterior à PR, BL015.22, **corrigido na rodada 2**, ver "Achados e pendências"; o teste do ciclo de vida do monitor `scene_lifecycle_tests::a_scene_of_the_same_bundle_at_the_same_frame_is_another_scene_and_a_repeat_of_one_scene_is_not` completa a cobertura da correção) | a MESMA jornada por `Workstation::run_op` (mesmo golden), incluindo `monitor.show_scene` e resize; layouts por requisição **no host** (orçamento = o medido); janela parada (100 ticks do timer = 0 layouts; **no máximo 1 layout por sync** do mesmo estado — o do próprio monitor —, ou seja ≤ 20 para 20 syncs, que é o que o teste afirma (`<= SYNCS`); 0 pedidos do overlay, só `memo_hits`). O texto anterior ("20 syncs = no máximo 1 layout") não era o que o teste verificava; o contrato é o do teste (uma cota agregada de 1 por sync, não uma checagem sync a sync: um sync com 2 layouts compensado por outro com 0 passaria). Também a cena de **mesmo bundle** (`same.*`, BL015.22) | WebView, GPU, compositor, ponteiro físico; o diálogo (precisa do `Root` do Kit: é da janela nativa) |
 | Janela nativa | `scripts/gizmo-perf/native.py` (processo próprio, `HOME`/socket próprios, WKWebView, só requisições semânticas) | a mesma jornada contra o mesmo golden, **pixels** (a imagem do monitor muda após um commit, volta ao hash exato após o undo, não muda após cancelar), o overlay desenhado e confirmado pela página (sondas de cor), tempos do cliente e os do próprio runtime | compositor (ver abaixo) |
 
 `scene_plan::probe` (core, sem `unsafe`: o workspace proíbe `unsafe_code`, logo não há contador de alocações nem de
@@ -57,14 +59,31 @@ estrutural**: um plano a mais por handler ou por tick falha o teste sem relógio
 de 5 antes de cada janela de amostras; isso cancela a velocidade e a carga da máquina. Orçamentos por caso e tipo em
 `budgets.json` (regra e margens em `scripts/gizmo-perf/budgets.py`; o arquivo guarda o sha256 dos relatórios de
 calibração). Os orçamentos **não** foram pré-registrados: veja "Histórico dos orçamentos". Métricas: mediana, p95, p99, máximo, amostras perdidas, erros, ticks
-longos (> 16,6 ms); **nenhuma amostra é descartada** e frio/quente ficam separados (frio = 60 editores novos por tipo,
-primeiro quadro incluído). `INCONCLUSIVE` quando mais de 25% dos blocos de referência discordam de si mesmos em > 1,5×;
+longos (> 16,6 ms); **nenhuma amostra é descartada** e frio/quente ficam separados. O teste frio repete **60 vezes**, com editores
+novos, a medida de `scene.attach` (`cold.attach`) e a do primeiro `scene.gizmo.state` da cena (`cold.state`, em outro editor
+novo, porque o bloco de referência já montou o plano no primeiro), pelos handlers públicos do core; as 60 amostras de cada
+ficam e "a primeira incluída" quer dizer a primeira **execução** (o aquecimento do processo é declarado no relatório, não
+escondido). O core **não tem quadro**: nenhum tempo de primeiro quadro ou de apresentação é atribuído a
+ele; isso só existe no host (sem WebView) e na janela nativa. `INCONCLUSIVE` quando mais de 25% dos blocos de referência
+discordam de si mesmos em > 1,5×;
 `BLOCKED` quando o lock `/tmp/tessel-scene-gpu.lock` está ocupado (uma tentativa, sem espera), a carga (1 **e** 5
 min) passa de 0,5 por CPU, o disco está abaixo do piso ou há limite térmico. Em Apple silicon o `pmset` não informa
 `CPU_Speed_Limit`: o relatório diz `thermal_state.verified = false` ("sem limite reportado; estrangulamento não
 excluído"), nunca "silencioso". As guardas são lidas **de novo depois** da corrida: uma guarda ruim depois torna a
 corrida `INVALID_GUARD_AFTER_RUN` (não é PASS). As duas "injeções" (um plano a mais; 1 ms) são **controles
 negativos** do próprio detector, nunca prova de desempenho.
+
+**O que o tempo permanente e o detector estrutural NÃO veem (M2 da revisão R).** O orçamento de tempo é uma razão entre a
+requisição e o `ScenePlan::build_with` **da própria cena, medido no mesmo processo**. Um planejador 2× mais lento dobra a
+parte da requisição que é layout **e** a referência, e a razão **cai**: com uma chamada de layout por requisição, r' = (r + 1)/2 (com k chamadas,
+r' = (r + k)/2; sempre menor que r; com r = 8 e k = 1 a razão passa a 4,5). Logo ele passaria nos orçamentos permanentes, que
+só limitam a razão por cima (derivação do desenho do teste, **não executada**: não existe mutante de planejador mais lento). O detector estrutural conta **chamadas** de layout por requisição, não o custo de cada uma, e
+também passaria. Só o **A/B contra a `main`** (p50 e p95 absolutos por tipo de requisição, rodadas alternadas na mesma
+máquina) vê um planejador mais lento. **Requisito de processo** (BL015.23): uma PR que toque `scene_plan/**` ou o caminho de
+renderização precisa do A/B contra a `main` (`ab.py`, build e measure, com lock e guardas) antes de qualquer afirmação de
+que "não perdeu desempenho"; nenhum teste permanente substitui isso (o A/B também **nunca foi executado**). Os mutantes que
+existem são os de plano a mais e de 1 ms por chamada. Um contador determinístico de trabalho dentro do `probe` (nós visitados, por exemplo)
+fecharia a lacuna sem relógio e está **aberto** em BL015.23 (M2(b)); **nenhuma instrumentação nova foi feita nesta rodada.**
 
 ## CLI headless
 
@@ -75,7 +94,7 @@ nem parser). Como rodar:
 ```
 ./scripts/cargo test -p tessel-editor-core --locked --test scene_gizmo_perf_structure     # estrutural, sempre
 ./scripts/cargo test -p tessel-editor-core --locked --test scene_gizmo_perf_threads       # nenhum layout escapa da thread lida (binário próprio)
-./scripts/cargo test -p tessel-editor --locked scene_gizmo_perf                          # host GPUI (hoje 3/4: BL015.22)
+./scripts/cargo test -p tessel-editor --locked scene_gizmo_perf                          # host GPUI (5 testes)
 python3 scripts/gizmo-perf/run.py --phase build --out DIR        # release do teste de tempo (sem lock)
 python3 scripts/gizmo-perf/run.py --phase measure --out DIR      # tempo no core (lock, guardas, manifesto; não constrói)
 python3 scripts/gizmo-perf/ab.py --phase build --out DIR         # baseline cbe9e1b + candidato (sem lock)
@@ -127,8 +146,9 @@ sobre a mesma árvore **não prova ausência de regressão** (ela só descreve o
 
 **Auditoria da folga** (`scripts/gizmo-perf/audit.py`, saída em
 [`budget-audit-final1-5cded7e.json`](../migration/gizmo-perf-evidence/budget-audit-final1-5cded7e.json), sobre o relatório
-retido do `5cded7e`): em **22 de 60** tipos (todos os `move.*`/`up.*` de `dense`/`deep`/`small`, `cold.attach` e alguns de
-`small`) **um plano extra passa em tempo**; em 17/60 a folga do p95 é ≥ 2×, em 6/60 ≥ 3×, e em 1 tipo (`dense/cold.attach`)
+retido do `5cded7e`): em **22 de 60** tipos **um plano extra passa em tempo**: 16 dos 18 tipos `move.*`/`up.*` (só
+`deep/move.translate` e `deep/up.translate` o veem), os três `cold.attach` e `small/down.rotate`, `small/read.rotate` e
+`small/state.rotate`; em 17/60 a folga do p95 é ≥ 2×, em 6/60 ≥ 3×, e em 1 tipo (`dense/cold.attach`)
 um atraso de 1 ms passa (convertido com o tempo de plano medido). Isto é uma propriedade do orçamento, não um defeito
 corrigido: **o tempo sozinho não detecta um plano extra nesses 22 tipos**. É o detector estrutural (plano por requisição,
 exato) que cobre isso, ortogonal ao tempo; os dois têm controles negativos (um plano a mais falha o estrutural; 1 ms falha o
@@ -136,34 +156,67 @@ tempo onde o orçamento é estreito). Onde a folga é larga, o tempo é só um t
 
 ## Achados e pendências (não são regressões provadas)
 
-- `pointer.move`/`up`: 6–8 planos observados no release (denso ≈ 4 ms) **contando um único layout por requisição** (o
-  teste estrutural prova 1 layout por move): o resto é do gesto (candidato, planos de escala/rotação). Não há trabalho
-  duplicado demonstrado e **nenhuma otimização foi feita**; sem A/B mostrando regressão contra a `main`, nada a corrigir.
-  Desempenho: pendente.
-- BL015.22 — `monitor.show_scene` entre duas cenas do **mesmo `bundleId`**: **reproduzido no host, de forma
-  determinística, e é um defeito de produto anterior a esta PR** (a hipótese anterior, "não reproduzida", era do relatório
-  nativo único; ela deixa de valer). A jornada inclui o caso (`same.attach`/`same.resources`/`same.show`: `proof-c` do mesmo
-  arquivo de `proof-b`, com `expect.shown_scene = proof-c`). O teste do host
-  `showing_a_scene_that_shares_its_bundle_with_the_shown_one_shows_it` **FALHA em `a97a0a7`**, no grupo e isolado
-  (`left: Some("proof-b")`, `right: Some("proof-c")`). Não se evitou o caso nem se afrouxou o teste (sem `#[ignore]`, sem
-  mudar a expectativa nem o corpus), e **o produto não foi alterado nesta PR**.
+- `pointer.move`/`up`: a razão p50 requisição/plano observada no release (relatório retido do `5cded7e`) é de 5,3–7,2 em
+  `dense` e `deep` (denso ≈ 4 ms por requisição) e de 8,7–13,9 em `small`, **contando um único layout por requisição** (o
+  teste estrutural prova 1 layout por move): o resto seria do gesto (candidato, planos de escala/rotação; hipótese, não
+  medida). Não há trabalho duplicado demonstrado e **nenhuma otimização foi feita**; sem A/B mostrando regressão contra a
+  `main`, nada a corrigir. Desempenho: pendente.
+- BL015.22 — `monitor.show_scene` entre duas cenas do **mesmo `bundleId`**: **defeito de produto anterior a esta PR,
+  reproduzido no host de forma determinística e CORRIGIDO na rodada 2** (`bab9290`, `fix(viewport)`; a hipótese antiga,
+  "não reproduzida", era do relatório nativo único e deixou de valer). A jornada inclui o caso
+  (`same.attach`/`same.resources`/`same.show`: `proof-c` do mesmo arquivo de `proof-b`, com `expect.shown_scene = proof-c`).
+  O teste do host `showing_a_scene_that_shares_its_bundle_with_the_shown_one_shows_it` **FALHAVA em `a97a0a7`**, no grupo e
+  isolado (`left: Some("proof-b")`, `right: Some("proof-c")`), e **passa em `c3ae380`**. Não se evitou o caso nem se afrouxou
+  o teste (sem `#[ignore]`, sem mudar a expectativa nem o corpus; só o comentário do teste foi reescrito).
+  - *Correção*: o id da cena entra na chave de deduplicação (`format!("{scene:?}|{}|{:?}|{:?}", plano, mapa, opções)`). O ramo
+    de dedupe segue chamando `dispatch_directed()` e retornando sem reenviar nada; `note_session(SceneChanged)` roda uma vez por
+    troca de cena (também entre cenas do mesmo bundle) e nenhuma para a repetição da mesma cena. **Nenhum `Command`, nó de
+    `tree.rs` ou parser novo; o core não mudou** (`cargo tree -p tessel-editor-core` sem gpui/wry). Biblioteca e CLI headless:
+    **N/A justificado**: o monitor é um adaptador de apresentação do GPUI (o core não tem monitor, cena dirigida nem chave de
+    dedupe); a superfície da janela é a `monitor.show_scene` que já existia.
+  - *O que foi executado* (árvore limpa de `c3ae380`): os 5 testes `scene_gizmo_perf` do host passam e o crate
+    `tessel-editor` inteiro passa (418 testes, 0 falhas). Testes novos: o do ciclo de vida do monitor
+    (`scene_lifecycle_tests`: uma troca de cena por segmento, nenhum envio para a repetição da mesma cena) e a sequência E1–E6
+    por `Workstation::run_op` em `monitor_show_scene_follows_the_request_between_scenes_of_one_bundle_and_of_another`.
+    **Controle negativo**: com a chave ANTIGA recolocada, **3 testes FALHAM** (o do ciclo de vida, o E1–E6 e o
+    `showing_a_scene_that_shares...` existente) e os outros 5 passam (os 3 demais do host e 2 rascunhos):
+    [`bl01522-host-tests-vs-old-key.log`](../migration/gizmo-perf-evidence/bl01522-host-tests-vs-old-key.log).
+  - *O que NÃO está provado*: o efeito na **janela nativa** (o overlay e o ponteiro da página escolhem a cena por
+    `directed_scene()`; isso foi lido no código, nunca executado) e a jornada atual, com `same.*`, **nunca rodou na janela
+    real**. O que a página desenha não é observado pelo host de teste (sem WebView).
+  - *O que o relatório nativo retido mostra, exatamente* (M1): em `native-functional-only-small.tgz` (jornada de `037eda5`,
+    corpus `small`, sem lock nem guardas), a verificação `switch.show: the shown scene drew its picture` tem
+    `directed_scene: "proof-b"`, com `proof-b` anexada **do mesmo arquivo** que `proof` (mesmo `bundleId`, `proof-p-corpus`,
+    e a mesma pasta base, nas duas) e com `state.undo = 2, redo = 0` registrado no passo `switch.attach`. Ou seja, **naquela
+    corrida o defeito não apareceu**; ela não é uma execução da jornada atual (`same.*` entrou depois) nem do código
+    corrigido, e **não prova nem refuta** a causa descrita abaixo. A diferença entre esse resultado e o host com a chave
+    antiga **não está explicada**. Os experimentos de rascunho do host
+    ([`bl01522-scratch-experiments.rs.txt`](../migration/gizmo-perf-evidence/bl01522-scratch-experiments.rs.txt); saídas em
+    [`bl01522-host-scratch-with-fix.log`](../migration/gizmo-perf-evidence/bl01522-host-scratch-with-fix.log) e
+    [`bl01522-host-tests-vs-old-key.log`](../migration/gizmo-perf-evidence/bl01522-host-tests-vs-old-key.log)) mostram, no
+    host: o **plano** da cena editada por um arrasto difere do da intacta (o mapa de recursos e as opções são iguais), e com
+    a edição desfeita plano, mapa e opções voltam a ser iguais aos da intacta e aos de uma cena do mesmo arquivo; depois do
+    prefixo da jornada (até `state.hidden`) mais o `scene.attach` de `proof-b` do mesmo arquivo e `monitor.show_scene
+    proof-b`, a chave antiga deixa o monitor em `proof` e a nova o leva a `proof-b`. Uma hipótese
+    **não testada** para a diferença com o relatório nativo é que o monitor nativo re-renderiza a cena depois das edições
+    (chave nova) enquanto a janela de teste do host não roda o timer. Nenhuma frase desta página lê-se como "o relatório
+    nativo mostra o efeito".
   - *Causa raiz (executada, com reprodutor mínimo; [`bl01522-same-bundle-repro.log`](../migration/gizmo-perf-evidence/bl01522-same-bundle-repro.log)
     e [`.rs.txt`](../migration/gizmo-perf-evidence/bl01522-same-bundle-repro.rs.txt))*: `ViewportHost::render_scene`
-    (`scene_monitor_host.rs`, dedupe de 6a8b030, não tocado pela PR) compara a chave `plano JSON | mapa de recursos | opções`
-    com a do último pedido e, se igual, **retorna antes** de atribuir `directed.scene`. O id da cena não está na chave: duas
-    cenas anexadas do mesmo arquivo têm plano, mapa e opções idênticos (medido: os três iguais). Resultado: `monitor.show_scene
-    proof-c` responde `ok` (`{"action":"monitor.show_scene","scene":"proof-c"}`) e o host segue reportando `proof-b` como cena
-    dirigida **logo depois do pedido** (não é efeito dos redimensionamentos que vêm depois). Controle: mostrar uma cena de
-    plano diferente e depois `proof-c` funciona (`proof` → `proof-c`); mostrar `proof-b` logo depois de `proof-c` não troca
-    (a regra é simétrica e por conteúdo). O que isso **não** prova: o que a página desenha (o host do teste não tem WebView;
+    (`scene_monitor_host.rs`, dedupe de 6a8b030) comparava a chave `plano JSON | mapa de recursos | opções`
+    com a do último pedido e, se igual, **retornava antes** de atribuir `directed.scene`. O id da cena não estava na chave: duas
+    cenas anexadas do mesmo arquivo têm plano, mapa e opções idênticos (medido: os três iguais). Resultado (antes da correção):
+    `monitor.show_scene proof-c` respondia `ok` (`{"action":"monitor.show_scene","scene":"proof-c"}`) e o host seguia reportando `proof-b` como cena
+    dirigida **logo depois do pedido** (não era efeito dos redimensionamentos que vêm depois). Controle: mostrar uma cena de
+    plano diferente e depois `proof-c` funcionava (`proof` → `proof-c`); mostrar `proof-b` logo depois de `proof-c` não
+    trocava (a regra era simétrica e por conteúdo). O que isso **não** prova: o que a página desenha (o host do teste não tem WebView;
     como plano, mapa e opções são idênticos, o quadro pedido ao runtime deveria ser o mesmo, mas isso não foi observado) nem o
     efeito no gizmo da janela real, que só foi **lido no código** (`overlay_refresh`/`overlay_pointer` escolhem a cena por
     `directed_scene()`, ou seja, o overlay e o ponteiro da página seguiriam a cena antiga): **não executado**.
-  - *Mudança de produto candidata, verificada só como diagnóstico local e **descartada** (nunca commitada)*: incluir o id da
-    cena na chave. Com ela, o teste acima passa sem alteração, os outros 3 do host continuam passando (inclusive o dos
-    layouts por requisição) e o reprodutor mínimo mostra `proof-c`/`proof-b` conforme o pedido. **A decisão é do
-    coordenador/dono do produto** (id na chave, recusa tipada ou dedupe legítimo com `directed.scene` atualizada); enquanto
-    isso o teste do host fica vermelho de propósito e o resultado nativo segue pendente.
+  - *Decisão de produto*: o diagnóstico de `a97a0a7` (id da cena na chave; revertido na época e nunca commitado, com o
+    diff em `bl01522-same-bundle-repro.log`) virou a correção por decisão do coordenador na rodada 2: corrigir nesta PR, sem
+    `#[ignore]`. As outras opções que o diagnóstico listava (recusa tipada; dedupe legítimo com `directed.scene` atualizada)
+    não foram adotadas. O resultado nativo segue pendente.
 - A janela nativa não observa `presented` (compositor): o runner marca `presented: not_observable` e exige quadro novo
   correlacionado por request/cena/frame/revisão/hash; isso **não** é prova física de pintura. Faltam também o caso com
   splat e a cobertura estrutural de `PlanTimeline` (BL015.23), e orçamentos por passo do host e da janela.
@@ -213,6 +266,42 @@ nativa continua **sem execução** (veja "Estado desta entrega"):
      [0, 1]. Testes `Judge` (2).
    - Os gates do Rust e o achado BL015.22 estão em "Estado desta entrega e evidência".
 
+## Rodada 2 de correções (PR #44, de `9a72e03` a esta entrega)
+
+Commits: `bab9290` (produto, testes Rust e evidência do BL015.22), `c3ae380` (runners, spec e o log do controle negativo) e o
+de docs. Cada correção de runner tem testes novos em `gizmo-perf.spec.py` que **falham ou dão erro nos runners de
+`9a72e03`** (controle em [`spec-new-tests-vs-9a72e03-runners.log`](../migration/gizmo-perf-evidence/spec-new-tests-vs-9a72e03-runners.log):
+107 testes; com a spec nova e os runners novos 107/107 passam; com a spec nova e os runners ANTIGOS, **28 falham ou dão erro**).
+Dos 31 testes novos, 3 passam dos dois lados **de propósito** (um guarda contra corrigir demais, um é o caminho feliz e um é
+o A/A que agora testa o que diz; o log os descreve). O que esta rodada **não** fez: medir tempo, rodar A/B, mutantes de
+tempo ou a janela nativa; mudar `budgets.json`, margens, jornada, corpus ou golden.
+
+| Item | O que mudou | Testes que falham no código antigo |
+|---|---|---|
+| BL015.22 (CodeRabbit 1) | o id da cena entra na chave de deduplicação de `ViewportHost::render_scene` (`scene_monitor_host.rs`) | host: o do ciclo de vida, o E1–E6 e o `showing_a_scene_that_shares...` (log da chave antiga) |
+| 2 (doc) | o teste frio mede `scene.attach` e o primeiro `scene.gizmo.state` da cena, sem tempo de "primeiro quadro" (seção "Tempo") | só texto |
+| 3 (doc) | proveniência separada por passo no README da evidência | só texto |
+| 4 `ab.py` | o diretório dos executáveis e o código-fonte da baseline só são apagados **depois** de uma corrida julgada; uma corrida BLOCKED/INVALID os mantém para repetir | `MeasurePhase` (a corrida inválida mantém o que a julgada apaga) |
+| 5 `harness.py` | `_kill_group` manda SIGTERM e **sempre** SIGKILL ao grupo, mesmo que o líder já tenha saído; a leitura da saída (`_drain`) tem limite e guarda a parcial | `Harness` ×2 |
+| 6 `mutate.py` | uma recusa da fase `time` (inclusive a de arquivo de mutante fora do HEAD) não sobrescreve o `manifest.json` de um `prepare` terminado: vai para `manifest.final.json` | `TimePhase` (a recusa não troca o `prepare`) |
+| 7 `mutate.py` | a fase `time` recusa um `prepare` não terminado e um mutante que o `prepare` não rodou (não o descarta); um veredito sem nenhum detector é `NO_DETECTOR_EVALUATED` (exit 1), nunca "como esperado" | `TimePhase` ×3 |
+| 8 `native.py` | `runtime_source_tree()` devolve `None` se o `git` não inicia, falha, expira ou imprime vazio; `build_phase` e `verify_provenance` recusam | `RuntimeTree` ×4, `BuildPhase`, `Provenance` |
+| 9 `native.py`, `run.py`, `ab.py` | o registro de build guarda `dirty`; ausente conta como sujo; medir ou julgar como HEAD recusa um binário de build sujo (sem `--allow-dirty`), mesmo que a árvore volte a ler limpa | `BuildPhase`, `Provenance`, `RunRecord` ×2, `MeasurePhase`, `MainRun` |
+| 10 `run.py` | INCONCLUSIVE só se **todo** teste que falhou falhou pela nota de referência instável (mensagem de pânico própria de cada um); um controle que não detectou o trabalho injetado, ao lado da nota, é FAIL | `RunVerdict` ×2 |
+| M3 `ab.py` | "difere" é só o que o executável medido vê (`is_measured`: o crate do core e as entradas de build do workspace); diferença só fora disso é `DIFFERENCE_OUTSIDE_THE_MEASUREMENT` (exit 4, arquivos listados à parte), nunca "sem regressão" | `Baseline` ×3 |
+| m1 `mutate.py` | `Mutated.__enter__` restaura o arquivo se a entrada falha (o `with` não chama `__exit__`) | `Mutants` |
+| m2 spec | o teste do A/A agora é de fato um A/A; o antigo mantém um nome verdadeiro | passam nos dois lados |
+| m6 `native.py` | `--corpora` vazio é recusado (zero verificações não é sucesso); um gesto cujo candidato diferente não foi desenhado enquanto aberto falha uma verificação | `MainRun`, `DragBase` ×2 |
+
+Itens **sem código**, registrados como abertos em BL015.23 com o motivo: m5 (um tick longo absoluto decide o veredito),
+m7 (tetos do host com folga e o controle de "outra thread" só cobre o core), m9 (`within()` não exige todo tipo
+orçamentado medido; só compilado), M2(b) (contador determinístico de trabalho no `probe`), e os nits (a injeção do teste
+exige `--test-threads=1`, `mutate.py` sem controle de árvore limpa, `MAX_BLOCK_SPREAD` × `budgets.json`, teste do workspace
+só com `-p core`, a redação "whatever" que R aponta em "corpus de referência instável pula o julgamento", não localizada
+nos arquivos da suíte) e os comentários de contagem de nós do cabeçalho de `corpus.py`
+(arquivo com sha256 no manifesto do corpus: corrigir exigiria regenerar o manifesto, e o corpus não se muda nesta rodada).
+O m8 (trailers dos commits) não foi tocado.
+
 ## Estado desta entrega e evidência
 
 Arquivos e identidade de cada execução: [gizmo-perf-evidence/README.md](../migration/gizmo-perf-evidence/README.md).
@@ -220,26 +309,28 @@ Regra de leitura: **implementado** (código e testes que rodam) ≠ **validado**
 
 | Item | Estado |
 |---|---|
-| Spec dos runners Python (`gizmo-perf.spec.py`, 76 testes: os 70 anteriores + 6 desta rodada; harness, veredito do runner/mutantes, baseline com repositórios temporários, A/B, nativo com janela falsa e `drag` com monitor roteirizado, proveniência, auditoria) | **executado e passa (76/76)** na árvore desta rodada (`a97a0a7` + as correções de `native.py`/`ab.py`); `corpus.py --check` e `git diff --check` também passam (sem Cargo, sem janela, sem benchmark) |
-| Core: `fmt --check`, `clippy -p tessel-editor-core --all-targets -D warnings`, estrutural (7), threads (1, novo), core inteiro e `cargo tree` | **executados em `a97a0a7`, todos exit 0**: `fmt`; `clippy`; estrutural **7 passaram, 0 falharam, 0 ignorados**; threads **1 passou**; core inteiro (`--no-fail-fast`) **54 binários, 1267 passaram, 0 falharam, 7 ignorados** (3 do orçamento de tempo desta suíte e 4 medições de outras frentes, todos `#[ignore]` de propósito); `cargo tree -p tessel-editor-core --locked`: 16 linhas, **sem gpui/wry** (log e saída completa em [`rust-gates-a97a0a7.txt`](../migration/gizmo-perf-evidence/rust-gates-a97a0a7.txt)). Nada foi medido em tempo |
-| Host GPUI (`cargo test -p tessel-editor --locked scene_gizmo_perf`) | **3 passaram, 1 FALHOU** (exit 101, `a97a0a7`): passam o golden da jornada, os layouts por requisição e a janela parada; **falha** `showing_a_scene_that_shares_its_bundle_with_the_shown_one_shows_it`, também isolado (determinístico): BL015.22, defeito de produto anterior à PR, causa raiz e reprodutor em "Achados e pendências"; o teste e o corpus ficam como estão. Só esses 4 testes do host rodaram (412 filtrados): `clippy` do host e do workspace e o workspace inteiro **não** foram rodados neste head |
+| Spec dos runners Python (`gizmo-perf.spec.py`, 107 testes: os 76 anteriores + 31 da rodada 2; harness, veredito do runner/mutantes, baseline com repositórios temporários, A/B, nativo com janela falsa e `drag` com monitor roteirizado, proveniência, auditoria) | **executado e passa (107/107)** na árvore **limpa** de `c3ae380` (28 deles falham ou dão erro nos runners de `9a72e03`); `corpus.py --check` passa (exit 0) em `c3ae380`. O `git diff --check 9a72e03 HEAD` **falhou em `c3ae380`** (linha em branco no fim de `bl01522-host-scratch-with-fix.log`) e foi corrigido no commit de docs; o resultado no head final está no relatório da entrega (sem Cargo, sem janela, sem benchmark) |
+| Core: `fmt --check`, `clippy -p tessel-editor-core --all-targets -D warnings`, estrutural (7), threads (1, novo), core inteiro e `cargo tree` | **executados em `a97a0a7`, todos exit 0**: `fmt`; `clippy`; estrutural **7 passaram, 0 falharam, 0 ignorados**; threads **1 passou**; core inteiro (`--no-fail-fast`) **54 binários, 1267 passaram, 0 falharam, 7 ignorados** (3 do orçamento de tempo desta suíte e 4 medições de outras frentes, todos `#[ignore]` de propósito); `cargo tree -p tessel-editor-core --locked`: 16 linhas, **sem gpui/wry** (log e saída completa em [`rust-gates-a97a0a7.txt`](../migration/gizmo-perf-evidence/rust-gates-a97a0a7.txt)). Nada foi medido em tempo. **Em `c3ae380` (árvore limpa) só foram repetidos** o estrutural (7 passaram, 0 falharam) e o `cargo tree` (sem gpui/wry; [`gates-c3ae380.txt`](../migration/gizmo-perf-evidence/gates-c3ae380.txt)): `crates/core/src` e o resto do core não mudaram desde `a97a0a7` (só o comentário do cabeçalho de `scene_gizmo_perf_structure.rs`), e o core inteiro e o teste de threads **não** foram repetidos |
+| Host GPUI (`cargo test -p tessel-editor --locked scene_gizmo_perf`) | **5 passaram, 0 falharam** em `c3ae380`, árvore limpa (exit 0; 413 filtrados): os 3 de antes, o `showing_a_scene_that_shares_its_bundle_with_the_shown_one_shows_it` (que **falhava em `a97a0a7`**, BL015.22, e passa depois da correção) e o novo `monitor_show_scene_follows_the_request_between_scenes_of_one_bundle_and_of_another`. O crate `tessel-editor` inteiro: **418 passaram, 0 falharam, 0 ignorados** (exit 0), com o do ciclo de vida do monitor; `clippy -p tessel-editor --all-targets -D warnings` exit 0 (a execução real, de 76,6 s, foi no código-fonte do `bab9290` ainda não commitado; em `c3ae380` o resultado veio do cache do mbx, 5 hits e 0 misses, sem recompilar). `clippy --workspace` e o workspace inteiro **não** foram rodados |
 | `within()` do orçamento (não mascara FAIL) e o resto de `scene_gizmo_perf_budget.rs` | **compilados** (`clippy --all-targets`; `cargo test` lista os 3 testes como `ignored`), **não executados**: só rodam com tempo, lock e guardas |
 | Mutantes `extra_plan_per_handler` (estrutural), `memo_off` e `replan_per_tick` (host) | mortos em `9186e2a`; o `.tgz` retido mistura manifestos de `9186e2a` e `b898a6e`. **Reexecutar** com o runner novo (verdicts por teste nomeado + mensagem) |
 | Tempo no core (release, lock, guardas) | **PASS no `5cded7e`** (árvore limpa), regra de margem fria já ajustada depois de um FAIL (ver histórico); **não repetido** neste head. Um PASS de outro head não vale para este |
 | Mutantes de tempo (plano extra, 1 ms) | **não provados** (BLOCKED por carga em `9186e2a`; não repetidos) |
 | A/B `cbe9e1b` × candidato | o runner novo **não foi executado** (BLOCKED: disco/carga); o A/B retido (`037eda5`) é o **antigo, que era A/A**: **sem comparação**; nada de "sem regressão" é afirmado |
-| Janela nativa | só a corrida funcional antiga (`small`, 160 verificações, runner anterior, revisão anterior); o runner novo (`project.open` real, quadro novo, cancelar, `dense`/`deep`) **não rodou** |
+| Janela nativa | só a corrida funcional antiga (`small`, 160 verificações, runner anterior, revisão anterior; o manifesto do `.tgz` diz BLOCKED e não casa com o relatório: ver o README da evidência); o runner novo (`project.open` real, quadro novo, cancelar, `dense`/`deep`) e a jornada atual (com `same.*`) **nunca rodaram** na janela |
 | Workspace inteiro com `TESSEL_REQUIRE_RUNTIME=1` | no `5cded7e`: 2294/1/16 (**1 falha**, defeito de ordem das chaves JSON do teste `the_journey_leaves_the_transform…`, corrigido depois e verificado só com `-p tessel-editor-core`; em `a97a0a7` só rodou `-p tessel-editor-core`, 1267/0/7, que não reproduz aquela falha de features unificadas): **não é um PASS final**; o workspace inteiro não foi repetido |
 | Provas de processo e gates funcionais de `0ee2d14` | **pendentes** |
 
 ### O que falta para validar (BL015.21)
 
-Feito em `a97a0a7` (item 1 em parte): o Rust novo do core e do host compilou e rodou; resta o workspace inteiro com
-`TESSEL_REQUIRE_RUNTIME=1`, o `clippy` do host/workspace, e a **decisão sobre BL015.22** (o teste do host está vermelho).
+Feito: em `a97a0a7` o Rust novo do core e do host compilou e rodou; em `c3ae380` o BL015.22 está corrigido e verificado **no
+host** (5/5 e o crate inteiro, 418/0/0). Resta o workspace inteiro com `TESSEL_REQUIRE_RUNTIME=1`, `clippy --workspace`, e o
+efeito da correção na **janela nativa** (a jornada atual nunca rodou lá).
 
 Com disco ≥ 16 GiB e carga ≤ 0,5 por CPU (uma máquina que não esteja compilando outra coisa): 1. o workspace com
 `TESSEL_REQUIRE_RUNTIME=1` e `clippy --workspace`; 2. `run.py --phase build` e `--phase measure`; 3. `ab.py --phase build` e
-`--phase measure` (primeiro A/B de verdade); 4. `mutate.py --phase prepare` e `--phase time`; 5. `native.py --phase build` e
-`--phase run` nos três casos; 6. um caso com splat (BL015.23); 7. orçamentos nativos só depois de um A/B com um binário
-nativo da `main`; 8. as provas de `0ee2d14`. **Tempo, A/B, mutantes de tempo e janela nativa seguem sem execução neste
-head: nenhuma afirmação de desempenho vale.**
+`--phase measure` (primeiro A/B de verdade; **exigido** de toda PR que toque `scene_plan/**` ou o caminho de renderização,
+porque só ele vê um planejador mais lento: ver "Tempo"); 4. `mutate.py --phase prepare` e `--phase time`; 5. `native.py
+--phase build` e `--phase run` nos três casos; 6. um caso com splat (BL015.23); 7. orçamentos nativos só depois de um A/B com
+um binário nativo da `main`; 8. as provas de `0ee2d14`. **Tempo, A/B, mutantes de tempo e janela nativa seguem sem execução
+neste head: nenhuma afirmação de desempenho vale.**

@@ -28,4 +28,3 @@ test workstation::scene_gizmo_perf_tests::the_host_runs_the_shared_journey_to_th
 test workstation::scene_gizmo_perf_tests::an_idle_window_plans_nothing_per_tick_and_the_overlay_stays_memoised ... ok
 
 test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 412 filtered out; finished in 58.74s
-
