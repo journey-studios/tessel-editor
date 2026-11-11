@@ -481,6 +481,7 @@ fn read_splat(splat: &Obj<'_>) -> Result<PlanSplat, PlanError> {
 fn read_fx_value(params: &Obj<'_>, name: &str, kind: &ParamKind) -> Result<FxValue, PlanError> {
     match kind {
         ParamKind::Number { .. } => Ok(FxValue::Number(params.number(name)?)),
+        ParamKind::Bool { .. } => Ok(FxValue::Bool(params.boolean(name)?)),
         ParamKind::Color { .. } => {
             let color = params.object(name)?;
             color.only(&["r", "g", "b"])?;
@@ -511,6 +512,7 @@ fn read_fx_pass(pass: &Obj<'_>) -> Result<FxPass, PlanError> {
         "amount",
         "params",
         "scope",
+        "seed",
     ])?;
     let name = pass.text("effect")?;
     let spec = effect(&name).ok_or_else(|| pass.fail("effect", "not an effect of the catalog"))?;
@@ -536,7 +538,20 @@ fn read_fx_pass(pass: &Obj<'_>) -> Result<FxPass, PlanError> {
         weight: pass.number("weight")?,
         amount: pass.number("amount")?,
         params,
+        seed: read_fx_seed(pass)?,
     })
+}
+
+/// The seed of a noise pass: absent, or a whole number in `0..=u32::MAX` (never a float, a
+/// negative number, a string or `null`; a seed that does not fit is refused, not truncated).
+fn read_fx_seed(pass: &Obj<'_>) -> Result<Option<u32>, PlanError> {
+    let Some(raw) = pass.map.get("seed") else {
+        return Ok(None);
+    };
+    raw.as_u64()
+        .and_then(|seed| u32::try_from(seed).ok())
+        .map(Some)
+        .ok_or_else(|| pass.fail("seed", "expected a whole number from 0 to 4294967295"))
 }
 
 fn read_resource(resource: &Obj<'_>) -> Result<PlanResource, PlanError> {

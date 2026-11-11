@@ -365,3 +365,132 @@ fn an_export_carries_the_fade_and_matches_the_pilot_formula_over_the_decoded_bas
     let (_, restored) = session.export("base2.mp4", from, frames);
     assert_eq!(restored, base_hashes, "undo restores the baseline pictures");
 }
+
+// ---- P3: the keyed film grain in a real export ------------------------------------------------------
+
+#[test]
+fn an_export_carries_the_keyed_grain_reseeds_per_frame_and_survives_save_reopen_and_undo() {
+    let Some(mut session) = session("grain") else {
+        return;
+    };
+    // 44..52 straddles the end of the clip (0..48): frames with and without the grain.
+    let (from, frames) = (44, 8);
+    let (base_mp4, base_hashes) = session.export("base.mp4", from, frames);
+
+    // A coarse grain (6 px cells at 1080p, the catalog's largest size) so the codec cannot average it away; the amount is keyed
+    // from 0.5 at frame 40 to 1.0 at frame 47, so frames 44..47 draw different amounts.
+    let edited = session.ok(json!({"op":"scene.fx.edit","scene":"street","ops":[
+        {"op":"add_clip","effect":"filmGrain","start_frame":0,"duration_frames":48,"id":"g1",
+         "params":{"amount":1.0,"size":4.0}},
+        {"op":"key_param","clip":"g1","param":"amount","frame":40,"value":0.5},
+        {"op":"key_param","clip":"g1","param":"amount","frame":47,"value":1.0},
+        {"op":"set_seed","clip":"g1","seed":2024}]}));
+    assert_eq!(edited["changed"], true);
+    let (fx_mp4, fx_hashes) = session.export("fx.mp4", from, frames);
+
+    for index in 0..frames as usize {
+        let edit_frame = from + index as i64;
+        if edit_frame < 48 {
+            assert_ne!(
+                fx_hashes[index], base_hashes[index],
+                "edit frame {edit_frame} is inside the clip"
+            );
+        } else {
+            assert_eq!(
+                fx_hashes[index], base_hashes[index],
+                "edit frame {edit_frame} is outside the clip"
+            );
+        }
+        assert_eq!(
+            fx_hashes[index],
+            session.rendered_hash(edit_frame),
+            "export frame {index} is not what scene.render draws for edit frame {edit_frame}"
+        );
+    }
+    // The seed moves every frame: no two grained frames share a picture.
+    let unique: std::collections::BTreeSet<_> = fx_hashes[..4].iter().collect();
+    assert_eq!(unique.len(), 4, "every grained frame is another grain");
+
+    // Pixels through the codec at the centre of the cell nearest each grid point.
+    let base = decode_frames(&base_mp4, WIDTH, HEIGHT);
+    let grained = decode_frames(&fx_mp4, WIDTH, HEIGHT);
+    let cell = 6;
+    let (mut worst, mut strongest_change) = (0, 0);
+    for index in 0..frames as usize {
+        let edit_frame = from + index as i64;
+        let passes = session
+            .state
+            .scenes
+            .get("street")
+            .unwrap()
+            .scene
+            .bundle()
+            .fx
+            .resolve(edit_frame);
+        assert_eq!(passes.len(), usize::from(edit_frame < 48));
+        for (gx, gy) in grid() {
+            let (x, y) = ((gx / cell) * cell + cell / 2, (gy / cell) * cell + cell / 2);
+            let before = rgb(&base[index], x, y);
+            let after = rgb(&grained[index], x, y);
+            let mut want = [
+                f64::from(before[0] as u8) / 255.0,
+                f64::from(before[1] as u8) / 255.0,
+                f64::from(before[2] as u8) / 255.0,
+            ];
+            for pass in &passes {
+                want = apply_pass_to_srgb(pass, want, x, y, WIDTH, HEIGHT).unwrap();
+            }
+            for channel in 0..3 {
+                let expected = (want[channel] * 255.0).round() as i32;
+                let delta = (after[channel] - expected).abs();
+                worst = worst.max(delta);
+                assert!(
+                    delta <= CODEC_TOLERANCE,
+                    "edit frame {edit_frame} at ({x},{y}): export {after:?}, reference {expected} on channel {channel} (baseline {before:?})"
+                );
+                strongest_change = strongest_change.max((after[channel] - before[channel]).abs());
+            }
+        }
+    }
+    eprintln!(
+        "EVIDENCE grain export: worst delta to the reference {worst}, strongest change from the baseline {strongest_change}"
+    );
+    assert!(
+        strongest_change >= 15,
+        "the comparison must discriminate: the grain changed at most {strongest_change}"
+    );
+
+    // Determinism: the same range again, and a sub-range that starts later (a seek), draw the same
+    // pictures frame for frame.
+    let (_, again) = session.export("fx2.mp4", from, frames);
+    assert_eq!(again, fx_hashes, "an export is deterministic");
+    let (_, tail) = session.export("fx-tail.mp4", from + 3, 3);
+    assert_eq!(tail, fx_hashes[3..6], "a seek draws what the run drew");
+
+    // Save, reopen in a fresh state on the same host: the same keys, the same seed, the same pixels.
+    let project = session.work.join("grain.tessel.json");
+    tessel_editor_core::persist::save(&mut session.state, &project).unwrap();
+    let mut reopened = EditorState::empty(&ProjectSettings::default()).unwrap();
+    session.ok(json!({"op":"history.status"}));
+    headless::execute_ext(
+        &mut reopened,
+        None,
+        Some(&mut session.host),
+        &json!({"op":"project.open","path":project}),
+    )
+    .unwrap();
+    let before_swap = std::mem::replace(&mut session.state, reopened);
+    session.ok(json!({"op":"scene.resources.resolve","scene":"street","base":corpus()}));
+    let (_, reopened_hashes) = session.export("fx-reopened.mp4", from, frames);
+    assert_eq!(
+        reopened_hashes, fx_hashes,
+        "a reopened project exports the same pixels"
+    );
+
+    // One undo removes the whole edit (clip, keys and seed were one batch).
+    session.state = before_swap;
+    session.ok(json!({"op":"history.undo"}));
+    let (_, restored) = session.export("base2.mp4", from, frames);
+    assert_eq!(restored, base_hashes, "undo restores the baseline pictures");
+    assert_eq!(session.state.timeline.clips.len(), 0);
+}

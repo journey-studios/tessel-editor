@@ -194,7 +194,17 @@ impl EditorState {
                 scene,
                 ops,
                 dry_run,
-            } => self.edit_fx(&scene, &ops, dry_run),
+                base_revision,
+            } => {
+                self.ensure_base_revision(base_revision)?;
+                self.edit_fx(&scene, &ops, dry_run)
+            }
+            SceneCommand::FxSeek {
+                scene,
+                clip,
+                param,
+                to,
+            } => self.fx_seek(&scene, &clip, &param, &to),
             SceneCommand::FxList { scene, gesture } => self.fx_list(&scene, gesture.as_deref()),
             SceneCommand::FxFrame { scene, at, gesture } => {
                 self.fx_frame(&scene, &at, gesture.as_deref())
@@ -205,12 +215,14 @@ impl EditorState {
                 gesture,
                 locale,
                 probe,
+                at,
             } => self.fx_inspect(
                 &scene,
                 clip.as_deref(),
                 gesture.as_deref(),
                 locale,
                 probe.as_ref(),
+                at.as_ref(),
             ),
             SceneCommand::FxGesture(gesture) => self.apply_fx_gesture(gesture),
             SceneCommand::Gesture(gesture) => self.apply_gesture(gesture),

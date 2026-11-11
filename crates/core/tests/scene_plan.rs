@@ -265,10 +265,15 @@ fn layers_are_back_to_front_with_the_composition_pass_first() {
         .collect();
     assert_eq!(layer_ids(&plan), painted);
     // Every capability but `splats` (this scene has no splat node, S7, `scene_plan_splat.rs`) and
-    // `outputFx` (it has no effect clip, F016, `scene_fx.rs`).
+    // `outputFx` and `fxNoise` (it has no effect clip, F016, `scene_fx.rs`).
     let without_splats: Vec<Capability> = Capability::ALL
         .into_iter()
-        .filter(|capability| !matches!(capability, Capability::Splats | Capability::OutputFx))
+        .filter(|capability| {
+            !matches!(
+                capability,
+                Capability::Splats | Capability::OutputFx | Capability::FxNoise
+            )
+        })
         .collect();
     assert_eq!(plan.requires, without_splats);
 }

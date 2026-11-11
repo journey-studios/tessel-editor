@@ -13,6 +13,11 @@
 // (`directed_scene::fx::reference`) does; when the total weight of a pass is 0 (`amount <= 0`, or
 // the fade's own `amount` parameter 0) the shader returns the sampled texel untouched.
 //
+// The film grain (capability `fxNoise`, F059) is different in kind: it adds noise from the integer
+// hash of `(seed, cell)` to the sRGB-ENCODED picture and mixes the result back in linear light. The
+// seed arrives resolved (`pass.seed`, per frame, by the core): the runtime never derives a seed,
+// never reads a key and never knows a frame, so a seek draws what playback drew.
+//
 // The checks are pure (no GL, no DOM) so they run under `node --test`.
 
 import * as THREE from 'three';
@@ -39,7 +44,32 @@ export const OUTPUT_FX_EFFECTS = {
       intensity: { kind: 'number', min: 0, max: 1 },
     },
   },
+  // The pilot's `filmGrain`: noise on the encoded picture. `noise` marks the effects whose passes
+  // carry the `seed` the core resolved for the frame (and that need `fxNoise`).
+  filmGrain: {
+    noise: true,
+    params: {
+      amount: { kind: 'number', min: 0, max: 1 },
+      size: { kind: 'number', min: 0.5, max: 4 },
+      luma: { kind: 'number', min: 0, max: 1 },
+      colored: { kind: 'bool' },
+      intensity: { kind: 'number', min: 0, max: 1 },
+    },
+  },
 };
+
+/** The largest seed: a whole `uint32`. */
+export const MAX_FX_SEED = 4294967295;
+
+/** The height at which a grain `size` is declared in pixels (the pilot's `REFERENCE_HEIGHT`). */
+export const GRAIN_REFERENCE_HEIGHT = 720;
+
+/**
+ * The side of one grain cell in pixels of a picture `height` pixels tall, applied ONCE:
+ * `max(size x height / 720, 1)`. Computed in double precision like the core's reference
+ * (`grain_cell_px`) and handed to the shader as one float, so the shader cannot scale it twice.
+ */
+export const grainCellPx = (size, height) => Math.max(size * (height / GRAIN_REFERENCE_HEIGHT), 1);
 
 const invalid = (pointer, message) =>
   new RuntimeError('invalid_plan', `Scene plan ${pointer || '/'}: ${message}`, { pointer });
@@ -59,6 +89,10 @@ const finiteIn = (value, pointer, min, max) => {
 };
 
 const parseParam = (spec, value, pointer) => {
+  if (spec.kind === 'bool') {
+    if (typeof value !== 'boolean') throw invalid(pointer, 'expected true or false');
+    return value;
+  }
   if (spec.kind === 'number') return finiteIn(value, pointer, spec.min, spec.max);
   if (!isObject(value)) throw invalid(pointer, 'expected an object');
   if (spec.kind === 'color') {
@@ -70,7 +104,8 @@ const parseParam = (spec, value, pointer) => {
 /**
  * Reads `plan.fx` (absent means no effects) into the passes to draw, in the plan's order, or
  * throws the typed refusal. `requires` is the plan's own list: a plan with effect passes must
- * ask for `outputFx`, and one that does not draw them is refused before this runs.
+ * ask for `outputFx` (and one whose passes carry a seed for `fxNoise`), and one that does not
+ * draw them is refused before this runs.
  */
 export const parseOutputFx = (raw, requires) => {
   if (raw === undefined) return [];
@@ -108,7 +143,18 @@ export const parseOutputFx = (raw, requires) => {
     }
     const extra = Object.keys(entry.params).find((name) => !own(known.params, name));
     if (extra !== undefined) throw invalid(`${at}/params/${extra}`, 'not a parameter of the effect');
-    return { effect: entry.effect, clipId: entry.clipId, weight, amount, params };
+    const pass = { effect: entry.effect, clipId: entry.clipId, weight, amount, params };
+    if (known.noise === true) {
+      if (!requires.includes('fxNoise')) throw invalid('/requires', 'a plan with noise effects must require `fxNoise`');
+      const { seed } = entry;
+      if (!Number.isInteger(seed) || seed < 0 || seed > MAX_FX_SEED) {
+        throw invalid(`${at}/seed`, `expected a whole number from 0 to ${MAX_FX_SEED}`);
+      }
+      pass.seed = seed;
+    } else if (Object.hasOwn(entry, 'seed')) {
+      throw invalid(`${at}/seed`, 'only an effect that draws noise carries a seed');
+    }
+    return pass;
   });
 };
 
@@ -181,6 +227,61 @@ void main() {
   gl_FragColor = vec4(linearToSrgb(mixed), source.a);
 }`;
 
+// The pilot's `filmGrain` (`shaders/film-grain.ts`): the hashes are `uint` arithmetic only (no
+// float hash, no `sin`), bit for bit the core's `fx/hash.rs`. `gl_FragCoord` counts from the
+// bottom-left and its pixel centre is `+0.5`, which the core's reference converts explicitly.
+const FILM_GRAIN_FRAGMENT = /* glsl */ `
+precision highp float;
+precision highp int;
+uniform sampler2D tMap;
+uniform float uAmount;
+uniform float uGrain;
+uniform float uLuma;
+uniform float uColored;
+uniform float uCell;
+uniform uint uSeed;
+varying vec2 vUv;
+${SRGB_CURVES}
+
+uint lowbias32(uint x) {
+  x ^= x >> 16u;
+  x *= 0x7feb352du;
+  x ^= x >> 15u;
+  x *= 0x846ca68bu;
+  x ^= x >> 16u;
+  return x;
+}
+uint hashPixel(uint seed, uint x, uint y) {
+  return lowbias32(lowbias32(seed ^ 0x9e3779b9u) + x + (y << 16u));
+}
+float unitFloat(uint h) {
+  return float(h >> 8u) / 16777216.0;
+}
+float triangular(uint h) {
+  return unitFloat(h) + unitFloat(lowbias32(h ^ 0x68bc21ebu)) - 1.0;
+}
+
+void main() {
+  vec4 source = texture2D(tMap, vUv);
+  if (uGrain * uAmount <= 0.0) {
+    gl_FragColor = source;
+    return;
+  }
+  uint cellX = uint(floor(gl_FragCoord.x / uCell));
+  uint cellY = uint(floor(gl_FragCoord.y / uCell));
+  uint h = hashPixel(uSeed, cellX, cellY);
+  vec3 noise = vec3(triangular(h));
+  if (uColored > 0.5) {
+    noise = vec3(triangular(h), triangular(lowbias32(h + 0x632be5abu)), triangular(lowbias32(h + 0x85157af5u)));
+  }
+  vec3 encoded = clamp(source.rgb, 0.0, 1.0);
+  float luma = dot(encoded, vec3(0.2126, 0.7152, 0.0722));
+  float response = mix(1.0, 1.0 - smoothstep(0.05, 0.95, luma), uLuma);
+  vec3 grained = clamp(encoded + noise * (uGrain * 0.25 * response), 0.0, 1.0);
+  vec3 mixed = mix(srgbToLinear(encoded), srgbToLinear(grained), uAmount);
+  gl_FragColor = vec4(linearToSrgb(mixed), source.a);
+}`;
+
 /**
  * How each effect of the catalog is drawn: its fragment shader, the uniforms it owns (the shared
  * `tMap` and `uAmount` are added for all) and how a pass writes its resolved values into them.
@@ -219,6 +320,23 @@ const EFFECT_DRAWS = {
       uniforms.uColor.value.set(...params.color);
     },
   },
+  filmGrain: {
+    fragment: FILM_GRAIN_FRAGMENT,
+    uniforms: () => ({
+      uGrain: { value: 0 },
+      uLuma: { value: 0 },
+      uColored: { value: 0 },
+      uCell: { value: 1 },
+      uSeed: { value: 0 },
+    }),
+    bind: (uniforms, params, size, pass) => {
+      uniforms.uGrain.value = params.amount;
+      uniforms.uLuma.value = params.luma;
+      uniforms.uColored.value = params.colored ? 1 : 0;
+      uniforms.uCell.value = grainCellPx(params.size, size.height);
+      uniforms.uSeed.value = pass.seed;
+    },
+  },
 };
 
 const drawOf = (effect) => {
@@ -248,7 +366,7 @@ export const bindPass = (material, pass, texture, size) => {
   const { uniforms } = material;
   uniforms.tMap.value = texture;
   uniforms.uAmount.value = pass.amount;
-  drawOf(pass.effect).bind(uniforms, pass.params, size);
+  drawOf(pass.effect).bind(uniforms, pass.params, size, pass);
 };
 
 /**

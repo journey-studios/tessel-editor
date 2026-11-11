@@ -654,7 +654,11 @@ fn every_offered_effect_is_inspected_with_every_field_and_text_in_three_language
         .iter()
         .map(|offer| offer["effect"].as_str().unwrap().to_string())
         .collect();
-    assert_eq!(offered, ["vignette", "fade"], "the offers are the catalog");
+    assert_eq!(
+        offered,
+        ["vignette", "fade", "filmGrain"],
+        "the offers are the catalog"
+    );
 
     // One clip of every offered effect, then the inspector answers for each in every language.
     let mut ops = Vec::new();
@@ -686,7 +690,13 @@ fn every_offered_effect_is_inspected_with_every_field_and_text_in_three_language
                     !field["label"].as_str().unwrap().is_empty(),
                     "{locale}: {field}"
                 );
-                for key in ["value", "min", "max", "step"] {
+                // A number sits in a range; a switch is true or false and has no range to show.
+                let keys: &[&str] = if field["type"] == "boolean" {
+                    &["value", "default"]
+                } else {
+                    &["value", "min", "max", "step"]
+                };
+                for key in keys {
                     assert!(field.get(key).is_some(), "{locale}: {key} in {field}");
                 }
                 assert!(field.get("applicable").is_some() && field.get("at_default").is_some());
