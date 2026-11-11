@@ -251,7 +251,7 @@ fn lists_references_and_who_depends_on_an_entity() {
             EntityKind::PerformanceTrack => {
                 bundle.performance_tracks.iter().any(|t| t.id == r.to.id)
             }
-            EntityKind::Shot | EntityKind::CompositionPass => true,
+            EntityKind::Shot | EntityKind::CompositionPass | EntityKind::Light => true,
         }
     }));
 }

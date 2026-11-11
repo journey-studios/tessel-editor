@@ -289,6 +289,8 @@ impl SceneCommand {
             Self::Gizmo(GizmoCommand::Rotate { .. }) => Some("Edit scene"),
             // BL015.1 (G1.2): `scene.scale` is a `scene.edit` of the one `scale` property.
             Self::Gizmo(GizmoCommand::Scale { .. }) => Some("Edit scene"),
+            // F060: `scene.range` is a `scene.edit` of the one `radius` property of a light.
+            Self::Gizmo(GizmoCommand::Range { .. }) => Some("Edit scene"),
             Self::FxEdit { dry_run: false, .. } => Some("Edit effects"),
             // The commit of an fx gesture IS a `scene.fx.edit` of the same ops (it runs through
             // `edit_fx`), so it shows the same entry; `changed: false` records nothing.

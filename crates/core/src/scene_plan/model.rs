@@ -3,6 +3,7 @@
 //! so the plan cannot drift from what `evaluate_frame` returned.
 
 use crate::directed_scene::fx::FxPass;
+use crate::directed_scene::lighting::{LightingReason, Rgb};
 use crate::directed_scene::{
     AssetAlpha, AssetColorSpace, AssetFormat, CameraState, Fps, Mat4, NodeAnimation, NodeKind, Vec3,
 };
@@ -46,10 +47,15 @@ pub enum Capability {
     /// integer hash of `(seed, cell)`. A runtime that does not list it refuses the plan with
     /// `unsupported` + `missing`, never draws the picture without its noise.
     FxNoise,
+    /// Point lights (`ScenePlan::lights`, F060): lit image planes, with the falloff the runtime
+    /// documents. A runtime that does not list it refuses the plan with `unsupported` +
+    /// `missing`, never draws the planes unlit as if the light were not there. Splats are never
+    /// lit, with or without this capability.
+    PointLights,
 }
 
 impl Capability {
-    pub const ALL: [Capability; 11] = [
+    pub const ALL: [Capability; 12] = [
         Self::Camera,
         Self::NodeTransforms,
         Self::Sockets,
@@ -61,6 +67,7 @@ impl Capability {
         Self::Splats,
         Self::OutputFx,
         Self::FxNoise,
+        Self::PointLights,
     ];
 
     /// The spelling used on the wire.
@@ -77,6 +84,7 @@ impl Capability {
             Self::Splats => "splats",
             Self::OutputFx => "outputFx",
             Self::FxNoise => "fxNoise",
+            Self::PointLights => "pointLights",
         }
     }
 
@@ -174,6 +182,10 @@ impl Domain {
 pub struct UnsupportedDomain {
     pub domain: Domain,
     pub subject: Option<String>,
+    /// Why, when the domain is partly supported and the plan can say which part it refuses:
+    /// `Lighting` carries a [`LightingReason`] (F060). `None` for a domain nothing evaluates, and
+    /// then absent from the wire form (plans without it keep their bytes).
+    pub reason: Option<LightingReason>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -339,6 +351,24 @@ impl PlanResource {
     }
 }
 
+/// One point light of the frame (F060), already evaluated: keys resolved, parent added, flicker
+/// applied. A runtime draws it as listed and knows no timeline.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlanLight {
+    pub id: String,
+    /// World position in scene units.
+    pub position: Vec3,
+    /// Linear colour, each channel `[0, 1]`.
+    pub color: Rgb,
+    /// Multiplies the colour: the keyed intensity times the flicker level, `[0, 20]`.
+    pub intensity: f64,
+    /// Distance at which the light has fallen to a quarter (`> 0`, scene units).
+    pub radius: f64,
+    /// Kept in the scene but not lit: a runtime does not draw it (and it takes no slot), an editor
+    /// may still show its marker. Absent from the wire form unless true.
+    pub hidden: bool,
+}
+
 /// The evaluated plan of one edit frame. See the module documentation.
 ///
 /// The fields are public so a runtime can read them; a plan from outside must come through
@@ -364,6 +394,9 @@ pub struct ScenePlan {
     /// no timeline. Empty without effects, and then absent from the wire form (plans without
     /// effects keep their bytes).
     pub fx: Vec<FxPass>,
+    /// The point lights of the frame in document order (F060), at most four. Empty without
+    /// lights, and then absent from the wire form (plans without lights keep their bytes).
+    pub lights: Vec<PlanLight>,
     /// The textures and splat files the frame needs, ascending by `asset_id` (bytewise): the stable list a
     /// resource manifest is asked about.
     pub resources: Vec<PlanResource>,

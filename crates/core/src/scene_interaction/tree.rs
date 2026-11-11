@@ -19,7 +19,7 @@ use std::collections::HashSet;
 use serde_json::{Map, Value, json};
 
 use crate::directed_scene::{Bundle, DirectedScene, Entity, EntityKind};
-use crate::scene_edit::{CameraProperty, NodeProperty, PropertyRef};
+use crate::scene_edit::{CameraProperty, LightProperty, NodeProperty, PropertyRef};
 use crate::state::CommandError;
 
 use super::address::{ensure_exists, entity_path, kind_label, parse_entity};
@@ -38,10 +38,21 @@ struct Context<'a> {
 /// Children of an entity, in the order the tree lists them. Never the bundle root.
 fn children_of(bundle: &Bundle, entity: &Entity) -> Vec<Entity> {
     match entity.kind {
+        // The root node first, then the point lights (F060) in document order. A light whose id
+        // is declared twice is not listed: it cannot be addressed.
         EntityKind::SceneDefinition => bundle
             .scene(&entity.id)
-            .filter(|graph| graph.node(graph.root_id()).is_some())
-            .map(|graph| vec![Entity::node(graph.id(), graph.root_id())])
+            .map(|graph| {
+                let root = graph
+                    .node(graph.root_id())
+                    .map(|_| Entity::node(graph.id(), graph.root_id()));
+                let lights = graph
+                    .lights()
+                    .iter()
+                    .filter(|light| graph.light(&light.id).is_some())
+                    .map(|light| Entity::light(graph.id(), &light.id));
+                root.into_iter().chain(lights).collect()
+            })
             .unwrap_or_default(),
         EntityKind::Node => {
             let Some(graph) = entity
@@ -124,6 +135,23 @@ fn editable_paths(bundle: &Bundle, entity: &Entity) -> Vec<String> {
             .into_iter()
             .map(|property| PropertyRef::camera(&entity.id, property).path())
             .collect(),
+        EntityKind::Light => {
+            let scope = entity.scope.as_deref().unwrap_or_default();
+            let declared = bundle
+                .scene(scope)
+                .and_then(|graph| graph.light(&entity.id));
+            LightProperty::ALL
+                .into_iter()
+                // A keyed channel is not editable: see `scene_edit::ANIMATED_PROPERTY`.
+                .filter(|property| {
+                    !property
+                        .channel()
+                        .zip(declared)
+                        .is_some_and(|(channel, light)| light.is_keyed(channel.as_str()))
+                })
+                .map(|property| PropertyRef::light(scope, &entity.id, property).path())
+                .collect()
+        }
         _ => Vec::new(),
     }
 }
@@ -181,6 +209,16 @@ fn details(bundle: &Bundle, entity: &Entity, entry: &mut Map<String, Value>) {
                     ))),
                 );
                 entry.insert("channels".into(), json!(track.channels.len()));
+            }
+        }
+        EntityKind::Light => {
+            let scope = entity.scope.as_deref().unwrap_or_default();
+            if let Some(light) = bundle.scene(scope).and_then(|graph| graph.light(id)) {
+                let parent = light
+                    .parent
+                    .as_ref()
+                    .map(|parent| entity_path(&Entity::node(scope, parent)));
+                entry.insert("parent".into(), json!(parent));
             }
         }
         EntityKind::CameraClip => {
