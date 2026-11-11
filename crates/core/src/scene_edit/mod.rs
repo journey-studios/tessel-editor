@@ -70,8 +70,8 @@ pub use fx_animation::{
     REASON_NO_FRAME, REASON_NO_KEYS, SeedAnimation,
 };
 pub use fx_choice::{
-    ChoiceOption, InspectorChoice, OUTPUT_LABEL, SCOPE_LABEL, SHOT_LABEL, inspector_choices,
-    scope_choice, scope_label, scopes,
+    ChoiceOption, InspectorChoice, OUTPUT_LABEL, SCOPE_LABEL, SHOT_LABEL, scope_choice,
+    scope_label, scopes,
 };
 pub use fx_inspector::{
     ClipInspector, Component, DURATION_LABEL, FADE_IN_LABEL, FADE_OUT_LABEL, FieldGroup, FieldKind,

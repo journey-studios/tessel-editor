@@ -201,12 +201,6 @@ pub fn scope_choice(clip: &FxClip, shots: &[Shot]) -> InspectorChoice {
     }
 }
 
-/// The choices of a clip, as `scene.fx.inspect` lists them (`choices` is an array in the
-/// published JSON): today the scope alone.
-pub fn inspector_choices(clip: &FxClip, shots: &[Shot]) -> Vec<InspectorChoice> {
-    vec![scope_choice(clip, shots)]
-}
-
 #[cfg(test)]
 mod tests {
     use core::prelude::v1::test;
@@ -296,8 +290,6 @@ mod tests {
         assert_eq!(b.intent.as_deref(), Some("close on the lamp"));
         assert_eq!(b.frames, Some((15, 96)));
         assert!(!choice.option("shot:a").unwrap().applicable);
-        // The published list is the same choice, in an array.
-        assert_eq!(inspector_choices(&inside, &two_shots()), [choice]);
     }
 
     #[test]
