@@ -138,6 +138,8 @@ def markdown(report):
     lines += ["| iter | valid | class | gaps >62.5 | worst gap ms | pictures | starved | UI blocks ≥50 (n/max ms) | late transit ≥30 | page loop stalls (n/max ms) | ipc wait p95/max ms | eval p95/max ms |",
               "|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for it in report["iterations"]:
+        if not it["plays"]:  # an editor that failed before it played has no play to show: its row says why, so it never disappears from the table
+            lines.append(f"| {it['iteration']} | {'yes' if it['valid'] else 'NO: ' + '; '.join(it['invalid_reasons'])} | {it['quiet_class']} | no play | - | - | - | - | - | - | - | - |")
         for p in it["plays"]:
             lines.append(f"| {it['iteration']} | {'yes' if it['valid'] else 'NO: ' + '; '.join(it['invalid_reasons'])} | {it['quiet_class']} | {p['slow_gaps']} | "
                          f"{p['gap_ms']['max']} | {p['pictures']} | {'YES' if p['starved'] else 'no'} | "
@@ -171,6 +173,9 @@ def markdown(report):
     lines += [f"- slow-gap pictures: {json.dumps(total, sort_keys=True)}"]
     if report["red_iterations"]:
         lines += ["", f"RED: gaps above {SLOW_MS} ms, a UI block of {UI_BLOCK_MS} ms or more, or a starved play in iteration(s) {report['red_iterations']}"]
+    invalid = [it["iteration"] for it in report["iterations"] if not it["valid"]]
+    if invalid:
+        lines += ["", f"INVALID: iteration(s) {invalid} did not measure what they claim (the reasons are in the first table): the run exits 1 although no gap says RED"]
     return "\n".join(lines) + "\n"
 
 

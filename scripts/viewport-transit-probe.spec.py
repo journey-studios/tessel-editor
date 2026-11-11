@@ -181,6 +181,35 @@ class IterationTests(unittest.TestCase):
         json.dumps(report)
         self.assertIn("page_queue", probe.markdown(report))
 
+    MANIFEST = {"git": {"sha": "0" * 40, "dirty_files": 0}, "binary_sha256": "a" * 64, "runtime_sha256": "b" * 64, "document_sha256": "c" * 64, "io": "async", "window": [1, 2]}
+
+    def failed_before_play(self, iteration):
+        """An editor that never opened: no play, no event, no frame; the session recorded why."""
+        return {"iteration": iteration, "io": "async", "window": [100, 200], "events": [], "frames": [], "events_lost": 0, "plays_ok": False,
+                "error": "RuntimeError('could not open /Users/someone/private/clip.ply')", "status": {}, "external_cores": [], "editor_exit": {"alive": False}}
+
+    def test_an_iteration_that_failed_before_it_played_keeps_its_row_and_its_reasons_in_the_markdown(self):
+        report = probe.build_report([self.failed_before_play(0), self.record(gap=1) | {"iteration": 1}], None, self.MANIFEST)
+        self.assertEqual(report["iterations"][0]["plays"], [])
+        rows = [line for line in probe.markdown(report).splitlines() if line.startswith("| 0 |")]
+        self.assertEqual(len(rows), 1, "the iteration that never played is in the first table")
+        self.assertIn("no play", rows[0])
+        self.assertIn("NO: ", rows[0])
+        self.assertIn("exception:RuntimeError", rows[0])
+        self.assertTrue(any(line.startswith("| 1 |") for line in probe.markdown(report).splitlines()), "and the one that played is still there")
+        for private in ("/Users", "someone", "clip.ply"):
+            self.assertNotIn(private, probe.markdown(report))
+
+    def test_when_every_editor_fails_before_playing_the_report_says_why_it_exits_one(self):
+        report = probe.build_report([self.failed_before_play(0), self.failed_before_play(1)], None, self.MANIFEST)
+        text = probe.markdown(report)
+        self.assertEqual((report["red_iterations"], report["all_valid"], probe.LOOP.ok(report)), ([], False, False))
+        self.assertNotIn("RED:", text, "no gap says RED")
+        self.assertIn("INVALID: iteration(s) [0, 1] did not measure what they claim", text)
+        self.assertEqual(len([line for line in text.splitlines() if line.startswith("| 0 |") or line.startswith("| 1 |")]), 2)
+        clean = probe.markdown(probe.build_report([self.record(gap=1)], None, self.MANIFEST))
+        self.assertNotIn("INVALID:", clean)
+
     def test_the_report_says_that_ahead_of_an_older_build_is_not_comparable(self):
         report = probe.build_report([self.record(gap=110)], None, {"git": {"sha": "0" * 40, "dirty_files": 0}, "binary_sha256": "a" * 64,
                                                        "runtime_sha256": "b" * 64, "document_sha256": "c" * 64, "io": "async", "window": [1, 2]})
