@@ -291,6 +291,7 @@ mod tests {
             fade_out_frames: 0,
             seed: None,
             hidden: false,
+            scope: crate::directed_scene::fx::FxScope::Output,
         }
     }
 

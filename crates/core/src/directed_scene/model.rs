@@ -368,7 +368,8 @@ pub struct Bundle {
     pub shots: Vec<Shot>,
     pub composition_passes: Vec<CompositionPass>,
     pub audio: Option<AudioMix>,
-    /// The effects layer (`bundle.fx`, F016): output-scope looks over the edit's timeline.
+    /// The effects layer (`bundle.fx`, F016): looks over the edit's timeline, on the output or
+    /// (F062) on one shot's picture.
     pub fx: super::fx::Fx,
 }
 
@@ -416,5 +417,12 @@ impl Bundle {
         self.shots
             .iter()
             .find(|shot| shot.start_frame <= frame && frame < shot.end_frame_exclusive)
+    }
+
+    /// The effect passes at an edit frame, in the order of composition (the shot's own passes
+    /// first, then the output's; see `Fx::resolve`): the effects layer resolved against this
+    /// edit's shots, which a clip with scope `shot` needs.
+    pub fn fx_passes(&self, edit_frame: i64) -> Vec<super::fx::FxPass> {
+        self.fx.resolve(edit_frame, &self.shots)
     }
 }

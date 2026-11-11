@@ -15,7 +15,7 @@
 
 use serde_json::{Map, Value, json};
 
-use crate::directed_scene::fx::{FxPass, FxValue, ParamKind, effect};
+use crate::directed_scene::fx::{FxPass, FxScope, FxValue, ParamKind, effect};
 use crate::directed_scene::lighting::{LightingReason, Rgb};
 use crate::directed_scene::{
     AssetAlpha, AssetColorSpace, AssetFormat, CameraState, Fps, Mat4, NodeAnimation, NodeKind, Vec3,
@@ -567,11 +567,7 @@ fn read_fx_pass(pass: &Obj<'_>) -> Result<FxPass, PlanError> {
     ])?;
     let name = pass.text("effect")?;
     let spec = effect(&name).ok_or_else(|| pass.fail("effect", "not an effect of the catalog"))?;
-    let scope = pass.object("scope")?;
-    scope.only(&["kind"])?;
-    if scope.text_ref("kind")? != "output" {
-        return Err(scope.fail("kind", "only the `output` scope is supported"));
-    }
+    let scope = read_fx_scope(&pass.object("scope")?)?;
     let raw = pass.object("params")?;
     raw.only(&spec.params.iter().map(|param| param.id).collect::<Vec<_>>())?;
     let mut params = Vec::with_capacity(spec.params.len());
@@ -590,7 +586,28 @@ fn read_fx_pass(pass: &Obj<'_>) -> Result<FxPass, PlanError> {
         amount: pass.number("amount")?,
         params,
         seed: read_fx_seed(pass)?,
+        scope,
     })
+}
+
+/// The scope of a pass: `{ "kind": "output" }` or `{ "kind": "shot", "shotId": "<id>" }` (F062).
+/// Whether the shot is the one of the frame is the plan's validation, not the reader's.
+fn read_fx_scope(scope: &Obj<'_>) -> Result<FxScope, PlanError> {
+    match scope.text_ref("kind")? {
+        "output" => {
+            scope.only(&["kind"])?;
+            Ok(FxScope::Output)
+        }
+        "shot" => {
+            scope.only(&["kind", "shotId"])?;
+            let shot = scope.text("shotId")?;
+            if shot.is_empty() {
+                return Err(scope.fail("shotId", "a shot scope names its shot"));
+            }
+            Ok(FxScope::Shot(shot))
+        }
+        _ => Err(scope.fail("kind", "only the `output` and `shot` scopes are supported")),
+    }
 }
 
 /// The seed of a noise pass: absent, or a whole number in `0..=u32::MAX` (never a float, a

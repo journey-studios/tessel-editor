@@ -13,10 +13,10 @@
 use serde_json::{Map, Value, json};
 
 use crate::directed_scene::fx::{
-    self, FX_CATALOG_VERSION, FX_CLIP_EMPTY, FX_CLIP_OUT_OF_RANGE, FxValue, UNKNOWN_CLIP,
+    self, FX_CATALOG_VERSION, FX_CLIP_EMPTY, FX_CLIP_OUT_OF_RANGE, FxScope, FxValue, UNKNOWN_CLIP,
     UNKNOWN_EFFECT, UNKNOWN_PARAM, UNKNOWN_TRACK, id_problem, parse_param,
 };
-use crate::directed_scene::{DirectedScene, INVALID_VALUE, ImportError, Limits};
+use crate::directed_scene::{DirectedScene, INVALID_VALUE, ImportError, Limits, Shot};
 use crate::time::Ratio;
 
 use super::batch::rejected;
@@ -108,6 +108,10 @@ impl ClipField {
 /// knows only the project's playhead must not hand a sequence frame to a bundle that may run at
 /// another rate; it hands the time, and the bundle's own clock names the frame. With a
 /// `start_time` the `start_frame` field is ignored (it must be 0 in JSON, where it is absent).
+///
+/// The `scope` is where the clip lies (F062): the output, the default (the key stays out of the
+/// document), or a shot, which the clip must lie entirely inside; an add that does not fit is
+/// refused whole (`FX_SCOPE_MISMATCH`, `UNKNOWN_SHOT`) and nothing is written.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AddClip {
     pub track: Option<String>,
@@ -117,6 +121,7 @@ pub struct AddClip {
     pub start_time: Option<Ratio>,
     pub duration_frames: Option<i64>,
     pub params: Vec<(String, Value)>,
+    pub scope: FxScope,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -139,6 +144,13 @@ pub enum FxOp {
     SetHidden {
         clip: String,
         hidden: bool,
+    },
+    /// Moves the clip to the output or to a shot (F062). A shot must exist and hold the whole
+    /// clip; the same scope as the clip has is a no-op, and going back to `output` leaves the
+    /// `scope` key out of the document again.
+    SetScope {
+        clip: String,
+        scope: FxScope,
     },
     /// Puts a key of `param` on `frame` of the clip (or changes the one there). No `value`
     /// captures what the parameter is at that frame; no `easing` keeps the key's own.
@@ -193,7 +205,7 @@ pub enum FxOp {
     },
 }
 
-const SHAPES: &str = r#"{ "op": "add_clip", "effect": "vignette", "start_frame": 0 | "start_time": seconds, "duration_frames"?, "track"?, "id"?, "params"? }, { "op": "remove_clip", "clip" }, { "op": "set_param", "clip", "param", "value" }, { "op": "set_field", "clip", "field": "start_frame|duration_frames|fade_in_frames|fade_out_frames", "value" }, { "op": "set_hidden", "clip", "hidden" }, { "op": "key_param", "clip", "param", "frame", "value"?, "easing"? }, { "op": "set_key_easing", "clip", "param", "frame", "easing" }, { "op": "remove_key", "clip", "param", "frame" }, { "op": "move_key", "clip", "param", "from", "to" }, { "op": "shift_keys", "clip", "param"?, "delta" }, { "op": "scale_keys", "clip", "param"?, "anchor", "num", "den" }, { "op": "clear_keys", "clip", "param"? } or { "op": "set_seed", "clip", "seed": uint32|null }"#;
+const SHAPES: &str = r#"{ "op": "add_clip", "effect": "vignette", "start_frame": 0 | "start_time": seconds, "duration_frames"?, "track"?, "id"?, "params"?, "scope"?: "output|shot:<id>" }, { "op": "remove_clip", "clip" }, { "op": "set_param", "clip", "param", "value" }, { "op": "set_field", "clip", "field": "start_frame|duration_frames|fade_in_frames|fade_out_frames", "value" }, { "op": "set_hidden", "clip", "hidden" }, { "op": "set_scope", "clip", "scope": "output|shot:<id>" }, { "op": "key_param", "clip", "param", "frame", "value"?, "easing"? }, { "op": "set_key_easing", "clip", "param", "frame", "easing" }, { "op": "remove_key", "clip", "param", "frame" }, { "op": "move_key", "clip", "param", "from", "to" }, { "op": "shift_keys", "clip", "param"?, "delta" }, { "op": "scale_keys", "clip", "param"?, "anchor", "num", "den" }, { "op": "clear_keys", "clip", "param"? } or { "op": "set_seed", "clip", "seed": uint32|null }"#;
 
 impl FxOp {
     /// The JSON shape of an op (the `ops` of `scene.fx.edit`).
@@ -239,7 +251,13 @@ impl FxOp {
                     "track",
                     "id",
                     "params",
+                    "scope",
                 ])?;
+                // Left out or `null`: the output, the clip every add made before F062.
+                let scope = match map.get("scope") {
+                    None | Some(Value::Null) => FxScope::Output,
+                    Some(raw) => scope_of(raw)?,
+                };
                 let params = match map.get("params") {
                     None | Some(Value::Null) => Vec::new(),
                     Some(Value::Object(params)) => params
@@ -281,6 +299,7 @@ impl FxOp {
                     start_time,
                     duration_frames,
                     params,
+                    scope,
                 }))
             }
             "remove_clip" => {
@@ -320,6 +339,17 @@ impl FxOp {
                 Ok(Self::SetHidden {
                     clip: text("clip")?,
                     hidden,
+                })
+            }
+            "set_scope" => {
+                only(&["op", "clip", "scope"])?;
+                // Required, and `null` is not a scope: going back to the output is `output`.
+                let raw = map.get("scope").ok_or_else(|| {
+                    invalid("`scope` is required: `output` or `shot:<id>`".to_string())
+                })?;
+                Ok(Self::SetScope {
+                    clip: text("clip")?,
+                    scope: scope_of(raw)?,
                 })
             }
             "key_param" => {
@@ -421,6 +451,7 @@ impl FxOp {
             | Self::SetParam { clip, .. }
             | Self::SetField { clip, .. }
             | Self::SetHidden { clip, .. }
+            | Self::SetScope { clip, .. }
             | Self::KeyParam { clip, .. }
             | Self::SetKeyEasing { clip, .. }
             | Self::RemoveKey { clip, .. }
@@ -431,6 +462,14 @@ impl FxOp {
             | Self::SetSeed { clip, .. } => Some(clip),
         }
     }
+}
+
+/// A scope an op carries, from its text (`output`, `shot:<id>`) or the document's own object. What
+/// is not a scope is `INVALID_VALUE` and scope `node` is `FX_SCOPE_NOT_YET`, both at the path
+/// `scope`: an op that cannot say where its clip goes is refused before the document is read.
+fn scope_of(raw: &Value) -> Result<FxScope, EditError> {
+    FxScope::from_op_json(raw)
+        .map_err(|(code, message)| EditError::new(code, message).with_path("scope"))
 }
 
 /// `ops` as the JSON array of `scene.fx.edit`.
@@ -453,7 +492,8 @@ pub fn parse_fx_batch(value: &Value) -> Result<Vec<FxOp>, EditError> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct FxChange {
     pub index: usize,
-    /// `add_clip`, `remove_clip`, `set_param`, `set_field` or `set_hidden`.
+    /// `add_clip`, `remove_clip`, `set_param`, `set_field`, `set_hidden` or `set_scope` (the key
+    /// ops have their own names, see `fx_keys`).
     pub action: &'static str,
     pub track: String,
     pub clip: String,
@@ -526,6 +566,8 @@ pub(super) fn command_code(code: &str) -> Option<&'static str> {
         fx::ENVELOPE_TOO_LONG => "envelope_too_long",
         fx::CATALOG_TOO_NEW => "catalog_too_new",
         fx::FX_SCOPE_NOT_YET => "fx_scope_not_yet",
+        fx::UNKNOWN_SHOT => "unknown_shot",
+        fx::FX_SCOPE_MISMATCH => "fx_scope_mismatch",
         fx::KEY_OUT_OF_CLIP => "key_out_of_clip",
         fx::KEYFRAME_ORDER => "keyframe_order",
         fx::UNKNOWN_KEYFRAME_EASING => "unknown_keyframe_easing",
@@ -672,6 +714,9 @@ fn run_batch(
 ) -> Result<FxOutcome, EditError> {
     let mut work = scene.document().clone();
     let edit_length = i64::try_from(scene.bundle().edit_duration_frames).unwrap_or(i64::MAX);
+    // The shots of the edit, for the ops that place a clip in one (`add_clip`, `set_scope`): the
+    // same rule the importer judges the candidate with (`directed_scene::fx::scope_fault`).
+    let shots = scene.bundle().shots.as_slice();
     let mut changes = Vec::with_capacity(ops.len());
     // The clip each op touched: resolved to a pointer at the end, when slots are final.
     let mut touched: Vec<(usize, String)> = Vec::new();
@@ -684,7 +729,7 @@ fn run_batch(
             batch,
             resolved.as_ref().unwrap_or(op),
             index,
-            edit_length,
+            (edit_length, shots),
         )
         .map_err(fail)?;
         if !change.noop {
@@ -776,10 +821,11 @@ fn run_op(
     batch: &mut Batch,
     op: &FxOp,
     index: usize,
-    edit_length: i64,
+    (edit_length, shots): (i64, &[Shot]),
 ) -> Result<FxChange, EditError> {
     match op {
-        FxOp::AddClip(add) => add_clip(work, add, index, edit_length),
+        FxOp::AddClip(add) => add_clip(work, add, index, (edit_length, shots)),
+        FxOp::SetScope { clip, scope } => set_scope(work, clip, scope, index, shots),
         FxOp::RemoveClip { clip } => {
             let (track_slot, clip_slot) = clip_ref(work, clip)?;
             let tracks = tracks_mut(work)?;
@@ -909,7 +955,7 @@ fn add_clip(
     work: &mut Value,
     add: &AddClip,
     index: usize,
-    edit_length: i64,
+    (edit_length, shots): (i64, &[Shot]),
 ) -> Result<FxChange, EditError> {
     let spec = fx::effect(&add.effect).ok_or_else(|| {
         EditError::new(
@@ -968,6 +1014,11 @@ fn add_clip(
     // The clip's ID is taken from here on: a track made for it must not be given the same one
     // (`id: "fx-track-1"` on a clip that needs a new track).
     ids.push(clip_id.clone());
+    // A clip that does not fit its shot is refused here, with the shot's legal interval, instead
+    // of being written for the importer to refuse at the end of the batch.
+    if let Some(fault) = fx::scope_fault(&add.scope, &clip_id, add.start_frame, duration, shots) {
+        return Err(scope_refusal(fault, &add.scope));
+    }
     let mut params = Map::new();
     for (name, value) in &add.params {
         let (_, param) = spec.param(name).ok_or_else(|| {
@@ -988,6 +1039,10 @@ fn add_clip(
     clip.insert("durationFrames".to_string(), json!(duration));
     if !params.is_empty() {
         clip.insert("params".to_string(), Value::Object(params));
+    }
+    // The canonical spelling of the output is no `scope` key at all.
+    if let Some(scope) = add.scope.to_document() {
+        clip.insert("scope".to_string(), scope);
     }
     let all = tracks_mut(work)?;
     let track_slot = match &add.track {
@@ -1164,4 +1219,72 @@ fn set_field(
         after: Some(json!(value)),
         noop,
     })
+}
+
+/// Moves a clip to the output or to a shot (F062). The shot must exist and hold the whole clip
+/// as it is now: a clip that does not fit is refused with the shot's legal interval, never
+/// clamped (retime it first, in the same batch if both are meant). The same scope is a no-op that
+/// leaves the document as written, a hand-written `{ "kind": "output" }` included; going back to
+/// the output leaves the `scope` key out, the canonical spelling.
+fn set_scope(
+    work: &mut Value,
+    clip: &str,
+    scope: &FxScope,
+    index: usize,
+    shots: &[Shot],
+) -> Result<FxChange, EditError> {
+    let (track_slot, clip_slot) = clip_ref(work, clip)?;
+    let (start, duration) = {
+        let found = &clips_of(&tracks(work)[track_slot])[clip_slot];
+        (
+            frame_of(found, "startFrame"),
+            frame_of(found, "durationFrames"),
+        )
+    };
+    let tracks = tracks_mut(work)?;
+    let track_id = text_of(&tracks[track_slot], "id").to_string();
+    let target = clip_object(&mut tracks[track_slot], clip_slot)?;
+    // No key, or a hand-written `{ "kind": "output" }`, is the output.
+    let before = target
+        .get("scope")
+        .and_then(|raw| FxScope::from_op_json(raw).ok())
+        .unwrap_or_default();
+    let noop = before == *scope;
+    if !noop {
+        if let Some(fault) = fx::scope_fault(scope, clip, start, duration, shots) {
+            return Err(scope_refusal(fault, scope));
+        }
+        match scope.to_document() {
+            Some(document) => {
+                target.insert("scope".to_string(), document);
+            }
+            None => {
+                target.remove("scope");
+            }
+        }
+    }
+    Ok(FxChange {
+        index,
+        warnings: Vec::new(),
+        action: "set_scope",
+        track: track_id,
+        clip: clip.to_string(),
+        target: Some("scope".to_string()),
+        before: Some(json!(before.to_text())),
+        after: Some(json!(scope.to_text())),
+        noop,
+    })
+}
+
+/// The refusal of a clip that does not belong to the scope it was given: the importer's own code
+/// and words, the path of the op's field, the shot that does not exist as the missing id, and the
+/// facts an adapter can act on (the shot's legal interval, the ids there are) in `details`.
+fn scope_refusal(fault: fx::ScopeFault, scope: &FxScope) -> EditError {
+    let error = EditError::new(fault.code, fault.message)
+        .with_path("scope")
+        .with_details(fault.details);
+    match scope.shot_id() {
+        Some(shot) if fault.code == fx::UNKNOWN_SHOT => error.with_id(shot),
+        _ => error,
+    }
 }

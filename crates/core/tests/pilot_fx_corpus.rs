@@ -170,7 +170,7 @@ fn the_pixels_are_the_pilots_shader_and_a_tampered_expectation_is_caught() {
 
         let scene = DirectedScene::import_value(bundle_with(&case["fx"])).unwrap();
         let mut rgba = input.clone();
-        for pass in scene.bundle().fx.resolve(case["frame"].as_i64().unwrap()) {
+        for pass in scene.bundle().fx_passes(case["frame"].as_i64().unwrap()) {
             assert!(
                 fx::apply_pass_to_rgba8(&pass, &mut rgba, width, height),
                 "{id}"

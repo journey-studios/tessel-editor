@@ -15,7 +15,7 @@ use super::catalog::{EffectSpec, ParamKind, ParamSpec, effect};
 use super::{
     CATALOG_TOO_NEW, DUPLICATE_ID, ENVELOPE_TOO_LONG, FX_CATALOG_VERSION, FX_CLIP_EMPTY,
     FX_CLIP_OUT_OF_RANGE, FX_CLIP_OVERLAP, FX_LIMIT, FX_SCOPE_NOT_YET, FX_TRANSITION_NOT_YET, Fx,
-    FxClip, FxEasing, FxKey, FxTrack, FxValue, KEY_OUT_OF_CLIP, KEYFRAME_ORDER,
+    FxClip, FxEasing, FxKey, FxScope, FxTrack, FxValue, KEY_OUT_OF_CLIP, KEYFRAME_ORDER,
     MAX_FX_CLIPS_PER_TRACK, MAX_FX_KEYS_PER_CLIP, MAX_FX_KEYS_PER_CURVE, MAX_FX_KEYS_PER_LAYER,
     MAX_FX_TRACKS, PARAM_OUT_OF_RANGE, PARAM_TYPE, ParamKeys, UNKNOWN_EFFECT,
     UNKNOWN_KEYFRAME_EASING, UNKNOWN_PARAM, id_problem,
@@ -168,33 +168,78 @@ fn read_params(
     clean.then_some(values)
 }
 
-fn read_scope(raw: Option<&Value>, path: &str, sink: &Sink) -> bool {
+/// The `scope` of a clip: left out (the canonical spelling) or `{ "kind": "output" }` is the
+/// output; `{ "kind": "shot", "shotId" }` is a shot. Here only the shape and the vocabulary are
+/// judged; that the shot exists and holds the clip needs the shots of the edit, so it is the
+/// importer's integrity stage (`UNKNOWN_SHOT`, `FX_SCOPE_MISMATCH`, [`super::scope_fault`]).
+/// Scope `node` has no target yet (`FX_SCOPE_NOT_YET`).
+fn read_scope(raw: Option<&Value>, path: &str, sink: &Sink) -> Option<FxScope> {
     let Some(raw) = raw else {
-        return true;
+        return Some(FxScope::Output);
     };
-    let kind = raw
-        .as_object()
-        .and_then(|map| map.get("kind"))
-        .and_then(Value::as_str);
+    let Some(map) = raw.as_object() else {
+        sink.issue(
+            INVALID_TYPE,
+            path,
+            format!("expected object, got {}", kind_of(raw)),
+        );
+        return None;
+    };
+    let kind = match map.get("kind") {
+        Some(Value::String(kind)) => kind.as_str(),
+        Some(other) => {
+            sink.issue(
+                INVALID_TYPE,
+                &child(path, "kind"),
+                format!("expected string, got {}", kind_of(other)),
+            );
+            return None;
+        }
+        None => {
+            sink.issue(MISSING_FIELD, path, "missing required field `kind`");
+            return None;
+        }
+    };
     match kind {
-        Some("output") => true,
-        Some(other @ ("shot" | "node")) => {
+        "output" => Some(FxScope::Output),
+        "shot" => match map.get("shotId") {
+            Some(Value::String(id)) if !id.is_empty() => Some(FxScope::Shot(id.clone())),
+            Some(Value::String(_)) => {
+                sink.issue(
+                    INVALID_VALUE,
+                    &child(path, "shotId"),
+                    "must not be an empty string",
+                );
+                None
+            }
+            Some(other) => {
+                sink.issue(
+                    INVALID_TYPE,
+                    &child(path, "shotId"),
+                    format!("expected string, got {}", kind_of(other)),
+                );
+                None
+            }
+            None => {
+                sink.issue(MISSING_FIELD, path, "missing required field `shotId`");
+                None
+            }
+        },
+        "node" => {
             sink.issue(
                 FX_SCOPE_NOT_YET,
                 path,
-                format!(
-                    "scope `{other}` is not drawn yet; use scope output (or leave `scope` out)"
-                ),
+                "scope `node` is not drawn yet; use scope output or scope shot (or leave `scope` out)",
             );
-            false
+            None
         }
         _ => {
             sink.issue(
                 INVALID_VALUE,
-                path,
-                "expected an object whose `kind` is `output`",
+                &child(path, "kind"),
+                "expected `output` or `shot`",
             );
-            false
+            None
         }
     }
 }
@@ -422,7 +467,7 @@ fn read_clip(obj: &Obj<'_>, sink: &Sink) -> Option<FxClip> {
         duration,
         sink,
     );
-    let scope_ok = read_scope(obj.deferred("scope"), &obj.field_path("scope"), sink);
+    let scope = read_scope(obj.deferred("scope"), &obj.field_path("scope"), sink);
     let seed = obj.opt_int("seed", Bound::NonNegative);
     if let Some(Some(seed)) = seed
         && seed > i64::from(u32::MAX)
@@ -440,10 +485,10 @@ fn read_clip(obj: &Obj<'_>, sink: &Sink) -> Option<FxClip> {
     let values = spec.and_then(|spec| read_params(spec, params, &params_path, sink));
     let seed = seed?.and_then(|seed| u32::try_from(seed).ok());
     let (id, spec, start, duration, values) = (id?, spec?, start?, duration?, values?);
-    if !scope_ok || id_problem(id).is_some() {
+    if id_problem(id).is_some() {
         return None;
     }
-    let keys = keys?;
+    let (scope, keys) = (scope?, keys?);
     Some(FxClip {
         id: id.to_string(),
         effect: spec,
@@ -455,6 +500,7 @@ fn read_clip(obj: &Obj<'_>, sink: &Sink) -> Option<FxClip> {
         fade_out_frames: fade_out?.unwrap_or(0),
         seed,
         hidden: hidden?,
+        scope,
     })
 }
 

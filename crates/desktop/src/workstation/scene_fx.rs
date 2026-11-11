@@ -33,7 +33,7 @@ use gpui_kit::prelude::*;
 use gpui_kit::*;
 use serde_json::{Value, json};
 use tessel_editor_core::directed_scene::fx::PassBudget;
-use tessel_editor_core::directed_scene::fx::{self, EffectSpec, FxClip, Locale};
+use tessel_editor_core::directed_scene::fx::{self, EffectSpec, FxClip, FxScope, Locale};
 use tessel_editor_core::scene_edit::{
     AddClip, ClipAnimation, FieldKind, FxOp, InspectorField, REASON_SINGLE_VALUE, has_reset,
     inspector_fields, offers, reset_ops,
@@ -391,6 +391,7 @@ impl Workstation {
             start_time: Some(self.state.timeline.time_of(self.state.timeline.playhead)),
             duration_frames: None,
             params: Vec::new(),
+            scope: FxScope::Output,
         });
         self.fx_run(&view.scene, op, source, cx)
     }

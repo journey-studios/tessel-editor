@@ -215,8 +215,7 @@ fn an_export_carries_the_vignette_and_matches_the_reference_over_the_decoded_bas
             .unwrap()
             .scene
             .bundle()
-            .fx
-            .resolve(edit_frame);
+            .fx_passes(edit_frame);
         assert_eq!(
             passes.len(),
             usize::from(edit_frame < 48),
@@ -425,8 +424,7 @@ fn an_export_carries_the_keyed_grain_reseeds_per_frame_and_survives_save_reopen_
             .unwrap()
             .scene
             .bundle()
-            .fx
-            .resolve(edit_frame);
+            .fx_passes(edit_frame);
         assert_eq!(passes.len(), usize::from(edit_frame < 48));
         for (gx, gy) in grid() {
             let (x, y) = ((gx / cell) * cell + cell / 2, (gy / cell) * cell + cell / 2);

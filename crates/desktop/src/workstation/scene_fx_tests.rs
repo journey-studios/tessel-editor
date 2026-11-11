@@ -181,8 +181,7 @@ fn the_section_adds_a_vignette_as_one_undo_entry_and_the_nodes_describe_it(
             .unwrap()
             .scene
             .bundle()
-            .fx
-            .resolve(10)
+            .fx_passes(10)
             .len()
     });
     assert_eq!(passes, 1);
@@ -288,8 +287,11 @@ fn hide_toggle_and_remove_go_through_the_same_command_and_undo_restores_them(
     set(&view, cx, CLIP, "hidden", Raw::Bool(true)).unwrap();
     assert_eq!(field_value(&node(&view, cx, CLIP), "hidden"), json!(true));
     view.read_with(cx, |view, _| {
-        let fx = &view.state.scenes.get("street").unwrap().scene.bundle().fx;
-        assert!(fx.resolve(10).is_empty(), "a hidden clip draws nothing");
+        let bundle = view.state.scenes.get("street").unwrap().scene.bundle();
+        assert!(
+            bundle.fx_passes(10).is_empty(),
+            "a hidden clip draws nothing"
+        );
     });
     invoke(&view, cx, CLIP, "toggle_hidden").unwrap();
     assert_eq!(field_value(&node(&view, cx, CLIP), "hidden"), json!(false));
@@ -1095,8 +1097,7 @@ fn more_than_eight_passes_warns_visibly_and_on_a_node_and_never_drops_a_pass(
             .unwrap()
             .scene
             .bundle()
-            .fx
-            .resolve(0)
+            .fx_passes(0)
             .len()
     });
     assert_eq!(passes, 9);
@@ -2115,8 +2116,7 @@ fn the_reset_button_runs_the_shared_handler_and_a_vignette_and_a_fade_compose_in
             .unwrap()
             .scene
             .bundle()
-            .fx
-            .resolve(10)
+            .fx_passes(10)
             .iter()
             .map(|pass| pass.effect.clone())
             .collect::<Vec<_>>()

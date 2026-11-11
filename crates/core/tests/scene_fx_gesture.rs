@@ -238,7 +238,7 @@ fn undo_and_redo_restore_the_pixels_against_the_reference() {
     let render = |state: &EditorState| {
         let scene = DirectedScene::import_value(document(state, "street")).unwrap();
         let mut rgba = baseline.clone();
-        for pass in scene.bundle().fx.resolve(20) {
+        for pass in scene.bundle().fx_passes(20) {
             assert!(fx::apply_pass_to_rgba8(&pass, &mut rgba, width, height));
         }
         rgba

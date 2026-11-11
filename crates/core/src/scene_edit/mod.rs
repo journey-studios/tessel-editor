@@ -68,9 +68,10 @@ pub use fx_animation::{
     REASON_NO_FRAME, REASON_NO_KEYS, SeedAnimation,
 };
 pub use fx_inspector::{
-    ClipInspector, Component, DURATION_LABEL, FADE_IN_LABEL, FADE_OUT_LABEL, FieldGroup, FieldKind,
-    InspectorField, Offer, REASON_ANIMATED, REASON_FAMILY_NOT_YET, REASON_SINGLE_VALUE,
-    START_LABEL, Target, has_reset, inspector_fields, layer_inspector, offers, reset_ops, scopes,
+    ChoiceOption, ClipInspector, Component, DURATION_LABEL, FADE_IN_LABEL, FADE_OUT_LABEL,
+    FieldGroup, FieldKind, InspectorChoice, InspectorField, OUTPUT_LABEL, Offer, REASON_ANIMATED,
+    REASON_FAMILY_NOT_YET, REASON_SINGLE_VALUE, SCOPE_LABEL, SHOT_LABEL, START_LABEL, Target,
+    has_reset, inspector_choices, inspector_fields, layer_inspector, offers, reset_ops, scopes,
 };
 pub use fx_intent::{FxIntent, GESTURE_INTENT_MISMATCH, GESTURE_TARGET_MISMATCH, IntentRefusal};
 pub use fx_keys::FxWork;

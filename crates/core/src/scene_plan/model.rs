@@ -52,10 +52,16 @@ pub enum Capability {
     /// `missing`, never draws the planes unlit as if the light were not there. Splats are never
     /// lit, with or without this capability.
     PointLights,
+    /// Effects of one shot (`FxPass::scope`, F062): passes drawn on the shot's own picture before
+    /// the output passes, listed first in `ScenePlan::fx`. Only a plan with a `shot` pass requires
+    /// it (a plan without one keeps its bytes, `requires` included). A runtime that does not list
+    /// it refuses the plan with `unsupported` + `missing`, never draws the shot's look over the
+    /// whole output nor leaves it out.
+    FxShotScope,
 }
 
 impl Capability {
-    pub const ALL: [Capability; 12] = [
+    pub const ALL: [Capability; 13] = [
         Self::Camera,
         Self::NodeTransforms,
         Self::Sockets,
@@ -68,6 +74,7 @@ impl Capability {
         Self::OutputFx,
         Self::FxNoise,
         Self::PointLights,
+        Self::FxShotScope,
     ];
 
     /// The spelling used on the wire.
@@ -85,6 +92,7 @@ impl Capability {
             Self::OutputFx => "outputFx",
             Self::FxNoise => "fxNoise",
             Self::PointLights => "pointLights",
+            Self::FxShotScope => "fxShotScope",
         }
     }
 
@@ -389,10 +397,11 @@ pub struct ScenePlan {
     /// The splat nodes, in document order; each is drawn at its `after_layers` slot among the layers. Empty for a scene without
     /// splats, and then absent from the wire form (S7: plans without splats keep their bytes).
     pub splats: Vec<PlanSplat>,
-    /// The output-scope effect passes of the frame, in the order of composition (F016): already
-    /// resolved (envelope applied, `amount` final), so a runtime draws them as listed and knows
-    /// no timeline. Empty without effects, and then absent from the wire form (plans without
-    /// effects keep their bytes).
+    /// The effect passes of the frame, in the order of composition (F016): already resolved
+    /// (envelope applied, `amount` final), so a runtime draws them as listed and knows no
+    /// timeline. The passes of the frame's shot (scope `shot`, F062) come first and the output's
+    /// after them, each stage in track order; `validate` checks it. Empty without effects, and
+    /// then absent from the wire form (plans without effects keep their bytes).
     pub fx: Vec<FxPass>,
     /// The point lights of the frame in document order (F060), at most four. Empty without
     /// lights, and then absent from the wire form (plans without lights keep their bytes).
