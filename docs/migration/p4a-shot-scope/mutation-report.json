@@ -2,7 +2,7 @@
   "runs": [
     {
       "started": "2026-11-11T14:45:33+00:00",
-      "head": "a6d627b",
+      "head": "0448d02",
       "dirty_before": [],
       "selected": [
         "J01",
@@ -41,7 +41,7 @@
       "kind": "js",
       "result": "KILLED",
       "run": 0,
-      "head": "a6d627b",
+      "head": "0448d02",
       "failed": [
         "without the capability a pass of a shot is refused by name, never drawn as if it were the output"
       ],
@@ -54,7 +54,7 @@
       "kind": "js",
       "result": "KILLED",
       "run": 0,
-      "head": "a6d627b",
+      "head": "0448d02",
       "failed": [
         "a pass of another shot than the frame's is unsupported, typed, and says which shot is which"
       ],
@@ -67,7 +67,7 @@
       "kind": "js",
       "result": "KILLED",
       "run": 0,
-      "head": "a6d627b",
+      "head": "0448d02",
       "failed": [
         "the stages are listed in order: the passes of the shot, then the passes of the output"
       ],
@@ -80,7 +80,7 @@
       "kind": "js",
       "result": "KILLED",
       "run": 0,
-      "head": "a6d627b",
+      "head": "0448d02",
       "failed": [
         "the deck and the output are two loops of their own, the seam between them is where a transition will go",
         "the deck is drawn before the output and the ping-pong goes on across the stages"
@@ -94,7 +94,7 @@
       "kind": "js",
       "result": "KILLED",
       "run": 0,
-      "head": "a6d627b",
+      "head": "0448d02",
       "failed": [
         "a capability the runtime does not have is named; the ones it has are the core list",
         "a pass of a shot is accepted with the capability, in the frame of that shot, and is a deck pass",
@@ -109,7 +109,7 @@
       "kind": "js",
       "result": "KILLED",
       "run": 0,
-      "head": "a6d627b",
+      "head": "0448d02",
       "failed": [
         "one deck pass and one output pass need no more than the two targets and the one material of the effect",
         "the deck and the output are two loops of their own, the seam between them is where a transition will go",
