@@ -5,19 +5,32 @@ diagnósticos e 41,7 ms (24 fps) é só a referência de orçamento. Plano: [rea
 investigação anterior: [viewport-real-latency-investigation.md](viewport-real-latency-investigation.md); contrato do que foi
 construído: [F063](features/viewport-asset-io.md); dados: [viewport-real-latency-ab-results/](viewport-real-latency-ab-results/).
 
-## 1. Resultado em uma página
+## Estado atual
+
+Um item por linha; as evidências estão nas seções indicadas e a regra de proveniência dos dados em [viewport-real-latency-ab-results/README.md](viewport-real-latency-ab-results/README.md).
+
+- **BL157.1** (I/O assíncrono do protocolo, §1–§10): implementado, opt-in (`TESSEL_VIEWPORT_ASSET_IO=async`), não demonstrou redução consistente da cauda das pausas. O I/O síncrono atrasa a janela (confirmado).
+- **BL157.2** (trânsito do quadro, §11): localizado (thread da página parada logo após um draw); sem correção.
+- **BL157.3** (pré-upload da textura PNG e warm draw, §13): opt-in, desligados; o pré-upload tira o custo local da entrada da imagem, mas não as pausas maiores; o warm draw não mostrou benefício e teve um `HANG` sem causa.
+- **BL157.4** (deadlock do WebKit no decodificador, §16): mecanismo identificado; a remoção da chamada é opt-in (`TESSEL_RUNTIME_SPARK_RELEASE_LOCK_PATCH=1`) e o efeito não está demonstrado (NÃO REPRODUZIDO: 1 de 36 sessões presas sem a correção, 0 de 36 com ela).
+- **BL157.6** (cadência do relógio de reprodução, §16.7): leitor entregue; agendamento `TESSEL_PLAYBACK_POLL=deadline` opt-in; o A/B nativo não rodou.
+- **Latência: NÃO ACEITA**; BL157 segue aberto. A pausa do primeiro crossfade segue sem causa atribuída.
+
+## 1. Resultado do BL157.1 em uma página
+
+Esta seção responde só ao BL157.1 (I/O assíncrono do protocolo); os demais sub-itens estão no "Estado atual" e nas §11–§16.
 
 | Pergunta | Resposta | Base |
 |---|---|---|
 | O callback do protocolo roda na thread da janela e lê o arquivo ali? | **Sim, medido** (em `sync`, 29 leituras por sessão na thread da UI; em `async`, 0) | evento `asset_cb` com `on_ui_thread` e nome da thread |
 | Essa leitura bloqueia a janela durante a pré-carga? | **Sim**: callback de 33,5–85,4 ms na UI (máximo por sessão) em todas as 6 sessões `sync` válidas (leituras de ~66 MB, 13–31 ms de leitura mais a cópia para o `NSData`) e tick atrasado em até 71,5 ms; em `async` o callback na UI é ≤ 0,12 ms e o atraso máximo do tick é ≤ 14,4 ms | tabelas §4 |
-| Tirar essa leitura da thread da UI reduz as pausas entre imagens? | **Não demonstrado: inconclusivo, com tendência de nenhum efeito na cauda.** Gaps > 62,5 ms em sessões silenciosas: `sync` 28 (5 sessões, 10 plays), `async` 27 (5 sessões, 10 plays); > 100 ms: 1 contra 2. Em 4 pares comparáveis o efeito troca de sinal | §4.3 |
+| Tirar essa leitura da thread da UI reduz as pausas entre imagens? | **Não demonstrado: o modo assíncrono, implementado e opt-in, não demonstrou redução consistente da cauda (inconclusivo; tendência de nenhum efeito).** Gaps > 62,5 ms em sessões silenciosas: `sync` 28 (5 sessões, 10 plays), `async` 27 (5 sessões, 10 plays); > 100 ms: 1 contra 2. Em 4 pares comparáveis o efeito troca de sinal | §4.3 |
 | A preparação (`plans_ahead`, `prefetch`, `sync`) é o custo? | **Refutado.** `plans_ahead` ≤ 0,07 ms, `prefetch` ≤ 4,3 ms (típico < 0,1 ms), `sync` ≤ 2,8 ms | §5 |
 | O que sobra nas pausas com `async`? | Pausas em que a UI não estava bloqueada, o tick estava no horário e não houve leitura: o quadro espera 56–120 ms **fora do trabalho do runtime** (trânsito host→página→host), sem span que o explique; mais a entrada de clipes de imagem (primeiro desenho de 12–18 ms) | §5 |
 
 **Decisão (regra do plano).** Os spans confirmam o mecanismo (leitura na thread da UI atrasa a janela), mas **não** mostram que ele
 é a causa principal das pausas visíveis no monitor: a cauda das pausas não cai. Portanto o modo assíncrono **não é proposto como a
-correção**; fica como experimento opt-in (`TESSEL_VIEWPORT_ASSET_IO=async`, padrão `sync`) com testes, e o próximo componente
+correção**; fica implementado como experimento opt-in (`TESSEL_VIEWPORT_ASSET_IO=async`, padrão `sync`) com testes, e o próximo componente
 demonstrado é o **trânsito do quadro fora do runtime** (ainda sem causa atribuída; primeiro medir o atraso do laço de eventos da página) e a **entrada de clipes de imagem** (§7; BL157.2, proposta, nada implementado).
 
 ## 2. O que foi construído (um fator por vez)
@@ -42,8 +55,8 @@ demonstrado é o **trânsito do quadro fora do runtime** (ainda sem causa atribu
 |---|---|
 | Mesmos status/cabeçalhos/bytes nos dois modos (arquivo inteiro, Range, sufixo, inválido, vazio, ausente, negado; 13 casos) | passa (`asset_io_tests`) |
 | Controle negativo: leitura retida por FIFO; a UI responde antes de soltar a leitura em `async`; **em `sync` o mesmo teste fica vermelho** | passa/vermelho como esperado |
-| Fila cheia → `503` uma vez, contada, sem descarte silencioso; troca de projeto com leituras na fila e em voo → `410`, sem resposta dupla nem resultado velho; workers/fila/memória limitados (≤ 1 corpo por worker) | passa |
-| Pixels do projeto **sintético** (5 cenas × 200 000 splats), 4 quadros, `sync`/`async` × quente/frio, `render.frame` | **idênticos byte a byte** nas 4 sessões; o monitor mostra a mesma imagem. Um `render.frame` explícito foi substituído por um pedido mais novo do próprio monitor (`cancelled`, em `sync` e em `async`) e foi repetido; o registro está em [pixels-synthetic.txt](viewport-real-latency-ab-results/pixels-synthetic.txt). A primeira rodada reprovou o veredito por isso e foi corrigida no runner (nova tentativa só para `cancelled`), não nos dados |
+| Fila cheia → `503` uma vez, contada, sem descarte silencioso; troca de projeto com leituras na fila e em voo → `410`, sem resposta dupla nem resultado velho; workers e fila limitados (2 workers, fila de 16; `max_in_flight` nunca acima do número de workers) | passa |
+| Pixels do projeto **sintético** (5 cenas × 200 000 splats), 4 quadros, `sync`/`async` × quente/frio, `render.frame` | **idênticos byte a byte** nas 4 sessões; o monitor mostra a mesma imagem. Um `render.frame` explícito foi substituído por um pedido mais novo do próprio monitor (`cancelled`, em `sync` e em `async`) e foi repetido; a saída gerada não foi mantida no Git ([proveniência](viewport-real-latency-ab-results/README.md)). A primeira rodada reprovou o veredito por isso e foi corrigida no runner (nova tentativa só para `cancelled`), não nos dados |
 | Export | N/A: o export não passa pelo protocolo da WebView |
 
 ## 4. A/B no projeto real
@@ -54,8 +67,7 @@ clipes de imagem entram em 18/196/282/326/370/512/520; documento sha256 `e93363a
 GPU, uma sessão por vez, janela própria. Cada sessão: um editor novo, **primeiro play completo e play repetido com cache residente,
 analisados separadamente**. Sem purge e sem afirmação de disco frio. Ordem alternada `sync/async, async/sync, sync/async,
 async/sync`, **duas rodadas** de 4 pares (a segunda foi pedida por mim depois que a primeira teve uma sessão inválida; nenhuma
-sessão foi descartada, e os números por rodada estão em [analysis-batch1.md](viewport-real-latency-ab-results/analysis-batch1.md) e
-[analysis-batch2.md](viewport-real-latency-ab-results/analysis-batch2.md)). A máquina **não estava ociosa**: carga média 3–20 e CPU
+sessão foi descartada, e os números por rodada não foram mantidos no Git: a tabela completa das 16 sessões está em [analysis-all-16-sessions.md](viewport-real-latency-ab-results/analysis-all-16-sessions.md)). A máquina **não estava ociosa**: carga média 3–20 e CPU
 externa mediana 1,0–6,0 núcleos (processos de outras sessões); o runner classifica cada sessão com limiares fixados antes
 (`quiet`: mediana ≤ 3 núcleos e p95 ≤ 6; par comparável: ambas quietas, válidas e com diferença de CPU externa ≤ 2).
 
@@ -108,9 +120,8 @@ no primeiro play: 142–170 ms (`sync`) e 145–170 ms (`async`); no play repeti
 
 O efeito muda de sinal: na contagem de gaps > 62,5 ms `async` é melhor em 4 dos 8 plays, pior em 2 e igual em 2; no maior intervalo,
 melhor em 4 e pior em 4. Os pares não comparáveis (carga alta, diferença de CPU externa ou sessão inválida) estão no arquivo completo e não entram nesta
-tabela. Gráficos por par (intervalo entre imagens contra o quadro; sombreado = 2 s antes do corte; verde = corte) em
-[charts/](viewport-real-latency-ab-results/charts/) (`gaps-pair*.svg`) e linha do tempo de spans de uma sessão `sync` e uma `async`
-(`spans-session8-…`, `spans-session9-…`).
+tabela. Os gráficos por par (intervalo entre imagens contra o quadro; sombreado = 2 s antes do corte; verde = corte) e a linha do tempo de spans
+de uma sessão `sync` e uma `async` são gerados pelo runner (`analyze --report-dir`) e não foram mantidos no Git ([proveniência](viewport-real-latency-ab-results/README.md)).
 
 ## 5. O que cada pausa estava fazendo (correlação, não causa)
 
@@ -173,7 +184,7 @@ do corte.
 
 Os gates do A/B de BL157.1 (binário `ad16ad36…`) foram do head `1454413`; dois deles ficaram **BLOCKED** por lock de GPU. Os gates abaixo são
 os do código final de BL157.2 (commit `a01090b` sobre `origin/main` integrado; depois dele só docs e a correção de revisão de `runtime/src/assets.js`, ver a linha do runtime), com saída e
-código gravados em `/tmp/bl157-rec/final/` (fora do Git; sem pipe mascarando o código).
+código gravados em log local, não versionado (sem pipe mascarando o código).
 
 | Gate | Resultado |
 |---|---|
@@ -189,7 +200,7 @@ código gravados em `/tmp/bl157-rec/final/` (fora do Git; sem pipe mascarando o 
 | Janela real, binário release `ac023eba…` (HOME/socket próprios, só pedidos semânticos de `./scripts/ui`/`Lab`, sem coordenadas) | `real-latency-ab.py pixels`: PASS (imagem do `render.frame` idêntica byte a byte em quente/frio × cache quente/seek frio, controles negativos: cortes distintos não compartilham imagem e todo quadro foi lido); `loop4` (4 editores novos, `render.status.asset_io.mode == async` verificado por run) e `ab4` (16 runs válidos) |
 
 **Segunda rodada de correções de revisão** (`2b4b197`: o pacote da página não passa mais pelo pool em `async`; `665ec4d`: `redact` e
-`ab-report`). Gates refeitos no código final (logs em `/tmp/bl157-rec/final2/`, fora do Git): fmt 0, check 0, clippy `-D warnings` 0,
+`ab-report`). Gates refeitos no código final (log local, não versionado): fmt 0, check 0, clippy `-D warnings` 0,
 `cargo tree` sem `gpui`/`wry`, build debug e release 0 (release `4add680ead4d37f9`, reconstruído depois de o mbx recolher o artefato:
 mesmo sha), `cargo test --workspace --locked` 0 (2084 passaram, 0 falharam), `./scripts/runtime test` 0 (225/225), specs
 `viewport-transit-probe` e `real-latency-ab` 0. **BLOCKED:** o `loop` do editor final (`4add680e…`) esperou 120 s pelos locks de GPU
@@ -209,14 +220,14 @@ python3 scripts/real-latency-ab.py analyze --out <dir> --project <documento>
 python3 scripts/real-latency-ab.spec.py
 ```
 
-As sessões brutas (1,5 MB cada) ficam fora do Git; seus sha256 estão em
-[sessions.sha256](viewport-real-latency-ab-results/sessions.sha256) (rodada 1 `ab/`, rodada 2 `ab2/`).
+As sessões brutas (1,5 MB cada) e a lista de seus sha256 (rodada 1 `ab/`, rodada 2 `ab2/`) ficam fora do Git ([proveniência](viewport-real-latency-ab-results/README.md)).
 
 ## 11. BL157.2: onde está o trânsito do quadro
 
 **Latência continua NÃO ACEITA; nenhuma mudança de produto foi feita; BL157 segue aberto.** Contrato dos probes: [F063](features/viewport-asset-io.md#bl1572--probes-do-trânsito-do-quadro-opt-in-o-mesmo-custo-nos-dois-braços).
-Dados por run em [viewport-real-latency-ab-results/bl157-2/](viewport-real-latency-ab-results/bl157-2/) (lotes separados, cada um com seu binário/runtime/documento
-em `manifest`; **não se somam**; o final é `loop4-final-analysis.md` e `ab4.md`, binário `ac023eba…`, runtime `1fed1ef9…`, código `a01090b`).
+Dados do lote final em [viewport-real-latency-ab-results/bl157-2/](viewport-real-latency-ab-results/bl157-2/) (`loop4-final-analysis.md` e `ab4.md`, binário `ac023eba…`, runtime `1fed1ef9…`, código `a01090b`).
+Os lotes anteriores (`loop1`–`loop3`, `loop5`, `ab1`–`ab3`) usaram binários, runtimes e documentos diferentes e **não se somam**; as análises deles não foram mantidas no Git, e o que importa deles está resumido aqui
+(§11.1, §11.3) e na [proveniência](viewport-real-latency-ab-results/README.md).
 Projeto real (23 assets, só o documento foi copiado), janela 114–210 (3 s antes do primeiro corte até 1 s depois), I/O `async` fixo, TRACE e page
 timing ligados nos dois braços, um editor novo por run (**todos são primeiras execuções de um processo frio**; a repetição no mesmo processo
 não foi medida), cargas externas registradas por run (`quiet`/`loaded`).
@@ -234,7 +245,7 @@ não foi medida), cargas externas registradas por run (`quiet`/`loaded`).
 | Há leitura de asset em voo na hora | **Refutada** | sem `asset_io`/`asset_cb` entre os quadros |
 | A parada é GPU ainda trabalhando depois do draw | **Consistente, não provada** | `ab4` (8 pares, 16 runs válidos): a leitura de 1 pixel esperou ≥ 40 ms em 8/8 runs do braço B (máx. 41–119 ms), nos quadros dos 1ºs draws e nos do corte; onde A tem `187→188`, B tem `185→186`/`186→187` de 65–70 ms (41,7 + a espera): **o atraso se moveu para dentro do quadro**. A reproduziu um stall ≥ 40 ms em 6 de 8 runs |
 | `gl.finish()` espera a GPU no WebKit | **Inconclusiva** | `ab1`: `gpu_finish_ms` 0 em todos os quadros: a manipulação falhou (a chamada voltou sem esperar), o que não mostra que `finish()` nunca espera; o braço passou a usar uma leitura de 1 pixel |
-| Pré-upload da 1ª textura PNG tira os gaps `195→196` | **Não testada** | o dado aponta (`texSubImage2D` 13–27 ms na 1ª imagem de cada sequência) mas isso é correlação |
+| Pré-upload da 1ª textura PNG tira os gaps `195→196` | **Testada no §13: benefício local, não resolve as pausas maiores** | o dado apontava (`texSubImage2D` 13–27 ms na 1ª imagem de cada sequência); no §13 a entrada da imagem 196 na 1ª reprodução caiu de 58,4/72,4/110,9 para 44,2/51,6/55,5 ms (p50/p95/max), mas as pausas maiores do corte seguem |
 
 ### 11.2 Números (lote final)
 
@@ -284,8 +295,8 @@ e runtime `fcde5a3846b2c222bf6c27927cb88cb510ee515949a29ac84d64afc2061f8d81`.
   controles de quadros distintos e readback completos passaram. Corpus sintético,
   não prova o pixel de todos os quadros do projeto real.
 
-[Decomposição por execução](viewport-real-latency-ab-results/bl157-2/coordinator-final-7850ade.md).
-Logs e dados brutos locais em `/tmp/pr41-coordination/`; nenhum asset privado no Git.
+A decomposição por execução desta reprodução não foi mantida no Git ([proveniência](viewport-real-latency-ab-results/README.md)).
+Logs e dados brutos: log local, não versionado; nenhum asset privado no Git.
 Não foi necessário repetir build/workspace por estes novos documentos. O bloqueio dos locks
 registrado no §9 era daquela tentativa; a reprodução final acima agora foi executada.
 Nenhuma correção de latência foi implementada nesta rodada da coordenação. BL157 segue não aceito.
@@ -295,8 +306,9 @@ Nenhuma correção de latência foi implementada nesta rodada da coordenação. 
 Dois fatores de custo de primeiro uso, **opt-in, desligados por padrão**, medidos separadamente no mesmo binário (`4e334135…`, runtime `f721cd65…`,
 documento `e93363ae…`), com `async` e warm do sort ligados nos dois braços, `gpu_finish=false`, `TESSEL_GL=gpu`. Contrato, regras, provas de Chrome e
 mutação: [F063 §BL157.3](features/viewport-asset-io.md). Runner `scripts/first-use-ab.py` (+ spec, 19 testes) sobre `real-latency-ab.py` e
-`viewport-transit-probe.py`. Dados: [first-use/](viewport-real-latency-ab-results/first-use/) (`analysis.md`, `manifest.json`, `runs.sha256` de cada
-conjunto; JSON brutos fora do Git por conterem o projeto privado).
+`viewport-transit-probe.py`. Dados: [first-use/](viewport-real-latency-ab-results/first-use/) (`analysis.md` dos dois conjuntos do projeto completo, `full-preupload` e `full-warm-draw`; a rodada estreita, os `manifest.json` e as listas `runs.sha256` não foram mantidos no Git, e os JSON
+brutos ficam fora dele por conterem o projeto privado; [proveniência](viewport-real-latency-ab-results/README.md)).
+Limite de proveniência: o commit `d028360` (pré-upload), já publicado, carrega um trailer de coautoria do ambiente e não foi reescrito; `fb0036f` e os posteriores não.
 
 Execução: janela estreita 114–210 (1 par por fator, 2 sessões) e projeto real completo (4 pares alternados controle/ligado, 8 sessões por fator),
 **20 sessões com coleta válida, todas mantidas**, incluindo um `HANG` de reprodução (validade da coleta não significa reprodução saudável). Classes: nas 16 sessões completas, 14 "carregadas" e 2 "quietas" (carga média de outras
@@ -329,7 +341,7 @@ tarefas 9–57); **0 de 4 pares comparáveis por fator**. Nenhuma tolerância fo
 
 ### 13.1 Gates e provas de pixels no código final
 
-Gates no código final (`./scripts/cargo`; saídas em `/tmp/pr41-preupload/gates/`, fora do Git; as fontes Rust são as de `fb0036f`, depois só
+Gates no código final (`./scripts/cargo`; saídas em log local, não versionado; as fontes Rust são as de `fb0036f`, depois só
 scripts e docs):
 
 | Gate | Resultado |
@@ -357,13 +369,12 @@ provado); as páginas que param sob carga.
 ## 14. Integração e resíduos de revisão após `5adf5b9`
 
 A coordenação integrou a `main` por merge (`08cdfd4`), preservando FX/chaves/grão e resolvendo o conflito da matriz.
-O diagnóstico passou de F058 para **F063**, pois F058/F059 já pertencem às features de FX na `main`.
 Os gates de §13.1 continuam históricos de `5adf5b9`: não validam a árvore integrada nem as correções seguintes.
 
 Reproduções puras antes dos fixes: dois testes de carga concorrente falharam (a carga antiga apagava os tempos da nova);
 a redação falhou para quatro caminhos com nomes privados; a reconstrução falhou tanto com brutos parciais como com restos de outro lote.
 As correções associam tempos ao resultado admitido, removem caminhos completos e respeitam estritamente o conjunto de runs salvo.
-`loop1-analysis.md` é marcado histórico, porque faltam seus JSONs brutos e as regras antigas incluíam assentamento e play sem imagens.
+O lote `loop1` é histórico (faltam seus JSONs brutos e as regras antigas incluíam assentamento e play sem imagens); a análise dele não foi mantida no Git.
 
 A correlação dos caminhos de sequências continua uma lacuna explícita (padrão não é caminho expandido); não é usada para concluir o teste de imagens paradas.
 O `HANG` de 11,1 s está retido como falha observada de reprodução, mesmo com os requisitos de coleta satisfeitos.
@@ -377,7 +388,7 @@ Sem redução de qualidade ou promoção dos switches a padrão. A latência con
 Verificação atual das correções (árvore com integração `08cdfd4`): `cargo fmt --all -- --check`, `node --check` dos dois módulos,
 15 testes Node puros (telemetria e corpus básico), specs Python `real-latency-ab` 23, `viewport-transit-probe` 21,
 `first-use-ab` 19 e `scene-warm-proof` 24, nos modos normal e `-O`, e `py_compile` passaram.
-Logs locais em `/tmp/pr41-coordination-review/checks/`. Builds/check/clippy/workspace/Chrome/janela/A/B da árvore integrada
+Logs: log local, não versionado. Builds/check/clippy/workspace/Chrome/janela/A/B da árvore integrada
 não foram iniciados: 14 GiB livres, abaixo da reserva de 16 GiB. Nada foi limpo nem houve redução do piso para rodá-los.
 
 ## 15. BL157.3: o que os testes unitários provam, sem janela (PR #41, após `b53775e`)
@@ -413,7 +424,7 @@ de runs por pergunta, esta rodada montou um laboratório de WebKit real, sem o e
 
 | Pergunta | Resultado | Estado |
 |---|---|---|
-| (a) página que para | **Mecanismo encontrado:** deadlock do WebKit em `ReadableStreamDefaultReader.releaseLock()` no decodificador do Spark (§16.4), com a mesma cadeia de pilha em 2 páginas do laboratório e em 1 da janela real. A chamada é removida **no build** | Correção aplicada por padrão (só muda o `runtime.js`). **O efeito dela na taxa de páginas presas NÃO está demonstrado:** laboratório intercalado 4 de 493 runs presos sem a correção, 0 de 493 com ela (p 0,062, sugestivo); a réplica pré-registrada (0 de 300 contra 0 de 300) e a janela real (1 de 36 contra 0 de 36) deram **NÃO REPRODUZIDO** (§16.4, §16.5) |
+| (a) página que para | **Mecanismo encontrado:** deadlock do WebKit em `ReadableStreamDefaultReader.releaseLock()` no decodificador do Spark (§16.4), com a mesma cadeia de pilha em 2 páginas do laboratório e em 1 da janela real. A chamada é removida **no build**, quando a variável está ligada | Correção **opt-in** (`TESSEL_RUNTIME_SPARK_RELEASE_LOCK_PATCH=1`, desligada por padrão; só muda o `runtime.js`). Na época das medições a remoção era o padrão do build. **O efeito dela na taxa de páginas presas NÃO está demonstrado:** laboratório intercalado 4 de 493 runs presos sem a correção, 0 de 493 com ela (p 0,062, sugestivo); a réplica pré-registrada (0 de 300 contra 0 de 300) e a janela real (1 de 36 contra 0 de 36) deram **NÃO REPRODUZIDO** (§16.4, §16.5) |
 | (b) primeiro crossfade | O custo é **espera da GPU** (77–130 ms em `readPixels`; CPU do quadro 1–5 ms), paga no **primeiro crossfade do processo**; **sem causa atribuída** (§16.2). O `warm_draw` tira o custo da entrada e o **desloca** para o ponto do aviso; aquecer na abertura não resolve e o hitch reaparece 1–2 quadros depois da entrada (§16.3) | **Nada promovido.** `warm_draw` segue opt-in e desligado; BL157 segue aberto |
 
 **A latência continua NÃO ACEITA.** Nenhum número desta seção é latência de display; o laboratório não é o editor; nada foi medido em máquina quieta.
@@ -494,8 +505,8 @@ Leitura da pilha: `releaseLock()` roda um builtin que aloca (cria um `TypeError`
 não foi alterado nem recompilado para confirmar o mecanismo. O que está estabelecido é a **cadeia** (a mesma em 3 páginas paradas, em 2 ambientes); o **efeito da correção** na taxa de páginas
 presas era o que os A/B deveriam mostrar, e **eles não o mostraram** (tabela abaixo e §16.5).
 
-**Correção.** `runtime/scripts/build.mjs` troca, na hora do build (plugin `onLoad` do esbuild), a única `reader.releaseLock();` do worker por `void 0;` (o bundle encolhe 14 bytes) e **recusa o build**
-se o Spark não tiver exatamente uma dessas chamadas. O leitor deixa de ser solto, mas o worker não lê o fluxo de novo e o decode de um arquivo termina do mesmo jeito. O `releaseLock` da thread principal (`readStream`)
+**Correção (opt-in).** Com `TESSEL_RUNTIME_SPARK_RELEASE_LOCK_PATCH=1`, `runtime/scripts/build.mjs` troca, na hora do build (plugin `onLoad` do esbuild), a única `reader.releaseLock();` do worker por `void 0;` (o bundle encolhe 14 bytes) e **recusa o build**
+se o Spark não tiver exatamente uma dessas chamadas; sem a variável, o Spark entra no bundle como está. Quando as provas abaixo rodaram, a troca era o padrão do build; hoje ela é opt-in. O leitor deixa de ser solto, mas o worker não lê o fluxo de novo e o decode de um arquivo termina do mesmo jeito. O `releaseLock` da thread principal (`readStream`)
 só roda com `stream`, que o runtime nunca passa (ele passa `fileBytes`); não foi tocado.
 
 | Prova | Resultado | Limite |
@@ -506,8 +517,8 @@ só roda com `stream`, que o runtime nunca passa (ele passa `fileBytes`); não f
 | **Réplica pré-registrada** do laboratório: 300 runs por braço, intercalados, mesma linha de comando do maior lote intercalado (120 por braço); regra e contagem fixadas antes de medir | **0 de 300 sem a correção, 0 de 300 com ela → NÃO REPRODUZIDO** (menos de 3 runs presos sem a correção: a réplica não diz nada sobre a correção) | a 2,1% esperavam-se ≈ 6 presos; 0 em 300 teria chance de ≈ 0,2% nessa taxa, mas ela vem de 4 eventos (IC 95% de 0,6% a 5,2%; a 0,6%, 0 em 300 acontece em ≈ 18% das vezes). A carga (load1 mediana 9,7) ficou na faixa dos lotes intercalados anteriores (5,4–10,1), então a diferença de taxa **não se explica por essa medida de carga** |
 | **Total intercalado do laboratório** (193 + 300 = 493 runs por braço) | **4 de 493 sem a correção, 0 de 493 com ela**; p exato unilateral **0,062** | a réplica não acrescentou presos a nenhum braço; continua sugestivo, não conclusivo |
 | Janela real, 36 pares de sessões (§16.5) | **1 de 36 sem a correção, 0 de 36 com ela → NÃO REPRODUZIDO** (p exato 0,5) | sem poder: a 1 em 36, 36 sessões por braço dão 3 ou mais presas em ≈ 8% das vezes |
-| Testes (`runtime/test/spark-release-lock.test.mjs`, 5) | remove só a chamada do worker e deixa a de `readStream`; Spark com 0 ou 2 chamadas faz o build falhar; o Spark instalado tem exatamente 1; o `dist` construído não a tem (exige `TESSEL_REQUIRE_RUNTIME=1`) | não prova que a janela deixa de parar |
-| Mutação (`/tmp`, fora do repositório) | 6 de 6 mutantes mortos | — |
+| Testes (`runtime/test/spark-release-lock.test.mjs`) | remove só a chamada do worker e deixa a de `readStream`; Spark com 0 ou 2 chamadas faz o build falhar; o Spark instalado tem exatamente 1; o padrão deixa o Spark intacto e `TESSEL_RUNTIME_SPARK_RELEASE_LOCK_PATCH=1` o remove (a checagem do `dist` exige `TESSEL_REQUIRE_RUNTIME=1`) | não prova que a janela deixa de parar |
+| Mutação (script local, fora do repositório) | 6 de 6 mutantes mortos | — |
 | Suíte do runtime, Chrome real | 336 de 336 com o bundle corrigido | Chrome não é WKWebView |
 
 **O que isto não afirma.** O `HANG` de 11,1 s do §13 **recuperou** e um decode preso nunca se recupera: não é atribuído a este defeito. As 5 de 28 páginas paradas de `ab1`–`ab3` (≈ 100% dos quadros
@@ -518,8 +529,8 @@ cancelados com a página ainda atendendo pedidos) são **compatíveis** com um a
 `scripts/runtime-bundle-ab.py run` (contrato e regras, fixadas antes de medir, em [F063](features/viewport-asset-io.md#bl1574--o-deadlock-do-webkit-no-decodificador-o-laboratório-e-a-prova-nativa)):
 o **mesmo binário** do editor (`4e334135…`) e o mesmo projeto real (25 s, 600 quadros; `0b456aec…`), um editor novo por sessão que toca o projeto duas vezes, 36 pares alternados
 (72 sessões, 80 min; a ordem dentro do par inverte a cada par), com 6 processos de CPU ocupados ao lado de cada sessão para dar carga igual aos dois braços. Os braços diferem **só** no
-`runtime.js` (`TESSEL_RUNTIME_DIR` aponta para uma pasta temporária por braço): sem a correção (`c7d27bd2…`, 4.281.059 B) e com ela (`78a0c8f4…`, 4.281.045 B: o `dist` atual, que
-`pnpm build` reproduz byte a byte). O host registrou o que serviu a cada página: **72 de 72 sessões receberam o tamanho do bundle do seu braço**.
+`runtime.js` (`TESSEL_RUNTIME_DIR` aponta para uma pasta temporária por braço): sem a correção (`c7d27bd2…`, 4.281.059 B) e com ela (`78a0c8f4…`, 4.281.045 B: o bundle que
+`pnpm build` reproduzia byte a byte quando a troca era o padrão do build; hoje ela exige `TESSEL_RUNTIME_SPARK_RELEASE_LOCK_PATCH=1`). O host registrou o que serviu a cada página: **72 de 72 sessões receberam o tamanho do bundle do seu braço**.
 
 | Braço | Sessões | Presas | Falhas | Inválidas | Amostras com a assinatura do deadlock |
 |---|---|---|---|---|---|
@@ -527,7 +538,7 @@ o **mesmo binário** do editor (`4e334135…`) e o mesmo projeto real (25 s, 600
 | com a correção | 36 | **0** | 0 | 0 | 0 |
 
 **Veredito mecânico (regra fixada antes): NÃO REPRODUZIDO.** O braço sem a correção teve 1 sessão presa, menos que as 3 exigidas: a rodada **não diz nada sobre o efeito da correção**
-(p exato unilateral 0,5, só diagnóstico). Dados, hashes e o resumo gerado: [`bundle-ab/`](viewport-real-latency-ab-results/bundle-ab/).
+(p exato unilateral 0,5, só diagnóstico). Dados e o resumo gerado: [`bundle-ab/`](viewport-real-latency-ab-results/bundle-ab/) (`analysis.md`, com o mesmo veredito: *NOT REPRODUCED: unpatched 1 of 36 sessions hung, patched 0 of 36*; a lista de hashes e o `manifest.json` não são mantidos no Git, ver a [proveniência](viewport-real-latency-ab-results/README.md)).
 
 **A sessão presa (24, sem a correção).** Um asset (`splat`, o arquivo de 78.760 B) foi buscado a 1,37 s e **nunca saiu de `loading`**. O editor seguiu vivo: o relógio de reprodução do host
 correu (1.133 e 1.132 ticks nos dois plays, 0 quadros pulados) e o host pediu 1.202 quadros, mas a página aceitou só 3 em 57 s (1.199 pedidos cancelados). O vigia (`/usr/bin/sample` no processo da
@@ -563,18 +574,17 @@ um artefato do laboratório. **O que não mostra:** que a correção o evita; 1 
 - **Anomalias registradas, não filtradas.** A sessão 11 (sem a correção) deixou 2 processos de GPU vivos depois do editor: o runner os relata e **nunca os mata**; já tinham saído quando a rodada foi
   analisada. Por isso `analyze` sai com código 1 (`all_ran: false`) embora a sessão não tenha parado nem falhado. A sessão 24 está marcada inválida (o aquecimento da cena nunca rodou, porque a página parou antes) e **conta como presa**.
 - **O runner foi estendido enquanto a rodada corria.** Quem mediu foi a revisão `6b1cab41…`; depois entraram a conferência do bundle servido e o resumo das esperas por play, que são só código de **análise**
-  (regras, ordem, braços e coleta não mudaram), e a análise foi refeita dos registros salvos (SHA-256 em `bundle-ab/runs.sha256`). A revisão commitada é a final. O `manifest.json` registra o commit do código como
+  (regras, ordem, braços e coleta não mudaram), e a análise foi refeita dos registros salvos (a lista de SHA-256 dos registros não é mantida no Git). A revisão commitada é a final. O `manifest.json` da rodada (também fora do Git) registrou o commit do código como
   `b153f257b14a` (o commit da correção, reescrito depois só na mensagem, com a mesma árvore: hoje `e4e5aa2`) com 9 arquivos sujos (diff por SHA-256 no manifesto): os scripts, os testes e as docs desta
   entrega, ainda não commitados na época.
-- **Limites:** uma máquina, um projeto, um WebKit (21624.5.1.11.3); os 72 registros brutos (143 MB) não são versionados (`runs.sha256` os lista); o runner não conferiu o tamanho servido contra o dos arquivos dos braços (essa conferência não existia quando a rodada
+- **Limites:** uma máquina, um projeto, um WebKit (21624.5.1.11.3); os 72 registros brutos (143 MB) não são versionados; o runner não conferiu o tamanho servido contra o dos arquivos dos braços (essa conferência não existia quando a rodada
   começou), então a comparação foi feita depois, à mão: os tamanhos servidos (4.281.059 B e 4.281.045 B) são os dos dois arquivos.
 
 ### 16.6 Limites e o que fica aberto
 
 - **Latência NÃO ACEITA; BL157 segue aberto.** O que cai aqui é uma classe de falha (página que não termina), não a pausa de 60–160 ms do corte e do primeiro crossfade.
-- **A remoção do `releaseLock` está ligada por padrão e sem chave, e o efeito dela não está demonstrado** (§16.4, §16.5). O que a sustenta é o mecanismo (a mesma cadeia em 3 páginas paradas de 2 ambientes)
-  e o custo praticamente nulo (a chamada removida roda depois do último pedaço, quando o fluxo já acabou, e o decode termina do mesmo jeito). **Decisão em aberto:** mantê-la assim ou revertê-la até haver uma
-  prova com poder; BL157.4 fica **Parcial**, não validado.
+- **A remoção do `releaseLock` é opt-in (`TESSEL_RUNTIME_SPARK_RELEASE_LOCK_PATCH=1`, desligada por padrão) e o efeito dela não está demonstrado** (§16.4, §16.5: NÃO REPRODUZIDO, 1 de 36 sessões presas sem a correção e 0 de 36 com ela). O que a sustenta é o mecanismo (a mesma cadeia em 3 páginas paradas de 2 ambientes)
+  e o custo praticamente nulo (a chamada removida roda depois do último pedaço, quando o fluxo já acabou, e o decode termina do mesmo jeito). Torná-la padrão exige uma prova com poder; até lá fica desligada. BL157.4 fica **Parcial**, não validado.
 - **Como obter uma prova com poder, se o custo valer.** A taxa vista na janela (1 de 36 sessões, 2,8%) pede ≈ 190 sessões por braço (≈ 7 h) para ter 90% de chance de 3 ou mais presas sem a correção; a taxa do laboratório
   somada (4 de 493 runs, 0,8%) pede ≈ 655 por braço (≈ 24 h). Uma alternativa mais barata, **não iniciada**: um reprodutor sintético no laboratório (um worker que lê um fluxo até o fim e chama `releaseLock()`
   enquanto outro código aloca em laço, para forçar a coleta no momento certo), com a mesma regra fixada antes.
@@ -586,7 +596,7 @@ um artefato do laboratório. **O que não mostra:** que a correção o evita; 1 
 - **Gates do head final desta entrega.** Nada de Rust mudou nesta rodada; o único Rust novo desde `b53775e` é o teste do host do §15, e os gates abaixo rodaram nele (fecham a pendência do §15):
   `cargo fmt --all -- --check` 0; `./scripts/cargo check --workspace --locked` 0; `clippy --workspace --all-targets --locked -- -D warnings` 0; `test --workspace --locked` 0 (114 resultados:
   **2.239 passaram, 0 falharam, 13 ignorados**); `build -p tessel-editor --locked` 0; `cargo tree -p tessel-editor-core` sem `gpui` nem `wry`; `TESSEL_REQUIRE_RUNTIME=1 pnpm test` em `runtime/`
-  **336 de 336** (bundle real e Chrome real); `pnpm build` reproduz o bundle byte a byte (`78a0c8f4…`); os 21 specs Python de `scripts/` passam (inclui os 51 e os 38 novos); mutação dos dois scripts novos:
+  **336 de 336** (bundle real e Chrome real); `pnpm build` reproduzia o bundle byte a byte (`78a0c8f4…`, com a troca então padrão do build); os 21 specs Python de `scripts/` passam (inclui os 51 e os 38 novos); mutação dos dois scripts novos:
   39 de 39 mortos cada. **`pnpm tsc`: N/A** — o repositório não tem TypeScript nem `tsc`.
 
 ### 16.7 BL157.6: a cadência do relógio de reprodução e o agendamento da consulta
@@ -631,7 +641,6 @@ sobrevivente é equivalente) e o laço (10 testes determinísticos, mutação 19
 **Fumaça informal no editor real (não é o A/B).** Quatro sessões (duas por braço) do binário **debug**, com o projeto real e a máquina com carga média de 9 a 22, tocaram o projeto até o fim nos dois modos, sem erro e com o braço confirmado pelo host: o laço funciona na janela real. Os números **não** são o efeito: o timer chegou ≈ 20 ms atrasado (no release, 1,46 ms), as consultas por troca foram 1,00–1,01 (`fixed`) e 1,20–1,36 (`deadline`) em vez de 1,87 e 2,00, e pela regra fixada esse regime daria CONTROLE NÃO REPRODUZIDO. Delas saiu um achado, **BL157.7** (aberto, custo não medido): cada consulta termina em `cx.notify()`, tenha o quadro trocado ou não. Detalhes em [F063 §BL157.6](features/viewport-asset-io.md#fumaça-no-editor-real-informal-não-é-o-ab).
 
 **Limites desta etapa.** Mesmo com um veredito ADOTAR, o ganho é de regularidade: **não** reduz as pausas de 60–160 ms do corte e do primeiro crossfade, que são o que o usuário não aceitou (BL157 segue aberto). A defasagem
-áudio-imagem muda em até meia consulta (≈ 11 ms) ao mudar o agendamento, e **ninguém ouviu** o resultado (`heard:false`, F018). Resultados gerados das 72 sessões:
-[`bundle-ab/cadence-all.md`](viewport-real-latency-ab-results/bundle-ab/cadence-all.md) e [`cadence-by-arm.md`](viewport-real-latency-ab-results/bundle-ab/cadence-by-arm.md).
+áudio-imagem muda em até meia consulta (≈ 11 ms) ao mudar o agendamento, e **ninguém ouviu** o resultado (`heard:false`, F018). As tabelas das 72 sessões não foram mantidas no Git; `scripts/playback-cadence.py` as regenera sobre os registros brutos ([proveniência](viewport-real-latency-ab-results/README.md)).
 
 **Gates do head desta entrega (BL157.6).** `cargo fmt --all -- --check` 0; `./scripts/cargo check --workspace --locked` 0; `clippy --workspace --all-targets --locked -- -D warnings` 0; `test --workspace --locked` 0 (114 resultados: **2.283 passaram, 0 falharam, 13 ignorados**, entre eles os 34 testes de `playback_poll_tests` e os 10 de `playback_tests`); `build -p tessel-editor --locked` 0; `cargo tree -p tessel-editor-core` sem `gpui` nem `wry`; os 22 specs Python de `scripts/` passam (610 testes). `TESSEL_REQUIRE_RUNTIME=1 pnpm test` em `runtime/` (o runtime não foi tocado): **335 de 336 na primeira execução completa**; a falha é `video B2: a frame superseded while it seeks is cancelled and the next one is exact` (`runtime/test/video.test.mjs:189`, `frame.done` em vez de `frame.failed`), o **flaky pré-existente BL015.15** (mesmo teste, linha e mensagem; reproduz em `main`); rodando só esse arquivo (`node --test test/video.test.mjs`), **7 de 7**. `pnpm build` reproduz o bundle byte a byte (`78a0c8f4…`). **`pnpm tsc`: N/A** — o repositório não tem TypeScript nem `tsc`.
