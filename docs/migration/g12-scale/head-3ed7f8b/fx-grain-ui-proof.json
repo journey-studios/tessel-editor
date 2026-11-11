@@ -1,0 +1,559 @@
+{
+  "binary": {
+    "path": "/Users/wallyssonnunes/Library/Caches/mbx/targets/v1/8c25292bfd1df8784039cd85285c144d433122134655dad9f6acf94d6728cef4/debug/tessel-editor",
+    "present": true,
+    "sha256": "6506c53712f7de4e6a7329b0f80c33bc4b68473850781a3ac3ccb4559b4d6d30",
+    "bytes": 132601296,
+    "mtime_utc": "2026-11-11T00:46:30Z",
+    "older_than_sources": false
+  },
+  "git": {
+    "head": "3ed7f8bc2b1b53d190248ae947317599cd60538e",
+    "branch": "t3/integrate-main-validate-pr43",
+    "dirty_files": 0
+  },
+  "exit_code": 0,
+  "checks": [
+    {
+      "check": "project.create",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "scene.attach of the corpus bundle",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "scene.resources.resolve",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "set inspector.mode scene",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "monitor.show_scene",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "invoke scene.fx add:filmGrain",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "the grain node lists the origin catalog fields",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "colored is a boolean field, amount a number",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "catalog defaults",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "a number written to the boolean is invalid_value",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "a negative seed is refused with a typed error",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "one add, one history entry",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "set amount 1.0",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "set size 4.0",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "set seed 77",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "the seed field reads back",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "the plan pass carries seed_for(per-frame, seed, frame in clip)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "every probe equals the Python grain of the baseline (worst 0.5)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "the grain really changed the picture (strongest change 45)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "the monitor's picture is the render's picture",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "the next frame is another seed and another grain",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "the next frame equals the Python grain for its own seed (worst 0.5)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "set colored true",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "colored: every probe equals the Python three-channel grain (worst 0.5)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "colored differs from the monochrome grain",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "set colored false",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "set amount 0 (the base only)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "editing the base created no key (never implicit)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "key:amount captures a key at the monitor frame",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "key:amount at frame 10 of the clip captures the curve's value there",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "set field key:amount:10 puts the value 1 on that key",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "the amount has exactly the keys 0 -> 0 and 10 -> 1",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "each gesture is one history entry (set + 2 captures + key edit)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "linear keys: the plan samples amount 0.5",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "linear keys: every probe equals the Python grain at that amount (worst 0.5)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "linear keys: the monitor draws the render",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "easing on the arrival key",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "easeOutCubic arrival: the plan samples amount 0.875",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "easeOutCubic arrival: every probe equals the Python grain at that amount (worst 0.5)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "easeOutCubic arrival: the monitor draws the render",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "the easing changed the picture",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "move_key keeps the easing of the key",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "moved key (t=0.25): the plan samples amount 0.578125",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "moved key (t=0.25): every probe equals the Python grain at that amount (worst 0.5)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "moved key (t=0.25): the monitor draws the render",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "remove_animation is explicit and one entry",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "animation removed (base 0): the plan samples amount 0.0",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "animation removed (base 0): every probe equals the Python grain at that amount (worst 0.0)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "animation removed (base 0): the monitor draws the render",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "ONE undo brings the animation back",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "undone: the plan samples amount 0.578125",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "undone: every probe equals the Python grain at that amount (worst 0.5)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "undone: the monitor draws the render",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "the node lists each key's frame and value and the shift of the curve",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "the base of an animated parameter is disabled, labelled and says what edits it",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "a write to the animated base is refused with base_under_keys",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "a key value `abc` is invalid_value and writes nothing",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "a key value `` is invalid_value and writes nothing",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "a key value `NaN` is invalid_value and writes nothing",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "a fractional key frame is refused and writes nothing",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "go:amount:first moves the monitor to clip frame 0 (edit frame 12) and writes nothing",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "go:amount:last moves the monitor to clip frame 20 (edit frame 32) and writes nothing",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "go:amount:previous moves the monitor to clip frame 0 (edit frame 12) and writes nothing",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "no key before the first: no_previous_key, the monitor stays",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "gesture update",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "gesture commit",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "the committed picture is the preview's",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "project.save",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "the live project drops the clip after saving",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "project.open of the saved project",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "the reopened plan is the saved plan (keys, easing, seed, params)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "the reopened node reads the seed back",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "baseline export: the clip is removed",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "baseline export: flow.export_scene opens",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "baseline export: dialog.submit starts the export",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "baseline export: one job",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "fx export: the keyed grain is added",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "fx export: flow.export_scene opens",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "fx export: dialog.submit starts the export",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "fx export: one job",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "baseline export: succeeded",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "fx export: succeeded",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "baseline export: 8 frame hashes",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "fx export: 8 frame hashes",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "8 decoded frames each",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "export frame 44: hash differs inside the clip",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "export frame 44: decoded pixels equal the Python grain over the decoded baseline (worst 4.6)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "export frame 45: hash differs inside the clip",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "export frame 45: decoded pixels equal the Python grain over the decoded baseline (worst 5.0)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "export frame 46: hash differs inside the clip",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "export frame 46: decoded pixels equal the Python grain over the decoded baseline (worst 4.5)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "export frame 47: hash differs inside the clip",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "export frame 47: decoded pixels equal the Python grain over the decoded baseline (worst 6.4)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "export frame 48: hash equals outside the clip",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "export frame 48: decoded pixels equal the Python grain over the decoded baseline (worst 4.0)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "export frame 49: hash equals outside the clip",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "export frame 49: decoded pixels equal the Python grain over the decoded baseline (worst 5.0)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "export frame 50: hash equals outside the clip",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "export frame 50: decoded pixels equal the Python grain over the decoded baseline (worst 2.0)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "export frame 51: hash equals outside the clip",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "export frame 51: decoded pixels equal the Python grain over the decoded baseline (worst 5.0)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "the export comparison discriminates (strongest change 43)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "coverage: 8 of 8 export frames were compared",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "the proof's own editor processes are all gone",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "failed": [],
+  "expected_surfaces": [
+    "window"
+  ],
+  "surfaces": [
+    {
+      "surface": "window",
+      "how": "live semantic socket of a private instance: op/get/set/invoke, no pointer, no coordinates",
+      "status": "exercised"
+    },
+    {
+      "surface": "headless/lib",
+      "how": "N/A in this script: crates/core/tests/scene_fx_keys.rs and crates/render/tests/scene_fx_export.rs",
+      "status": "not run here"
+    },
+    {
+      "surface": "pointer",
+      "how": "N/A: BL043 stays open",
+      "status": "not proved"
+    }
+  ]
+}

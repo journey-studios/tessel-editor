@@ -1000,3 +1000,54 @@ vida do script de medição e da prova e a regressão de rotação e translaçã
 de processo (só core); liquidação atômica do slider (herdada, BL015.19); a revisão independente (do coordenador). Disco: 29 GiB livres
 no início e 14 GiB ao fim das provas (piso 12; a queda é compartilhada com outros usos do volume; o `mbx` fez a própria
 evicção automática de cache durante o clippy e eu nunca rodei `clean`/`gc`).
+
+### Integração com a `main` viva (merge `5906713`; gates no merge local `3ed7f8b`, a validar)
+
+Status: **a validar** (nova revisão independente do coordenador pendente). Datas em UTC (2026-11-11), checkout T3
+`/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-2b5276ea`, ramo local `t3/integrate-main-validate-pr43`. Cabeça da PR no início: `8a18811`;
+`main`: `bf4347d` (P3: chaves de FX e grão animado, PR #42). Enquanto esta rodada fazia o próprio **merge commit** local (`3ed7f8b`,
+sem rebase, não publicado), outro agente publicou na PR o merge `5906713` e o `aae8747`. As duas árvores diferem **só** em
+`docs/backlog.md` (ordem de dois blocos; `git diff --stat 3ed7f8b 5906713`), portanto os gates abaixo, rodados em `3ed7f8b`, valem para o
+código publicado por esse diff. Esta entrega entra como commit de docs sobre `aae8747`, sem force. Evidência pequena em
+[`docs/migration/g12-scale/head-3ed7f8b/`](../migration/g12-scale/head-3ed7f8b/).
+
+**Conflito e união.** Um único conflito textual, `docs/backlog.md` (as notas finais de P3 e da PR #43), mantido como união. Os
+arquivos compartilhados `ops.rs`, `scene_project/command.rs`, `scene_project/query.rs`, `docs/features/README.md` e `docs/backlog.md`
+foram comparados em 3 vias (linhas acrescentadas por cada lado contra a base `308f1a2`): nenhuma linha de nenhum lado falta no
+resultado. Contratos: `scene.scale` e `scene.fx.seek` ficam na lista de `scene.capabilities`; `SceneCommand::Gizmo(Scale)` mantém o
+rótulo de undo `Edit scene` e `FxSeek`/`base_revision`/`FxInspect.at` não se tocam; o ramo `FxSeek` da leitura é só da `main`. A única mudança da `main`
+em `scene_interaction/` é a intenção do gesto de FX em `gesture.rs` (+15/−1), que o caminho da escala não lê. O ponteiro
+e o inspetor de FX não foram alterados pelo merge.
+
+**Gates do merge local `3ed7f8bc2b1b53d190248ae947317599cd60538e` (código idêntico ao de `5906713`)** (árvore limpa antes e depois; um lote finito aguardado,
+`scripts/disk-guard.sh` com piso 12 GiB antes de cada etapa; alvo MBX padrão, sem lock de performance, sem benchmark):
+
+| Comando | Resultado |
+|---|---|
+| `cargo fmt --all -- --check` | exit 0 |
+| `./scripts/cargo check --workspace --locked` | exit 0 |
+| `./scripts/cargo clippy --workspace --all-targets --locked -- -D warnings` | exit 0 |
+| `TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test --workspace --locked` | exit 0: **2275 passaram, 0 falharam, 13 ignorados**, 114 binários (`main` 2208/0/13 + 67 da PR) |
+| builds de `tessel-editor` e de `tessel-editor-core --bin tessel-headless` | exit 0 / exit 0 (sha256 `6506c537…`, `cb2b4e6b…`) |
+| `cargo tree -p tessel-editor-core --locked` | **sem** `gpui` nem `wry` |
+| `./scripts/runtime test` | exit 0: **243/243** (231 + 12 vindos da `main`), sem SKIPPED |
+
+**Provas de processo** (binários do head acima, `final_evidence: true`, `surfaces_agree_on_the_drag: true`, sem `--allow-dirty`):
+escala **53 + 61**, rotação (regressão) **48 + 54**, S8 (regressão) **56 + 84**; interação com as mudanças da `main`: o teste de
+interação G1 × FX (BL015.13) está nos 2275 e `scene-fx-grain-ui-proof.py` (janela real, instância própria, só `op`/`get`/`set`/`invoke`,
+sem coordenadas) deu **104/104** no mesmo binário que traz o gizmo da escala (prova de que as mudanças de FX da `main` e do gizmo convivem na janela, não do gizmo de escala sobre um clipe de FX). Specs Python: 3 (escala) + 5 (medição) + 5 (FX grão) + 24
+(corpus do grão) + 34 (S8) + 29 (superfície), normal e `-O`.
+
+**O que não foi repetido, e por quê.** As 29 mutações: `git diff e19b7e7 3ed7f8b` é vazio em `scaling.rs`,
+`scene_project/gizmo.rs`, `runtime/src/overlay.js`, `tests/scene_gizmo_scale.rs`, nas provas e na medição da escala e em
+`mutate.py`; o relatório de `e19b7e7` vale por esse diff e os testes que matam os mutantes passaram nos 2275. Nada foi medido (BL015.18).
+
+**Os 5 threads de revisão da PR #43** (CodeRabbit e OpenCodeReview), lidos de novo no head integrado: semiplano uniforme com
+aspecto, base invertida em volume 1 (`scaling.rs`, linhas ~207–215), `mutate.py` (raiz derivada, diretório criado, `KILLED` só com teste que
+falhou), medição (`try`/`finally`) e prova da escala que falha com `stop` falho; todas as correções estão no código integrado. **Nenhum thread foi
+resolvido**: ficam para a nova revisão independente. Pendência nova: **BL015.20** (a prova de rotação da PR #40 tem o mesmo padrão
+de cleanup que o review apontou na da escala; não alterada, só registrada).
+
+**Disco**: a primeira leitura de `df -g` do volume deu 12 GiB e `df -k` segundos depois 21,7 GiB (outros processos da máquina compartilhada); o pesado
+começou depois de uma medição nova de 21,6 GiB (reserva 16) e terminou com 13,8 GiB (piso 12 respeitado; o `test` cresceu o alvo MBX em
+~6 GiB). O `mbx` imprimiu a própria evicção automática de alvos abandonados; nenhum `clean`/`gc` foi rodado por mim.
