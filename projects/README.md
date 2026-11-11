@@ -10,8 +10,11 @@ verificada. Por isso:
   `git add -f` e não copie esse conteúdo para `docs/`, `crates/` nem para mensagens de commit ou de PR.
 - Um projeto aqui continua fora do escopo do repositório: nada daqui é fixture, exemplo nem dado de teste. Fixtures
   públicas vivem em `crates/*/tests/` e em `scripts/` e são sintéticas.
-- Branches e worktrees não compartilham `projects/`: ele existe só na checkout onde foi criado. Para mover um
-  projeto, copie a pasta inteira; os caminhos de mídia do documento são relativos a ele.
+- Worktrees não compartilham `projects/`: ele existe só na worktree onde foi criado. Trocar de branch na mesma
+  worktree não o altera (a pasta fica onde está), então um `project.save` pode sobrescrever o documento de mesmo
+  nome criado sob outra branch.
+- Para mover um projeto, reúna dentro da pasta a mídia que estiver fora dela, salve o documento de novo (só os
+  caminhos dentro da pasta viram relativos) e copie a pasta inteira.
 
 ## Estrutura sugerida
 

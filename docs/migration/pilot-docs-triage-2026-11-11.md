@@ -136,9 +136,13 @@ câmera), BL162.2 (skills), BL162.3 (tipos de plano), BL162.4 (convenção `proj
 
 ## Como reabrir um doc que ficou de fora
 
-O espelho completo do repositório de origem está no backup do mantenedor (2026-11-11). Com ele, qualquer arquivo sai
-do commit original sem restaurar nada:
+O espelho completo do repositório de origem está no backup do mantenedor (2026-11-11). Com ele, qualquer arquivo
+**versionado** sai do commit original sem restaurar nada:
 
 ```sh
 git --git-dir=<espelho>/tesselapp.git show d40ac3f7c0:docs/video-production/scene-engine-spec.md
 ```
+
+Isso não alcança o que está fora do Git: os 49 `.md` de `output/video-production` (ver acima) não estão em nenhum
+commit. Eles existem numa cópia da pasta, também no backup do mantenedor, e se leem a partir dessa cópia, não do
+espelho.

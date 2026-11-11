@@ -16,8 +16,17 @@ comportamento que o Rust ainda precisa reproduzir, ou são decisões que outros 
   pertencem à origem e não existem neste repositório. Links para documentos da origem que não foram trazidos
   (hoje: `scene-effects-plan.md`, `scene-engine-api-plan.md` e `scene-fx-s1-report.md`, citados em cinco
   links) ficam sem destino de propósito: ver a triagem, que diz onde cada um está classificado e como reabri-lo.
+- A tabela da seção 3 de `studio-core-boundary.md` traz `|` sem escape dentro de comandos da CLI (linhas 58, 63 e
+  64). Ao renderizar, esses `|` abrem colunas a mais e a linha sai desalinhada. É do original e a cópia continua
+  literal; a versão corrigida dessas três linhas, com `\|`, está logo abaixo.
 - O commit `d40ac3f7c0` **não está em nenhum remoto da origem** (o branch remoto parava em `3655790767`). Estas
   cópias existem para que a especificação não dependa de um commit que só existia numa máquina.
+
+| Gesto no Studio | Comando do core | CLI (`scene …`, JSON, saída 0/1/2, nada gravado sem `--write`) |
+| --- | --- | --- |
+| arrastar borda/corte de plano | `trimShot`, `moveCut`, `setShotDuration`, `setEditDuration` | `shots <bundle> trim\|move-cut\|duration\|edit-duration` |
+| mover/escalar chaves de progresso de um follow | `retimeFollowKeys`, `setFollowProgress` (rig) | `follow <bundle> <rigId> <followId> move-key\|move-all\|scale …` |
+| abrir o painel de um clipe/transição/plano | `describeFxInspector`, `describeShotDetail` | `inspect <bundle> clip\|transition\|shot <id> [--frame N]` |
 
 ## Arquivos
 
