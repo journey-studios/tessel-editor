@@ -644,8 +644,7 @@ impl ViewportHost {
             self.dist.clone(),
             self.access.clone(),
             self.trace(),
-            self.asset_io.mode,
-            self.asset_io.pool.clone(),
+            self.asset_io.reader.clone(),
             self.asset_io.requests.clone(),
         )
     }
@@ -682,7 +681,7 @@ impl ViewportHost {
         self.overlay_forget();
         self.session.reset_project();
         self.access.borrow_mut().clear();
-        self.asset_io.invalidate();
+        self.asset_io.reader.invalidate();
         self.inbox.borrow_mut().clear();
         self.outbox.borrow_mut().clear();
         self.png_paths.clear();
@@ -704,7 +703,7 @@ impl ViewportHost {
         self.fail_waiters(&BackendError::new("cancelled", "The project was replaced"));
         self.session.reset_project();
         self.access.borrow_mut().clear();
-        self.asset_io.invalidate();
+        self.asset_io.reader.invalidate();
         self.last_key = None;
         self.last_frame = None;
         // Frame IDs may now mean something else: what the monitor showed is not known anymore.

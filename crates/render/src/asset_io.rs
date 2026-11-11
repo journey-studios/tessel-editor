@@ -22,7 +22,6 @@
 //! The pool knows nothing about GPUI or the WebView: the caller's closure does the `Response` plumbing.
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{Receiver, SyncSender, TrySendError, sync_channel};
 use std::sync::{Arc, Mutex};
@@ -30,7 +29,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 
-use crate::host::{Served, read_file};
+use crate::host::{ReadJob, Served, read_file};
 
 /// Workers of the pool: the engineering starting point fixed before the measurement (BL157.1), not tuned per run.
 pub const DEFAULT_WORKERS: usize = 2;
@@ -64,11 +63,14 @@ pub enum Rejection {
     Closed,
 }
 
-/// What to read.
-#[derive(Debug, Clone)]
-pub struct ReadJob {
-    pub file: PathBuf,
-    pub range: Option<String>,
+impl Rejection {
+    /// What the caller answers the refused request with: explicit and countable, never silent.
+    fn served(self) -> Served {
+        match self {
+            Self::Saturated => Served::text(503, "the asset read queue is full"),
+            Self::Closed => Served::text(503, "the asset read pool is closed"),
+        }
+    }
 }
 
 struct Message {
@@ -158,12 +160,10 @@ impl std::fmt::Debug for AssetPool {
 }
 
 fn gone() -> Served {
-    Served {
-        status: 410,
-        content_type: "text/plain; charset=utf-8",
-        body: b"the project or the viewport changed before this file was read".to_vec(),
-        content_range: None,
-    }
+    Served::text(
+        410,
+        "the project or the viewport changed before this file was read",
+    )
 }
 
 impl AssetPool {
@@ -243,6 +243,102 @@ impl AssetPool {
     }
 }
 
+/// Who reads the files the page asks for, fixed when the host is created (BL157.1).
+#[derive(Debug, Clone)]
+pub enum Reader {
+    /// On the thread that received the request (the behaviour before BL157.1).
+    Inline,
+    /// On the bounded pool: the receiving thread returns as soon as the job is queued.
+    Pooled(AssetPool),
+}
+
+/// What became of a job handed to [`Reader::read`], for the trace of the callback that handed it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Dispatch {
+    /// Read and answered before `read` returned.
+    Answered,
+    /// Waiting for, or being read by, a worker: it is answered from there.
+    Queued,
+    /// Not accepted, and answered by `read` itself with a `503`.
+    Refused(Rejection),
+}
+
+impl Dispatch {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Answered => "answered",
+            Self::Queued => "queued",
+            Self::Refused(Rejection::Saturated) => "saturated",
+            Self::Refused(Rejection::Closed) => "closed",
+        }
+    }
+}
+
+impl Reader {
+    /// The pool of a [`Reader::Pooled`], for its counters.
+    pub fn pool(&self) -> Option<&AssetPool> {
+        match self {
+            Self::Inline => None,
+            Self::Pooled(pool) => Some(pool),
+        }
+    }
+
+    /// The mode in effect, as `render.status` and the trace name it.
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Inline => "sync",
+            Self::Pooled(_) => "async",
+        }
+    }
+
+    /// A project or page change: reads of the old session answer `410` instead of being applied (nothing to do inline: a
+    /// read there is over before anything can change).
+    pub fn invalidate(&self) {
+        if let Self::Pooled(pool) = self {
+            pool.invalidate();
+        }
+    }
+
+    /// Reads `job` and calls `done` **exactly once**: before returning, on this thread, for [`Reader::Inline`]; from a
+    /// worker for [`Reader::Pooled`], or right here with the `503` of a refusal when the pool did not accept the job (it is
+    /// never dropped and never left unanswered).
+    pub fn read(&self, job: ReadJob, done: Done) -> Dispatch {
+        match self {
+            Self::Inline => {
+                let started = Instant::now();
+                let served = read_file(&job.file, job.range.as_deref());
+                done(
+                    served,
+                    Outcome {
+                        worker: None,
+                        queue_wait: Duration::ZERO,
+                        read: started.elapsed(),
+                        stale: false,
+                        depth_at_submit: 0,
+                    },
+                );
+                Dispatch::Answered
+            }
+            Self::Pooled(pool) => match pool.submit(job, done) {
+                Ok(()) => Dispatch::Queued,
+                Err((rejection, done)) => {
+                    done(
+                        rejection.served(),
+                        Outcome {
+                            worker: None,
+                            queue_wait: Duration::ZERO,
+                            read: Duration::ZERO,
+                            stale: false,
+                            depth_at_submit: pool.stats().queued(),
+                        },
+                    );
+                    Dispatch::Refused(rejection)
+                }
+            },
+        }
+    }
+}
+
 /// What a worker may keep: counters and the epoch, but not the sender (so the channel can close).
 struct WorkerView {
     shared: std::sync::Weak<Shared>,
@@ -290,12 +386,7 @@ fn run(index: usize, message: Message, view: &WorkerView) {
             if let Some(shared) = &shared {
                 shared.stats.panicked.fetch_add(1, Ordering::Relaxed);
             }
-            Served {
-                status: 500,
-                content_type: "text/plain; charset=utf-8",
-                body: b"the asset read panicked".to_vec(),
-                content_range: None,
-            }
+            Served::text(500, "the asset read panicked")
         })
     };
     let read = if stale_before {
@@ -333,6 +424,7 @@ mod tests {
     use super::*;
     use crate::host::{AssetAccess, Resolved, resolve, serve};
     use serde_json::json;
+    use std::path::PathBuf;
     use std::sync::mpsc;
     use std::time::Duration;
 
@@ -359,10 +451,10 @@ mod tests {
     ) -> (Served, Option<Outcome>) {
         match resolve(dist, access, "/asset", query, range) {
             Resolved::Answer(served) => (served, None),
-            Resolved::File { file, range } => {
+            Resolved::Bundle(job) | Resolved::Asset(job) => {
                 let (tx, rx) = mpsc::channel();
                 pool.submit(
-                    ReadJob { file, range },
+                    job,
                     Box::new(move |served, outcome| {
                         tx.send((served, outcome)).unwrap();
                     }),
@@ -612,6 +704,93 @@ mod tests {
             (1..=2).contains(&most),
             "two workers run at most two jobs, ran {most}"
         );
+    }
+
+    #[test]
+    fn an_inline_reader_answers_once_on_the_calling_thread_before_it_returns() {
+        let dir = scratch("inline");
+        std::fs::write(dir.join("a.bin"), b"abcdef").unwrap();
+        let (tx, rx) = mpsc::channel();
+        let dispatch = Reader::Inline.read(
+            ReadJob {
+                file: dir.join("a.bin"),
+                range: Some("bytes=1-3".into()),
+            },
+            Box::new(move |served, outcome| {
+                tx.send((served, outcome, std::thread::current().id()))
+                    .unwrap();
+            }),
+        );
+        assert_eq!(dispatch, Dispatch::Answered);
+        let (served, outcome, thread) = rx.try_recv().expect("answered before `read` returned");
+        assert_eq!((served.status, served.body.as_slice()), (206, &b"bcd"[..]));
+        assert_eq!(thread, std::thread::current().id());
+        assert_eq!(outcome.worker, None);
+        assert_eq!(outcome.queue_wait, Duration::ZERO);
+        assert_eq!(outcome.depth_at_submit, 0);
+        assert!(!outcome.stale);
+        assert!(rx.try_recv().is_err(), "answered once");
+        // Nothing to invalidate: the read was over before anything could change.
+        Reader::Inline.invalidate();
+        assert_eq!(Reader::Inline.name(), "sync");
+        assert!(Reader::Inline.pool().is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_pooled_reader_refuses_a_job_the_pool_did_not_accept_with_a_503_of_its_own() {
+        let dir = scratch("refuse");
+        let held = fifo(&dir, "held.bin");
+        let pool = AssetPool::new(1, 1);
+        let reader = Reader::Pooled(pool.clone());
+        assert_eq!(reader.name(), "async");
+        let (tx, rx) = mpsc::channel();
+        let read = |tag: &'static str| {
+            let tx = tx.clone();
+            reader.read(
+                ReadJob {
+                    file: held.clone(),
+                    range: None,
+                },
+                Box::new(move |served, outcome| {
+                    tx.send((tag, served.status, outcome, std::thread::current().id()))
+                        .unwrap();
+                }),
+            )
+        };
+        assert_eq!(read("running"), Dispatch::Queued);
+        wait_until("the worker to hold the read", || {
+            pool.stats().in_flight() == 1
+        });
+        assert_eq!(read("waiting"), Dispatch::Queued);
+        let dispatch = read("refused");
+        assert_eq!(dispatch, Dispatch::Refused(Rejection::Saturated));
+        assert_eq!(dispatch.as_str(), "saturated");
+        // Answered by `read` itself, on this thread, before it returned.
+        let (tag, status, outcome, thread) =
+            rx.try_recv().expect("the refusal is answered at once");
+        assert_eq!((tag, status), ("refused", 503));
+        assert_eq!(thread, std::thread::current().id());
+        assert_eq!(outcome.worker, None);
+        assert_eq!(
+            outcome.depth_at_submit, 1,
+            "the one job waiting behind the held read"
+        );
+        assert_eq!(pool.stats().saturated(), 1);
+        let writer = release(&held);
+        let mut rest = vec![
+            rx.recv_timeout(Duration::from_secs(20)).unwrap(),
+            rx.recv_timeout(Duration::from_secs(20)).unwrap(),
+        ];
+        drop(writer);
+        rest.sort_by_key(|answer| answer.0);
+        assert_eq!(
+            rest.iter()
+                .map(|answer| (answer.0, answer.1))
+                .collect::<Vec<_>>(),
+            vec![("running", 200), ("waiting", 200)]
+        );
+        assert!(rx.try_recv().is_err(), "every job answered once");
     }
 
     #[test]

@@ -10,14 +10,14 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use serde_json::{Value, json};
 use tessel_editor_core::trace::TraceHandle;
 use tessel_editor_render::asset_io::{
-    AssetPool, DEFAULT_QUEUE, DEFAULT_WORKERS, Outcome, ReadJob, Rejection,
+    AssetPool, DEFAULT_QUEUE, DEFAULT_WORKERS, Dispatch, Done, Outcome, Reader,
 };
-use tessel_editor_render::host::{AssetAccess, Resolved, Served, query_param, read_file, resolve};
+use tessel_editor_render::host::{AssetAccess, Resolved, Served, query_param, resolve};
 use wry::http::{Request, Response};
 
 /// `sync` (the default) or `async`: whether the protocol handler of the WebView reads the project's files on the thread that
@@ -38,10 +38,11 @@ pub enum AssetIoMode {
 }
 
 impl AssetIoMode {
-    pub fn as_str(self) -> &'static str {
+    /// The reader this mode selects; the pool of `async` is created here, once, and nothing is spawned for `sync`.
+    pub(super) fn reader(self) -> Reader {
         match self {
-            AssetIoMode::Sync => "sync",
-            AssetIoMode::Async => "async",
+            AssetIoMode::Sync => Reader::Inline,
+            AssetIoMode::Async => Reader::Pooled(AssetPool::new(DEFAULT_WORKERS, DEFAULT_QUEUE)),
         }
     }
 
@@ -79,9 +80,7 @@ pub fn trace_label(prefix: char, text: &str) -> String {
 
 /// The protocol handler's way of reading, fixed when the host is created.
 pub(super) struct AssetIo {
-    pub(super) mode: AssetIoMode,
-    /// Present only for [`AssetIoMode::Async`]; nothing is spawned for the default.
-    pub(super) pool: Option<AssetPool>,
+    pub(super) reader: Reader,
     /// Requests the handler received, whichever way it answered them.
     pub(super) requests: Arc<AtomicU64>,
 }
@@ -89,27 +88,19 @@ pub(super) struct AssetIo {
 impl AssetIo {
     pub(super) fn new(mode: AssetIoMode) -> Self {
         Self {
-            mode,
-            pool: (mode == AssetIoMode::Async)
-                .then(|| AssetPool::new(DEFAULT_WORKERS, DEFAULT_QUEUE)),
+            reader: mode.reader(),
             requests: Arc::default(),
         }
     }
 
-    /// A project or page change: reads of the old session answer `410` instead of being applied.
-    pub(super) fn invalidate(&self) {
-        if let Some(pool) = &self.pool {
-            pool.invalidate();
-        }
-    }
-
     pub(super) fn report(&self) -> Value {
+        let pool = self.reader.pool();
         json!({
-            "mode": self.mode.as_str(),
-            "workers": self.pool.as_ref().map(AssetPool::workers),
-            "queue": self.pool.as_ref().map(AssetPool::queue_capacity),
+            "mode": self.reader.name(),
+            "workers": pool.map(AssetPool::workers),
+            "queue": pool.map(AssetPool::queue_capacity),
             "requests": self.requests.load(Ordering::Relaxed),
-            "pool": self.pool.as_ref().map(|pool| pool.stats().to_json()),
+            "pool": pool.map(|pool| pool.stats().to_json()),
         })
     }
 }
@@ -122,8 +113,7 @@ pub struct ProtocolHandle {
     dist: Option<PathBuf>,
     access: Rc<RefCell<AssetAccess>>,
     trace: TraceHandle,
-    mode: AssetIoMode,
-    pool: Option<AssetPool>,
+    reader: Reader,
     requests: Arc<AtomicU64>,
     /// The thread the handle was made on: the window's. A request received anywhere else is traced as such.
     ui_thread: std::thread::ThreadId,
@@ -132,7 +122,7 @@ pub struct ProtocolHandle {
 /// The facts of one request that the trace carries from the callback to the completion.
 struct RequestFacts {
     id: u64,
-    mode: AssetIoMode,
+    mode: &'static str,
     label: String,
     range: Option<String>,
     /// Host clock when the callback began.
@@ -144,33 +134,24 @@ impl ProtocolHandle {
         dist: Option<PathBuf>,
         access: Rc<RefCell<AssetAccess>>,
         trace: TraceHandle,
-        mode: AssetIoMode,
-        pool: Option<AssetPool>,
+        reader: Reader,
         requests: Arc<AtomicU64>,
     ) -> Self {
-        // `Async` without a pool cannot read anywhere else: it answers on this thread instead of failing.
-        let mode = if pool.is_some() {
-            mode
-        } else {
-            AssetIoMode::Sync
-        };
         Self {
             dist,
             access,
             trace,
-            mode,
-            pool,
+            reader,
             requests,
             ui_thread: std::thread::current().id(),
         }
     }
 
-    /// Answers the request through `respond`: in `sync` mode before it returns; in `async` mode `respond` is called later
-    /// by a worker, and this returns as soon as the request is authorized and queued. Every request is answered exactly
-    /// once: a full queue is answered here with `503` (and counted), never dropped.
+    /// Answers the request through `respond`: with an inline reader before it returns; with a pooled one `respond` is
+    /// called later by a worker, and this returns as soon as the request is authorized and queued. Every request is
+    /// answered exactly once: a full queue is answered here with `503` (and counted), never dropped.
     pub fn handle(&self, request: &Request<Vec<u8>>, respond: Respond) {
         let entered = self.trace.start();
-        let id = self.requests.fetch_add(1, Ordering::Relaxed) + 1;
         let uri = request.uri();
         let (path, query) = (uri.path(), uri.query().unwrap_or_default());
         let range = request
@@ -178,52 +159,33 @@ impl ProtocolHandle {
             .get("range")
             .and_then(|value| value.to_str().ok())
             .map(str::to_owned);
-        let facts = RequestFacts {
-            id,
-            mode: self.mode,
-            label: if self.trace.enabled() {
-                if path == "/asset" {
-                    // A file load gets this decoded-path label too; a sequence load names a pattern, not this concrete frame.
-                    let location = query_param(query, "p").unwrap_or_default();
-                    trace_label('a', &format!("p={location}"))
-                } else {
-                    path.to_owned()
-                }
-            } else {
-                String::new()
-            },
+        let facts = Arc::new(RequestFacts {
+            id: self.requests.fetch_add(1, Ordering::Relaxed) + 1,
+            mode: self.reader.name(),
+            label: self.label(path, query),
             range: range.clone(),
             received_ms: self.trace.now_ms(),
-        };
+        });
         let resolved = match &self.dist {
             Some(dist) => resolve(dist, &self.access.borrow(), path, query, range.as_deref()),
             None => Resolved::Answer(not_built()),
         };
-        let mut outcome = "answered";
-        match resolved {
-            Resolved::Answer(served) => respond(to_response(served)),
-            Resolved::File { file, range } => match (&self.pool, self.mode) {
-                // Only project assets go to the pool: the page's own bundle (`/`, `/index.html`, `/runtime.js`) is read
-                // here, as it always was, so replacing the project (which makes queued reads answer `410`) can never
-                // refuse the runtime its own code.
-                (Some(pool), AssetIoMode::Async) if path == "/asset" => {
-                    outcome = self.submit(pool, &facts, ReadJob { file, range }, respond);
-                }
-                _ => {
-                    let started = Instant::now();
-                    let served = read_file(&file, range.as_deref());
-                    let read = started.elapsed();
-                    self.note_io(&facts, &served, read, None);
-                    respond(to_response(served));
-                }
-            },
-        }
+        let dispatch = match resolved {
+            Resolved::Answer(served) => {
+                respond(to_response(served));
+                Dispatch::Answered
+            }
+            // The page's own code is always read here, as it always was: replacing the project (which makes queued reads
+            // answer `410`) can never refuse the runtime its own code.
+            Resolved::Bundle(job) => Reader::Inline.read(job, self.completion(&facts, respond)),
+            Resolved::Asset(job) => self.reader.read(job, self.completion(&facts, respond)),
+        };
         self.trace.span("serve", entered);
         self.trace.event("asset_cb", || {
             let thread = std::thread::current();
             json!({
-                "req": facts.id, "mode": facts.mode.as_str(), "asset": facts.label,
-                "range": facts.range, "outcome": outcome,
+                "req": facts.id, "mode": facts.mode, "asset": facts.label,
+                "range": facts.range, "outcome": dispatch.as_str(),
                 "on_ui_thread": thread.id() == self.ui_thread,
                 "thread": thread.name().unwrap_or("unnamed"),
                 "recv_ms": round3(facts.received_ms),
@@ -232,33 +194,38 @@ impl ProtocolHandle {
         });
     }
 
-    /// Hands the read to the pool. Returns what happened to the request, for the trace.
-    fn submit(
-        &self,
-        pool: &AssetPool,
-        facts: &RequestFacts,
-        job: ReadJob,
-        respond: Respond,
-    ) -> &'static str {
-        let trace = self.trace.clone();
-        let id = facts.id;
-        let label = facts.label.clone();
-        let range = facts.range.clone();
-        let received_ms = facts.received_ms;
-        let done = Box::new(move |served: Served, outcome: Outcome| {
-            let status = served.status;
-            let bytes = served.body.len();
+    /// What the trace calls the request: for a file of the project the label its `asset.load` gets too (the decoded path,
+    /// so the two correlate; a sequence load names a pattern, not this concrete frame), else the path asked for.
+    fn label(&self, path: &str, query: &str) -> String {
+        if !self.trace.enabled() {
+            String::new()
+        } else if path == "/asset" {
+            let location = query_param(query, "p").unwrap_or_default();
+            trace_label('a', &format!("p={location}"))
+        } else {
+            path.to_owned()
+        }
+    }
+
+    /// What answers the request once its file is read, wherever that happens: the response, then the one `asset_io` event of
+    /// the request. The thread it records is the one the closure runs on (a worker's, or this one for an inline read and for
+    /// the refusal of a full queue).
+    fn completion(&self, facts: &Arc<RequestFacts>, respond: Respond) -> Done {
+        let (trace, ui_thread, facts) = (self.trace.clone(), self.ui_thread, facts.clone());
+        Box::new(move |served: Served, outcome: Outcome| {
+            let (status, bytes) = (served.status, served.body.len());
             let responding = Instant::now();
             respond(to_response(served));
             let respond_ms = responding.elapsed().as_secs_f64() * 1000.0;
             trace.event("asset_io", || {
+                let thread = std::thread::current();
                 json!({
-                    "req": id, "mode": "async", "asset": label, "range": range,
+                    "req": facts.id, "mode": facts.mode, "asset": facts.label, "range": facts.range,
                     "status": status, "bytes": bytes,
                     "worker": outcome.worker,
-                    "thread": std::thread::current().name().unwrap_or("unnamed"),
-                    "on_ui_thread": false,
-                    "recv_ms": round3(received_ms),
+                    "thread": thread.name().unwrap_or("unnamed"),
+                    "on_ui_thread": thread.id() == ui_thread,
+                    "recv_ms": round3(facts.received_ms),
                     "queue_wait_ms": round3(outcome.queue_wait.as_secs_f64() * 1000.0),
                     "read_ms": round3(outcome.read.as_secs_f64() * 1000.0),
                     "respond_ms": round3(respond_ms),
@@ -266,56 +233,7 @@ impl ProtocolHandle {
                     "stale": outcome.stale,
                 })
             });
-        });
-        match pool.submit(job, done) {
-            Ok(()) => "queued",
-            Err((rejection, done)) => {
-                // Explicit and countable, never silent: the run that sees it is invalid, not fast.
-                let (status, text, outcome) = match rejection {
-                    Rejection::Saturated => (503, "the asset read queue is full", "saturated"),
-                    Rejection::Closed => (503, "the asset read pool is closed", "closed"),
-                };
-                done(
-                    Served {
-                        status,
-                        content_type: "text/plain; charset=utf-8",
-                        body: text.as_bytes().to_vec(),
-                        content_range: None,
-                    },
-                    Outcome {
-                        worker: None,
-                        queue_wait: Duration::ZERO,
-                        read: Duration::ZERO,
-                        stale: false,
-                        depth_at_submit: pool.stats().queued(),
-                    },
-                );
-                outcome
-            }
-        }
-    }
-
-    /// The `asset_io` event of a read that ran on the calling thread.
-    fn note_io(
-        &self,
-        facts: &RequestFacts,
-        served: &Served,
-        read: Duration,
-        worker: Option<usize>,
-    ) {
-        self.trace.event("asset_io", || {
-            let thread = std::thread::current();
-            json!({
-                "req": facts.id, "mode": facts.mode.as_str(), "asset": facts.label,
-                "range": facts.range, "status": served.status, "bytes": served.body.len(),
-                "worker": worker, "thread": thread.name().unwrap_or("unnamed"),
-                "on_ui_thread": thread.id() == self.ui_thread,
-                "recv_ms": round3(facts.received_ms),
-                "queue_wait_ms": 0.0,
-                "read_ms": round3(read.as_secs_f64() * 1000.0),
-                "depth_at_submit": 0, "stale": false,
-            })
-        });
+        })
     }
 }
 
@@ -324,12 +242,7 @@ pub(super) fn round3(value: f64) -> f64 {
 }
 
 fn not_built() -> Served {
-    Served {
-        status: 404,
-        content_type: "text/plain; charset=utf-8",
-        body: b"the runtime bundle is not built".to_vec(),
-        content_range: None,
-    }
+    Served::text(404, "the runtime bundle is not built")
 }
 
 /// The HTTP response of what was served: the same status, type and range headers whichever thread built it.

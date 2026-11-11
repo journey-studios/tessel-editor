@@ -132,7 +132,7 @@ pub struct Served {
 }
 
 impl Served {
-    fn text(status: u16, message: impl Into<String>) -> Self {
+    pub fn text(status: u16, message: impl Into<String>) -> Self {
         Self {
             status,
             content_type: "text/plain; charset=utf-8",
@@ -233,16 +233,25 @@ fn clamp_range(start: u64, end: u64, suffix: bool) -> (u64, u64) {
     }
 }
 
+/// What to read: a file and the `Range` the page sent for it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReadJob {
+    pub file: PathBuf,
+    pub range: Option<String>,
+}
+
 /// What a request resolves to before any file is touched: an answer that needs no read (the page's own refusals, an empty
-/// `204`), or a file to read with the `Range` the page sent. Authorization is decided here, on the caller's thread, from
-/// the allow-list as it is at this moment; the read that follows can then run elsewhere without sharing that list.
+/// `204`), or a file to read. Authorization is decided here, on the caller's thread, from the allow-list as it is at this
+/// moment; the read that follows can then run elsewhere without sharing that list. The two kinds of file are told apart
+/// because only a project's asset may be read elsewhere (and refused or made stale with its project): the page's own code
+/// is always read by the caller.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Resolved {
     Answer(Served),
-    File {
-        file: PathBuf,
-        range: Option<String>,
-    },
+    /// The page itself: `/`, `/index.html`, `/runtime.js`.
+    Bundle(ReadJob),
+    /// A file of the project an `asset.load` registered: `/asset?p=<absolute path>`.
+    Asset(ReadJob),
 }
 
 /// Decides what `GET <path>?<query>` refers to: the page (`/`, `/runtime.js`) from `dist`, or a registered asset
@@ -254,28 +263,25 @@ pub fn resolve(
     query: &str,
     range: Option<&str>,
 ) -> Resolved {
-    let file = match path {
-        "/" | "/index.html" => dist.join("index.html"),
-        "/runtime.js" => dist.join("runtime.js"),
-        "/favicon.ico" => return Resolved::Answer(Served::text(204, "")),
-        "/asset" => {
-            let Some(requested) = query_param(query, "p") else {
-                return Resolved::Answer(Served::text(403, "not an asset of this project"));
-            };
-            if !access.allows(&requested) {
-                return Resolved::Answer(Served::text(403, "not an asset of this project"));
-            }
-            absolute(&requested)
-        }
-        _ => return Resolved::Answer(Served::text(404, "not found")),
-    };
-    Resolved::File {
+    let job = |file: PathBuf| ReadJob {
         file,
         range: range.map(str::to_owned),
+    };
+    match path {
+        "/" | "/index.html" => Resolved::Bundle(job(dist.join("index.html"))),
+        "/runtime.js" => Resolved::Bundle(job(dist.join("runtime.js"))),
+        "/favicon.ico" => Resolved::Answer(Served::text(204, "")),
+        "/asset" => match query_param(query, "p") {
+            Some(requested) if access.allows(&requested) => {
+                Resolved::Asset(job(absolute(&requested)))
+            }
+            _ => Resolved::Answer(Served::text(403, "not an asset of this project")),
+        },
+        _ => Resolved::Answer(Served::text(404, "not found")),
     }
 }
 
-/// Reads what a [`Resolved::File`] names: open, size, byte range, body. All the blocking I/O of serving is here.
+/// Reads what a [`ReadJob`] names: open, size, byte range, body. All the blocking I/O of serving is here.
 pub fn read_file(file: &Path, range: Option<&str>) -> Served {
     let Ok(mut handle) = File::open(file) else {
         return Served::text(404, format!("missing {}", file.display()));
@@ -332,7 +338,7 @@ pub fn serve(
 ) -> Served {
     match resolve(dist, access, path, query, range) {
         Resolved::Answer(served) => served,
-        Resolved::File { file, range } => read_file(&file, range.as_deref()),
+        Resolved::Bundle(job) | Resolved::Asset(job) => read_file(&job.file, job.range.as_deref()),
     }
 }
 
