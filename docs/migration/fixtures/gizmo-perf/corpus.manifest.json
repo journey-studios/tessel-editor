@@ -15,7 +15,7 @@
   ],
   "generator": {
     "file": "scripts/gizmo-perf/corpus.py",
-    "sha256": "178d2da3b26f5b6e1d890fcf4f1dde1f5a017083764fa7c3ac1c1d59122b5dfc"
+    "sha256": "f96b82cc221f59cf9f311e3734c41da1fe3720f5d4a624907bbb5d164432c629"
   },
   "journey": {
     "file": "docs/migration/fixtures/gizmo-perf/journey.json",

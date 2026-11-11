@@ -8,12 +8,15 @@ Nothing private: the cases are the repository's own synthetic directed-scene cor
 (`scripts/directed-scene-proof/corpus`, drawn from scratch) plus two scenes GENERATED from it,
 deterministically (no clock, no randomness), by adding nodes that reuse its three assets:
 
-* `small`  the corpus as it is (5 nodes, animated: `stage` slides, `hero` sways, `echo` has a scale channel);
-* `dense`  the same scene plus 12 rotated banks of 50 image planes (605 nodes, 617 with the groups): what a
-           busy scene costs per plan, where the per-call work is dominated by the node count;
-* `deep`   the same scene plus two parent chains: 24 rotated, uniformly scaled groups ending in `leaf-rot`
-           (rotation and scale legal), 12 groups scaled unevenly ending in `leaf-aniso` (scale legal,
-           rotation refused `non_uniform_parent_scale`): the hierarchy the world matrices go through.
+* `small`  the corpus as it is (6 nodes, the root included, animated: `stage` slides, `hero` sways,
+           `echo` has a scale channel);
+* `dense`  the same scene plus 12 rotated banks of 50 image planes (618 nodes: the 6 of `small`, 12
+           groups and 600 planes): what a busy scene costs per plan, where the per-call work is
+           dominated by the node count;
+* `deep`   the same scene plus two parent chains (44 nodes: the 6 of `small`, 24 rotated, uniformly
+           scaled groups ending in `leaf-rot` (rotation and scale legal), 12 groups scaled unevenly
+           ending in `leaf-aniso` (scale legal, rotation refused `non_uniform_parent_scale`) and the
+           two leaves): the hierarchy the world matrices go through.
 
 There is no splat case: the corpus has no splat asset, and a splat is only as legal as its parents are
 similarities (core tests `scene_gizmo_scale.rs` cover its refusals). Recorded as a gap, not simulated.
