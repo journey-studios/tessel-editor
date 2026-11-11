@@ -336,7 +336,7 @@ EXPERIMENT = Experiment(record="run-{index:02d}-{arm}.json", build=build_report,
 
 def cmd_run(args):
     bundles = bundles_of(args)
-    run = prerequisites(args, needed=(ROOT / "runtime" / "dist" / "index.html", *bundles.values()), gate=lambda: bundle_gate(args))
+    run = prerequisites(args, EXPERIMENT, needed=(ROOT / "runtime" / "dist" / "index.html", *bundles.values()), gate=lambda: bundle_gate(args))
     if run is None:
         return 2
     W = warm_proof()

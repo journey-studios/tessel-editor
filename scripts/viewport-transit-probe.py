@@ -273,7 +273,7 @@ def window_of(args, project):
 
 
 def cmd_loop(args):
-    run = prerequisites(args)
+    run = prerequisites(args, LOOP)
     if run is None:
         return 2
     W = warm_proof()
@@ -293,7 +293,7 @@ def cmd_loop(args):
 
 
 def cmd_ab(args):
-    run = prerequisites(args)
+    run = prerequisites(args, AB)
     if run is None:
         return 2
     W = warm_proof()

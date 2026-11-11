@@ -34,6 +34,10 @@ class Experiment:
     def names(self, order):
         return [self.record.format(index=index, arm=arm, pair=index // 2) for index, arm in enumerate(order)]
 
+    def stored(self, out):
+        """Names of the raw records of this experiment that `out` holds, whichever batch they belong to."""
+        return sorted(path.name for path in out.glob(self.record.split("{")[0] + "*.json"))
+
 
 def arm_order(arms, pairs):
     """first/second, second/first, first/second, ...: which arm goes first alternates by pair, so a drift of the machine is spread over both arms."""
@@ -44,15 +48,23 @@ def arm_order(arms, pairs):
     return order
 
 
-def prerequisites(args, needed=(RUNTIME_JS,), gate=None):
-    """The binary, the document and `needed` exist, `gate()` (a reason or None) lets the run start, the project's sources are present, the disk has room
-    and both bench locks were taken. Returns a `Run`, or None after saying why it is BLOCKED."""
+def prerequisites(args, experiment, needed=(RUNTIME_JS,), gate=None):
+    """The binary, the document and `needed` exist, `--out` holds no batch of `experiment` yet, `gate()` (a reason or None) lets the run start, the
+    project's sources are present, the disk has room and both bench locks were taken. Returns a `Run`, or None after saying why it is BLOCKED.
+
+    WHY `--out` must be new: a run writes a manifest and one record per place of its order, and `load_batch` refuses a folder that holds anything
+    else. A folder that already holds a batch would be half overwritten and then refused, after the GPU hours were spent."""
     W = warm_proof()
     binary, document = pathlib.Path(args.binary).resolve(), pathlib.Path(args.project).resolve()
     for path in (binary, document, *needed):
         if not path.exists():
             print(f"BLOCKED: missing {path.name}")
             return None
+    out = pathlib.Path(args.out)
+    kept = (["manifest.json"] if (out / "manifest.json").exists() else []) + experiment.stored(out)
+    if kept:
+        print(f"BLOCKED: --out {args.out} already holds a batch ({len(kept)} file(s) such as {kept[0]}): use a new folder, nothing was written")
+        return None
     why = gate() if gate else None
     if why:
         print(f"BLOCKED: {why}")
@@ -109,7 +121,7 @@ def load_batch(out, experiment, manifest):
     """The raw records of the batch `manifest` describes: exactly one file per place of its order, each carrying its `batch_id`. A folder that holds
     fewer, more or other records (a reused folder, a deleted file) is refused, never analysed as if it were whole."""
     expected = experiment.names(manifest["order"])
-    present = sorted(path.name for path in out.glob(experiment.record.split("{")[0] + "*.json"))
+    present = experiment.stored(out)
     if present != sorted(expected):
         raise SystemExit(f"refused: the folder does not hold exactly the batch of its manifest (missing {sorted(set(expected) - set(present))}, "
                          f"extra {sorted(set(present) - set(expected))})")

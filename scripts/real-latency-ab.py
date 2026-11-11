@@ -215,7 +215,7 @@ EXPERIMENT = Experiment(record="session-{index:02d}-{arm}.json", build=build_rep
 
 
 def cmd_run(args):
-    run = prerequisites(args)
+    run = prerequisites(args, EXPERIMENT)
     if run is None:
         return 2
     W = warm_proof()

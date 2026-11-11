@@ -711,8 +711,8 @@ class CommandTests(unittest.TestCase):
         calls, asked, locks = [], [], [self.Locks('/tmp/gpu.lock'), self.Locks('/tmp/review.lock')]
         run = shared_batch.Run(self.binary, self.document, PROJECT, locks, 1.5)
 
-        def fake_prerequisites(args, needed=(), gate=None):
-            asked.append({"needed": [Path(path).relative_to(self.root).as_posix() for path in needed], "gate": gate})
+        def fake_prerequisites(args, experiment, needed=(), gate=None):
+            asked.append({"experiment": experiment, "needed": [Path(path).relative_to(self.root).as_posix() for path in needed], "gate": gate})
             return None if blocked else run
 
         def fake_session(W, binary, document, record, env, body, stress=0, collect=None):
@@ -741,6 +741,7 @@ class CommandTests(unittest.TestCase):
         _, _, _, asked, _ = self.run_sessions()
         self.assertEqual(asked[0]["needed"], ["runtime/dist/index.html", "runtime/dist/runtime.js"])
         self.assertIs(asked[0]["gate"], ab.rule_gate)
+        self.assertIs(asked[0]["experiment"], ab.EXPERIMENT, "the folder is judged by this experiment's own record names")
 
     def test_the_gate_is_the_reason_the_rule_is_not_fixed_or_nothing(self):
         with mock.patch.object(ab, "rule_state", return_value=(False, "the rule has changes that are not committed")):

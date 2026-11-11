@@ -71,7 +71,7 @@ class Folder(unittest.TestCase):
     def prerequisites(self, warm, gate=None):
         shown = io.StringIO()
         with mock.patch.object(B, "warm_proof", return_value=warm), contextlib.redirect_stdout(shown):
-            return B.prerequisites(self.args, needed=(self.runtime,), gate=gate), shown.getvalue()
+            return B.prerequisites(self.args, EXPERIMENT, needed=(self.runtime,), gate=gate), shown.getvalue()
 
     def run_batch(self, sessions=None):
         """`run_arms` over ORDER with a fake session; returns (records or the error, the locks, what the sessions were asked)."""
@@ -134,6 +134,38 @@ class PrerequisiteTests(Folder):
         self.assertIn("GiB free", shown)
         self.assertIsNone(warm.waited)
         self.assertIsNotNone(self.prerequisites(Warm(free=B.MIN_FREE_GIB_START))[0])
+
+    def test_an_out_folder_that_already_holds_a_batch_is_blocked_before_the_locks_and_nothing_is_written(self):
+        self.run_batch()
+        out = Path(self.args.out)
+        before = {path.name: path.read_bytes() for path in out.iterdir()}
+        warm = Warm()
+        run, shown = self.prerequisites(warm)
+        self.assertIsNone(run)
+        self.assertIn("BLOCKED: --out", shown)
+        self.assertIn("already holds a batch", shown)
+        self.assertIsNone(warm.waited, "the locks are not even asked for")
+        self.assertEqual({path.name: path.read_bytes() for path in out.iterdir()}, before, "the batch that is there is left exactly as it was")
+
+    def test_a_manifest_alone_or_a_stray_record_alone_is_a_batch_too(self):
+        out = Path(self.args.out)
+        out.mkdir()
+        (out / "manifest.json").write_text("{}")
+        self.assertIsNone(self.prerequisites(Warm())[0])
+        (out / "manifest.json").unlink()
+        (out / "run-07-first.json").write_text("{}")
+        run, shown = self.prerequisites(Warm())
+        self.assertIsNone(run)
+        self.assertIn("run-07-first.json", shown)
+        self.assertEqual(sorted(path.name for path in out.iterdir()), ["run-07-first.json"])
+
+    def test_a_new_or_empty_out_folder_or_one_with_other_files_is_allowed(self):
+        out = Path(self.args.out)
+        self.assertIsNotNone(self.prerequisites(Warm())[0], "the folder does not exist yet")
+        out.mkdir()
+        self.assertIsNotNone(self.prerequisites(Warm())[0], "an empty folder")
+        (out / "notes.txt").write_text("not a record of this experiment")
+        self.assertIsNotNone(self.prerequisites(Warm())[0])
 
     def test_locks_that_are_not_free_in_time_are_blocked(self):
         run, shown = self.prerequisites(Warm(locks=False))

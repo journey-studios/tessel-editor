@@ -311,7 +311,7 @@ EXPERIMENT = Experiment(record="run-{index:02d}-{arm}.json", build=build_report,
 
 def cmd_run(args):
     runtime = ROOT / "runtime" / "dist" / "runtime.js"
-    run = prerequisites(args, needed=(ROOT / "runtime" / "dist" / "index.html", runtime), gate=rule_gate)
+    run = prerequisites(args, EXPERIMENT, needed=(ROOT / "runtime" / "dist" / "index.html", runtime), gate=rule_gate)
     if run is None:
         return 2
     W = warm_proof()
