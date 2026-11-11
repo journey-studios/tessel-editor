@@ -93,6 +93,13 @@ class ArmTests(unittest.TestCase):
         self.assertEqual(group["worst_gap_ms_per_session"], [110.0])
 
 
+    def test_a_gap_over_a_load_the_loader_did_not_split_still_counts_as_page_work(self):
+        gap = {"where": "other", "context": {"ui_callback_ms": 0, "reads": 0, "page_decode_ms": 0.0, "page_fetch_ms": 0.0, "page_load_other_ms": 25.0, "page_warm_ms": 0.0}}
+        play = {"pictures": 600, "slow_gt_62_5": 1, "slow_gt_100": 0, "interval_ms": {"max": 70.0}, "slow_detail": [gap]}
+        group = ab.arm_groups([{"valid": True, "mode": "sync", "quiet_class": "quiet", "plays": {"first": play}}])["sync/quiet"]
+        self.assertEqual((group["with_page_work"], group["with_neither_ui_stall_nor_page_work"]), (1, 0))
+
+
 class PixelsCommandTests(unittest.TestCase):
     def parse(self, *argv):
         seen = {}

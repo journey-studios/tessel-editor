@@ -42,7 +42,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from ab import ROOT, warm_proof  # noqa: E402
 from ab.batch import Experiment, analyze, arm_order, finish, manifest_of, positive_int, prerequisites, run_arms  # noqa: E402
 from ab.pixels import run_pixels  # noqa: E402
-from ab.play import ENTRY_WINDOW, VIDEO_ENTRY_WINDOW, hung_play, play_pictures, play_segments, summarize_play, window_report  # noqa: E402
+from ab.play import ENTRY_WINDOW, VIDEO_ENTRY_WINDOW, hung_play, page_work_ms, play_pictures, play_segments, summarize_play, window_report  # noqa: E402
 from ab.session import one_window, run_session, session_env, whole_project_twice  # noqa: E402
 from ab.stats import PAIR_MAX_DELTA_CORES, memory_summary, percentile, quiet_class, stats  # noqa: E402
 from ab.transit import decompose_play  # noqa: E402
@@ -169,8 +169,7 @@ def analyze_run(record, project, factor, window=None):
                                                   "play_command_to_clock_ms")},
             "slow_detail": [{"from_frame": g["from_frame"], "to_frame": g["to_frame"], "gap_ms": g["gap_ms"], "where": g["where"],
                              "transit_ms": g["picture"]["transit_ms"], "runtime_total_ms": g["picture"]["runtime_total_ms"],
-                             "ui_callback_ms": g["context"]["ui_callback_ms"], "page_work_ms": round(
-                                 (g["context"].get("page_decode_ms") or 0) + (g["context"].get("page_fetch_ms") or 0) + (g["context"].get("page_warm_ms") or 0), 1),
+                             "ui_callback_ms": g["context"]["ui_callback_ms"], "page_work_ms": round(page_work_ms(g["context"]), 1),
                              "reads": g["context"]["reads"]} for g in summary["slow_detail"] if in_window(g["to_frame"])],
             "png_entries": [e for e in entries(frames, events, project, segment, project["video_starts"], VIDEO_ENTRY_WINDOW) if not window or window[0] <= e["entry"] <= window[1]],
             "cut_entries": [e for e in entries(frames, events, project, segment, project["cuts"], ENTRY_WINDOW) if not window or window[0] <= e["entry"] <= window[1]],

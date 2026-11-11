@@ -147,6 +147,15 @@ class AnalysisTests(unittest.TestCase):
         self.assertEqual([(g["to_frame"], g["gap_ms"], g["where"]) for g in slow], [(196, 130.0, "video:196")])
 
 
+class PageWorkTests(unittest.TestCase):
+    def test_a_slow_gap_over_an_unsplit_load_lists_it_as_page_work(self):
+        busy = record("control", 130)
+        busy["events"].append(event("asset_state", 1370, state="ready", timings={"load_ms": 100}))  # a frame sequence load: 100 ms, no fetch/decode split
+        slow = ab.analyze_run(busy, PROJECT, "preupload", (190, 200))["plays"]["first"]["slow_detail"]
+        quiet = ab.analyze_run(record("control", 130), PROJECT, "preupload", (190, 200))["plays"]["first"]["slow_detail"]
+        self.assertEqual((slow[0]["page_work_ms"], quiet[0]["page_work_ms"]), (100.0, 0.0))
+
+
 class MissingStatisticsTests(unittest.TestCase):
     """A valid play with fewer than two accepted pictures has no gap percentiles (None): the aggregation must still publish its report."""
 

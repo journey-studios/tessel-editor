@@ -234,6 +234,30 @@ class GapTests(unittest.TestCase):
         self.assertEqual(context["page_warm_ms"], 20.0)
         self.assertEqual(P.gap_context(events, 1100, 1190)["page_fetch_ms"], 90.0)
 
+    def test_a_load_the_loader_did_not_split_is_unknown_load_work_never_fetch(self):
+        # a frame sequence (or a scene parse) reports `load_ms` alone: 400 ms of page work that ended at host 1500, kind not measured
+        events = [event("asset_state", 1500, state="ready", timings={"load_ms": 400})]
+        context = P.gap_context(events, 1100, 1190)
+        self.assertEqual((context["page_fetch_ms"], context["page_decode_ms"], context["page_load_other_ms"]), (0.0, 0.0, 90.0))
+        self.assertEqual(P.page_work_ms(context), 90.0, "still page work: a report that only counts fetch/decode/warm would call this gap idle")
+        self.assertEqual(P.gap_context(events, 1400, 1450)["page_load_other_ms"], 50.0)
+
+    def test_what_a_splitting_loader_leaves_out_of_fetch_and_decode_is_load_work_of_unknown_kind(self):
+        # load 500 ms ending at 1500: decode 300 (1200..1500), fetch 100 (1100..1200), the other 100 ms before them (1000..1100)
+        events = [event("asset_state", 1500, state="ready", timings={"load_ms": 500, "fetch_ms": 100, "decode_ms": 300})]
+        parts = lambda t0, t1: {k: P.gap_context(events, t0, t1)[k] for k in ("page_decode_ms", "page_fetch_ms", "page_load_other_ms")}  # noqa: E731
+        self.assertEqual(parts(1000, 1090), {"page_decode_ms": 0.0, "page_fetch_ms": 0.0, "page_load_other_ms": 90.0})
+        self.assertEqual(parts(1100, 1190), {"page_decode_ms": 0.0, "page_fetch_ms": 90.0, "page_load_other_ms": 0.0})
+        self.assertEqual(parts(1210, 1300), {"page_decode_ms": 90.0, "page_fetch_ms": 0.0, "page_load_other_ms": 0.0})
+        # decode measured but not fetch: nothing before the decode is called fetch
+        only_decode = [event("asset_state", 1500, state="ready", timings={"load_ms": 400, "decode_ms": 300})]
+        self.assertEqual((P.gap_context(only_decode, 1100, 1190)["page_fetch_ms"], P.gap_context(only_decode, 1100, 1190)["page_load_other_ms"]), (0.0, 90.0))
+
+    def test_the_page_work_of_a_gap_is_the_four_parts_of_its_context_and_a_context_without_some_is_still_a_sum(self):
+        self.assertEqual(P.page_work_ms({"page_decode_ms": 1.0, "page_fetch_ms": 2.0, "page_load_other_ms": 4.0, "page_warm_ms": 8.0}), 15.0)
+        self.assertEqual(P.page_work_ms({"page_warm_ms": 8.0, "page_fetch_ms": None}), 8.0)
+        self.assertEqual(P.page_work_ms({}), 0)
+
     def test_a_span_the_page_reported_late_lies_where_it_ran_not_where_its_report_arrived(self):
         # The page's warm ran for 50 ms and ended 200 ms before the report reached the host at 1300: it ran 1050..1100, not 1250..1300.
         events = [event("runtime_span", 1300, k="warm", queued_ms=0, ms=50, started=1, ago_ms=200.0)]
