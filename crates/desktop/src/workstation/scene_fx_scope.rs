@@ -105,6 +105,16 @@ fn choice_of(view: &FxView, clip: &FxClip) -> InspectorChoice {
     inspector_choices(clip, &view.shots).remove(0)
 }
 
+/// The names of the `set_scope:<scope>` actions of a clip node, in the order of its options: what an
+/// `unknown_action` hint advertises beyond the base actions, so it lists what the node lists.
+pub(super) fn scope_action_names(view: &FxView, clip: &FxClip) -> Vec<String> {
+    choice_of(view, clip)
+        .options
+        .iter()
+        .map(|option| format!("{SET_SCOPE_PREFIX}{}", option.value))
+        .collect()
+}
+
 /// The shot the monitor shows, or why none: where `add_in_shot` lands.
 fn shot_here(view: &FxView) -> Result<&Shot, &'static str> {
     let frame = view.frame_here.ok_or(OUTSIDE_THE_EDIT)?;

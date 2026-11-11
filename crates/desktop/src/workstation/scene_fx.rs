@@ -44,7 +44,9 @@ use tessel_editor_core::scene_project::SceneCommand;
 
 use super::controls::{disabled_tool_button, glyph, tool_button, value_after_key};
 use super::scene_fx_keys::{animation_actions, animation_at, animation_fields};
-use super::scene_fx_scope::{decorate_clip_node, decorate_section_node, drawn_scopes, scope_title};
+use super::scene_fx_scope::{
+    decorate_clip_node, decorate_section_node, drawn_scopes, scope_action_names, scope_title,
+};
 use super::scene_model::{PanelFit, format_number};
 use super::scene_panel::SliderRow;
 use super::tokens::Tokens;
@@ -438,13 +440,16 @@ impl Workstation {
                     .find(|control| control.id == id)
                     .ok_or_else(|| unknown_control(clip, id))?;
                 if control.default.is_none() {
+                    let mut advertised =
+                        clip_actions(&found.clip, view.edit_frames, view.frame_here)
+                            .iter()
+                            .filter_map(|action| action["action"].as_str().map(str::to_string))
+                            .collect::<Vec<_>>();
+                    advertised.extend(scope_action_names(&view, &found.clip));
                     return Err(unknown_action(
                         &clip_node_id(clip),
                         &format!("reset:{id}"),
-                        &clip_actions(&found.clip, view.edit_frames, view.frame_here)
-                            .iter()
-                            .filter_map(|action| action["action"].as_str().map(str::to_string))
-                            .collect::<Vec<_>>(),
+                        &advertised,
                     ));
                 }
                 control.reset_op(&found.clip).into_iter().collect()
@@ -1013,10 +1018,15 @@ impl Workstation {
                     .fx_view()
                     .and_then(|view| {
                         view.clip(clip).map(|entry| {
-                            clip_actions(&entry.clip, view.edit_frames, view.frame_here)
-                                .iter()
-                                .filter_map(|action| action["action"].as_str().map(str::to_string))
-                                .collect::<Vec<_>>()
+                            let mut advertised =
+                                clip_actions(&entry.clip, view.edit_frames, view.frame_here)
+                                    .iter()
+                                    .filter_map(|action| {
+                                        action["action"].as_str().map(str::to_string)
+                                    })
+                                    .collect::<Vec<_>>();
+                            advertised.extend(scope_action_names(&view, &entry.clip));
+                            advertised
                         })
                     })
                     .unwrap_or_else(|| vec!["remove".to_string(), "toggle_hidden".to_string()]),

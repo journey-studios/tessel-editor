@@ -142,7 +142,7 @@ cada gesto é um `scene.fx.edit` por `fx_run` — o mesmo handler do `set`/`invo
   - `scene.fx`: ações `add_in_shot:<efeito>` (habilitada só com um quadro da edição exibido) e `state.scope`
     (`["output","shot"]`), `state.shots`, `state.shot_here`.
 - Nenhum diálogo novo (nenhuma marca em `Workflow::has_dialog`).
-- Limite: a dica de `unknown_action` de um clipe lista só as ações-base; as `set_scope:*` estão no `actions` do nó.
+- A dica de `unknown_action` de um clipe (`reset:<campo sem padrão>` ou uma ação inexistente) lista as ações do nó, as `set_scope:*` incluídas (`scope_action_names`); o teste de F057 que a compara com o `actions` do nó segue valendo. Três testes antigos do painel (`scene_fx_tests.rs`) fixavam listas exatas e foram ajustados ao contrato novo: as ações `add:*` agora são filtradas por prefixo (mais as `add_in_shot:*`), a lista de campos do `fade` termina em `scope` e a dica inclui as `set_scope:*`.
 
 ## Proveniência dos casos do piloto (`ORIGIN_NOT_EXECUTED`)
 
