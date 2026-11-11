@@ -45,7 +45,8 @@ si mesmos em mais de 1,5×.
 ## Contrato de cada runner
 
 Em todos: uma execução por `--out` e, nas fases que constroem, uma por checkout (ver "Posse e trava"); identidade do git que não
-responde é `REFUSED`, `--allow-dirty` incluído; árvore suja é recusada (salvo `--allow-dirty`, e nunca vira `PASS`); filhos com
+responde é `REFUSED`, `--allow-dirty` incluído; árvore suja é recusada (com `--allow-dirty` a corrida roda e nunca é um sucesso para o HEAD, exit 1: `DIRTY_RUN_NOT_A_PASS_FOR_HEAD`
+no `run.py`, `DIRTY_RUN_NOT_FOR_HEAD` no `ab.py` e no `native.py`; o `mutate.py` não tem a flag); filhos com
 prazo finito e grupo de processo próprio; nenhum `TESSEL_GIZMO_PERF_*` herdado chega a um filho (`harness.child_env`). Saídas:
 `0` ok, `1` falha, regressão ou recusa, `2` argumento inválido, `3` `BLOCKED`/`INVALID_GUARD_AFTER_RUN`, `4` `INCONCLUSIVE`.
 
@@ -82,7 +83,8 @@ prazo finito e grupo de processo próprio; nenhum `TESSEL_GIZMO_PERF_*` herdado 
   blocos de referência instáveis passam de `reference.max_unstable_blocks`, é `INCONCLUSIVE`. Só vale para este cenário, esta
   configuração, esta máquina e este backend (não para a janela nativa).
 - Veredito: `REGRESSED` (exit 1), `INCONCLUSIVE`/A/A/fora da medição (exit 4), `NO_REGRESSION_IN_SCENARIO` (exit 0), guarda ruim
-  depois da corrida `INVALID_GUARD_AFTER_RUN` (exit 3; nada é julgado).
+  depois da corrida `INVALID_GUARD_AFTER_RUN` (exit 3; nada é julgado). Uma corrida de árvore suja (`--allow-dirty`) que seria
+  `NO_REGRESSION_IN_SCENARIO` é `DIRTY_RUN_NOT_FOR_HEAD` (exit 1): as mudanças locais decidiram o que foi medido.
 - **A/B contra a `main` de agora.** Se a `main` andou em `crates/core/src/scene_plan/mod.rs`, o A/B com a `BASELINE` fixa **recusa**:
   `make_baseline`, enquanto a baseline não tem `probe.rs`, só aceita que `scene_plan/mod.rs` do candidato difira do commit da
   baseline por exatamente a linha `pub mod probe;` (`git diff --numstat` `1 0`), e um head que contém essa `main` mostra mais que isso (num ensaio de merge local com a
@@ -98,7 +100,9 @@ prazo finito e grupo de processo próprio; nenhum `TESSEL_GIZMO_PERF_*` herdado 
   `delay_1ms_per_handler` (`apply_gizmo` dorme 1 ms: o estrutural deve **passar**, o tempo deve falhar), `memo_off` e
   `replan_per_tick` (o teste de janela parada do host deve falhar). Só conta como "morto" quando o processo saiu com erro, o teste
   **nomeado** falhou **e** a mensagem esperada apareceu (e, no tempo, a guarda depois estava limpa e a corrida não foi
-  `INCONCLUSIVE`); compilação quebrada, prazo, executável ausente, disco cheio, lock ocupado e guarda ruim não são mortes.
+  `INCONCLUSIVE`); compilação quebrada, prazo, executável ausente, disco cheio, lock ocupado e guarda ruim não são mortes. Pela
+  mesma regra, um teste de tempo que **passa** com a guarda depois ruim é `INVALID_GUARD_AFTER_RUN`, não `SURVIVED`: não é resposta
+  e os executáveis ficam para repetir.
 - `--phase prepare` constrói, `--phase time` mede (um só lock, sem esperar). `time` recusa um `prepare` de outro HEAD, sujo ou
   inacabado, e só mede o executável cujo hash o `prepare` registrou. Uma execução em que algum mutante ficou sem resposta mantém todos
   os executáveis para repetir; `--only NOME...` restringe os mutantes.
@@ -164,7 +168,7 @@ O `budgets.py` só deriva (não mede): as calibrações vêm de `run.py --calibr
 Sem janela, sem benchmark e sem o lock real (só dublês e compilação):
 
 ```
-python3 scripts/gizmo-perf/gizmo-perf.spec.py     # os runners (285 testes)
+python3 scripts/gizmo-perf/gizmo-perf.spec.py     # os runners (288 testes)
 python3 scripts/gizmo-perf/harness.spec.py        # o que os runners gravam: sem caminho, sem processos
 python3 scripts/gizmo-perf/ab.spec.py             # o veredito do A/B por gate
 python3 scripts/gizmo-perf/corpus.py --check      # o corpus é o que o gerador faz
@@ -200,8 +204,8 @@ num arquivo versionado e não versione captura (BL015.37).
 | ID | Limitação |
 |---|---|
 | BL015.23 | lacunas gerais: sem caso com splat; sem baseline × candidato do host, do renderer e da janela (o A/B não os vê); `PlanTimeline` sem detector estrutural; o contador mede chamadas de layout, não o custo de cada uma, e um planejador mais lento passa nos orçamentos permanentes (a razão cai) e pode passar no A/B; nenhum detector de trabalho dentro do laço de nós |
-| BL015.24 | `gizmo-perf.spec.py` (4 730 linhas, o nome com hífen obriga a carregar os runners por `importlib`) e `native.py` (1 362, que mistura proveniência do runtime, helpers puros de pixel e reconhecimento, o cliente da janela e a orquestração) passam de 1000 linhas; a divisão por módulo não foi feita (os novos `harness.spec.py` e `ab.spec.py` já seguem o padrão por módulo) |
-| BL015.25 | esta página (229 linhas) e o README dos scripts (27) são a versão enxuta do contrato de tempo; falta o ponteiro para esta página na linha F055 do índice de features |
+| BL015.24 | `gizmo-perf.spec.py` (cerca de 4 800 linhas, o nome com hífen obriga a carregar os runners por `importlib`) e `native.py` (1 362, que mistura proveniência do runtime, helpers puros de pixel e reconhecimento, o cliente da janela e a orquestração) passam de 1000 linhas; a divisão por módulo não foi feita (os novos `harness.spec.py` e `ab.spec.py` já seguem o padrão por módulo) |
+| BL015.25 | esta página (menos de 250 linhas) e o README dos scripts (27) são a versão enxuta do contrato de tempo; falta o ponteiro para esta página na linha F055 do índice de features |
 | BL015.26 | o percentil tem duas semânticas: `ab.py` usa o índice por piso (`ordered[int(q·n)]`), `native.py` e o teste Rust o posto mais próximo (para n = 100 e q = 0,95: índices 95 e 94), então o p95 do veredito do A/B não é o p95 do `report.json` das mesmas amostras; e a decisão "guarda depois da corrida ruim ⇒ `INVALID_GUARD_AFTER_RUN`" e o corpo de `run_phase` estão escritos quatro vezes (um por runner) |
 | BL015.27 | o lock de `harness.Lock` é um `flock` não bloqueante e `with-gpu-lock.py` (a convenção do repositório, usada por ~12 scripts) segura o mesmo lock de forma bloqueante: um runner chamado dentro do wrapper recebe `BLOCKED` contra o próprio pai. **Não envolva os runners no wrapper**; um `--gpu-lock-held` não existe |
 | BL015.28 | `long_ticks_max: 0` julga tempo **absoluto**: uma só amostra quente > 16,6 ms reprova o teste de orçamento (falso `FAIL` possível em máquina lenta ou ocupada; a única corrida real foi com carga 5,88), em tensão com "p99/máximo não julgam"; e a tolerância de 1,10× da mediana é menor que o espalhamento de 15% que ainda chama a baseline de estável (só a maioria de pares segura o falso positivo) |
@@ -230,3 +234,8 @@ mata (documentado no comentário da spec).
    falham os 14 e 4 dos 6 (os 2 restantes são controles que passam dos dois lados).
 5. **Este documento** é o contrato da parte de tempo; os comentários que apontavam para o doc da feature por conta do histórico
    de orçamentos (`budgets.py`, `scene_gizmo_perf_budget.rs`, a spec) apontam para cá.
+6. **Três regras que o código não cumpria** (achados da revisão completa deste ramo, todos com teste que falha no código
+   anterior): o `ab.py` devolvia `NO_REGRESSION_IN_SCENARIO` com exit 0 numa corrida de árvore suja; o `run.py` já a chamava
+   `DIRTY_RUN_NOT_A_PASS_FOR_HEAD`, mas saía com 0 e nenhum teste chegava a essa linha; e o `mutate.py` chamava `SURVIVED` um teste de
+   tempo que passou com a guarda depois ruim (então `UNEXPECTED`, com os executáveis apagados), enquanto uma morte na mesma
+   condição já era `INVALID_GUARD_AFTER_RUN`. Só dublês: nenhuma janela nem benchmark real rodou depois da mudança.
