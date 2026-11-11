@@ -40,7 +40,7 @@ MUTANTS = [
     ('M22 the stamp does not name the clip', STAMP, 'stamp["fx_clip"] = json!(target.clip);', 'let _ = &target.clip;'),
     ('M23 a command leaves a target the project no longer holds', STATE, '        let outcome = self.apply_command(command);\n        self.prune_fx_target();\n        outcome', '        let outcome = self.apply_command(command);\n        outcome'),
     ('M24 undo and redo leave a target the project no longer holds', HISTORY, '        self.prune_fx_target();\n', ''),
-    ('M25 the hit query does not predict the effect handles', STAMP, 'if let Some(pick) = self.fx_pick(scene, frame, point) {\n            answer["hit"] = pick.hit_json();', 'if let Some(pick) = self.fx_pick(scene, frame, point).filter(|_| false) {\n            answer["hit"] = pick.hit_json();'),
+    ('M25 the hit query does not predict the effect handles', GLUE, 'let Some(pick) = self.fx_pick(scene, frame, point) else {\n            return false;', 'let Some(pick) = self.fx_pick(scene, frame, point).filter(|_| false) else {\n            return false;'),
 ]
 
 JS_MUTANTS = [
