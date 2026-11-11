@@ -51,13 +51,15 @@ julgar o candidato, então os dois não divergem. Nunca corta nem ajusta o clipe
 `details.issues[]`, agora cada um com o seu `details`. A leitura dos quadros dos planos vem de `Bundle.shots`, na ordem
 do documento; os planos ladrilham a edição, então um quadro da edição está em um plano.
 
-### Composição em etapas (`Fx::resolve(quadro, planos)`)
+### Composição em etapas (`Fx::resolve(quadro)`)
 
-`Fx::resolve` recebe os intervalos dos planos (função pura; sem relógio nem ordem de pedidos) e devolve os passes em
+`Fx::resolve` é uma função pura do quadro (sem relógio, sem ordem de pedidos e **sem os planos**) e devolve os passes em
 **duas etapas**: `FxStage::Deck` (passes de plano, a imagem do próprio plano) primeiro, depois `FxStage::Output`, cada
-uma na ordem das trilhas e dos clipes. Um passe de plano só existe nos quadros desse plano. A ordem **não** é só a das
-trilhas: uma vinheta de saída em uma trilha anterior à de um fade de plano é desenhada **depois** dele. Uma futura
-transição (P4b) entrará entre as duas etapas; o runtime já tem o ponto de encaixe (laço do deck separado do da saída).
+uma na ordem das trilhas e dos clipes (`sort_by_key` é estável). Não precisa dos planos porque o importador já garante,
+pela regra única, que um clipe de plano cabe inteiro no seu plano: um passe de plano só existe nos quadros desse plano.
+A ordem **não** é só a das trilhas: uma vinheta de saída em uma trilha anterior à de um fade de plano é desenhada
+**depois** dele. Uma futura transição (P4b) entrará entre o último passe do plano e o primeiro da saída; a lista do plano
+já vem nessa ordem e o parser do runtime a confere.
 
 O orçamento de passes (`FX_PASS_BUDGET = 8`, só avisa) conta **as duas etapas** juntas; `scene.fx.frame` reporta
 `stages { deck, output }`.
@@ -79,7 +81,7 @@ O orçamento de passes (`FX_PASS_BUDGET = 8`, só avisa) conta **as duas etapas*
 
 | Op | Contrato |
 |---|---|
-| `add_clip { …, scope? }` | `scope` opcional (`output` por padrão), texto ou objeto. Um clipe que não cabe no plano é recusado **antes** de escrever (a recusa nomeia o plano e o intervalo legal); não há corte |
+| `add_clip { …, scope? }` | `scope` opcional (`output` por padrão), texto ou objeto. Sem `duration_frames`, o clipe dura a típica do efeito **cortada onde o escopo termina** (o fim do plano, ou o da edição; `fx::default_duration`, a mesma regra do reset do inspector). Uma duração **dada** nunca é cortada: é julgada como veio e, se não cabe no plano, recusada **antes** de escrever (a recusa nomeia o plano e o intervalo legal) |
 | `set_scope { clip, scope }` | `scope` é **obrigatório** (ausente: `invalid_op`; `null` ou lixo: `invalid_value`, caminho `scope`). Mover para o escopo que o clipe já tem é no-op (sem entrada de undo); para `output` remove a chave; atômico |
 
 Retemporizar (`set_field` de início/duração) um clipe de plano para fora do plano é julgado pelo **importador** do
@@ -101,13 +103,19 @@ Códigos de erro de **comando** (`scene_edit::fx::command_code`): `fx_scope_mism
 
 ### Inspector: a primeira escolha
 
-`scene_edit::fx_inspector::inspector_choices(clipe, planos)` devolve `InspectorChoice` — a primeira configuração do
-modelo que é uma de poucas opções nomeadas, não um número. JSON de cada escolha (também o campo `scope` do nó da
+`scene_edit::fx_choice` (`scope_choice(clipe, planos)`, `inspector_choices`) devolve `InspectorChoice` — a primeira
+configuração do modelo que é uma de poucas opções nomeadas, não um número. Uma opção cabe quando `fx::shot_holds` diz que o
+plano contém o clipe inteiro (a metade de contenção da regra única, sem montar a recusa); o `set_scope` pronto de uma
+opção (e o que o seletor da janela executa) é `InspectorChoice::set_scope_op`. JSON de cada escolha (também o campo `scope` do nó da
 janela): `{ id: "scope", group: "scope", type: "choice", label, labels {pt-br,en,es}, value, default: "output",
 at_default, options: [...] }`; cada opção: `{ value, kind, shot, label, labels, intent, start_frame, end_frame_exclusive,
 selected, applicable, reason, op }` — `applicable: false` com o **código** que a edição recusaria (`FX_SCOPE_MISMATCH`/
 `UNKNOWN_SHOT`) e `op` (o `set_scope` pronto) só quando a opção pode ser escolhida e não é a atual. Rótulos: `Escopo/
-Scope/Alcance`; opções `Saída/Output/Salida` e `Plano {id}/Shot {id}/Plano {id}`.
+Scope/Alcance`; opções `Saída/Output/Salida` e `Plano {id}/Shot {id}/Plano {id}` (`scope_label`, o mesmo texto do título do clipe).
+
+O **reset da duração** (`duration_frames` do inspector) restaura `fx::default_duration`: a típica cortada onde o escopo do clipe
+termina, a mesma de um `add_clip` sem duração. Em um clipe de plano o padrão é, portanto, o que o plano comporta a partir do
+seu início, e a op de reset sempre cabe (antes, o padrão ignorava o espaço e o reset era recusado perto do fim do plano: BL082.48).
 
 ## Runtime (`runtime/src/output-fx.js`, `directed-scene.js`, `compositor.js`)
 
@@ -115,11 +123,11 @@ Scope/Alcance`; opções `Saída/Output/Salida` e `Plano {id}/Shot {id}/Plano {i
   quando o `shotId` é o do `frame` (`/frame/shotId`); um passe de outro plano é `unsupported`
   (`{unsupported:'fx_scope', reason:'shot_not_in_frame'}`), `node` ou escopo desconhecido é `unsupported`
   (`reason:'scope_kind'`), nunca pulado. As etapas têm de vir em ordem.
-- `OutputFxPipeline.draw` → `drawDeck` (passes de plano) e `drawOutput` (passes de saída): dois laços sobre o **mesmo**
-  ping-pong de dois alvos (`targetOf(frame.drawn % 2)`), então o resultado do deck é a entrada da saída sem cópia. O
-  ponto entre `drawDeck` e `drawOutput` é onde P4b compõe o segundo deck.
+- `OutputFxPipeline.draw` segue desenhando a lista como vem, um passe por vez, no ping-pong de dois alvos (`targetOf(i % 2)`):
+  o `parseOutputFx` confere que os passes do plano vêm antes dos da saída, então o resultado do deck é a entrada da saída
+  sem cópia e sem uma segunda partição. A P4b compõe o segundo deck no primeiro passe da saída, quando existir.
 - `SCENE_CAPABILITIES` tem as 13 capacidades; telemetria: `frame.sources.directed_scene_fx_shot` conta os passes de plano
-  (junto de `directed_scene_fx`).
+  (junto de `directed_scene_fx`) e some quando não há nenhum; o teste do compositor no navegador confere o **valor**.
 
 ## Janela (`workstation/scene_fx_scope.rs`)
 
@@ -127,12 +135,14 @@ A seção "Efeitos" **não tem estado próprio**: o seletor e as ações são pi
 cada gesto é um `scene.fx.edit` por `fx_run` — o mesmo handler do `set`/`invoke` do nó.
 
 - **Seletor**: cada clipe tem uma linha "Escopo" com um `Select` do Kit (opções: `Saída`, `Plano shot-1 · 0–47`, …).
-  Escolher é um `set_scope` (uma entrada de undo); escolher o escopo que já vale não é edição; uma recusa
+  O valor do seletor é o **texto do escopo** (`SelectItem` tipado: `output`, `shot:<id>`), não o rótulo. Escolher é um
+  `set_scope` (uma entrada de undo); escolher o escopo que já vale não é edição; a confirmação de um seletor de **outra cena** ou
+  de um clipe que já não existe não escreve nada nem avisa (BL082.49); uma recusa
   (`fx_scope_mismatch`, `unknown_shot`, `fx_scope_not_yet`) é o **aviso do painel**, nada é escrito e o seletor volta
   ao escopo do documento no quadro seguinte. O escopo também está no título do clipe (`Vinheta · fx-1 · Plano shot-1 (FX 1)`).
 - **Adicionar no plano exibido**: a linha "No plano exibido (shot-1)" tem um botão `+` por efeito. Cria um clipe no quadro
-  que o monitor mostra, com o escopo do plano que o contém e a duração típica **cortada no fim do plano** (o corte é
-  escolha da janela; o core nunca corta). Fora da edição o botão fica **desabilitado com motivo** e a ação recusa com
+  que o monitor mostra, com o escopo do plano que o contém e **sem duração**: o core dá a típica cortada onde o plano termina
+  (a janela não repete a regra; uma duração dada nunca é cortada). Fora da edição o botão fica **desabilitado com motivo** e a ação recusa com
   `disabled_element` sem escrever.
 - **Nós semânticos** (`./scripts/ui get|set|invoke`; sem `Command` novo: são ops de `SceneCommand::FxEdit`, cujo parser
   `parse_fx_batch` ganhou `set_scope` e `add_clip.scope`):
@@ -142,7 +152,7 @@ cada gesto é um `scene.fx.edit` por `fx_run` — o mesmo handler do `set`/`invo
   - `scene.fx`: ações `add_in_shot:<efeito>` (habilitada só com um quadro da edição exibido) e `state.scope`
     (`["output","shot"]`), `state.shots`, `state.shot_here`.
 - Nenhum diálogo novo (nenhuma marca em `Workflow::has_dialog`).
-- A dica de `unknown_action` de um clipe (`reset:<campo sem padrão>` ou uma ação inexistente) lista as ações do nó, as `set_scope:*` incluídas (`scope_action_names`); o teste de F057 que a compara com o `actions` do nó segue valendo. Três testes antigos do painel (`scene_fx_tests.rs`) fixavam listas exatas e foram ajustados ao contrato novo: as ações `add:*` agora são filtradas por prefixo (mais as `add_in_shot:*`), a lista de campos do `fade` termina em `scope` e a dica inclui as `set_scope:*`.
+- A dica de `unknown_action` lista os nomes das ações **do próprio nó** (`action_names` sobre o mesmo `clip_actions`/`section_actions` que o nó lista): em um clipe, as `set_scope:*` incluídas; na seção, as `add:*` e as `add_in_shot:*`. Um teste compara a dica com o `actions` de cada nó. Três testes antigos do painel (`scene_fx_tests.rs`) fixavam listas exatas e foram ajustados ao contrato novo: as ações `add:*` agora são filtradas por prefixo (mais as `add_in_shot:*`), a lista de campos do `fade` termina em `scope` e a dica inclui as `set_scope:*`.
 
 ## Proveniência dos casos do piloto (`ORIGIN_NOT_EXECUTED`)
 
@@ -176,7 +186,8 @@ em texto `shot:<id>` (o piloto só lê o objeto).
 | Capacidade | `fxShotScope`, 13ª, só com passe de plano | planos sem plano preso não mudam bytes |
 | Inspector | `InspectorChoice` (`type: "choice"`) | o modelo só tinha campos numéricos e booleanos; o escopo é a primeira opção nomeada |
 | Nós da janela | `set_scope:<escopo>`, `add_in_shot:<efeito>`, campo `scope` | segue `add:<efeito>`/`reset:<campo>` de F016/F058 |
-| Corte da duração | a janela corta ao fim do plano; o core recusa o que não cabe | "o core nunca corta" mantém a recusa tipada observável |
+| Duração padrão | o core corta a duração **omitida** (a típica, onde o escopo termina: `fx::default_duration`) e recusa a **dada** que não cabe | uma duração dada é a intenção do autor e a recusa tipada fica observável; a omitida é o corte típico, e a janela e o reset do inspector usam a mesma regra em vez de repeti-la |
+| `Fx::resolve` | sem os planos (`resolve(quadro)`) | o importador garante a contenção; o plano é lido só onde há regra (`Shot::holds_frame` é o único predicado de "o quadro está no plano") |
 
 ## Evidências
 
@@ -185,22 +196,22 @@ nenhuma linha "a validar" é um sucesso. Ambiente: macOS, Chrome headless com Sw
 
 | # | Prova | Superfície | Resultado | Onde |
 |---|---|---|---|---|
-| 1 | os 7 casos do piloto (valores à mão, proveniência acima), a regra única, as bordas dos dois corpora (`valid-minimal-continuous` `[0,48)/[48,96)` e `valid-cut-instance-offsets` `[0,40)/[40,100)`), lote atômico, retemporização, composição em etapas, plano/capacidade/orçamento, leituras, inspector, salvar e reabrir | Lib | **V** — `scene_fx_shot_scope` 31/31 (heads `e336118` e `a80ed73`) | `crates/core/tests/scene_fx_shot_scope.rs` |
-| 2 | processo `tessel-headless` real, sessão JSONL: `add_clip.scope`, `set_scope`, as três recusas, leituras, plano | CLI headless | **V** — `the_headless_executable_scopes_a_clip_like_the_library_and_refuses_the_same_way` (mesmo arquivo, mesmos heads): sobe o executável e conversa por JSONL | idem |
-| 3 | runtime sem GPU: `fxShotScope` é a 13ª capacidade, passe de plano aceito só com ela e no quadro do plano, `shot_not_in_frame`, etapas em ordem, deck antes da saída, mesmo ping-pong, laços separados | Runtime (JS puro) | **V** — 266/266 (heads `55dcc38` e `a80ed73`: `pnpm test` do runtime inteiro) | `runtime/test/output-fx.test.mjs`, `directed-scene.test.mjs` |
-| 4 | imagens com referência independente (Python/`scene.render`): o efeito de plano só escurece o próprio plano e é igual à saída no plano; a ordem das etapas **não** comuta; o export tem o hash de `scene.render` um quadro de cada lado do corte | Render (Chrome/SwiftShader) | **V** — 8/8 (heads `0448d02` e `a80ed73`; em `a80ed73` o crate `render` inteiro: 120 ok, 0 falhas, 3 ignorados): pior delta para a referência **0** nos dois corpora; mudança mais forte contra o baseline **220** (minimal) e **250** (corte); as duas ordens diferem **218**; export: 2 quadros dentro e 2 fora do plano, todos os hashes iguais a `scene.render` | `crates/render/tests/scene_fx_shot_scope.rs` |
-| 5 | janela: nós, seletor Kit, `+` no plano exibido, recusas tipadas no painel, undo/redo, botões desabilitados com motivo | UI/CLI da janela (GPUI) | **V** — os 7 testes de `scene_fx_scope_tests` e a caixa `tessel-editor` inteira, **425/425**, 0 falhas (head `a80ed73`, `TESSEL_REQUIRE_RUNTIME=1`), incluindo os 3 testes antigos do painel ajustados e o de F057 que compara a dica com o nó. A primeira execução real (BL082.46) achou **duas falhas do próprio código novo**, ambas corrigidas sem mudar comportamento: a expectativa do teste de recusas (o alvo de `unknown_shot` é o plano ausente, não o nó: `From<EditError>` usa o id como alvo, como `unknown_clip`; `be3628b`) e `clippy::type_complexity` num auxiliar de teste (`a80ed73`). A entrada do seletor é injetada (confirmação do `Select`, clique nos botões): o ponteiro físico segue não provado | `workstation/scene_fx_scope_tests.rs` |
-| 6 | janela própria por `./scripts/ui` (só `op/get/set/invoke`): pixels do monitor contra Python, export de 8 quadros em volta do corte | UI/CLI da janela | **V** — `scripts/scene-fx-shot-scope-proof.py` **154/154** (head `a80ed73`, macOS, instância privada com `HOME` curto isolado; prova funcional, sem o lock da GPU: AGENTS.md). Monitor e `scene.render` iguais à transcrição Python da vinheta (pior delta **0,5**, tolerância 3) nos quadros 12 e 47, e o quadro 48/60 é o baseline exato; plano com **um** passe `shot-1` nos quadros 12 e 47 e nenhum em 48/60, `fxShotScope` só onde há passe; etapas: o plano desenha a vinheta do plano **antes** do fade da saída, contra a ordem das trilhas (a ordem invertida é outra imagem: 188 no monitor, 60 no export); as cinco recusas de escopo tipadas (`fx_scope_mismatch`, `unknown_shot`, `fx_scope_not_yet`, `invalid_value` duas vezes) por `set` e por `invoke`, com o aviso do painel e sem escrever nada (histórico, intervalo, escopo, imagem); undo/redo; `project.save` + `project.open`; export de 8 quadros (44..51) iguais à composição Python (pior delta **6,9**, tolerância do codec 16). A parte pura (`.spec.py`) **13/13** e a do F016 que ela reutiliza **28/28** | `scripts/scene-fx-shot-scope-proof.py` |
-| 7 | mutações, um mutante por vez (`docs/migration/p4a-shot-scope/mutate.py`, 35 mutantes aplicáveis conferidos com `--check`) | todas | **35/35 MORTOS** no head `a80ed73` (core 22, JS 6, imagem 3, janela 4): cada runner teve a linha de base verde antes, cada mutante foi morto por pelo menos um teste nomeado (em `mutation-report.json`), os arquivos foram restaurados e conferidos por hash e `git status`, e `runtime/dist` foi reconstruído **sem** mutante depois de cada um dos de imagem. O relatório guarda também a execução anterior dos 6 de JS (head `0448d02`) | `docs/migration/p4a-shot-scope/` |
-| 8 | gates | — | No head de código `a80ed73` (macOS, E/S pesada no SSD externo): `cargo fmt --all -- --check` **limpo**; `./scripts/cargo clippy --workspace --all-targets --locked -- -D warnings` **limpo** (a primeira passada achou `clippy::type_complexity` num auxiliar de teste da janela, corrigido nesse head); `./scripts/cargo build -p tessel-editor --locked` **ok**; `TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test --workspace --locked --no-fail-fast`: **2387 ok, 1 falha, 13 ignorados** em 119 binários (desktop 425, audio 10, core 1332 + 4 de documentação, media 496, render 120; inclui `scene_plan_performance_golden`, bytes iguais). A única falha é de **ambiente**: `a_full_disk_ends_the_export_with_disk_full_and_leaves_the_volume_clean` (`crates/media/tests/export.rs`) não consegue montar a imagem de teste (`hdiutil: attach failed - Permissão negada` no sandbox); F062 não toca `crates/media` (BL082.47). `cargo tree -p tessel-editor-core` **sem** gpui/wry | — |
+| 1 | os 7 casos do piloto (valores à mão, proveniência acima), a regra única, as bordas dos dois corpora (`valid-minimal-continuous` `[0,48)/[48,96)` e `valid-cut-instance-offsets` `[0,40)/[40,100)`), lote atômico, retemporização, a duração padrão e o `reset` da duração junto ao fim do plano, composição em etapas, plano/capacidade/orçamento, leituras, inspector, salvar e reabrir | Lib | **V** — `scene_fx_shot_scope` **32/32** em `1cbc3da` (31/31 em `e336118` e `a80ed73`); no mesmo head, `--lib` 552, `scene_fx` 25 e `scene_fx_gesture` 19, todos ok | `crates/core/tests/scene_fx_shot_scope.rs` |
+| 2 | processo `tessel-headless` real, sessão JSONL: `add_clip.scope`, `set_scope`, as três recusas, leituras, plano | CLI headless | **V** — `the_headless_executable_scopes_a_clip_like_the_library_and_refuses_the_same_way` (mesmo arquivo, heads `e336118`, `a80ed73` e `1cbc3da`): sobe o executável e conversa por JSONL | idem |
+| 3 | runtime sem GPU: `fxShotScope` é a 13ª capacidade, passe de plano aceito só com ela e no quadro do plano, `shot_not_in_frame`, etapas em ordem (o parser recusa o passe de saída antes do de plano), deck antes da saída, mesmo ping-pong **num só laço**, e a telemetria `directed_scene_fx_shot` contada por valor num navegador real | Runtime (JS puro) | **V** — 266/266 (heads `55dcc38`, `a80ed73` e `f19b2d6`: o runtime inteiro, `./scripts/runtime test`) | `runtime/test/output-fx.test.mjs`, `directed-scene.test.mjs` |
+| 4 | imagens com referência independente (Python/`scene.render`): o efeito de plano só escurece o próprio plano e é igual à saída no plano; a ordem das etapas **não** comuta; o export tem o hash de `scene.render` um quadro de cada lado do corte | Render (Chrome/SwiftShader) | **V** — 8/8 (heads `0448d02`, `a80ed73` e `f19b2d6`; nos dois últimos o crate `render` inteiro: 120 ok, 0 falhas, 3 ignorados; os deltas abaixo são os medidos em `a80ed73`, e em `f19b2d6` os mesmos testes passam com os mesmos limites): pior delta para a referência **0** nos dois corpora; mudança mais forte contra o baseline **220** (minimal) e **250** (corte); as duas ordens diferem **218**; export: 2 quadros dentro e 2 fora do plano, todos os hashes iguais a `scene.render` | `crates/render/tests/scene_fx_shot_scope.rs` |
+| 5 | janela: nós, seletor Kit, `+` no plano exibido, recusas tipadas no painel, undo/redo, botões desabilitados com motivo | UI/CLI da janela (GPUI) | **V** — os 11 testes de `scene_fx_scope_tests` (os 7 de antes e 4 da correção: a confirmação de outra cena, a de um clipe removido, a dica da seção e o `reset` da duração de um clipe no plano) e a caixa `tessel-editor` inteira, **429/429**, 0 falhas (head `f19b2d6`, `TESSEL_REQUIRE_RUNTIME=1`; eram 425/425 em `a80ed73`), incluindo os 3 testes antigos do painel ajustados e o de F057 que compara a dica com o nó. A primeira execução real (BL082.46) achou **duas falhas do próprio código novo**, ambas corrigidas sem mudar comportamento: a expectativa do teste de recusas (o alvo de `unknown_shot` é o plano ausente, não o nó: `From<EditError>` usa o id como alvo, como `unknown_clip`; `be3628b`) e `clippy::type_complexity` num auxiliar de teste (`a80ed73`). A entrada do seletor é injetada (confirmação do `Select`, clique nos botões): o ponteiro físico segue não provado | `workstation/scene_fx_scope_tests.rs` |
+| 6 | janela própria por `./scripts/ui` (só `op/get/set/invoke`): pixels do monitor contra Python, export de 8 quadros em volta do corte | UI/CLI da janela | **V** — `scripts/scene-fx-shot-scope-proof.py` **154/154** (heads `a80ed73` e `f19b2d6`, macOS, instância privada com `HOME` curto isolado; prova funcional, sem o lock da GPU: AGENTS.md). Monitor e `scene.render` iguais à transcrição Python da vinheta (pior delta **0,5**, tolerância 3) nos quadros 12 e 47, e o quadro 48/60 é o baseline exato; plano com **um** passe `shot-1` nos quadros 12 e 47 e nenhum em 48/60 (e a telemetria do quadro do monitor, `directed_scene_fx_shot`, vale 1 no quadro 12 e está ausente no 60, conferida por valor), `fxShotScope` só onde há passe; etapas: o plano desenha a vinheta do plano **antes** do fade da saída, contra a ordem das trilhas (a ordem invertida é outra imagem: 188 no monitor, 60 no export); as cinco recusas de escopo tipadas (`fx_scope_mismatch`, `unknown_shot`, `fx_scope_not_yet`, `invalid_value` duas vezes) por `set` e por `invoke`, com o aviso do painel e sem escrever nada (histórico, intervalo, escopo, imagem); undo/redo; `project.save` + `project.open`; export de 8 quadros (44..51) iguais à composição Python (pior delta **6,9**, tolerância do codec 16). A parte pura (`.spec.py`) **13/13** e a do F016 que ela reutiliza **28/28** | `scripts/scene-fx-shot-scope-proof.py` |
+| 7 | mutações, um mutante por vez (`docs/migration/p4a-shot-scope/mutate.py`, 41 mutantes aplicáveis conferidos com `--check`) | todas | **41/41 MORTOS** no head `621b991` (core 25, JS 6, imagem 3, navegador 1, janela 6; em `a80ed73` eram 35: core 22, JS 6, imagem 3, janela 4. O C11 saiu por equivalente depois que `Fx::resolve` perdeu os planos, o W02 virou os C23/C25 do core e entraram C26, J07 e W05–W07): cada runner teve a linha de base verde antes, cada mutante foi morto por pelo menos um teste nomeado (em `mutation-report.json`), os arquivos foram restaurados e conferidos por hash e `git status`, e `runtime/dist` foi reconstruído **sem** mutante depois de cada um dos de imagem. O relatório foi regravado inteiro nesse head, numa só execução (uma primeira execução deixou o W07 sem compilar, por um `collect()` sem tipo no texto do mutante, e foi descartada em vez de remendada) | `docs/migration/p4a-shot-scope/` |
+| 8 | gates | — | Rodada de correção da revisão independente, head de código `f19b2d6` (o Rust está em `1cbc3da`; o `621b991` só muda o `mutate.py`; macOS, E/S pesada no SSD externo): `cargo fmt --all -- --check`, `./scripts/cargo check --workspace --locked` e `./scripts/cargo clippy --workspace --all-targets --locked -- -D warnings` **limpos**; `./scripts/cargo build -p tessel-editor --locked` **ok**; `TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test --workspace --locked --no-fail-fast`: **2397 ok, 1 falha, 13 ignorados** em 119 binários (desktop 429, audio 10, core 1338 + 4 de documentação, media 496, render 120; inclui `scene_plan_performance_golden`, bytes iguais); `./scripts/runtime test` **266/266**. A única falha é de **ambiente**: `a_full_disk_ends_the_export_with_disk_full_and_leaves_the_volume_clean` (`crates/media/tests/export.rs`) não consegue montar a imagem de teste (`hdiutil: attach failed - Permissão negada` no sandbox); F062 não toca `crates/media` (BL082.47). `cargo tree -p tessel-editor-core` **sem** gpui/wry. Em `a80ed73` foram 2387 ok, 1 falha e 13 ignorados (desktop 425, core 1332). | — |
 | 9 | desempenho (passe de plano, duas etapas) | Runtime/export | **A validar** — não medido (BL082.43) | — |
 
 **Histórico e ambiente.** A entrega original não compilou a janela porque `./scripts/disk-guard.sh` recusou todo lote pesado (`REFUSED_DISK`: 4 a 7 GiB livres, piso de 12 GiB) e nada foi limpo para contornar a recusa. A validação (BL082.46) rodou depois com toda a E/S pesada num SSD externo (cache do mbx, `TMPDIR` e a loja do pnpm no SSD; o piso de 12 GiB medido nele), sem apagar nem mudar nada do disco interno e sem tomar o lock da GPU. Desempenho (linha 9) é o único item que exige esse lock e **não** foi medido.
 
 ## Limites e o que **não** foi provado
 
-- Escopo `node`, transições e o segundo deck (P4b/BL082.4): recusados ou não existentes; a emenda do deck está no
-  runtime mas é só o ponto de encaixe.
+- Escopo `node`, transições e o segundo deck (P4b/BL082.4): recusados ou não existentes; o runtime desenha a lista como vem
+  e o parser garante a ordem; a emenda do segundo deck nasce com a P4b.
 - Ponteiro/teclado físicos sobre o `Select` do Kit e a pintura da WKWebView nativa: a janela é provada por GPUI
   (entrada injetada) e por `./scripts/ui` (só `op`/`get`/`set`/`invoke`); BL043 segue aberto.
 - Desempenho (custo de um passe de plano, quadros mais lentos): não medido; fica "A validar" no backlog.

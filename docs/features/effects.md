@@ -118,9 +118,9 @@ com o mesmo arquivo (nomes, tipo, ordem e faixas): uma faixa mudada só de um la
 
 ### Avaliação determinística por quadro
 
-`Fx::resolve(frame, shots)` (ou `Bundle::fx_passes(frame)`, que passa os planos do próprio bundle) devolve um
-`FxPass` por clipe visível que cobre o quadro, **por etapa e depois por trilha**: primeiro os clipes de escopo
-`shot` do plano do quadro (o *deck*), depois os de `output`, cada etapa na ordem das trilhas e dos clipes (ver
+`Fx::resolve(frame)` devolve um `FxPass` por clipe visível que cobre o quadro, **por etapa e depois por trilha**:
+primeiro os clipes de escopo `shot` (o *deck*; só cobrem o quadro quando ele é do seu plano, porque o importador os
+mantém inteiros dentro dele), depois os de `output`, cada etapa na ordem das trilhas e dos clipes (ver
 [fx-shot-scope.md](fx-shot-scope.md)). O peso do envelope é amostrado no **meio** do quadro:
 `min((f + 0,5)/fadeIn, (dur − f − 0,5)/fadeOut)`; `amount = clamp(intensity × weight)`. `amount ≤ 0`
 é identidade exata (sem ida e volta sRGB, então intensidade 0 não move um pixel).
@@ -564,7 +564,7 @@ recusa o que não cabe com `FX_SCOPE_MISMATCH` (com os limites legais em `detail
 `UNKNOWN_SHOT`; a edição (`add_clip.scope`, `set_scope`) usa a mesma regra e recusa com `fx_scope_mismatch`/`unknown_shot`,
 sem cortar nada. A composição passa a ter **duas etapas** (os passes dos planos, depois os da saída, cada uma na ordem
 das trilhas), o plano ganha `scope` por passe e a capacidade `fxShotScope` (a 13ª), pedida só quando algum passe é de
-plano (planos de cenas sem clipe de plano mantêm os bytes). O runtime desenha o laço do plano antes do da saída e recusa o
-plano que um runtime sem a capacidade não sabe desenhar. A seção Efeitos ganha o seletor de escopo por clipe e a ação de
+plano (planos de cenas sem clipe de plano mantêm os bytes). O runtime desenha a lista do plano, que traz os passes do plano
+antes dos da saída, e recusa o plano que um runtime sem a capacidade não sabe desenhar. A seção Efeitos ganha o seletor de escopo por clipe e a ação de
 adicionar no plano exibido. `node` e as transições seguem recusados (`FX_SCOPE_NOT_YET`, `FX_TRANSITION_NOT_YET`).
 Contrato, decisões, evidências por superfície e limites: [F062](fx-shot-scope.md).
