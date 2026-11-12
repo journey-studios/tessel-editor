@@ -11,6 +11,7 @@ import inspect
 import io
 import itertools
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -1161,6 +1162,81 @@ class Audit(unittest.TestCase):
         kind = out['kinds']['dense/move']
         self.assertEqual((kind['extra_plan_seen_by_time'], kind['extra_plan_seen_in_reports']), (True, 1))
         self.assertEqual(out['summary']['one_extra_plan_seen_in_some_reports_only'], ['dense/move'])
+
+    def calls(self, pairs, plan_ns=1_000_000):
+        """A report that carries what the Rust run writes per kind: the call times, the reference time of the window each one
+        was timed in, and the ratio quantiles that run computed from them (nearest rank: the ceil(q*n)-th smallest)."""
+        ratios = sorted(ns / max(ref, 1) for ns, ref in pairs)
+
+        def at(q):
+            return ratios[min(max(math.ceil(q * len(ratios)), 1), len(ratios)) - 1]
+
+        stats = {'ratio_p50': at(0.5), 'ratio_p95': at(0.95),
+                 'samples_ns': [ns for ns, _ in pairs], 'reference_ns': [ref for _, ref in pairs]}
+        return {'corpora': [{'corpus': 'dense', 'reference': {'p50_ns': plan_ns}, 'cold': {}, 'hot': {'move': stats}}]}
+
+    def test_a_delay_is_added_to_each_call_over_the_reference_of_its_own_window(self):
+        # The kind ran in windows whose plan took 10 ms, while the corpus as a whole took 1 ms (other kinds, warm-up). The
+        # detector divides each call by ITS window: 10 ms + 1 ms over 10 ms is 1.1, under a limit of 1.5. Converting the
+        # delay with the corpus-wide plan time (1 ms, so one whole plan) would read 1.0 + 1.0 = 2.0 and claim a detection.
+        slow_windows = self.calls([(10_000_000, 10_000_000)] * 20, plan_ns=1_000_000)
+        kind = audit.audit(self.budgets(1.5, 1.5), [slow_windows])['kinds']['dense/move']
+        self.assertEqual((kind['delay_1ms_seen_by_time'], kind['delay_1ms_seen_in_reports']), (False, 0))
+        self.assertEqual(kind['delay_1ms_in_plans'], [0.1])  # 1 ms is a tenth of the plan the calls were measured against
+        self.assertEqual(kind['delay_1ms_basis'], ['samples'])
+
+    def test_the_same_delay_is_seen_when_the_windows_are_as_fast_as_the_corpus(self):
+        # The control of the test above: calls and references of 1 ms. 1 ms more is a whole plan: 1.0 + 1.0 = 2.0 > 1.5.
+        fast_windows = self.calls([(1_000_000, 1_000_000)] * 20, plan_ns=1_000_000)
+        kind = audit.audit(self.budgets(1.5, 1.5), [fast_windows])['kinds']['dense/move']
+        self.assertEqual((kind['delay_1ms_seen_by_time'], kind['delay_1ms_seen_in_reports']), (True, 1))
+        self.assertEqual(kind['delay_1ms_in_plans'], [1.0])
+
+    def test_the_quantiles_of_a_delayed_run_are_the_detectors_nearest_rank(self):
+        # 20 calls of 0.0 to 1.9 ms over a 1 ms reference, plus 1 ms: ratios 1.0, 1.1 ... 2.9. Nearest rank takes the 19th
+        # smallest for p95 (2.8); a floor (`ab.py`'s `pct`, BL015.26) would take the 20th (2.9). A limit of 2.85 sits between.
+        pairs = [(index * 100_000, 1_000_000) for index in range(20)]
+
+        def seen_in_reports(p95_limit):
+            out = audit.audit(self.budgets(9.0, p95_limit), [self.calls(pairs)])
+            return out['kinds']['dense/move']['delay_1ms_seen_in_reports']
+
+        self.assertEqual(seen_in_reports(2.85), 0)
+        self.assertEqual(seen_in_reports(2.75), 1)
+
+    def test_one_slow_window_among_fast_ones_is_judged_by_its_own_calls_not_by_a_mean_plan_time(self):
+        # 10 calls timed against 1 ms windows and 10 against 20 ms windows. The first half becomes 2.0, the second 1.05: the
+        # median is the 10th smallest (1.05), the p95 the 19th (2.0). A p95 limit of 1.5 sees it, one of 2.5 does not. Folded
+        # into one corpus-wide plan time (1 ms) the median would read 1.0 + 1.0 = 2.0 and 2.5 would see it too.
+        pairs = [(1_000_000, 1_000_000)] * 10 + [(20_000_000, 20_000_000)] * 10
+
+        def seen(p95_limit):
+            out = audit.audit(self.budgets(1.5, p95_limit), [self.calls(pairs)])
+            return out['kinds']['dense/move']['delay_1ms_seen_by_time']
+
+        self.assertTrue(seen(1.5))
+        self.assertFalse(seen(2.5))
+
+    def test_each_report_is_judged_with_its_own_pairs_and_says_what_it_was_judged_with(self):
+        slow_windows = self.calls([(10_000_000, 10_000_000)] * 4, plan_ns=1_000_000)  # 1.1 with its pairs: not seen
+        fast_windows = self.calls([(1_000_000, 1_000_000)] * 4, plan_ns=1_000_000)  # 2.0 with its pairs: seen
+        no_pairs = self.report(1.0, 1.0, plan_ns=500_000)  # 1 ms is 2 plans of the report's plan time: 3.0, seen
+        kind = audit.audit(self.budgets(1.5, 1.5), [slow_windows, fast_windows, no_pairs])['kinds']['dense/move']
+        self.assertEqual(kind['delay_1ms_basis'], ['samples', 'samples', 'plan_time'])
+        self.assertEqual(kind['delay_1ms_in_plans'], [0.1, 1.0, 2.0])
+        self.assertEqual((kind['reports'], kind['delay_1ms_seen_in_reports']), (3, 2))
+
+    def test_pairs_that_do_not_line_up_are_not_used_and_the_report_says_so(self):
+        broken = self.calls([(10_000_000, 10_000_000)] * 4, plan_ns=1_000_000)
+        broken['corpora'][0]['hot']['move']['reference_ns'].pop()  # one reference short: which call is which is unknown
+        kind = audit.audit(self.budgets(1.5, 1.5), [broken])['kinds']['dense/move']
+        self.assertEqual(kind['delay_1ms_basis'], ['plan_time'])
+        self.assertEqual(kind['delay_1ms_in_plans'], [1.0])
+
+    def test_a_zero_reference_is_floored_at_a_nanosecond_like_the_detector_does(self):
+        kind = audit.audit(self.budgets(9.0, 9.0), [self.calls([(5, 0)] * 4)])['kinds']['dense/move']
+        self.assertEqual(kind['delay_1ms_basis'], ['samples'])
+        self.assertTrue(kind['delay_1ms_seen_by_time'])  # (5 + 1_000_000) / 1 is far over 9
 
 
 class Budgets(unittest.TestCase):
@@ -2837,6 +2913,9 @@ class GivenExecutable(unittest.TestCase):
         code, manifest, seen, tmp = self.measure(lambda tmp: 'budget-exe', cwd='bin')  # relative to the CALLER's directory
         started = Path(seen['command'][0])
         self.assertTrue(started.is_absolute(), seen['command'])
+        # the path that starts is the file that was found and hashed, not another absolute path (`resolve()` on both sides:
+        # a temporary directory can be `/var/...` while its real path is `/private/var/...`)
+        self.assertEqual(started.resolve(), (tmp / 'bin' / 'budget-exe').resolve())
         self.assertEqual(manifest['binary_sha256'], hashlib.sha256(b'binary').hexdigest())  # the file that was found
         self.assertEqual(manifest['run']['command'][0], harness.redact(str(started)))
         self.assertEqual(code, 1)  # and it still is not a pass for HEAD
