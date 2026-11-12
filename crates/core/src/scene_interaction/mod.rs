@@ -137,6 +137,10 @@ pub(crate) enum DragAction {
         /// The clip as the monitor showed it at the press: the shape and the parameters every
         /// later position is measured against (the document cannot change under a live drag).
         press: Box<FxHandlesView>,
+        /// Where the pointer was at the press. The value of a handle is absolute (the position
+        /// becomes the value), so a position equal to this one, before the pointer ever left
+        /// it, is a click and not a drag: it writes nothing (see `fx_handle_update`).
+        from: Point,
     },
 }
 

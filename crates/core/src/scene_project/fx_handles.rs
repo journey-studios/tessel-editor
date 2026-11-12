@@ -312,6 +312,7 @@ impl EditorState {
                 clip,
                 handle,
                 press: Box::new(view),
+                from: point,
             },
             last: None,
         });
@@ -326,8 +327,16 @@ impl EditorState {
 
     /// One pointer position of a handle drag: the position becomes the value of the handle's
     /// parameter (quantized to its control's grid, inside its range) and goes into the gesture as
-    /// ONE `set_param`. The caller (`pointer_move`) has checked that the gesture is live; a
-    /// refusal of the layer here is an error answer and leaves the last candidate where it was.
+    /// ONE `set_param`. The caller (`pointer_move`, or the position a release carries) has
+    /// checked that the gesture is live; a refusal of the layer here is an error answer and
+    /// leaves the last candidate where it was.
+    ///
+    /// A position equal to the press point, while no position has been applied yet, is not a
+    /// drag: the value is absolute, so applying it would write the grid value of the point (or
+    /// the one a click slightly off the handle lands on) into a clip nobody dragged. It answers
+    /// `applied: false, reason: "not_moved"` and touches nothing; once the pointer has left the
+    /// press point every position counts, also a return to it (the user dragged: that position's
+    /// value is the one that is written).
     pub(super) fn fx_handle_update(
         &mut self,
         drag: &Drag,
@@ -337,6 +346,7 @@ impl EditorState {
             clip,
             handle,
             press,
+            from,
         } = &drag.action
         else {
             return Err(CommandError::new(
@@ -344,6 +354,9 @@ impl EditorState {
                 "an effect update reached a drag that is not an effect handle",
             ));
         };
+        if point == *from && drag.last.is_none() {
+            return Ok(json!({ "applied": false, "reason": "not_moved" }));
+        }
         let Some(value) = press.pointer_value(*handle, point) else {
             return Ok(json!({ "applied": false, "reason": "degenerate_pointer" }));
         };

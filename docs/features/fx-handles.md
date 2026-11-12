@@ -58,7 +58,8 @@ O arrasto **reaproveita** `scene.fx.gesture.*`: o press num handle abre o gesto 
 effects", nenhuma se nada mudou). O documento final é **bit a bit** o de `scene.fx.edit` com o mesmo valor. Nenhuma
 posição do ponteiro faz a camada recusar o `set_param` (o valor é quantizado e preso à faixa, e o `scene.pointer.move` já
 exigiu um gesto vivo); se um dia recusasse, seria o erro tipado do `scene.pointer.move`, com o último candidato onde
-estava. Não existe um caminho `applied:false` para isso, e nenhum teste o finge.
+estava. O único `applied:false` que um ponteiro real alcança neste arrasto é o `not_moved` (regra «Clique não é arrasto»,
+abaixo); o `degenerate_pointer` é defensivo (uma saída sem tamanho já não oferece handles).
 
 `handles` (em `scene.fx.handles` e no overlay) saem **já em ordem de prioridade** (`softness`, `radius`, `center`: o mais
 externo primeiro, para o centro nunca esconder os outros quando coincidem). O core usa essa ordem para decidir o press
@@ -89,6 +90,15 @@ Regras:
 - **A consulta é o clique.** `scene.gizmo.hit` num ponto responde o mesmo `hit` que o `scene.pointer.down` no mesmo ponto:
   `{kind:"fx_handle", clip, handle, param}`, e `refused:"animated_param"` quando o handle está apagado. Uma consulta não
   escreve nada, não exige câmera e mantém o alvo.
+- **Clique não é arrasto.** O valor de um handle é **absoluto** (a posição do ponteiro vira o valor), então uma posição
+  igual ao ponto da pressão, enquanto nenhuma posição foi aplicada, responde `applied: false, reason: "not_moved"` e não
+  toca o candidato (`DragAction::Fx.from`, `fx_handle_update`, que `move` e a posição do `up` dividem). Pressionar e soltar
+  no mesmo ponto, com o `up` carregando o ponto, **não escreve nada** e não deixa entrada de histórico: nem quando o clique
+  cai um pouco fora do centro do handle (dentro do raio de captura), nem quando o valor do documento está fora da grade do
+  controle (`center.x` autorado `0,1234` não vira `0,12` por um clique). Depois que o ponteiro saiu do ponto da pressão
+  toda posição conta, também a volta a ele (o usuário arrastou: o valor **daquele** ponto é o que se grava). Testes:
+  `a_press_and_release_on_the_same_point_writes_nothing`, `a_press_a_little_off_the_handle_and_released_there_writes_nothing`,
+  `a_drag_away_writes_the_value_of_the_point_it_ends_on_even_if_it_came_back`.
 - **Parâmetro com chaves** (`animated_param`): o handle fica desabilitado, aparece apagado e o press nele é respondido
   `refused: "animated_param"` sem abrir gesto nem escrever nada; não grava chaves nem usa `FX_STATIC_UNDER_KEYS`. Como todo
   press, o recusado primeiro abandona o arrasto ainda aberto (`abandoned.reason: replaced_by_press`): a liberação perdida
@@ -160,4 +170,5 @@ Gates, hashes e mutações do head final estão no PR e em `docs/backlog.md` (BL
   handles ficam nos valores do documento, então durante o arrasto do slider o contorno não coincide com o escurecimento.
   Só o arrasto de um handle desenha o candidato. Pendência **BL082.61**.
 - **Sem compensação de ponto de agarre**: o primeiro movimento depois de um press até ~0,025 de altura fora do handle
-  salta o valor (o gizmo 3D usa âncora; aqui o valor é a posição crua do ponteiro, como o contrato acima descreve).
+  salta o valor (o gizmo 3D usa âncora; aqui o valor é a posição crua do ponteiro, como o contrato acima descreve). Um
+  clique sem deslocamento não salta nada: não escreve (regra «Clique não é arrasto»).

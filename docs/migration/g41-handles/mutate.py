@@ -42,6 +42,8 @@ MUTANTS = [
     ('M24 undo and redo leave a target the project no longer holds', HISTORY, '        self.prune_fx_target();\n', ''),
     ('M25 the hit query does not predict the effect handles', GLUE, 'let Some(pick) = self.fx_pick(scene, frame, point) else {\n            return false;', 'let Some(pick) = self.fx_pick(scene, frame, point).filter(|_| false) else {\n            return false;'),
     ('M26 a press refused on a greyed handle leaves the open drag', GLUE, 'if let Some(open) = self.live_drag() {\n            answer["abandoned"]', 'if let Some(open) = self.live_drag().filter(|_| pick.refusal().is_none()) {\n            answer["abandoned"]'),
+    ('M27 a click without drag still writes the grid value of the press point', GLUE, 'if point == *from && drag.last.is_none() {', 'if false && point == *from && drag.last.is_none() {'),
+    ('M29 a return to the press point is not a move either', GLUE, 'if point == *from && drag.last.is_none() {', 'if point == *from {'),
 ]
 
 JS_MUTANTS = [

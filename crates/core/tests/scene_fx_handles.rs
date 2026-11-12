@@ -216,6 +216,119 @@ fn one_gesture_is_one_undo_entry_and_nothing_else_is() {
     assert_eq!(undo_depth(&state), depth, "a no-op leaves no entry");
 }
 
+/// The value of a handle drag is absolute (the position of the pointer becomes the value), so the
+/// pointer has to MOVE from the press for a position to count: a click, however it lands, is not
+/// an edit. `center.x` is authored off the control's grid (`0.1234`, the grid is `0.01`), so a
+/// value taken from the press point itself would be `0.12`: an edit nobody dragged.
+fn session_with_an_off_grid_center() -> EditorState {
+    let mut state = session();
+    ok(
+        &mut state,
+        json!({"op":"scene.fx.edit","scene":"street","ops":[
+            {"op":"set_param","clip":"v1","param":"center","value":{"x":0.1234,"y":0.5}}]}),
+    );
+    selected(&mut state);
+    state
+}
+
+#[test]
+fn a_press_and_release_on_the_same_point_writes_nothing() {
+    let mut state = session_with_an_off_grid_center();
+    let (before, depth) = (document(&state), undo_depth(&state));
+    let start = handle_at(&handles(&mut state), "center");
+    assert_eq!(
+        start,
+        (0.1234, 0.5),
+        "the handle sits on the authored value"
+    );
+
+    // The release alone carries the point: "move there, then commit" must not move anywhere.
+    let pressed = down(&mut state, start);
+    assert_eq!(pressed["dragging"], true, "{pressed}");
+    let released = up(&mut state, Some(start));
+    assert_eq!(released["changed"], false, "{released}");
+    assert_eq!(released["document_changed"], false, "{released}");
+    assert_eq!(released["noop"], true, "{released}");
+    assert_eq!(
+        (document(&state), undo_depth(&state)),
+        (before.clone(), depth)
+    );
+
+    // A move to the same point says so and does not count as the first position of the drag...
+    down(&mut state, start);
+    let still = mv(&mut state, start);
+    assert_eq!(still["applied"], false, "{still}");
+    assert_eq!(still["reason"], "not_moved", "{still}");
+    // ...so a release without a point still has no candidate to commit...
+    let released = up(&mut state, None);
+    assert_eq!(released["noop"], true, "{released}");
+    assert_eq!(
+        (document(&state), undo_depth(&state)),
+        (before.clone(), depth)
+    );
+
+    // ...and the drag is untouched: the next position away from the press is applied as usual.
+    down(&mut state, start);
+    mv(&mut state, start);
+    let away = mv(&mut state, (0.6, 0.5));
+    assert_eq!(away["applied"], true, "{away}");
+    assert_eq!(away["value"], json!({"x": 0.6, "y": 0.5}), "{away}");
+    ok(&mut state, json!({"op":"scene.pointer.cancel"}));
+    assert_eq!((document(&state), undo_depth(&state)), (before, depth));
+}
+
+#[test]
+fn a_press_a_little_off_the_handle_and_released_there_writes_nothing() {
+    let mut state = session();
+    selected(&mut state);
+    let (before, depth) = (document(&state), undo_depth(&state));
+    let handle = handle_at(&handles(&mut state), "radius");
+    // 0.012 of the width is 0.021 of the height at 16:9: inside the hit radius (0.025), and far
+    // enough that the value under the pointer (`radius` ~0.42) is not the one the clip holds (0.4).
+    let press = (handle.0 + 0.012, handle.1);
+    let pressed = down(&mut state, press);
+    assert_eq!(pressed["hit"]["handle"], "radius", "{pressed}");
+    assert_eq!(pressed["dragging"], true, "{pressed}");
+    let released = up(&mut state, Some(press));
+    assert_eq!(released["document_changed"], false, "{released}");
+    assert_eq!((document(&state), undo_depth(&state)), (before, depth));
+}
+
+#[test]
+fn a_drag_away_writes_the_value_of_the_point_it_ends_on_even_if_it_came_back() {
+    // Away: the value of the last point, as the move said.
+    let mut state = session_with_an_off_grid_center();
+    let depth = undo_depth(&state);
+    let start = handle_at(&handles(&mut state), "center");
+    down(&mut state, start);
+    let moved = mv(&mut state, (0.5, 0.25));
+    assert_eq!(moved["applied"], true, "{moved}");
+    let released = up(&mut state, Some((0.5, 0.25)));
+    assert_eq!(released["document_changed"], true, "{released}");
+    assert_eq!(released["value"], moved["value"]);
+    assert_eq!(released["value"], json!({"x": 0.5, "y": 0.25}));
+    assert_eq!(undo_depth(&state), depth + 1);
+
+    // Back: once the pointer has left the press point, a position at the press point is a
+    // position like any other (the user dragged), so the value of THAT point is written: `0.12`,
+    // the grid value of the authored `0.1234`.
+    let mut state = session_with_an_off_grid_center();
+    let depth = undo_depth(&state);
+    down(&mut state, start);
+    mv(&mut state, (0.5, 0.25));
+    let back = mv(&mut state, start);
+    assert_eq!(back["applied"], true, "{back}");
+    assert_eq!(back["value"], json!({"x": 0.12, "y": 0.5}), "{back}");
+    let released = up(&mut state, Some(start));
+    assert_eq!(released["document_changed"], true, "{released}");
+    assert_eq!(undo_depth(&state), depth + 1, "one gesture, one entry");
+    let center = &document(&state)["fx"];
+    assert!(
+        center.to_string().contains("\"x\":0.12"),
+        "the clip holds the grid value: {center}"
+    );
+}
+
 #[test]
 fn a_cancelled_drag_leaves_the_document_and_history_as_they_were() {
     let mut state = session();

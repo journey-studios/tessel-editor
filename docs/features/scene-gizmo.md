@@ -201,8 +201,8 @@ ponteiro por Δ move o nó por Δ.
   `a_release_of_a_dead_drag_does_not_commit_somebody_elses_slider_gesture` (histórico, revisão e gesto do slider intactos),
   `a_release_of_a_live_drag_still_settles_the_slider_gesture`.
 - `scene.pointer.move` responde `changed: true` quando um arrasto **está aberto e foi recalculado**,
-  mesmo que o ponto não tenha sido aplicado (`applied: false`: raio degenerado, o candidato anterior
-  fica). `changed` não diz "o documento mudou" (`document_changed` é sempre `false` num move); leia `applied`.
+  mesmo que o ponto não tenha sido aplicado (`applied: false`: raio degenerado, ou `not_moved` no arrasto de um handle de
+  efeito cujo ponto é o da pressão sem posição aplicada antes; o candidato anterior fica). `changed` não diz "o documento mudou" (`document_changed` é sempre `false` num move); leia `applied`.
 - `scene.gizmo.state` é uma consulta, mas **pode limpar o registro de um arrasto cujo gesto já não
   existe** (`live_drag`: o gesto foi liquidado ou descartado por outro caminho): nunca é uma edição do
   documento nem toca um gesto vivo.
