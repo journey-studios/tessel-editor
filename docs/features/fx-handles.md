@@ -100,6 +100,11 @@ Regras:
   toda posição conta, também a volta a ele (o usuário arrastou: o valor **daquele** ponto é o que se grava). Testes:
   `a_press_and_release_on_the_same_point_writes_nothing`, `a_press_a_little_off_the_handle_and_released_there_writes_nothing`,
   `a_drag_away_writes_the_value_of_the_point_it_ends_on_even_if_it_came_back`.
+- **Alça oferecida × alça apagada.** Quando as duas alcançam o ponteiro, a **oferecida** vence em todo o seu raio de captura
+  (`fx_pick` consulta `hit()` antes de `hit_animated()`), mesmo que a apagada, de um parâmetro com chaves, esteja mais perto:
+  o clique abre o arrasto da oferecida em vez de responder `animated_param`. É a regra de hoje, não uma garantia de «a mais
+  próxima»; a decisão está em **BL082.65** (com a conta reproduzida: 1080×1920, `roundness` 1, clique em 0,74 fica a 0,0203
+  do `radius` e a 0,0084 do `softness` apagado).
 - **Parâmetro com chaves** (`animated_param`): o handle fica desabilitado, aparece apagado e o press nele é respondido
   `refused: "animated_param"` sem abrir gesto nem escrever nada; não grava chaves nem usa `FX_STATIC_UNDER_KEYS`. Como todo
   press, o recusado primeiro abandona o arrasto ainda aberto (`abandoned.reason: replaced_by_press`): a liberação perdida
@@ -172,6 +177,11 @@ Gates, hashes e mutações do head final estão no PR e em `docs/backlog.md` (BL
 - **Gesto de efeito aberto pelo inspetor** (slider ou campo de chave): a imagem mostra o candidato, mas as elipses e os
   handles ficam nos valores do documento, então durante o arrasto do slider o contorno não coincide com o escurecimento.
   Só o arrasto de um handle desenha o candidato. Pendência **BL082.61**.
+- **Frame da cena no adaptador da janela**: `scene_gizmo.rs` usa o playhead da **sequência** como frame da cena (5 pontos), o
+  monitor converte com `scene_frame_at_playhead`; com taxas diferentes entre sequência e cena, overlay e imagem divergem. É
+  anterior a esta entrega e vale também para o gizmo de nó (já em `main`, F055). Pendência **BL082.66**.
+- **`monitor.gizmo` e a cena exibida**: `state.target`/`state.fx_clip` dizem o alvo da sessão, que pode ser de uma cena que
+  o monitor não está exibindo (o core não conhece «cena exibida»). Pendência **BL082.67**.
 - **Sem compensação de ponto de agarre**: o primeiro movimento depois de um press até ~0,025 de altura fora do handle
   salta o valor (o gizmo 3D usa âncora; aqui o valor é a posição crua do ponteiro, como o contrato acima descreve). Um
   clique sem deslocamento não salta nada: não escreve (regra «Clique não é arrasto»).
