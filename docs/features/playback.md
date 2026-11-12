@@ -33,7 +33,7 @@ comando do clique na régua) e o áudio sai do mesmo plano (`plan_audio`) que o 
   (pausa, nível igual, ou voltou por um `seek`) ou a taxa não é um número válido. A conta é a função pura `playback_poll::next_poll`
   (`crates/desktop/src/workstation/playback_poll.rs`), testada sem janela nem dispositivo; o laço em `playback.rs` tem testes determinísticos (a leitura do relógio roteirizada; a idade dela é a do relógio real, e os testes aceitam toda espera até a folga mínima de 1 ms).
   `playback.status.poll` diz o modo em uso; com `TESSEL_VIEWPORT_TRACE=1`, `play_clock_started` traz `poll` e cada `tick` traz `clock` (o que o relógio disse, em quadros fracionários) e `next_ms`
-  (a espera armada). O padrão **só muda** por um A/B nativo pareado com regra fixada antes de medir ([F063 §BL157.6](viewport-asset-io.md#bl1576--a-cadência-do-relógio-de-reprodução-e-o-agendamento-da-consulta));
+  (a espera armada; `late_ms` e `next_ms` saem em ms a 3 casas, e `due_ms` e `ran_ms` são instantes desde o início do traço, sem arredondar: BL157.28). O padrão **só muda** por um A/B nativo pareado com regra fixada antes de medir ([F063 §BL157.6](viewport-asset-io.md#bl1576--a-cadência-do-relógio-de-reprodução-e-o-agendamento-da-consulta));
   o ganho esperado é de **regularidade das imagens**, não das pausas de 60–160 ms.
 
 | `op` | Campos | Resultado |

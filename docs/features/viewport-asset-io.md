@@ -81,6 +81,13 @@ janela **não** é headless.
   a paridade de chaves do `asset_io` entre os modos, `on_ui_thread == true` no `503` dado na thread do callback, a ordem de `t_ms` entre quatro threads (o código antigo reprova em 3 de 3 execuções), o rótulo de `asset_load_sent`
   igual ao de `asset_cb` pelo `ViewportHost` real, `env_mode_tests` e o tick que devolve a espera. Mutantes: 4 no despacho do leitor, 3 no rótulo, 4 no tick, todos reprovados. **Não provado:** o modo `async` e o conteúdo do trace numa janela real
   (a janela rodou só o padrão `sync`, sem variável de diagnóstico, e reproduziu 6 s sem *underruns*), nem desempenho: os refactors não foram medidos contra a base.
+- Segunda onda da revisão automática (Rust; só testes, mais o `round3` do `tick`): (1) os testes de `asset_io` esperam o evento que o worker grava **depois** de responder (`events_after`: até 20 s, falhando com o que o traço tinha;
+  o `recv_timeout` que havia não ordenava nada); as leituras que são da própria thread de quem lê seguem diretas e dizem por quê; (2) o auxiliar do timer de `playback_tests.rs` aceita a menor espera que um tick atrasado diz
+  (`LANDING_GUARD`, 1 ms) e um teste força essa espera em toda execução; (3) a recusa de **pool fechado** ganhou teste no `Reader` e no `ViewportHost` (`AssetPool::closed()`, atrás da feature `test-support` de `tessel-editor-render`,
+  ligada só pelas `dev-dependencies` do desktop: o build de produção não a leva); a fila cheia já estava coberta; (4) `late_ms` e `next_ms` do `tick` saem a 3 casas (`due_ms` e `ran_ms` são instantes e seguem sem arredondar, BL157.28).
+  Prova: com mutantes de comportamento (worker que grava o evento 100 ou 400 ms depois, leitura do relógio que envelhece 10 ou 50 ms, `round3` removido de cada campo) os testes de antes falham como os revisores descreveram e os novos passam
+  (200 de 200 execuções falham sem o `round3`); estresse de 9 testes × 200 execuções em duas rodadas, com a carga da máquina (24–80) e com carga extra (44–101): **0 falhas em 3.600**. Os mutantes eram variáveis de ambiente só na cópia de
+  trabalho e nunca foram commitados.
 - Runtime: os spans da página (fetch/decode/warm) chegam por campos aditivos de `asset.state`/`frame.done`
   (`runtime/test/scene-warm.test.mjs`).
 - Pixels: `scripts/real-latency-ab.py pixels` (projeto **sintético**; sync × async × quente/frio com `render.frame` idêntico byte
@@ -538,13 +545,15 @@ taxa não é um número positivo e finito. Valor inválido da variável avisa e 
 (`playback_poll_tests.rs` reproduz primeiro as medidas nativas do `fixed`): `fixed` 13% das imagens a menos de 30 ms da anterior, atraso médio de observação 11,15 ms, 1,87 consultas por troca de quadro; `deadline` 0%, 2,46 ms, 2,00.
 **O modelo não é a medida**: assume um relógio perfeito e um timer com atraso constante.
 
-`playback.rs`: o tick lê o relógio e devolve a espera já calculada (`playback_tick` → `Tick::Continue { next, clock }` ou `Tick::Stop`, com a idade da leitura medida no próprio tick e o evento `tick` escrito pelo mesmo caminho); o laço só arma o timer com ela; a primeira espera é a do `fixed` (o dispositivo pode ainda estar abrindo).
+`playback.rs`: o tick lê o relógio e devolve a espera já calculada (`playback_tick` → `Tick::Continue { next, clock }` ou `Tick::Stop`, com a idade da leitura medida no próprio tick e o evento `tick` escrito pelo mesmo caminho, `late_ms` e `next_ms` em ms a 3 casas como as demais durações do traço; `due_ms` e `ran_ms` são instantes desde o início do traço e saem sem arredondar, BL157.28); o laço só arma o timer com ela; a primeira espera é a do `fixed` (o dispositivo pode ainda estar abrindo).
 `playback.status.poll` relata o modo e, com o traço ligado, `play_clock_started.poll` e, em cada `tick`, `clock` (em quadros fracionários) e `next_ms`. Nada mais muda: a regra do relógio, o `SetPlayhead` e o áudio são os mesmos.
 
-Testes: `playback_poll_tests.rs` 34 testes puros (a conta, os limites, o relógio que não anda, as taxas inválidas, o modo da variável, o modelo de 24 fps e a decisão `advancing`); mutação 40 de 41 (o sobrevivente é **equivalente**:
-o `.max(0.0)` que protege `Duration` de um valor negativo que a conta nunca produz). `playback_tests.rs` 10 testes determinísticos do laço no executor de teste do GPUI (a leitura do relógio e a idade dela são roteirizadas,
-porque o tempo real entre as chamadas do executor não é o tempo simulado): o modo escolhe a espera, a pausa e o `seek` voltam a esperar meio quadro, o trabalho do tick não é esperado de novo, o laço arma o timer com a espera
-que o tick disse, parar encerra o laço sem espera, e o `fixed` é o padrão de um estado que ninguém configurou; mutação 19 de 19. Gates Rust no head: fmt, check, `clippy -D warnings` e build com saída 0; `test --workspace` com saída 0 (114 resultados: **2.283 passaram, 0 falharam, 13 ignorados**, os 34 e os 10 acima entre eles); `cargo tree -p tessel-editor-core` sem `gpui` nem `wry`; os 22 specs Python de `scripts/` passam (610 testes).
+Testes: `playback_poll_tests.rs` 30 testes puros (a conta, os limites, o relógio que não anda, as taxas inválidas, o modo da variável, o modelo de 24 fps e a decisão `advancing`); mutação 40 de 41 na rodada original, com 34 testes
+(o sobrevivente é **equivalente**: o `.max(0.0)` que protege `Duration` de um valor negativo que a conta nunca produz; a revisão thermo apagou os 4 testes de parse que o `env_mode` compartilhado cobre). `playback_tests.rs` 11 testes
+determinísticos do laço no executor de teste do GPUI (a leitura do relógio é roteirizada; a idade dela é a do relógio real, porque o tempo real entre as chamadas do executor não é o tempo simulado, então o auxiliar do timer aceita toda
+espera até o mínimo `LANDING_GUARD` de 1 ms e um teste força esse mínimo em toda execução): o modo escolhe a espera, a pausa e o `seek` voltam a esperar meio quadro, o trabalho do tick não é esperado de novo, o laço arma o timer com a espera
+que o tick disse, o evento `tick` escreve `late_ms` e `next_ms` a 3 casas, parar encerra o laço sem espera, e o `fixed` é o padrão de um estado que ninguém configurou; mutação 19 de 19 na rodada original. Os gates do head final estão no
+[relatório §16.8](../viewport-real-latency-ab-report.md#168-revisão-automática-da-pr-41-e-gates-do-head-final).
 
 ### O A/B nativo pareado e a regra fixada antes de medir
 
