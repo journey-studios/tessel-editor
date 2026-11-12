@@ -23,7 +23,8 @@ Runners:
            stale mutant there would pass for the runtime
   browser  the same build / run / build again, with the compositor's real-browser tests of the
            effects (runtime/test/directed-scene-fx-browser.test.mjs): what a frame reports
-  desktop  ./scripts/cargo test -p tessel-editor ... scene_fx_scope (the GPUI tests of the window)
+  desktop  ./scripts/cargo test -p tessel-editor ... scene_fx_scope (the GPUI tests of the window) and the one
+           of the handles of a clip on a shot (`scene_fx_handles_tests::a_vignette_on_a_shot`)
 
 Usage (from anywhere; the root is this script's checkout, never another one):
   python3 docs/migration/p4a-shot-scope/mutate.py --check          applicability only, runs nothing
@@ -63,6 +64,7 @@ DIRECTED = 'runtime/src/directed-scene.js'
 COMPOSITOR = 'runtime/src/compositor.js'
 WINDOW = 'crates/desktop/src/workstation/scene_fx_scope.rs'
 WINDOW_PANEL = 'crates/desktop/src/workstation/scene_fx.rs'
+WINDOW_HANDLES = 'crates/desktop/src/workstation/scene_fx_handles.rs'
 
 # (id, what the mutant breaks, file, text to replace (exactly once), replacement, runner)
 MUTANTS = [
@@ -139,6 +141,19 @@ MUTANTS = [
     # -- the inspector --
     ('C22', 'the inspector offers a shot the clip does not fit', CHOICE,
      '        let applicable = shot_holds(shot, clip.start_frame, clip.duration_frames);', '        let applicable = true;', 'core'),
+    # -- the limits of the timing fields of a shot clip (the shot's, never the edit's) --
+    ('C27', 'the timing fields of a shot clip are limited by the edit, not by its shot', CHOICE,
+     '    if clip.scope == FxScope::Output {\n        return ((0, edit_frames - 1), edit_frames);',
+     '    if true {\n        return ((0, edit_frames - 1), edit_frames);', 'core'),
+    ('C28', 'the first start of a shot clip is the start of the edit', CHOICE,
+     '        (scope_start(&clip.scope, shots), end - clip.duration_frames),',
+     '        (0, end - clip.duration_frames),', 'core'),
+    ('C29', 'the last start of a shot clip ignores how long the clip is', CHOICE,
+     '        (scope_start(&clip.scope, shots), end - clip.duration_frames),',
+     '        (scope_start(&clip.scope, shots), end - 1),', 'core'),
+    ('C30', 'the longest duration of a shot clip counts from the start of its shot, not from the clip', CHOICE,
+     '        end - clip.start_frame,\n    )',
+     '        end - scope_start(&clip.scope, shots),\n    )', 'core'),
     # -- the runtime, pure --
     ('J01', 'a pass of a shot is accepted by a plan that does not require fxShotScope', OUTPUT_FX,
      "if (!requires.includes('fxShotScope'))", "if (false && !requires.includes('fxShotScope'))", 'js'),
@@ -174,10 +189,20 @@ MUTANTS = [
     ('W04', 'add on the shot is enabled outside the edit', WINDOW,
      '        Err(reason) => (false, Some(reason.to_string())),', '        Err(_) => (true, None),', 'desktop'),
     ('W05', 'a pick of another scene edits the scene the panel shows now', WINDOW,
-     'if let Ok(view) = self.fx_view_of(&key.scene)', 'if let Some(view) = self.fx_view()', 'desktop'),
+     '&& let Ok(view) = self.fx_view_of(&key.scene)', '&& let Some(view) = self.fx_view()', 'desktop'),
     ('W06', 'the selector of a clip that is gone is kept', WINDOW,
      '.retain(|key, _| key.scene == view.scene && view.clip(&key.clip).is_some());',
      '.retain(|key, _| key.scene == view.scene);', 'desktop'),
+    ('W08', 'a pick reaches a document other than the one its selector was painted for', WINDOW,
+     '.is_some_and(|pick| pick.revision == self.state.project.revision);', '.is_some();', 'desktop'),
+    ('W09', 'the selector of a clip is not kept in step with the revision it is painted at', WINDOW,
+     '        pick.revision = revision;\n', '', 'desktop'),
+    ('W10', 'the handles action of a vignette on a shot is enabled', WINDOW_HANDLES,
+     '    clip.handles_refusal().map(|refusal| refusal.text(LOCALE))',
+     '    clip.handles_refusal().filter(|_| clip.scope.is_output()).map(|refusal| refusal.text(LOCALE))', 'desktop'),
+    ('W11', 'the handles button of a vignette on a shot is a live control (the refusal comes from the core)', WINDOW_HANDLES,
+     '        let button = if let Some(reason) = no_handles_text(clip) {',
+     '        let button = if let Some(reason) = no_handles_text(clip).filter(|_| clip.scope.is_output()) {', 'desktop'),
     ('W07', 'the hint of the section lists the adds on the output only', WINDOW_PANEL,
      '|view| action_names(&section_actions(&view)),',
      '|view| action_names(&section_actions(&view)).into_iter().filter(|name| name.starts_with(ADD_PREFIX)).collect::<Vec<_>>(),', 'desktop'),
@@ -190,7 +215,8 @@ COMMANDS = {
     'render': (['./scripts/cargo', 'test', '-p', 'tessel-editor-render', '--locked', '--no-fail-fast',
                 '--test', 'scene_fx_shot_scope'], ROOT),
     'browser': (['node', '--test', '--test-reporter=tap', 'test/directed-scene-fx-browser.test.mjs'], ROOT / 'runtime'),
-    'desktop': (['./scripts/cargo', 'test', '-p', 'tessel-editor', '--locked', '--no-fail-fast', 'scene_fx_scope'], ROOT),
+    'desktop': (['./scripts/cargo', 'test', '-p', 'tessel-editor', '--locked', '--no-fail-fast', 'scene_fx_scope',
+                 'scene_fx_handles_tests::a_vignette_on_a_shot'], ROOT),
 }
 
 
@@ -308,7 +334,7 @@ def main(argv):
     report = load_report()
     entry = {'started': datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds'), 'head': head(),
              'dirty_before': git_before, 'selected': [m[0] for m in selected], 'baselines': {}, 'stopped': None,
-             'note': '', 'restored': None, 'hashes_before': before, 'hashes_after': None}
+             'note': '', 'restored': None, 'dist_restored': None, 'hashes_before': before, 'hashes_after': None}
     report['runs'].append(entry)
     write_report(report, entry)
     baselines = entry['baselines']
@@ -336,6 +362,7 @@ def main(argv):
                 if kind in REBUILDS:
                     built, tail = rebuild_runtime()
                     if not built:
+                        entry['dist_restored'] = False  # runtime/dist is whatever the failed build left
                         entry['stopped'] = f'the runtime does not build without a mutant: {tail}'
                         break
                 started = time.time()
@@ -354,6 +381,7 @@ def main(argv):
                 print(ident, entry['stopped'], flush=True)
                 break
             started = time.time()
+            dist_broken = None
             try:
                 file.write_text(original.replace(old, new))
                 if kind in REBUILDS:
@@ -365,8 +393,9 @@ def main(argv):
                 file.write_text(original)
                 if kind in REBUILDS:
                     restored_dist, tail = rebuild_runtime()  # the dist must be the sound runtime again
+                    entry['dist_restored'] = restored_dist
                     if not restored_dist:
-                        entry['note'] += f' runtime/dist could NOT be rebuilt after {ident}: {tail}'
+                        dist_broken = tail
             result, names = judge(code, out)
             extra = {'failed': names[:8], 'seconds': round(time.time() - started),
                      'original_sha256': hashlib.sha256(original.encode()).hexdigest()}
@@ -374,16 +403,23 @@ def main(argv):
                 extra['tail'] = out[-600:]
             record(ident, what, path, kind, result, **extra)
             print(ident, result, names[:3], flush=True)
+            if dist_broken is not None:
+                # runtime/dist still holds this mutant: the next verdict would judge it, so the batch ends here
+                # and the run is never `restored` (a note nobody reads is not a stop).
+                entry['stopped'] = (f'runtime/dist could NOT be rebuilt after {ident}, it holds the mutant '
+                                    f'(run `./scripts/runtime build`): {dist_broken}')
+                break
     except Interrupted as signal_name:
         entry['stopped'] = f'interrupted by {signal_name}'
     finally:
         after = {path: digest(path) for path in files}
         git_after = git_state(files)
         entry['hashes_after'] = after
-        entry['restored'] = before == after and git_before == git_after
+        entry['restored'] = before == after and git_before == git_after and entry['dist_restored'] is not False
         entry['finished'] = entry['stopped'] is None
         write_report(report, entry)
-    print('restored:', entry['restored'], '| git status of the mutated files unchanged:', git_before == git_after)
+    print('restored:', entry['restored'], '| git status of the mutated files unchanged:', git_before == git_after,
+          '| runtime/dist rebuilt from the restored source:', entry['dist_restored'])
     if entry['stopped']:
         print('stopped:', entry['stopped'])
     judged = [report['mutants'][m[0]]['result'] for m in selected if m[0] in report['mutants']]

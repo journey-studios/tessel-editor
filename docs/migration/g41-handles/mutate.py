@@ -49,6 +49,10 @@ MUTANTS = [
     ('M27 a click without drag still writes the grid value of the press point', GLUE, 'if point == *from && drag.last.is_none() {', 'if false && point == *from && drag.last.is_none() {'),
     ('M28 the query names the drag of a gesture the scene moved under', GLUE, '.filter(|drag| self.drag_can_apply(drag))', '.filter(|_| true)'),
     ('M29 a return to the press point is not a move either', GLUE, 'if point == *from && drag.last.is_none() {', 'if point == *from {'),
+    ('M30 a vignette laid on a shot still has handles', GEOMETRY, '} else if self.scope != FxScope::Output {', '} else if false && self.scope != FxScope::Output {'),
+    ('M31 the target of a clip laid on a shot is kept', VIEW, '.is_some_and(|(_, found)| found.has_handles())', '.is_some_and(|(_, found)| found.effect.id == "vignette")'),
+    ('M32 the refusal of a shot clip has the code of an effect without handles', GEOMETRY, 'Self::ScopeNotSupported => "scope_not_supported",', 'Self::ScopeNotSupported => "fx_has_no_handles",'),
+    ('M33 the refusal of a shot clip does not name its scope', VIEW, 'json!({ "clip": clip, "scope": found.scope.to_text() }),', 'json!({ "clip": clip }),'),
 ]
 
 JS_MUTANTS = [
