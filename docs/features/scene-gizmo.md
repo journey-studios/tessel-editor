@@ -1054,7 +1054,7 @@ sem coordenadas) deu **104/104** no mesmo binário que traz o gizmo da escala (p
 aspecto, base invertida em volume 1 (`scaling.rs`, linhas ~207–215), `mutate.py` (raiz derivada, diretório criado, `KILLED` só com teste que
 falhou), medição (`try`/`finally`) e prova da escala que falha com `stop` falho; todas as correções estão no código integrado. **Nenhum thread foi
 resolvido**: ficam para a nova revisão independente. Pendência nova: **BL015.20** (a prova de rotação da PR #40 tem o mesmo padrão
-de cleanup que o review apontou na da escala; não alterada, só registrada). **Corrigida depois (BL015.20, a validar):** `run_surface`
+de cleanup que o review apontou na da escala; não alterada, só registrada). **Corrigida depois (BL015.20, validada):** `run_surface`
 levanta depois do `finally` quando `stop_surface` falha (nunca mais `ok: true` com a superfície mal parada, e o trabalho fica
 retido para análise), com `scene-gizmo-rotation-proof.spec.py` (3 testes; o spec reprova se a linha que levanta for removida).
 
