@@ -95,10 +95,10 @@ monitor. O que mudou:
 - G4.1 ([F061](fx-handles.md)): o clipe de vinheta ganha a ação `handles` (botão `control:fx-handles:<clipe>`), que mostra ou
   esconde as alças dele no monitor pelo mesmo `scene.fx.select` de um script; desabilitada com o motivo do core
   (`FxClip::handles_refusal`: `Só a vinheta tem alças no monitor` para `fade` e `filmGrain`, e, para uma vinheta num plano de
-  F062, `As alças só existem para efeitos na saída; este efeito está num shot`, com `scope_not_supported` na recusa). O estado do
+  F062, `As alças só existem para efeitos na saída; este efeito está num plano`, com `scope_not_supported` na recusa). O estado do
   nó do clipe ganha `handles`.
 - F062 ([fx-shot-scope.md](fx-shot-scope.md)): os limites dos campos `start_frame` e `duration_frames` de um clipe de plano são os
-  do **plano** (`timing_limits`), não os da edição; os de um clipe da saída seguem os da edição.
+  do **plano** (`timing_limits`), não os da edição; os de um clipe da saída seguem os da edição (e perto do fim ainda oferecem o que a regra recusa: BL082.69).
 
 ## O `fade` (look, escopo de saída)
 

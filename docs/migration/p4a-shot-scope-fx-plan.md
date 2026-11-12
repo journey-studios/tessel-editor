@@ -50,6 +50,10 @@ fica registrado como `ORIGIN_NOT_EXECUTED`, sem inventar golden). Arquivos: `pac
 > plano) e o runtime tem **um só laço** sobre os passes na ordem do plano (o parser recusa um passe de saída antes de um de plano). As linhas desta
 > tabela e das seções abaixo que ainda falam em intervalos dos planos ou em laços de deck e de saída separados são o desenho original e **não** devem ser
 > reimplementadas; o contrato vigente é [F062 §Composição em etapas](../features/fx-shot-scope.md).
+>
+> **Superado também na fase B:** o item 4 de «Superfícies» abaixo (um clipe `shot` de vinheta «precisa funcionar» com `scene.fx.select` e `scene.fx.handles`)
+> não foi entregue assim: a decisão é a **recusa tipada** `scope_not_supported` em todas as portas (`FxClip::handles_refusal`, BL082.64) e as alças de um
+> clipe de plano seguem em BL082.41; ver F062 §«Alças da vinheta».
 
 | Tema | Decisão |
 |---|---|
