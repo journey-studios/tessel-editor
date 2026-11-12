@@ -597,18 +597,20 @@ fn a_slow_renderer_probe_in_preflight_is_a_cancellable_job() {
     // A renderer that is slow to start for as long as the test says (BL139). The mock's `delay`
     // used to stand for that, but the probe only asks for capabilities and never waited for it:
     // the cancel raced a job that took a few milliseconds and, on a busy machine, lost. Here
-    // `starting` says the probe is parked inside the factory and `go` lets it through; the
-    // bound only keeps a regression from hanging the suite.
+    // `starting` says the probe is parked inside the factory, `go` lets it through and `returned`
+    // says it has left; the bound only keeps a regression from hanging the suite.
     let starting = Arc::new(AtomicBool::new(false));
     let go = Arc::new(AtomicBool::new(false));
+    let returned = Arc::new(AtomicBool::new(false));
     let factory: Arc<RendererFactory> = {
-        let (starting, go) = (starting.clone(), go.clone());
+        let (starting, go, returned) = (starting.clone(), go.clone(), returned.clone());
         Arc::new(move || {
             starting.store(true, Ordering::SeqCst);
             let give_up = Instant::now() + Duration::from_secs(60);
             while !go.load(Ordering::SeqCst) && Instant::now() < give_up {
                 std::thread::sleep(Duration::from_millis(2));
             }
+            returned.store(true, Ordering::SeqCst);
             Ok(Box::new(Mock::new(Settings::default())))
         })
     };
@@ -650,8 +652,14 @@ fn a_slow_renderer_probe_in_preflight_is_a_cancellable_job() {
     }
     ok(&mut host, &mut state, json!({"op":"job.cancel","job":job}));
     // It ends as cancelled while the renderer is still parked: cancelling does not wait for it.
+    // (`poll_until` would also wait out the factory's own 60 s bound, so the state alone cannot
+    // tell a cancel that did not wait from one that did.)
     let event = poll_until(&mut host, &mut state, &job);
     assert_eq!(event["state"], "cancelled", "{event}");
+    assert!(
+        !returned.load(Ordering::SeqCst),
+        "the job ended only after the factory returned: the cancel waited for the probe: {event}"
+    );
 
     // Let the orphaned probe go: it finishes alone and drops its renderer. Asked before that, the
     // host answers that the renderer is busy; asked again and left alone, the same preflight reports.
