@@ -16,6 +16,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 
 import {
+  holdSeek,
   imageLayer,
   makeProject,
   openRuntime,
@@ -190,6 +191,7 @@ test('video B2: a frame superseded while it seeks is cancelled and the next one 
   const clips = needs(t, 'h264.mp4');
   if (!clips) return;
   const runtime = await openRuntime({ extraFiles: [clips['h264.mp4']] });
+  let seekGate = null;
   try {
     await runtime.hello();
     assert.equal((await runtime.load(videoAsset('clip', clips['h264.mp4']))).state, 'ready');
@@ -202,7 +204,12 @@ test('video B2: a frame superseded while it seeks is cancelled and the next one 
       output: { width: 160, height: 90 },
       probes: probesAt(),
     });
+    // Hold the first seek where it starts: the two sends are separate CDP round trips, and on a busy
+    // machine they take longer than the seek, so the first frame used to end as `frame.done`
+    // before the second one replaced it (BL128). Held, it can only end by being superseded.
+    seekGate = await holdSeek(runtime.page);
     await runtime.send(frameMessage(first, 40));
+    await seekGate.held();
     await runtime.send(frameMessage(second, 17));
     const stale = await runtime.waitFor((m) => (m.type === 'frame.done' || m.type === 'frame.failed') && m.id === first);
     assert.equal(stale.type, 'frame.failed');
@@ -212,6 +219,7 @@ test('video B2: a frame superseded while it seeks is cancelled and the next one 
     // The cancelled seek did not leave the playhead somewhere that corrupts the next read.
     assert.equal(await readCode(runtime, 'clip', 40), 40);
   } finally {
+    await seekGate?.close().catch(() => {});
     await runtime.close();
   }
 });

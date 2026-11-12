@@ -166,6 +166,70 @@ export const holdFetches = async (page, match) => {
   };
 };
 
+// ---- Holding a seek where it starts -----------------------------------------------------
+
+/**
+ * Keeps back the next assignment to `currentTime` of any media element, so a test can prove a
+ * frame is superseded *while it waits for its seek* instead of betting that the seek has not
+ * finished yet. A seek of a short clip takes tens of milliseconds, and two separate `runtime.send`
+ * calls (one CDP round trip each) take longer than that as soon as the machine is busy: the first
+ * frame then ended as `frame.done` before the second one replaced it (BL128). While the
+ * assignment is held no `seeked` can arrive, so the only way out of the wait is the runtime's own
+ * poll of "was I superseded?". The next assignment applies the held one first, in order, so the
+ * engine sees the two seeks in a row that it would have seen without the hold. Armed on creation;
+ * `close()` applies a seek still held and puts the engine's own accessor back.
+ */
+export const holdSeek = async (page) => {
+  await page.evaluate(() => {
+    const proto = HTMLMediaElement.prototype;
+    const engine = Object.getOwnPropertyDescriptor(proto, 'currentTime');
+    const gate = { armed: true, held: null, engine };
+    window.__seekGate = gate;
+    Object.defineProperty(proto, 'currentTime', {
+      configurable: true,
+      enumerable: engine.enumerable,
+      get() {
+        return engine.get.call(this);
+      },
+      set(value) {
+        if (gate.armed) {
+          gate.armed = false;
+          gate.held = { element: this, value };
+          return;
+        }
+        if (gate.held) {
+          const { element, value: earlier } = gate.held;
+          gate.held = null;
+          engine.set.call(element, earlier);
+        }
+        engine.set.call(this, value);
+      },
+    });
+  });
+  return {
+    /** Resolves once a seek is being held (so the runtime waits for a `seeked` that cannot come). */
+    held: async (timeoutMs = 15000) => {
+      const deadline = Date.now() + timeoutMs;
+      while (!(await page.evaluate(() => Boolean(window.__seekGate?.held)))) {
+        if (Date.now() > deadline) throw new Error('no seek was held: the frame never reached its seek');
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+    },
+    close: async () => {
+      await page.evaluate(() => {
+        const gate = window.__seekGate;
+        if (!gate) return;
+        Object.defineProperty(HTMLMediaElement.prototype, 'currentTime', gate.engine);
+        if (gate.held) {
+          gate.engine.set.call(gate.held.element, gate.held.value);
+          gate.held = null;
+        }
+        delete window.__seekGate;
+      });
+    },
+  };
+};
+
 // ---- A page for splat scenes ------------------------------------------------------------
 
 export const splatScenePlan = (camera, time = 0) => ({
