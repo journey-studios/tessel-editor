@@ -343,7 +343,7 @@ def run(args, surfaces):
         depth = win.undo_depth()
         off = action_of(win.node(CLIP), "handles") or {}
         check("the `handles` action of a vignette on a shot is disabled, with the reason of the core",
-              off.get("enabled") is False and "shot" in (off.get("disabled_reason") or ""), off)
+              off.get("enabled") is False and "plano" in (off.get("disabled_reason") or ""), off)
         by_action = win.invoke(CLIP, "handles")
         check("invoke handles on it is scope_not_supported (nothing selected)",
               not by_action.get("ok") and by_action.get("error", {}).get("code") == "scope_not_supported", by_action)
@@ -357,6 +357,9 @@ def run(args, surfaces):
         check("the monitor's gizmo keeps the node as its target", gizmo.get("target") == "node" and gizmo.get("fx_clip") == "", gizmo)
         check("the refusals wrote nothing", win.undo_depth() == depth, (depth, win.undo_depth()))
         headless_answers, headless_code = headless_refusal(headless, json.loads((P.CORPUS / "bundle.json").read_text()))
+        if not check("tessel-headless answered every line",
+                     len(headless_answers) == 6, {"answers": len(headless_answers), "exit": headless_code}):
+            return 1
         select, read, output_select = headless_answers[2], headless_answers[3], headless_answers[5]
         check("through tessel-headless: scene.fx.select of the same vignette is scope_not_supported",
               select.get("ok") is False and select["error"].get("code") == "scope_not_supported"
