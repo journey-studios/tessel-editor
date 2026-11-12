@@ -605,6 +605,32 @@ fn a_vignette_on_a_shot_has_no_handles_whichever_door_asks() {
     assert!(state.scene_interaction.fx_target().is_none());
 }
 
+/// The target is dropped by `redo` too, not only by the edit: `restore` prunes as `apply` does, so a clip
+/// that history lays back on a shot stops being the target at that step, before any read. (The undo of a
+/// scope edit lays the clip back on the output, where selecting it is allowed again.)
+#[test]
+fn a_redo_that_lays_the_target_clip_on_a_shot_drops_the_target() {
+    let mut state = session();
+    ok(
+        &mut state,
+        json!({"op":"scene.fx.edit","scene":"street","ops":[
+            {"op":"set_scope","clip":"v1","scope":"shot:shot-1"}]}),
+    );
+    ok(&mut state, json!({"op":"history.undo"}));
+    selected(&mut state);
+    assert_eq!(published_target(&state), (json!("fx"), json!("v1")));
+
+    ok(&mut state, json!({"op":"history.redo"}));
+    assert_eq!(published_target(&state), (json!("node"), json!("")));
+    assert!(state.scene_interaction.fx_target().is_none());
+    // And the clip is a shot clip for every door again.
+    let error = err(
+        &mut state,
+        json!({"op":"scene.fx.select","scene":"street","clip":"v1"}),
+    );
+    assert_eq!(error.code, "scope_not_supported");
+}
+
 /// The same refusal through the real `tessel-headless` process (the surface a script uses without a
 /// window): the select and the read answer `scope_not_supported`, the document is untouched.
 #[test]
