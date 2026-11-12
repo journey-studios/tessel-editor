@@ -27,7 +27,7 @@ deste ramo foi medida depois de `12bc8da`: tudo que mudou desde então foi valid
 
 | Peça | Papel |
 |---|---|
-| `scene_gizmo_perf_budget.rs` (core, 3 testes `#[ignore]`) | mede a jornada em release; julga contra `budgets.json`; os dois outros testes são controles negativos (um plano a mais e 1 ms por chamada, injetados no próprio teste) |
+| `scene_gizmo_perf_budget.rs` (core, 3 testes `#[ignore]` e 4 de unidade de `within`, sem relógio) | mede a jornada em release; julga contra `budgets.json` (um orçamento que nenhuma amostra alcançou reprova); os dois outros testes são controles negativos (um plano a mais e 1 ms por chamada, injetados no próprio teste) |
 | `run.py` | corrida controlada do teste de orçamento: fases `build` e `measure` |
 | `ab.py` | baseline × candidato com o mesmo executável de medição, construído duas vezes |
 | `mutate.py` | defeitos reais no produto × detectores estrutural/tempo/host |
@@ -55,7 +55,8 @@ prazo finito e grupo de processo próprio; nenhum `TESSEL_GIZMO_PERF_*` herdado 
 - `--phase build`: recusa árvore suja, constrói `scene_gizmo_perf_budget` em release pelo wrapper de cargo (sem lock de
   performance: um build não é medição), copia o executável para `--out/exes` e grava HEAD, árvore, se estava suja e o sha256 em
   `build.json` (`exe` é relativo a `--out`).
-- `--phase measure`: só roda o executável que o `build` registrou para este HEAD e esta árvore (ou `--exe`, a baseline de um A/B).
+- `--phase measure`: só roda o executável que o `build` registrou para este HEAD e esta árvore (ou `--exe`, a baseline de um A/B:
+  sem HEAD, árvore nem hash a conferir, o caminho é resolvido uma vez e a corrida nunca é `PASS`, `EXE_GIVEN_NOT_A_PASS_FOR_HEAD`, exit 1).
   Apaga o relatório anterior, lê as guardas (carga de 1 **e** 5 min ≤ 0,5 por CPU, limite térmico, disco), toma o lock de GPU **uma
   vez, sem esperar**, roda com `--ignored --test-threads=1` e lê as guardas **de novo depois**. Lock ocupado ou guarda ruim é
   `BLOCKED` (exit 3); guarda ruim **depois** de uma corrida que passaria é `INVALID_GUARD_AFTER_RUN` (os números ficam, não é
@@ -100,7 +101,7 @@ prazo finito e grupo de processo próprio; nenhum `TESSEL_GIZMO_PERF_*` herdado 
   `delay_1ms_per_handler` (`apply_gizmo` dorme 1 ms: o estrutural deve **passar**, o tempo deve falhar), `memo_off` e
   `replan_per_tick` (o teste de janela parada do host deve falhar). Só conta como "morto" quando o processo saiu com erro, o teste
   **nomeado** falhou **e** a mensagem esperada apareceu (e, no tempo, a guarda depois estava limpa e a corrida não foi
-  `INCONCLUSIVE`); compilação quebrada, prazo, executável ausente, disco cheio, lock ocupado e guarda ruim não são mortes. Pela
+  `INCONCLUSIVE`; um `over budget:` de corpus julgável vale mesmo com a nota de outro corpus instável, como no `run.py`); compilação quebrada, prazo, executável ausente, disco cheio, lock ocupado e guarda ruim não são mortes. Pela
   mesma regra, um teste de tempo que **passa** com a guarda depois ruim é `INVALID_GUARD_AFTER_RUN`, não `SURVIVED`: não é resposta
   e os executáveis ficam para repetir.
 - `--phase prepare` constrói, `--phase time` mede (um só lock, sem esperar). `time` recusa um `prepare` de outro HEAD, sujo ou
@@ -129,10 +130,12 @@ prazo finito e grupo de processo próprio; nenhum `TESSEL_GIZMO_PERF_*` herdado 
 ### `audit.py` e `budgets.py`
 
 - `audit.py` lê `budgets.json` e relatórios retidos e diz, por tipo, quantos "planos" o orçamento deixaria passar (um plano extra e
-  1 ms convertido com o tempo de plano medido). É propriedade do orçamento, não defeito: onde a folga é larga o tempo é só um teto
-  grosso, e é o detector estrutural que cobre o plano extra.
+  1 ms convertido com o tempo de plano **do mesmo relatório**: razão de um relatório nunca se soma ao plano de outro; diz em quantos
+  relatórios a detecção vale e lista os tipos vistos só em alguns). É propriedade do orçamento, não defeito: onde a folga é larga o
+  tempo é só um teto grosso, e é o detector estrutural que cobre o plano extra.
 - `budgets.py` deriva `budgets.json`: `p50 = teto_0,05(máx. das calibrações × 1,15)` (piso 0,25), `p95 = teto_0,05(máx. × 1,25)`
-  (piso 0,5), tipos `cold.*` com margens 1,25 e 2,0.
+  (piso 0,5), tipos `cold.*` com margens 1,25 e 2,0. **Recusa**, sem gravar nada: nenhum relatório, `--out` igual a um relatório, perfil
+  que não é release e calibração cujos blocos de referência instáveis passam de 25% (ou que não diz) — o máximo afrouxaria o orçamento.
 
 ## Orçamentos (o que foi e o que não foi pré-registrado)
 
@@ -141,7 +144,8 @@ ficou `INCONCLUSIVE` e a seguinte **falhou**; só **depois** disso as margens fr
 1,45 para 5,6). Logo: **as margens frias foram escolhidas depois de ver um `FAIL`**; o `PASS` de `5cded7e` é o de uma regra já
 ajustada, e uma calibração da mesma árvore não prova ausência de regressão. O máximo de três calibrações não é estimativa de
 variância. `budgets.json` aponta (`calibrations[].dir`: `gizmo-perf-calibC1` a `C3`) para calibrações que **não** estão no
-repositório; o campo é rótulo e não muda (BL015.34). Em medição de tempo vale o A/B contra a baseline, não a calibração.
+repositório; o campo é rótulo e não muda (BL015.34). A recusa de calibração instável do `budgets.py` é posterior a C1–C3: não há como
+saber se elas passariam. Em medição de tempo vale o A/B contra a baseline, não a calibração.
 
 ## Como rodar
 
