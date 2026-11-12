@@ -129,6 +129,17 @@ fn jobs_of_kind(host: &MediaHost, kind: &str) -> usize {
         .count()
 }
 
+/// The ids of the jobs of `kind`, in the order they were started.
+fn job_ids_of_kind(host: &MediaHost, kind: &str) -> Vec<String> {
+    host.registry().to_json()["jobs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|job| job["kind"] == kind)
+        .map(|job| job["id"].as_str().unwrap().to_string())
+        .collect()
+}
+
 fn decoded(state: &EditorState) -> bool {
     state
         .library
@@ -273,6 +284,115 @@ fn a_prepared_result_for_a_replaced_project_is_discarded() {
         ResultState::Applied,
         "the import before it was applied"
     );
+}
+
+/// BL094.11: `job.commit` on the automatic prepare job before the tick applied the result but left
+/// the host believing the job was still in flight. Every scheduler waits for that marker, so the
+/// window prepared nothing else (and drew no thumbnail) until it was restarted. Here the next
+/// import is prepared on its own after the commit, through the same tick the window runs.
+#[test]
+fn committing_the_automatic_prepare_job_before_the_tick_does_not_stall_the_next_one() {
+    let dir = temp("async-commit-automatic");
+    let first = video_with_audio(&tools(), &dir, "first.mp4");
+    // Another file, not the same bytes again: a copy would be one asset, not a second one to prepare.
+    let second = dir.join("second.mp4");
+    common::ffmpeg(
+        &tools(),
+        &[
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=192x108:rate=24:duration=1",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=880:duration=1:sample_rate=48000",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-shortest",
+            second.to_str().unwrap(),
+        ],
+    );
+    let mut host = interactive(tools());
+    let mut state = EditorState::demo();
+    new_project(&mut host, &mut state, &dir, "commit-automatic");
+    let answer = ok(
+        &mut host,
+        &mut state,
+        json!({"op":"media.import","paths":[first]}),
+    );
+    let import = answer["job"].as_str().unwrap().to_string();
+    // This poll applies the import and starts the automatic prepare job.
+    assert_eq!(
+        poll_until(&mut host, &mut state, &import)["state"],
+        "succeeded"
+    );
+    let prepare = job_ids_of_kind(&host, "proxy")
+        .pop()
+        .expect("the automatic prepare job");
+
+    // The job ends in the background and no tick has run since, so nothing reported it. (An
+    // interactive host never waits for a job: `job.get` is how a caller sees it end.)
+    let deadline = Instant::now() + Duration::from_secs(120);
+    loop {
+        let info = ok(&mut host, &mut state, json!({"op":"job.get","job":prepare}));
+        if !matches!(info["state"].as_str(), Some("queued" | "running")) {
+            assert_eq!(info["state"], "succeeded", "{info}");
+            assert_eq!(info["result_state"], "pending", "{info}");
+            break;
+        }
+        assert!(Instant::now() < deadline, "the prepare job never ended");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    // The commit arrives first and applies the decoded media.
+    ok(
+        &mut host,
+        &mut state,
+        json!({"op":"job.commit","job":prepare}),
+    );
+    assert_eq!(
+        host.registry().get(&prepare).unwrap().result_state,
+        ResultState::Applied
+    );
+    assert!(decoded(&state), "the commit applied the decoded media");
+
+    // The next tick reports the committed job once (BL094.10)...
+    let reported = host.poll(&mut state);
+    assert_eq!(
+        reported
+            .iter()
+            .filter(|event| event["job"] == prepare)
+            .count(),
+        1,
+        "{reported:?}"
+    );
+
+    // ...and the host is free to prepare what comes next: the second import starts its own
+    // automatic job in the very tick that applies it.
+    let answer = ok(
+        &mut host,
+        &mut state,
+        json!({"op":"media.import","paths":[second]}),
+    );
+    let import = answer["job"].as_str().unwrap().to_string();
+    assert_eq!(
+        poll_until(&mut host, &mut state, &import)["state"],
+        "succeeded"
+    );
+    let next = job_ids_of_kind(&host, "proxy")
+        .into_iter()
+        .find(|id| *id != prepare)
+        .expect("the second import started its own automatic prepare job");
+    assert_eq!(
+        poll_until(&mut host, &mut state, &next)["state"],
+        "succeeded"
+    );
+    assert!(decoded(&state), "both assets are prepared");
+    assert_eq!(state.library.items.len(), 2);
 }
 
 #[test]

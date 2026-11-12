@@ -288,6 +288,135 @@ fn tick_until_reported(view: &Entity<Workstation>, cx: &mut VisualTestContext, i
     }
 }
 
+/// The id of the automatic prepare job (the registry names its kind `proxy`) that is not one of
+/// `known`, if the window has started one.
+fn prepare_job_besides(
+    view: &Entity<Workstation>,
+    cx: &mut VisualTestContext,
+    known: &[&str],
+) -> Option<String> {
+    view.read_with(cx, |view, _| {
+        view.jobs_report()["all"].as_array().and_then(|jobs| {
+            jobs.iter()
+                .filter(|job| job["kind"] == "proxy")
+                .filter_map(|job| job["id"].as_str())
+                .find(|id| !known.contains(id))
+                .map(str::to_string)
+        })
+    })
+}
+
+/// BL094.11: `job.commit` on the automatic prepare job before the tick took its result but left
+/// the host believing the job was still in flight, and every scheduler waits for that marker: the
+/// window prepared nothing else, and drew no thumbnail, until it was restarted. Through the
+/// window's own tick, the next import is prepared on its own after the commit.
+#[gpui_kit::test]
+fn committing_the_automatic_prepare_job_before_the_tick_leaves_the_window_free_to_prepare_more(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = fixture(cx);
+    let scratch = ClaimsScratch::new("commit-automatic");
+    let dir = &scratch.0;
+    // Two different files with picture and sound, so that the second is one more asset to prepare.
+    let video = |name: &str, size: &str, tone: &str| -> Option<std::path::PathBuf> {
+        let path = dir.join(name);
+        std::process::Command::new("ffmpeg")
+            .args(["-v", "error", "-y", "-f", "lavfi", "-i"])
+            .arg(format!("testsrc2=size={size}:rate=24:duration=1"))
+            .args(["-f", "lavfi", "-i"])
+            .arg(format!(
+                "sine=frequency={tone}:duration=1:sample_rate=48000"
+            ))
+            .args([
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-c:a",
+                "aac",
+                "-shortest",
+            ])
+            .arg(&path)
+            .status()
+            .ok()
+            .filter(|status| status.success())
+            .map(|_| path)
+    };
+    let (Some(first), Some(second)) = (
+        video("first.mp4", "160x90", "440"),
+        video("second.mp4", "192x108", "880"),
+    ) else {
+        // The window only needs FFmpeg for this proof; the media crate's tests require it hard.
+        eprintln!("ffmpeg is not on PATH: skipping the window automatic-job proof");
+        return;
+    };
+    op(
+        &view,
+        cx,
+        json!({"op":"project.create","name":"Auto","dir":dir.join("project"),"width":160,"height":90,"length":48}),
+    )
+    .unwrap();
+
+    let answer = op(&view, cx, json!({"op":"media.import","paths":[first]})).unwrap();
+    let import = answer["job"].as_str().expect("a job id").to_string();
+    // The tick that applies the import also starts the automatic prepare job.
+    tick_until_reported(&view, cx, &import);
+    let prepare = prepare_job_besides(&view, cx, &[]).expect("the automatic prepare job");
+
+    // The job ends in the background; no tick has run since, so nothing reported it.
+    let deadline = std::time::Instant::now() + Duration::from_secs(60);
+    loop {
+        let info = view.read_with(cx, |view, _| {
+            view.jobs_report()["all"]
+                .as_array()
+                .and_then(|jobs| {
+                    jobs.iter()
+                        .find(|job| job["id"] == prepare.as_str())
+                        .cloned()
+                })
+                .expect("the job is in the registry")
+        });
+        if !matches!(info["state"].as_str(), Some("queued" | "running")) {
+            assert_eq!(info["state"], "succeeded", "{info}");
+            assert_eq!(info["result_state"], "pending", "{info}");
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the prepare job never ended"
+        );
+        std::thread::sleep(Duration::from_millis(25));
+    }
+
+    // The commit arrives first and applies the decoded media; the tick still reports the job.
+    op(&view, cx, json!({"op":"job.commit","job":prepare})).unwrap();
+    let event = tick_until_reported(&view, cx, &prepare);
+    assert_eq!(event["state"], "succeeded", "{event}");
+
+    // The window is not stuck: the next import is prepared on its own, by the same tick.
+    let answer = op(&view, cx, json!({"op":"media.import","paths":[second]})).unwrap();
+    let import = answer["job"].as_str().expect("a job id").to_string();
+    tick_until_reported(&view, cx, &import);
+    let next = prepare_job_besides(&view, cx, &[prepare.as_str()])
+        .expect("the second import started its own automatic prepare job");
+    let event = tick_until_reported(&view, cx, &next);
+    assert_eq!(event["state"], "succeeded", "{event}");
+    view.read_with(cx, |view, _| {
+        let assets: Vec<_> = view
+            .state
+            .library
+            .items
+            .iter()
+            .filter_map(|item| item.asset.as_ref())
+            .collect();
+        assert_eq!(assets.len(), 2);
+        assert!(
+            assets.iter().all(|asset| asset.decoded.is_some()),
+            "both assets are prepared"
+        );
+    });
+}
+
 #[gpui_kit::test]
 fn the_claims_operations_are_jobs_with_typed_refusals_and_the_window_reports_them(
     cx: &mut TestAppContext,
