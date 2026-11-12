@@ -703,6 +703,21 @@ fn scene_command(op: &str, request: &Value) -> Result<SceneCommand, CommandError
                 None
             },
         },
+        // F061: the vignette's 2D handles on the monitor. Shape only; the geometry, the keys rule and
+        // the target rules are the core's.
+        "scene.fx.select" => SceneCommand::FxSelect {
+            scene: scene()?,
+            clip: optional_string(request, "clip")?,
+        },
+        "scene.fx.handles" => SceneCommand::FxHandles {
+            scene: scene()?,
+            clip: optional_string(request, "clip")?,
+            at: frame_at(request)?,
+            probe: match request.get("probe") {
+                None | Some(Value::Null) => None,
+                Some(probe) => Some(handle_probe(probe)?),
+            },
+        },
         "scene.fx.frame" => SceneCommand::FxFrame {
             scene: scene()?,
             at: frame_at(request)?,
@@ -1050,6 +1065,25 @@ fn fx_probe(raw: &Value) -> Result<FxProbe, CommandError> {
             .and_then(Value::as_f64)
             .ok_or_else(|| invalid("`probe.value` must be a number"))?,
         quantize: optional_bool(raw, "quantize")?.unwrap_or(false),
+    })
+}
+
+/// `{ handle, point: {u, v} }`: a pointer position proposed for one handle of a vignette.
+fn handle_probe(raw: &Value) -> Result<crate::scene_project::HandleProbe, CommandError> {
+    if !raw.is_object() {
+        return Err(invalid(
+            "`probe` must be { handle, point: {u, v} } (`center`, `radius` or `softness`)",
+        ));
+    }
+    let name = string(raw, "handle")?;
+    let handle = crate::directed_scene::fx::VignetteHandle::parse(name).ok_or_else(|| {
+        invalid(format!(
+            "`probe.handle` is `center`, `radius` or `softness`, not `{name}`"
+        ))
+    })?;
+    Ok(crate::scene_project::HandleProbe {
+        handle,
+        point: picture_point(raw, "point")?,
     })
 }
 

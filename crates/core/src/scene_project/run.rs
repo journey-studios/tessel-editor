@@ -225,6 +225,13 @@ impl EditorState {
                 at.as_ref(),
             ),
             SceneCommand::FxGesture(gesture) => self.apply_fx_gesture(gesture),
+            SceneCommand::FxSelect { scene, clip } => self.fx_select(&scene, clip.as_deref()),
+            SceneCommand::FxHandles {
+                scene,
+                clip,
+                at,
+                probe,
+            } => self.fx_handles(&scene, clip.as_deref(), &at, probe.as_ref()),
             SceneCommand::Gesture(gesture) => self.apply_gesture(gesture),
             SceneCommand::Gizmo(gizmo) => self.apply_gizmo(gizmo),
             read => query::run(&self.scenes, read),
@@ -282,6 +289,9 @@ impl EditorState {
         if !dropped.is_empty() {
             outcome["selection_dropped"] =
                 Value::Array(dropped.iter().map(Dropped::to_json).collect());
+        }
+        if let Some(target) = self.prune_fx_target() {
+            outcome["fx_target_dropped"] = target.to_json();
         }
         Ok(outcome)
     }
