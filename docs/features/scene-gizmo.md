@@ -849,6 +849,8 @@ exit, contagens e sha256 do log), `logs/` (20 logs de teste e 2 de build) e `run
   passou); a que falhou levou 102 s, mais que o dobro das três primeiras de `main` (43–50 s), mas execuções posteriores (até 781 s no head) passaram, então a duração sozinha também não a explica. O que continua sendo a explicação mais simples é a corrida do teste (o primeiro `frame.render` pode terminar antes de o segundo chegar, pois há um `send` de ida e volta entre eles),
   **ainda sem prova**.
 - **Sem alteração de teste, asserção, tolerância ou timeout** nesta rodada. O conserto (enviar as duas mensagens sem ida e volta, ou segurar o seek) e a mutação que desfaz o cancelamento ficam para PR própria (BL015.15/BL128).
+  **Feito nessa PR própria (a validar):** o teste segura o seek (`holdSeek`) em vez de apostar no tempo, com a mutação que desfaz o
+  cancelamento; ver [scene-renderer.md](scene-renderer.md) (BL128 / BL015.15).
 
 **Parecer para o coordenador.** Não houve falha exclusiva do head, então a condição F1 da revisão `5848722632` está **cumprida** e a flaky não bloqueia a integração da #40; ela segue pendente (BL015.15 + BL128) e a #40 não declara o runtime como passe único limpo.
 Isso não altera o status de G1 (**a validar**): ponteiro físico, desempenho do head integrado e a decisão de merge continuam com o coordenador. Nada foi mergeado nem aprovado.
@@ -1052,7 +1054,9 @@ sem coordenadas) deu **104/104** no mesmo binário que traz o gizmo da escala (p
 aspecto, base invertida em volume 1 (`scaling.rs`, linhas ~207–215), `mutate.py` (raiz derivada, diretório criado, `KILLED` só com teste que
 falhou), medição (`try`/`finally`) e prova da escala que falha com `stop` falho; todas as correções estão no código integrado. **Nenhum thread foi
 resolvido**: ficam para a nova revisão independente. Pendência nova: **BL015.20** (a prova de rotação da PR #40 tem o mesmo padrão
-de cleanup que o review apontou na da escala; não alterada, só registrada).
+de cleanup que o review apontou na da escala; não alterada, só registrada). **Corrigida depois (BL015.20, a validar):** `run_surface`
+levanta depois do `finally` quando `stop_surface` falha (nunca mais `ok: true` com a superfície mal parada, e o trabalho fica
+retido para análise), com `scene-gizmo-rotation-proof.spec.py` (3 testes; o spec reprova se a linha que levanta for removida).
 
 **Disco**: a primeira leitura de `df -g` do volume deu 12 GiB e `df -k` segundos depois 21,7 GiB (outros processos da máquina compartilhada); o pesado
 começou depois de uma medição nova de 21,6 GiB (reserva 16) e terminou com 13,8 GiB (piso 12 respeitado; o `test` cresceu o alvo MBX em
