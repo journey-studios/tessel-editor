@@ -490,15 +490,7 @@ impl MediaHost {
                 continue;
             };
             let slot = self.pending.remove(&id);
-            if self.auto_prepare.as_deref() == Some(id.as_str()) {
-                self.auto_prepare = None;
-            }
-            if self.auto_proxy.as_deref() == Some(id.as_str()) {
-                self.auto_proxy = None;
-            }
             self.release_thumbnail_job(state, &id, info.state == JobState::Cancelled);
-            let proxied = self.proxy_assets.remove(&id);
-            let automatic = self.auto_assets.remove(&id);
             let outcome = Self::outcome(&info).and_then(|result| {
                 let applied = apply(
                     &self.registry.clone(),
@@ -509,13 +501,7 @@ impl MediaHost {
                 )?;
                 Ok((result, applied))
             });
-            if let (Err(_), Some((_, assets))) = (&outcome, automatic) {
-                // Not retried until the file changes (see `auto_failed`).
-                self.auto_failed.extend(assets);
-            }
-            if let (Err(_), Some(keys)) = (&outcome, proxied) {
-                self.proxy_failed.extend(keys);
-            }
+            self.release_automation_job(&id, outcome.is_err());
             events.push(match outcome {
                 Ok((result, applied)) => json!({ "job": id, "state": "succeeded", "kind": info.kind.label(), "result": result, "applied": applied }),
                 // A job that succeeded but whose result no longer fits the project (`stale_result`)
@@ -560,6 +546,34 @@ impl MediaHost {
             && stamp.is_current(state)
         {
             self.thumb_paused = Some(stamp);
+        }
+    }
+
+    /// Forgets `id` as the automatic prepare or proxy job, and settles what that job was preparing.
+    /// `poll` calls it when it sees the job finish; `job.commit` and `job.discard` call it too,
+    /// because a result taken by a request is never seen by `poll` (BL094.11).
+    ///
+    /// Without it the marker outlives the job: `schedule_prepare`, `schedule_proxies` and
+    /// `schedule_thumbnails` all wait for the marker to clear, so a window whose automatic job was
+    /// committed before the tick stayed in `media_preparing` (and drew no thumbnail, and prepared
+    /// no new media) until it was restarted. When the result did not apply (`failed`), what the job
+    /// was preparing is not retried until the file changes (see `auto_failed` and `proxy_failed`),
+    /// so a corrupt video does not restart a job every tick. A discard is not a failure: the user
+    /// gave the result up, and the next tick may prepare the same media again.
+    fn release_automation_job(&mut self, id: &str, failed: bool) {
+        if self.auto_prepare.as_deref() == Some(id) {
+            self.auto_prepare = None;
+        }
+        if self.auto_proxy.as_deref() == Some(id) {
+            self.auto_proxy = None;
+        }
+        let proxied = self.proxy_assets.remove(id);
+        let automatic = self.auto_assets.remove(id);
+        if failed && let Some((_, assets)) = automatic {
+            self.auto_failed.extend(assets);
+        }
+        if failed && let Some(keys) = proxied {
+            self.proxy_failed.extend(keys);
         }
     }
 
@@ -2011,6 +2025,8 @@ impl MediaHost {
             state,
             !self.interactive,
         );
+        // `poll` never saw this job finish: the automatic job's marker would never clear (BL094.11).
+        self.release_automation_job(id, outcome.is_err());
         if self.interactive {
             // `poll` never saw this job finish: it reports the end (see the field).
             let kind = info.kind.label();
@@ -2040,14 +2056,7 @@ impl MediaHost {
         self.registry.begin_discard(id)?;
         self.release_thumbnail_job(state, id, cancelled);
         let slot = self.pending.remove(id);
-        if self.auto_prepare.as_deref() == Some(id) {
-            self.auto_prepare = None;
-        }
-        if self.auto_proxy.as_deref() == Some(id) {
-            self.auto_proxy = None;
-        }
-        self.proxy_assets.remove(id);
-        self.auto_assets.remove(id);
+        self.release_automation_job(id, false);
         let pending = slot.as_ref().and_then(take);
         let discard = spawn_discard(&self.registry, id, pending);
         if self.interactive && slot.is_some() {
@@ -2819,5 +2828,71 @@ mod tests {
             1,
             "exactly one discard job took the result"
         );
+    }
+
+    /// An automatic job as the schedulers leave it: the markers, and the assets it covers.
+    fn automatic_jobs(host: &mut MediaHost) -> (ProxyKey, (String, Option<String>)) {
+        let key: ProxyKey = ("clip".into(), Some("h1".into()), 720, ProxyFormat::Jpeg);
+        let asset = ("clip".to_string(), Some("h1".to_string()));
+        host.auto_prepare = Some("job-prepare".into());
+        host.auto_assets.insert(
+            "job-prepare".into(),
+            ("project".into(), vec![asset.clone()]),
+        );
+        host.auto_proxy = Some("job-proxy".into());
+        host.proxy_assets
+            .insert("job-proxy".into(), vec![key.clone()]);
+        (key, asset)
+    }
+
+    /// BL094.11: a result that a request took (`job.commit`, `job.discard`) is never seen by
+    /// `poll`, so the request has to forget the job as the automatic one. Left behind, the marker
+    /// kept every scheduler waiting and the window stayed in `media_preparing` until a restart.
+    #[test]
+    fn forgetting_an_automatic_job_clears_its_marker_and_leaves_the_other_alone() {
+        let mut host = MediaHost::new().interactive();
+        automatic_jobs(&mut host);
+
+        host.release_automation_job("job-prepare", false);
+        assert_eq!(host.auto_prepare, None, "the prepare marker is gone");
+        assert!(host.auto_assets.is_empty(), "so are the assets it covered");
+        assert_eq!(
+            host.auto_proxy.as_deref(),
+            Some("job-proxy"),
+            "the proxy job is another job: its marker stays"
+        );
+        assert_eq!(host.proxy_assets.len(), 1);
+
+        host.release_automation_job("job-proxy", false);
+        assert_eq!(host.auto_proxy, None, "the proxy marker is gone");
+        assert!(host.proxy_assets.is_empty());
+
+        // A job that is not the automatic one changes nothing.
+        let mut other = MediaHost::new().interactive();
+        automatic_jobs(&mut other);
+        other.release_automation_job("job-other", true);
+        assert_eq!(other.auto_prepare.as_deref(), Some("job-prepare"));
+        assert_eq!(other.auto_proxy.as_deref(), Some("job-proxy"));
+        assert!(other.auto_failed.is_empty() && other.proxy_failed.is_empty());
+    }
+
+    /// What the job was preparing is remembered as failed only when its result did not apply
+    /// (as `poll` does), so a corrupt file does not restart a job every tick; a result that was
+    /// given up (`job.discard`) is not a failure and the next tick may prepare it again.
+    #[test]
+    fn only_a_result_that_did_not_apply_keeps_its_assets_from_being_retried() {
+        let mut failed = MediaHost::new().interactive();
+        let (key, asset) = automatic_jobs(&mut failed);
+        failed.release_automation_job("job-prepare", true);
+        failed.release_automation_job("job-proxy", true);
+        assert_eq!(failed.auto_failed, vec![asset]);
+        assert_eq!(failed.proxy_failed, vec![key]);
+
+        let mut given_up = MediaHost::new().interactive();
+        automatic_jobs(&mut given_up);
+        given_up.release_automation_job("job-prepare", false);
+        given_up.release_automation_job("job-proxy", false);
+        assert!(given_up.auto_failed.is_empty(), "not a failure");
+        assert!(given_up.proxy_failed.is_empty(), "not a failure");
     }
 }

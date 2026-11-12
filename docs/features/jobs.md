@@ -286,6 +286,44 @@ há log para reler; o que existe é o relato acima, o código dos testes que as 
 **novas** deste fechamento (abaixo) são testes do próprio spec e deixam log (`/tmp/pr6n-logs/native/job-discard-spec*.log`). Os
 logs de workspace/clippy/build do gate ficaram em `/tmp/pr6fix/gates` (`test.log`, `summary`, `head`), não versionados.
 
+### Preparação automática depois de `job.commit` antes do tick (BL094.11; a validar)
+
+**Defeito (preexistente, também em `main`).** O host marca a preparação automática em andamento (`auto_prepare` e `auto_proxy`,
+com os ativos que ela cobre em `auto_assets` e `proxy_assets`), e `schedule_prepare`, `schedule_proxies` e `schedule_thumbnails`
+esperam a marca sumir antes de agendar mais trabalho. Quem a limpava era o `poll`, ao ver o job terminar. Mas `job.commit` tira
+o job de `pending` e aplica o resultado antes de o `poll` olhar, então o `poll` nunca via o fim: a marca ficava para sempre e a
+janela seguia em `media_preparing`, sem preparar mídia nova nem miniaturas, até reiniciar. Só acontece por automação
+(`ui op job.commit` ou JSONL interativo) na janela de até 250 ms entre dois ticks, como BL094.6 e BL094.10. `job.discard` já
+limpava as marcas; o `poll` também.
+
+**Correção (só `crates/media/src/host.rs`).** Um ponto só, `MediaHost::release_automation_job`, esquece o job como o automático
+e acerta o que ele preparava; `poll`, `job_commit` e `job_discard` chamam o mesmo. Um resultado que **não aplicou** deixa os
+ativos em `auto_failed`/`proxy_failed`, como o `poll` já fazia (não são tentados de novo até o arquivo mudar, para um vídeo
+corrompido não reiniciar um job a cada tick); um resultado aplicado ou descartado não marca falha (descartar é abrir mão, e o
+próximo tick pode preparar a mesma mídia). Um `job.commit` recusado antes de tirar o job de `pending` (`job_running`,
+`job_discarding`, `job_discarded`, job que falhou) não muda nada: o `poll` ainda verá o job.
+
+**Prova (2026-11-12, base `d5d641d` mais este delta, FFmpeg real, um gate pesado por vez).** Três testes novos, todos verdes:
+
+* `host.rs` (unidade, 2): `forgetting_an_automatic_job_clears_its_marker_and_leaves_the_other_alone` e
+  `only_a_result_that_did_not_apply_keeps_its_assets_from_being_retried`.
+* `async_host.rs::committing_the_automatic_prepare_job_before_the_tick_does_not_stall_the_next_one` (host interativo): importa um
+  vídeo, espera o preparo automático terminar sem tick (`job.get`, porque o host interativo não espera), faz `job.commit`, confere
+  que o `poll` entrega o fim do job uma vez e que um **segundo** vídeo, de bytes diferentes, é preparado sozinho; a biblioteca
+  fica com 2 itens, ambos decodificados.
+* `workflow_tests.rs::committing_the_automatic_prepare_job_before_the_tick_leaves_the_window_free_to_prepare_more` (GPUI): o
+  mesmo cenário pelo tick da janela.
+
+**Mutações** (cada uma revertida; `host.rs` voltou byte a byte, mesmo sha256): tirar a chamada de `job_commit` reprova o teste do
+host e o da janela com `the second import started its own automatic prepare job`; fazer `release_automation_job` ignorar a falha
+reprova o teste de unidade (`auto_failed` vazio em vez do ativo).
+
+**Prova mais larga (mesma base, porque `host.rs` é usado pela maioria das suítes).** `cargo fmt --check` e `clippy -D warnings`
+(mídia e desktop, todos os alvos) limpos; crate de mídia inteiro: 499 passam, 6 ignorados e **1 falha de ambiente que já existe
+em `main`** (`export.rs::a_full_disk_ends_the_export_with_disk_full_and_leaves_the_volume_clean`: o `hdiutil attach` é negado
+nesta máquina, BL082.47); crate desktop inteiro: 509/509. **Não** foram repetidos o workspace inteiro nem a prova nativa da
+janela real.
+
 ### Requisição que falha durante o descarte (BL112.12, CodeRabbit `4499357511`, revisão Sonnet `5809214591` N1/N2; a validar)
 
 **Defeito.** `Probe._run` capturava só `OSError` e descartava a requisição: nada era registrado e uma resposta que não é JSON
