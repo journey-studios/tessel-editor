@@ -145,11 +145,18 @@ impl ViewportHost {
             ));
             options.inspect = std::env::var(INSPECT_ENV).is_ok_and(|v| v == "1");
         }
-        let key = format!("{}|{:?}|{:?}", plan.to_json(), map, options);
+        let scene = request["scene"].as_str().map(str::to_owned);
+        // WHY the scene id is part of the key (BL015.22): the plan, the resource map and the options
+        // say what the picture is made of, not WHICH scene it is. Two scenes attached from one bundle
+        // file share all three, so without the id a request for the second one matched the first's key,
+        // returned below before `directed.scene` was assigned, and the monitor (and the gizmo, which
+        // routes the overlay and the pointer by `directed_scene()`) stayed on the first scene while
+        // `monitor.show_scene` answered ok. `{:?}` quotes the id, so it cannot run into the plan JSON.
+        let key = format!("{scene:?}|{}|{:?}|{:?}", plan.to_json(), map, options);
         if !explicit && self.directed.key.as_ref() == Some(&key) {
-            // Same picture as the last request, but that request may still be parked (the monitor
-            // was hidden while the playhead moved): showing it again must start it, or nothing
-            // would until an unrelated message from the page.
+            // Same scene and same picture as the last request, but that request may still be parked
+            // (the monitor was hidden while the playhead moved): showing it again must start it, or
+            // nothing would until an unrelated message from the page.
             self.dispatch_directed();
             return Ok(None);
         }
@@ -158,7 +165,6 @@ impl ViewportHost {
             self.fail_waiters(&BackendError::new("cancelled", "Directed scene selected"));
             self.last_key = None;
         }
-        let scene = request["scene"].as_str().map(str::to_owned);
         // Another scene under the same monitor is another session for the history: one segment
         // per switch (and for entering a scene from the sequence), none for a new frame of the
         // same scene, which is the same measurement continuing.

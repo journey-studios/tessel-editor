@@ -483,6 +483,7 @@ impl ScenePlan {
         edit_frame: i64,
         options: PlanOptions,
     ) -> Result<Self, PlanError> {
+        super::probe::note_layout();
         let frame = scene.bundle().evaluate_frame(edit_frame)?;
         let prepared = Prepared::new(scene, &frame)?;
         prepared.refuse_unsupported(options)?;

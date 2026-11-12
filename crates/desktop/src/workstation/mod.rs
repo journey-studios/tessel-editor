@@ -869,6 +869,8 @@ mod scene_fx_keys_tests;
 #[cfg(test)]
 mod scene_fx_tests;
 #[cfg(test)]
+mod scene_gizmo_perf_tests;
+#[cfg(test)]
 mod scene_gizmo_tests;
 #[cfg(test)]
 mod scene_light_tests;
