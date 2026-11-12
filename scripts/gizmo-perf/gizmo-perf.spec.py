@@ -1224,6 +1224,18 @@ class Audit(unittest.TestCase):
         self.assertEqual((kind['extra_plan_seen_by_time'], kind['extra_plan_seen_in_reports']), (True, 1))
         self.assertEqual(out['summary']['one_extra_plan_seen_in_some_reports_only'], ['dense/move'])
 
+    def test_a_corpus_the_budgets_do_not_name_is_reported_without_a_budget_not_a_crash(self):
+        # A report can hold a corpus `budgets.json` never declared (a new one, a misspelt one): like a kind without a budget,
+        # it is listed as one the audit could not judge, and the corpora the budgets do name are still judged.
+        unknown = {'corpora': [{'corpus': 'forest', 'reference': {'p50_ns': 1_000_000}, 'cold': {},
+                                'hot': {'move': {'ratio_p50': 1.0, 'ratio_p95': 2.0}}}]}
+        known = self.report(1.0, 2.0)
+        out = audit.audit(self.budgets(3.0, 5.0), [unknown, known])
+        self.assertEqual(out['summary']['no_budget'], ['forest/move'])
+        self.assertEqual(out['kinds']['forest/move'], {'status': 'NO_BUDGET'})
+        self.assertEqual(out['summary']['kinds'], 1)
+        self.assertEqual(out['summary']['one_extra_plan_passes_in_time'], ['dense/move'])
+
     def calls(self, pairs, plan_ns=1_000_000):
         """A report that carries what the Rust run writes per kind: the call times, the reference time of the window each one
         was timed in, and the ratio quantiles that run computed from them (nearest rank: the ceil(q*n)-th smallest)."""
@@ -1998,6 +2010,19 @@ class TimePhase(unittest.TestCase):
             code, refusal = self.time_phase(out, 'memo_off', 'replan_per_tick')  # one of two is not "judge the other"
             self.assertEqual((code, refusal.get('status')), (1, 'REFUSED'))
             self.assertIn('replan_per_tick', refusal.get('reason', ''))
+
+    def test_a_mutant_name_that_does_not_exist_is_an_argument_error_that_touches_nothing(self):
+        # Before this, `--only memo_of` (a typo) passed the argument parser, took the locks, read the identity of the checkout and
+        # then died on `MUTANTS['memo_of']` with a traceback and no manifest: a name that names no mutant is a usage error.
+        for phase in ('prepare', 'time'):
+            with self.subTest(phase), tempfile.TemporaryDirectory() as root:
+                out = Path(root) / 'out'
+                errors = io.StringIO()
+                with contextlib.redirect_stderr(errors), self.assertRaises(SystemExit) as stopped:
+                    run_main(mutate, ['--phase', phase, '--out', str(out), '--only', 'memo_off', 'memo_of'])
+                self.assertEqual(stopped.exception.code, 2)
+                self.assertIn('memo_of', errors.getvalue())
+                self.assertFalse(out.exists())  # not even the directory (or its lock file) of a run that never started
 
     def test_a_manifest_that_is_not_a_finished_prepare_is_refused(self):
         with tempfile.TemporaryDirectory() as out:

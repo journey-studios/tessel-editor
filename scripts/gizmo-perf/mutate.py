@@ -361,7 +361,10 @@ def main(argv=None):
     harness.install_termination_handlers()
     parser = argparse.ArgumentParser()
     parser.add_argument('--out', default='/tmp/gizmo-perf-mutants')
-    parser.add_argument('--only', nargs='*')
+    # A name that names no mutant is a usage error here, before a lock is taken or the checkout is read (it was a `KeyError`
+    # on `MUTANTS[name]`, after both, with a traceback and no manifest).
+    parser.add_argument('--only', nargs='*', choices=sorted(MUTANTS), metavar='MUTANT',
+                        help='only these mutants (default: all). One of: ' + ', '.join(sorted(MUTANTS)))
     parser.add_argument('--phase', choices=['prepare', 'time'], required=True,
                         help='`prepare`: structural/host detectors and the release builds of the time mutants '
                              '(the builds leave the machine loaded, which the guard refuses); `time`: only the guard, '

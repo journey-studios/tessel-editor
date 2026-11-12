@@ -96,7 +96,7 @@ def audit(budgets, reports):
     seen = observed(reports)
     kinds = {}
     for (corpus, kind), observations in sorted(seen.items()):
-        limit = budgets['ratios'][corpus].get(kind)
+        limit = budgets['ratios'].get(corpus, {}).get(kind)  # a corpus the budgets never named is a kind without a budget
         if limit is None:
             kinds[f'{corpus}/{kind}'] = {'status': 'NO_BUDGET'}
             continue
