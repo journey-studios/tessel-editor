@@ -613,9 +613,26 @@ fn the_duration_reset_of_a_clip_in_a_shot_is_what_the_shot_holds(cx: &mut TestAp
     let at_rest = field(&node(&view, cx, FIRST), "duration_frames");
     assert_eq!(at_rest["default"], json!(48.0), "{at_rest}");
     assert_eq!(at_rest["at_default"], json!(true));
+    // The node publishes the limits of the timing fields the core computed for the clip's shot, not the
+    // edit's: a clip that fills its shot has no room to start anywhere else, and no more to grow.
+    let limits = |view: &Entity<Workstation>, cx: &mut VisualTestContext, name: &str| {
+        let field = field(&node(view, cx, FIRST), name);
+        (field["min"].clone(), field["max"].clone())
+    };
+    assert_eq!(limits(&view, cx, "start_frame"), (json!(0.0), json!(0.0)));
+    assert_eq!(
+        limits(&view, cx, "duration_frames"),
+        (json!(1.0), json!(48.0))
+    );
 
     set(&view, cx, FIRST, "duration_frames", Raw::Number(30.0)).unwrap();
     assert_eq!(clip_span(&view, cx, "fx-1"), (0, 30));
+    // Shorter, it can start up to the frame that still lets it end inside the shot (48 - 30).
+    assert_eq!(limits(&view, cx, "start_frame"), (json!(0.0), json!(18.0)));
+    assert_eq!(
+        limits(&view, cx, "duration_frames"),
+        (json!(1.0), json!(48.0))
+    );
     let moved = node(&view, cx, FIRST);
     assert_eq!(field(&moved, "duration_frames")["at_default"], json!(false));
     assert_eq!(

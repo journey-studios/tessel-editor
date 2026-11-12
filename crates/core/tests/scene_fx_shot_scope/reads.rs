@@ -216,27 +216,36 @@ fn the_duration_reset_the_inspector_hands_out_is_an_op_the_edit_accepts() {
     }
 }
 
-/// The limits of the start and the duration fields are the clip's scope, never the edit's: a clip on a
-/// shot would be refused (`FX_SCOPE_MISMATCH`) past its shot, so the slider must stop there. The
-/// numbers are the corpus's shots, `[0, 48)` and `[48, 96)`, over an edit of 96 frames.
+/// The limits of the start and the duration fields of a clip on a shot are its shot's, never the edit's: the
+/// clip would be refused (`FX_SCOPE_MISMATCH`) past its shot, so the slider must stop there. The numbers are
+/// the corpus's shots, `[0, 48)` and `[48, 96)`, over an edit of 96 frames, and every end the fields announce is
+/// held to what `edit` does with it: the end is accepted and one frame past it is refused, by the shot
+/// (`FX_SCOPE_MISMATCH`) or, where the shot ends with the edit, by the edit (`FX_CLIP_OUT_OF_RANGE`).
+///
+/// Clips on the output are not judged here: their limits still offer what the rule refuses (BL082.69).
 #[test]
 fn the_timing_fields_of_a_shot_clip_stop_where_its_shot_ends() {
-    let mut state = session();
-    edit(
-        &mut state,
-        json!([
-            add_scoped("early", 40, 8, "shot:shot-1"),
-            add_scoped("late", 60, 10, "shot:shot-2"),
-            add("on-output", 40, 56)
-        ]),
-    );
-    // `(clip, first start, last start, longest duration)`: the last start leaves the clip as long
-    // as it is inside the shot, and the longest duration starts where the clip starts.
-    for (clip, first, last, longest) in [
-        ("early", 0.0, 40.0, 8.0),
-        ("late", 48.0, 86.0, 36.0),
-        ("on-output", 0.0, 95.0, 96.0),
+    // `(clip, scope, start, duration, first start, last start, longest duration, refusal past them)`: the last
+    // start leaves the clip as long as it is inside the shot, and the longest duration counts from where the
+    // clip starts. The first shot ends inside the edit; the second one ends with it.
+    for (clip, scope, start, duration, first, last, longest, refusal) in [
+        ("early", "shot:shot-1", 40, 8, 0, 40, 8, "FX_SCOPE_MISMATCH"),
+        (
+            "late",
+            "shot:shot-2",
+            60,
+            10,
+            48,
+            86,
+            36,
+            "FX_CLIP_OUT_OF_RANGE",
+        ),
     ] {
+        let mut state = session();
+        edit(
+            &mut state,
+            json!([add_scoped(clip, start, duration, scope)]),
+        );
         let answer = ok(
             &mut state,
             json!({"op":"scene.fx.inspect","scene":"street","clip":clip}),
@@ -250,11 +259,41 @@ fn the_timing_fields_of_a_shot_clip_stop_where_its_shot_ends() {
                 .unwrap_or_else(|| panic!("no `{name}` in {answer}"));
             (field["min"].clone(), field["max"].clone())
         };
-        assert_eq!(range("start_frame"), (json!(first), json!(last)), "{clip}");
+        assert_eq!(
+            range("start_frame"),
+            (json!(first as f64), json!(last as f64)),
+            "{clip}"
+        );
         assert_eq!(
             range("duration_frames"),
-            (json!(1.0), json!(longest)),
+            (json!(1.0), json!(longest as f64)),
             "{clip}"
+        );
+
+        // What the limits announce is what the edit accepts, and one frame past it is not.
+        let retime = |field: &str, value: i64| json!([{"op":"set_field","clip":clip,"field":field,"value":value}]);
+        let span = |state: &EditorState| {
+            let found = clip_of(&document(state), clip);
+            (
+                found["startFrame"].as_i64().unwrap(),
+                found["durationFrames"].as_i64().unwrap(),
+            )
+        };
+        edit(&mut state, retime("duration_frames", longest));
+        assert_eq!(span(&state), (start, longest), "{clip}");
+        let past = edit_err(&mut state, retime("duration_frames", longest + 1));
+        assert_eq!(issue_codes(&past), [refusal], "{clip}");
+        edit(&mut state, retime("duration_frames", duration));
+        for edge in [first, last] {
+            edit(&mut state, retime("start_frame", edge));
+            assert_eq!(span(&state), (edge, duration), "{clip}");
+        }
+        let past = edit_err(&mut state, retime("start_frame", last + 1));
+        assert_eq!(issue_codes(&past), [refusal], "{clip}");
+        assert_eq!(
+            span(&state),
+            (last, duration),
+            "{clip}: a refusal writes nothing"
         );
     }
 }
