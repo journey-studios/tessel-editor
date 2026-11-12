@@ -243,6 +243,26 @@ impl AssetPool {
     }
 }
 
+#[cfg(any(test, feature = "test-support"))]
+impl AssetPool {
+    /// The pool every worker of which failed to start: nobody reads its queue, so `submit` finds the channel closed and refuses
+    /// every job with [`Rejection::Closed`]. (No worker ends while a pool handle is alive, so a pool comes to be closed only
+    /// that way, which a test cannot ask the operating system for.)
+    pub fn closed() -> Self {
+        let (sender, receiver) = sync_channel::<Message>(1);
+        drop(receiver);
+        Self {
+            shared: Arc::new(Shared {
+                sender,
+                epoch: AtomicU64::new(0),
+                stats: IoStats::default(),
+                workers: 1,
+                queue: 1,
+            }),
+        }
+    }
+}
+
 /// Who reads the files the page asks for, fixed when the host is created (BL157.1).
 #[derive(Debug, Clone)]
 pub enum Reader {
@@ -791,6 +811,40 @@ mod tests {
             vec![("running", 200), ("waiting", 200)]
         );
         assert!(rx.try_recv().is_err(), "every job answered once");
+    }
+
+    #[test]
+    fn a_pooled_reader_refuses_a_job_a_closed_pool_did_not_accept_with_a_503_of_its_own() {
+        let dir = scratch("closed");
+        std::fs::write(dir.join("a.bin"), b"abc").unwrap();
+        let pool = AssetPool::closed();
+        let reader = Reader::Pooled(pool.clone());
+        let (tx, rx) = mpsc::channel();
+        let dispatch = reader.read(
+            ReadJob {
+                file: dir.join("a.bin"),
+                range: None,
+            },
+            Box::new(move |served, outcome| {
+                tx.send((served, outcome, std::thread::current().id()))
+                    .unwrap();
+            }),
+        );
+        assert_eq!(dispatch, Dispatch::Refused(Rejection::Closed));
+        assert_eq!(dispatch.as_str(), "closed");
+        // Answered by `read` itself, on this thread, before it returned: the same thread a full queue is answered on.
+        let (served, outcome, thread) = rx.try_recv().expect("the refusal is answered at once");
+        assert_eq!(served.status, 503);
+        assert!(String::from_utf8_lossy(&served.body).contains("closed"));
+        assert_eq!(thread, std::thread::current().id());
+        assert_eq!(outcome.worker, None);
+        assert!(rx.try_recv().is_err(), "answered once");
+        // Refused, not full: the job was never counted as submitted, waiting or saturating.
+        let stats = pool.stats();
+        assert_eq!(
+            (stats.submitted(), stats.queued(), stats.saturated()),
+            (0, 0, 0)
+        );
     }
 
     #[test]
