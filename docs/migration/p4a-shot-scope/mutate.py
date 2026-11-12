@@ -203,6 +203,9 @@ MUTANTS = [
     ('W11', 'the handles button of a vignette on a shot is a live control (the refusal comes from the core)', WINDOW_HANDLES,
      '        let button = if let Some(reason) = no_handles_text(clip) {',
      '        let button = if let Some(reason) = no_handles_text(clip).filter(|_| clip.scope.is_output()) {', 'desktop'),
+    ('W12', 'the node publishes a longer reach than the core computed for the timing fields', WINDOW_PANEL,
+     '"max": control.max, "step": control.step, "integer": control.integer,',
+     '"max": control.max + 1.0, "step": control.step, "integer": control.integer,', 'desktop'),
     ('W07', 'the hint of the section lists the adds on the output only', WINDOW_PANEL,
      '|view| action_names(&section_actions(&view)),',
      '|view| action_names(&section_actions(&view)).into_iter().filter(|name| name.starts_with(ADD_PREFIX)).collect::<Vec<_>>(),', 'desktop'),
@@ -215,8 +218,9 @@ COMMANDS = {
     'render': (['./scripts/cargo', 'test', '-p', 'tessel-editor-render', '--locked', '--no-fail-fast',
                 '--test', 'scene_fx_shot_scope'], ROOT),
     'browser': (['node', '--test', '--test-reporter=tap', 'test/directed-scene-fx-browser.test.mjs'], ROOT / 'runtime'),
+    # `cargo test` takes ONE test name before the `--`; a second filter is the libtest's own, after it (they add up).
     'desktop': (['./scripts/cargo', 'test', '-p', 'tessel-editor', '--locked', '--no-fail-fast', 'scene_fx_scope',
-                 'scene_fx_handles_tests::a_vignette_on_a_shot'], ROOT),
+                 '--', 'scene_fx_handles_tests::a_vignette_on_a_shot'], ROOT),
 }
 
 
@@ -334,7 +338,11 @@ def main(argv):
     report = load_report()
     entry = {'started': datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds'), 'head': head(),
              'dirty_before': git_before, 'selected': [m[0] for m in selected], 'baselines': {}, 'stopped': None,
-             'note': '', 'restored': None, 'dist_restored': None, 'hashes_before': before, 'hashes_after': None}
+             'note': '', 'restored': None,
+             # `dist_restored`: runtime/dist rebuilt from the restored source after the last mutant of a runner that
+             # draws with it (null: none ran). The corridor of the handles (`g41-handles`) rebuilds ONCE, at the end of
+             # the run, and calls it `dist_rebuilt`: same invariant, one build there and one per mutant here.
+             'dist_restored': None, 'hashes_before': before, 'hashes_after': None}
     report['runs'].append(entry)
     write_report(report, entry)
     baselines = entry['baselines']
@@ -404,8 +412,9 @@ def main(argv):
             record(ident, what, path, kind, result, **extra)
             print(ident, result, names[:3], flush=True)
             if dist_broken is not None:
-                # runtime/dist still holds this mutant: the next verdict would judge it, so the batch ends here
-                # and the run is never `restored` (a note nobody reads is not a stop).
+                # runtime/dist holds this mutant and the run cannot be a sound state any more: the batch ends here
+                # and the run is never `restored` (a note nobody reads is not a stop). The next mutant of a runner
+                # that draws would rebuild before it tests; the point is what is left on disk, not that verdict.
                 entry['stopped'] = (f'runtime/dist could NOT be rebuilt after {ident}, it holds the mutant '
                                     f'(run `./scripts/runtime build`): {dist_broken}')
                 break

@@ -158,6 +158,9 @@ def main():
         # `dist` goes back to that source here.
         dist_rebuilt = rebuild_dist() if dist_dirty else None
     hashes_after = {path: digest(path) for path in ALL_PATHS}
+    # `dist_rebuilt` is the `dist_restored` of the corridor of the shot scope (`p4a-shot-scope`): the same invariant
+    # (runtime/dist built from the restored source, null when no JS mutant ran), recorded once here because this
+    # corridor rebuilds once, at the end, and per mutant there.
     restored = hashes_before == hashes_after and dist_rebuilt is not False
     out = {'restored': restored, 'dist_rebuilt': dist_rebuilt, 'hashes': hashes_after, 'mutants': report}
     EVIDENCE.mkdir(parents=True, exist_ok=True)
