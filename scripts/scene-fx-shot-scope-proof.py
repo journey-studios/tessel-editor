@@ -85,19 +85,47 @@ WHITE = (1.0, 1.0, 1.0)
 # ---- the independent expectation ------------------------------------------------------------------------
 
 def vignette_of(probes, points, width=WIDTH, height=HEIGHT, **params):
-    return [P.vignette(p[:3], x, y, width, height, 1.0, **params) for p, (x, y) in zip(probes, points)]
+    # strict: a render that answers fewer probes than there are points must not be judged on the ones it has
+    return [P.vignette(p[:3], x, y, width, height, 1.0, **params) for p, (x, y) in zip(probes, points, strict=True)]
 
 
 def staged(probes, points, flipped=False):
     """The shot's vignette, then the output's white fade at 0.5: the composition the stages define (or the
     flipped order, which the stages must NOT draw)."""
     out = []
-    for p, (x, y) in zip(probes, points):
+    for p, (x, y) in zip(probes, points, strict=True):
         if flipped:
             out.append(P.vignette(P.fade(p[:3], WHITE, 0.5), x, y, WIDTH, HEIGHT, 1.0, **STRONG))
         else:
             out.append(P.fade(P.vignette(p[:3], x, y, WIDTH, HEIGHT, 1.0, **STRONG), WHITE, 0.5))
     return out
+
+
+class ShortRender(Exception):
+    """A render did not answer one probe per point of the grid: the FAIL is already recorded, the proof stops."""
+
+
+def rendered(win, frame, points, what):
+    """`win.render` plus the check that the answer holds ONE probe per point of the grid (the judges below zip the
+    two). A short, missing or malformed answer is a recorded FAIL with the counts and stops the proof: it must
+    neither be compared on the probes it has (a partial PASS) nor end in a traceback."""
+    got = win.render(frame, points)
+    probes = got.get("probes") if isinstance(got, dict) else None
+    answered = len(probes) if isinstance(probes, list) else None
+    if not check(f"{what}: the render of frame {frame} answered one probe per grid point", answered == len(points),
+                 {"frame": frame, "probes": answered, "points": len(points)}):
+        raise ShortRender(what)
+    return got
+
+
+def refused_as(answer, code, target=None, scope=None):
+    """Whether `answer` is the `ok:false` refusal `code` (on `target`, with `details.scope == scope`, when given). An
+    `ok:false` that carries no `error` or no `details` is a failed check with the answer as its detail, not a KeyError
+    that loses the rest of the proof."""
+    error = (answer or {}).get("error") or {}
+    return ((answer or {}).get("ok") is False and error.get("code") == code
+            and (target is None or error.get("target") == target)
+            and (scope is None or (error.get("details") or {}).get("scope") == scope))
 
 
 def corpus_shots():
@@ -210,7 +238,7 @@ def run(args, surfaces):
         for frame in looked:
             lab.seek(frame)
             monitor_base[frame] = win.shown_hash(frame)
-            base[frame] = win.render(frame, points)
+            base[frame] = rendered(win, frame, points, "baseline")
         if not check("baseline: the four frames rendered and read back", all(base.get(f) and base[f].get("inspected") for f in looked), base):
             return 1
         check("baseline: the monitor's picture is the render's picture at every frame", all(monitor_base[f] == base[f]["hash"] for f in looked),
@@ -256,7 +284,7 @@ def run(args, surfaces):
         hashes = {}
         for frame in (FRAME, LAST_OF_FIRST):
             shown = win.repaint(frame)
-            got = win.render(frame, points)
+            got = rendered(win, frame, points, FIRST)
             hashes[frame] = got["hash"]
             delta = P.worst(got["probes"], vignette_of(base[frame]["probes"], points, **STRONG))
             check(f"frame {frame} ({FIRST}): every probe equals the Python vignette of the baseline (worst {delta:.1f})", delta <= TOLERANCE, delta)
@@ -265,7 +293,7 @@ def run(args, surfaces):
             check(f"frame {frame}: the monitor's picture is the render's picture and not the baseline's", shown == got["hash"] and shown != monitor_base[frame], (shown, got["hash"]))
         for frame in (FIRST_OF_SECOND, IN_SECOND):
             shown = win.repaint(frame)
-            got = win.render(frame, points)
+            got = rendered(win, frame, points, SECOND)
             check(f"frame {frame} ({SECOND}): the monitor draws the baseline's very picture", shown == monitor_base[frame], (shown, monitor_base[frame]))
             check(f"frame {frame}: the render is the baseline's picture, hash and probes", got["hash"] == base[frame]["hash"] and P.worst(got["probes"], base[frame]["probes"]) == 0, got["hash"])
 
@@ -300,7 +328,7 @@ def run(args, surfaces):
         check("the node says output and the move to the shot is enabled again",
               win.field(CLIP, "scope") == "output" and (action_of(win.node(CLIP), f"set_scope:shot:{FIRST}") or {}).get("enabled") is True)
         output_hash = win.repaint(FRAME)
-        check("a lone effect draws the SAME picture on the output as on its shot (hash)", output_hash == hashes[FRAME] and win.render(FRAME, points)["hash"] == hashes[FRAME], (output_hash, hashes[FRAME]))
+        check("a lone effect draws the SAME picture on the output as on its shot (hash)", output_hash == hashes[FRAME] and rendered(win, FRAME, points, "output scope")["hash"] == hashes[FRAME], (output_hash, hashes[FRAME]))
         back = win.set(CLIP, "scope", f"shot:{FIRST}")
         check("set scope shot:shot-1 (the text of the scope) brings it back", back.get("ok") and back["data"].get("changed") is True and win.undo_depth() == depth + 2, back)
         check("the plan pass is the shot's again", (passes_of(win, FRAME) or [{}])[0].get("scope") == {"kind": "shot", "shotId": FIRST})
@@ -362,9 +390,8 @@ def run(args, surfaces):
             return 1
         select, read, output_select = headless_answers[2], headless_answers[3], headless_answers[5]
         check("through tessel-headless: scene.fx.select of the same vignette is scope_not_supported",
-              select.get("ok") is False and select["error"].get("code") == "scope_not_supported"
-              and select["error"].get("target") == "v1" and select["error"]["details"].get("scope") == f"shot:{FIRST}", select)
-        check("through tessel-headless: scene.fx.handles says the same", read.get("ok") is False and read["error"].get("code") == "scope_not_supported", read)
+              refused_as(select, "scope_not_supported", target="v1", scope=f"shot:{FIRST}"), select)
+        check("through tessel-headless: scene.fx.handles says the same", refused_as(read, "scope_not_supported"), read)
         check("through tessel-headless: back on the output the select works again, and the process exits 1 for the two refusals",
               output_select.get("ok") is True and headless_code == 1, (output_select, headless_code))
         moved = win.invoke(CLIP, "set_scope:output")
@@ -424,15 +451,15 @@ def run(args, surfaces):
         check("scene.fx.frame counts one pass in each stage", ok and read.get("stages") == {"deck": 1, "output": 1}, read)
         lab.seek(STAGES_FRAME)
         win.shown_hash(STAGES_FRAME)
-        stacked_first = win.render(STAGES_FRAME, points)
+        stacked_first = rendered(win, STAGES_FRAME, points, "stages")
         # The baseline of this frame comes from the clips being hidden: ask the render for it directly.
         for node in (shot_node, fade_node):
             check(f"hide {node}", win.set(node, "hidden", True).get("ok"))
-        clean = win.render(STAGES_FRAME, points)
+        clean = rendered(win, STAGES_FRAME, points, "stages, clips hidden")
         for node in (shot_node, fade_node):
             check(f"show {node}", win.set(node, "hidden", False).get("ok"))
         shown = win.repaint(STAGES_FRAME)
-        got = win.render(STAGES_FRAME, points)
+        got = rendered(win, STAGES_FRAME, points, "stages, clips shown again")
         want = staged(clean["probes"], points)
         flipped = staged(clean["probes"], points, flipped=True)
         delta = P.worst(got["probes"], want)
@@ -552,6 +579,8 @@ def main():
     surfaces, code = [], 1
     try:
         code = run(args, surfaces)
+    except ShortRender:
+        code = 1  # `rendered` recorded the FAIL with the counts: no second, generic one
     except (SystemExit, KeyboardInterrupt) as error:
         code = error.code if isinstance(error, SystemExit) and isinstance(error.code, int) and error.code != 0 else 130
         check("the proof was interrupted", False, f"{type(error).__name__}: {error}")

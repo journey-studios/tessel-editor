@@ -6,7 +6,10 @@ export judge DISCRIMINATES the three ways the feature can be wrong: a shot effec
 its shot ended, one that is not drawn inside its shot, and the stages drawn in the flipped order. The
 expectation is the independent Python of `scene-fx-ui-proof.py`, not a copy of the product.
 """
+import contextlib
 import importlib.util
+import io
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -145,6 +148,88 @@ class Expectation(unittest.TestCase):
 
     def test_the_corpus_shots_are_the_two_halves_of_the_edit(self):
         self.assertEqual(proof.corpus_shots(), [("shot-1", 0, 48), ("shot-2", 48, 96)])
+
+
+class Refusal(unittest.TestCase):
+    FULL = {"ok": False, "error": {"code": "scope_not_supported", "target": "v1", "details": {"scope": "shot:shot-1"}}}
+
+    def test_a_complete_refusal_is_the_one_asked_for(self):
+        self.assertTrue(proof.refused_as(self.FULL, "scope_not_supported", target="v1", scope="shot:shot-1"))
+        self.assertTrue(proof.refused_as(self.FULL, "scope_not_supported"))
+
+    def test_a_refusal_for_another_code_target_or_scope_is_not(self):
+        self.assertFalse(proof.refused_as(self.FULL, "fx_has_no_handles"))
+        self.assertFalse(proof.refused_as(self.FULL, "scope_not_supported", target="v2"))
+        self.assertFalse(proof.refused_as(self.FULL, "scope_not_supported", scope="shot:shot-2"))
+
+    def test_an_answer_without_error_or_details_is_a_failed_check_and_never_a_key_error(self):
+        for answer in (None, {}, {"ok": False}, {"ok": False, "error": None}, {"ok": True}, {"ok": False, "error": {"code": "scope_not_supported"}}):
+            self.assertFalse(proof.refused_as(answer, "scope_not_supported", target="v1", scope="shot:shot-1"), answer)
+        self.assertTrue(proof.refused_as({"ok": False, "error": {"code": "scope_not_supported"}}, "scope_not_supported"))
+
+
+class Rendered(unittest.TestCase):
+    """The judges zip the probes of a render with the points of the grid: a render that answers fewer is a recorded
+    FAIL that stops the proof, never a comparison of the probes it has (a PASS) and never a traceback."""
+
+    PROBES = [[120, 80, 40, 255], [10, 200, 90, 255], [255, 255, 255, 255]]
+    POINTS = [(10, 10), (160, 90), (300, 170)]
+
+    class Win:
+        def __init__(self, answer):
+            self.answer = answer
+
+        def render(self, frame, points):
+            return self.answer
+
+    def setUp(self):
+        proof.P.checks.clear()
+        proof.P.failures.clear()
+
+    def test_a_probe_missing_from_the_answer_stops_the_proof_with_a_recorded_fail(self):
+        short = {"hash": "h", "probes": self.PROBES[:-1]}
+        with self.assertRaises(proof.ShortRender):
+            proof.rendered(self.Win(short), 12, self.POINTS, "shot-1")
+        self.assertEqual(len(proof.P.failures), 1)
+        self.assertIn("answered one probe per grid point", proof.P.failures[0])
+        self.assertIn("'probes': 2, 'points': 3", proof.P.checks[-1]["detail"])
+
+    def test_a_render_without_an_answer_or_probes_is_the_same_fail(self):
+        for answer in (None, {"hash": "h"}, {"hash": "h", "probes": "abc"}):
+            proof.P.failures.clear()
+            with self.assertRaises(proof.ShortRender):
+                proof.rendered(self.Win(answer), 12, self.POINTS, "baseline")
+            self.assertEqual(len(proof.P.failures), 1, answer)
+
+    def test_an_answer_with_one_probe_per_point_is_returned_whole(self):
+        answer = {"hash": "h", "probes": self.PROBES}
+        self.assertIs(proof.rendered(self.Win(answer), 12, self.POINTS, "shot-1"), answer)
+        self.assertEqual(proof.P.failures, [])
+        self.assertEqual(len(proof.P.checks), 1)
+
+    def test_the_expectations_refuse_a_probe_list_that_does_not_match_the_points(self):
+        for probes in (self.PROBES[:-1], self.PROBES + [[1, 2, 3, 255]]):
+            with self.assertRaises(ValueError):
+                proof.vignette_of(probes, self.POINTS, **proof.STRONG)
+            with self.assertRaises(ValueError):
+                proof.staged(probes, self.POINTS)
+            with self.assertRaises(ValueError):
+                proof.staged(probes, self.POINTS, flipped=True)
+
+    def test_a_short_render_ends_the_run_red_without_a_second_generic_fail(self):
+        def stop(args, surfaces):
+            proof.rendered(self.Win({"hash": "h", "probes": self.PROBES[:-1]}), 12, self.POINTS, "shot-1")
+
+        real_run, real_argv = proof.run, sys.argv
+        proof.run, sys.argv = stop, ["scene-fx-shot-scope-proof.py"]
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                code = proof.main()
+        finally:
+            proof.run, sys.argv = real_run, real_argv
+        self.assertEqual(code, 1)
+        self.assertEqual(len(proof.P.failures), 1, proof.P.failures)
+        self.assertIn("answered one probe per grid point", proof.P.failures[0])
 
 
 if __name__ == "__main__":
