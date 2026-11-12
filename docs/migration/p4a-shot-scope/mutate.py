@@ -324,6 +324,10 @@ def main(argv):
     check = '--check' in argv
     kinds = {argv[i + 1] for i, arg in enumerate(argv) if arg == '--kind' and i + 1 < len(argv)}
     only = {arg for arg in argv if arg not in ('--check', '--kind') and arg not in kinds and not arg.startswith('--')}
+    unknown = sorted(only - {m[0] for m in MUTANTS})
+    if unknown:  # a typo must not run a smaller batch and exit 0: refuse before anything is read, built or mutated
+        print('unknown mutant id(s): ' + ' '.join(unknown), file=sys.stderr)
+        return 2
     selected = [m for m in MUTANTS if (not only or m[0] in only) and (not kinds or m[5] in kinds)]
     if not selected:
         print('no mutant selected', file=sys.stderr)
@@ -400,6 +404,9 @@ def main(argv):
             finally:
                 file.write_text(original)
                 if kind in REBUILDS:
+                    # False until a build that FINISHED says otherwise: a signal in the middle of it (`Interrupted`
+                    # leaves this `finally`) must not leave the old None/True standing over a dist that holds the mutant
+                    entry['dist_restored'] = False
                     restored_dist, tail = rebuild_runtime()  # the dist must be the sound runtime again
                     entry['dist_restored'] = restored_dist
                     if not restored_dist:
