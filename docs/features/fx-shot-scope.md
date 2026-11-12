@@ -117,6 +117,24 @@ O **reset da duração** (`duration_frames` do inspector) restaura `fx::default_
 termina, a mesma de um `add_clip` sem duração. Em um clipe de plano o padrão é, portanto, o que o plano comporta a partir do
 seu início, e a op de reset sempre cabe (antes, o padrão ignorava o espaço e o reset era recusado perto do fim do plano: BL082.48).
 
+Os campos de **início** e **duração** de um clipe de plano são limitados pelo plano, nunca pela edição: o início vai do começo do
+plano até onde o clipe, como está, terminaria no fim dele (`fim − duração`); a duração vai de 1 até o fim do plano a partir do início
+do clipe (`fim − início`), com `fx::scope_start`/`scope_end` e `scene_edit::fx_choice::timing_limits` como único cálculo. Um clipe
+da saída segue com os limites da edição. A janela e `scene.fx.inspect` leem os mesmos números: o controle para onde a edição seria
+recusada com `FX_SCOPE_MISMATCH` (CodeRabbit da PR #48).
+
+### Alças da vinheta (F061 × F062, BL082.64)
+
+A vinheta de um clipe **de plano não tem alças no monitor**: a janela e o overlay das alças são lidos para um clipe da saída
+(quadros de saída, sobre a imagem pronta) e nada diz ainda onde fica a imagem de um plano (BL082.41). A recusa mora no **predicado
+único** de F061, `FxClip::handles_refusal` (`directed_scene/fx/handles.rs`; `has_handles` é só a ausência de recusa), que devolve
+`NoHandles::NotVignette` (`fx_has_no_handles`) ou `NoHandles::ScopeNotSupported` (`scope_not_supported`) e as palavras de cada uma
+nos três idiomas. Quem pergunta é sempre o mesmo predicado: `FxHandlesView::of` responde o erro tipado (alvo = o clipe, `details`
+`{clip, scope}`), a poda do alvo (`fx_clip_has_handles`) larga o alvo **na própria edição** que põe o clipe num plano (sem leitura),
+e a ação `handles` e o botão do inspetor ficam desabilitados com o texto do core. Por isso `scene.fx.select`, `scene.fx.handles`
+(leitura e `probe`), `scene.gizmo.hit` e `scene.pointer.down` respondem pela mesma recusa ou pela ausência de handle de efeito.
+Devolver o clipe à saída devolve as alças.
+
 ## Runtime (`runtime/src/output-fx.js`, `directed-scene.js`, `compositor.js`)
 
 - `parseOutputFx(raw, requires, frame)` aceita `scope: {kind:'shot', shotId}` **só** com `fxShotScope` em `requires` e
@@ -151,6 +169,10 @@ cada gesto é um `scene.fx.edit` por `fx_run` — o mesmo handler do `set`/`invo
     `state.scope`/`scope_label`/`shot`. `set` do campo `scope` aceita o **texto** do escopo.
   - `scene.fx`: ações `add_in_shot:<efeito>` (habilitada só com um quadro da edição exibido) e `state.scope`
     (`["output","shot"]`), `state.shots`, `state.shot_here`.
+- A confirmação do seletor vale só para o **documento em que ele foi pintado**: cada seletor guarda a revisão do projeto do último
+  quadro pintado, e uma confirmação que chega com outra revisão não escreve (o core dá a um clipe novo o menor id livre, então um
+  `fx-1` removido e outro `fx-1` criado são clipes diferentes para a mesma chave `cena+id`; CodeRabbit da PR #48).
+- A ação `handles` e o botão de alças do clipe de plano ficam desabilitados com o texto do core (seção "Alças da vinheta").
 - Nenhum diálogo novo (nenhuma marca em `Workflow::has_dialog`).
 - A dica de `unknown_action` lista os nomes das ações **do próprio nó** (`action_names` sobre o mesmo `clip_actions`/`section_actions` que o nó lista): em um clipe, as `set_scope:*` incluídas; na seção, as `add:*` e as `add_in_shot:*`. Um teste compara a dica com o `actions` de cada nó. Três testes antigos do painel (`scene_fx_tests.rs`) fixavam listas exatas e foram ajustados ao contrato novo: as ações `add:*` agora são filtradas por prefixo (mais as `add_in_shot:*`), a lista de campos do `fade` termina em `scope` e a dica inclui as `set_scope:*`.
 
@@ -210,6 +232,8 @@ nenhuma linha "a validar" é um sucesso. Ambiente: macOS, Chrome headless com Sw
 
 ## Limites e o que **não** foi provado
 
+- Alças da vinheta de um clipe de plano (BL082.41): recusadas com `scope_not_supported` (BL082.64, concluído); desenhá-las no quadro
+  de um plano segue pendente.
 - Escopo `node`, transições e o segundo deck (P4b/BL082.4): recusados ou não existentes; o runtime desenha a lista como vem
   e o parser garante a ordem; a emenda do segundo deck nasce com a P4b.
 - Ponteiro/teclado físicos sobre o `Select` do Kit e a pintura da WKWebView nativa: a janela é provada por GPUI

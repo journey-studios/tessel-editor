@@ -31,7 +31,8 @@ ponto), quantizada pela grade do catálogo (`quantize_control`) e presa à sua f
 `softness` 0,05–1 passo 0,01; centro 0–1 passo 0,01).
 
 Fora do escopo desta entrega (registrado no backlog): handles de `roundness`/`intensity`/`color`; **gravar chaves pelo
-handle** (BL082.37); `fade` e `filmGrain`; escopo shot/node; luzes spot/direcional; câmera espacial; snapping, seleção
+handle** (BL082.37); `fade` e `filmGrain`; escopo `node` e as alças de um clipe de plano (`shot`, recusadas com
+`scope_not_supported`, BL082.41/BL082.64); luzes spot/direcional; câmera espacial; snapping, seleção
 múltipla e grupos; ponteiro físico na WKWebView; desempenho integrado; Windows.
 
 ## Contrato do core / biblioteca
@@ -80,10 +81,14 @@ Regras:
   leituras: `EditorState::apply` (todo comando, também depois de um erro) e `restore` (`undo()`/`redo()` e reversão de
   transação) chamam `prune_fx_target`; uma leitura (`tree`, `summary`, `scene.gizmo.state`, `scene.selection`) nunca poda e
   nunca publica um clipe que não existe.
-- **Uma só resposta para «tem alças?».** O predicado é `FxClip::has_handles`; o teste de unidade
-  `the_target_predicate_says_yes_exactly_when_the_view_is_built` fixa que a poda (`fx_clip_has_handles`) diz sim exatamente
-  quando `FxHandlesView::of` monta a visão, para vinheta, `fade`, `filmGrain` e clipe inexistente. Uma condição nova (o
-  escopo `shot` da PR #48, BL082.64) entra no predicado, não ao lado de um dos quatro usos.
+- **Uma só resposta para «tem alças?».** A decisão é `FxClip::handles_refusal` (`has_handles` é a sua ausência); o teste de
+  unidade `the_target_predicate_says_yes_exactly_when_the_view_is_built` fixa que a poda (`fx_clip_has_handles`) diz sim
+  exatamente quando `FxHandlesView::of` monta a visão, para vinheta, vinheta num plano, `fade`, `filmGrain` e clipe inexistente.
+  Duas recusas tipadas: `fx_has_no_handles` (efeito sem parâmetro espacial) e `scope_not_supported` (F062, BL082.64: o clipe
+  está num plano e o overlay só conhece clipes da saída; `details {clip, scope}`, alvo = o clipe). Quem põe o clipe num plano
+  (`set_scope`) derruba o alvo na própria edição, sem leitura; `scene.fx.select`, `scene.fx.handles` (com e sem `probe`),
+  `scene.gizmo.hit` e `scene.pointer.down` respondem pela mesma recusa ou pela ausência de handle de efeito. As alças de um
+  clipe de plano seguem pendentes (BL082.41).
 - **API da biblioteca.** Esta entrega mudou a superfície pública de `scene_interaction::Drag` contra a `main`:
   `Drag::handle()` devolve `Option<Handle>` (um arrasto de vinheta não tem `Handle` do gizmo; o nome do handle é
   `Drag::handle_id()`) e `Drag::tool() -> GizmoTool` deixou de existir (no lugar, `Drag::tool_id()` devolve o nome, `"fx"`
@@ -141,7 +146,8 @@ Regras:
 - Botão "alças" (`IconName::Frame`, `control:fx-handles:<clip>`) no cabeçalho do clipe de vinheta no inspetor, ação de nó
   `handles` (alterna): `./scripts/ui invoke scene.fx.clip:<id> handles`. É o mesmo `scene.fx.select`. O rótulo da ação é
   estático ("Alças no monitor"): ligado ou não é o `state.handles` do nó (e o botão aceso), não um segundo texto.
-  Desabilitado para `fade`/`filmGrain` com `disabled_reason` "Só a vinheta tem alças no monitor". O código fica em
+  Desabilitado com o `disabled_reason` do core (`NoHandles::text`): "Só a vinheta tem alças no monitor" para `fade`/`filmGrain` e
+  "As alças só existem para efeitos na saída; este efeito está num shot" para uma vinheta num plano (F062). O código fica em
   `workstation/scene_fx_handles.rs`; `scene_fx.rs` só chama `handles_action` e o botão.
 - Estado: nó do clipe `state.handles`; nó `monitor.gizmo` `state.target` (`node`|`fx`) e `state.fx_clip`.
 - O desenho e o mouse são da página do runtime (`runtime/src/overlay.js`): elipses recortadas ao quadro (a de `softness`
@@ -171,6 +177,8 @@ Gates, hashes e mutações do head final estão no PR e em `docs/backlog.md` (BL
 - **Ponteiro físico na WKWebView** (BL015.2/BL043/BL044 seguem pendentes): as provas de janela usam `scene.pointer.*` e
   os testes JS usam o mouse do Chrome headless, não um mouse nativo na WKWebView.
 - **Desempenho** do overlay com alvo de efeito (custo por `fx_overlay`): não medido; nenhum lock de GPU foi usado.
+- **Clipes de plano (`shot`)**: sem alças; `scope_not_supported` em todas as portas (BL082.64, concluído). Desenhar as alças no
+  quadro de um plano é a pendência BL082.41.
 - **Windows**: não executado.
 - **Chaves pelo handle**: o handle de um parâmetro com chaves é desabilitado; gravar chave por arrasto é a pendência
   BL082.37.
