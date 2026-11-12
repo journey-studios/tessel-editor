@@ -137,7 +137,7 @@ impl EditorState {
     }
 
     /// Claims the shared gesture slot and captures this clip's scene/revision without changing the document.
-    fn fx_gesture_begin(
+    pub(super) fn fx_gesture_begin(
         &mut self,
         scene: &str,
         clip: &str,
@@ -189,7 +189,11 @@ impl EditorState {
     /// The candidate for `ops`, from the gesture's base. A rejection (any `apply_fx` error, an op
     /// outside the gesture's clip, an oversized scene) returns before the candidate is replaced,
     /// so the last legal one is still what a preview shows and a commit applies.
-    fn fx_gesture_update(&mut self, id: &str, ops: Vec<FxOp>) -> Result<Value, CommandError> {
+    pub(super) fn fx_gesture_update(
+        &mut self,
+        id: &str,
+        ops: Vec<FxOp>,
+    ) -> Result<Value, CommandError> {
         let gesture = self.scene_interaction.gesture.find(id)?;
         self.ensure_live(gesture)?;
         ensure_kind(
@@ -323,7 +327,7 @@ impl EditorState {
 
     /// Applies the gesture as ONE `scene.fx.edit`. The gesture leaves the slot before the edit
     /// and goes back when the edit is rejected, so a rejection keeps everything as it was.
-    fn fx_gesture_commit(&mut self, id: &str) -> Result<Value, CommandError> {
+    pub(super) fn fx_gesture_commit(&mut self, id: &str) -> Result<Value, CommandError> {
         let gesture = self.scene_interaction.gesture.find(id)?;
         self.ensure_live(gesture)?;
         ensure_kind(

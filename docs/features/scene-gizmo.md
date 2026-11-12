@@ -54,7 +54,7 @@ Constantes (`scene_interaction::gizmo`): `HANDLE_LENGTH = 0.14`, `HIT_RADIUS = 0
 | Op | Comando | Efeito |
 |---|---|---|
 | `scene.gizmo.state` | `GizmoCommand::State` | leitura: o `Overlay` (v1) do selecionado no frame |
-| `scene.gizmo.hit` | `GizmoCommand::Hit` | leitura: o que há sob um ponto (`handle`, `plane` ou `none`) |
+| `scene.gizmo.hit` | `GizmoCommand::Hit` | leitura: o que há sob um ponto (`handle`, `entity`, `none`; com alvo de efeito, `fx_handle` e `refused`) |
 | `scene.pointer.down` | `PointerCommand::Down` | seleciona/abre arrasto (`gesture_begin`); nunca escreve o documento |
 | `scene.pointer.move` | `PointerCommand::Move` | `gesture_update` com **um** `set position` calculado do press |
 | `scene.pointer.up` | `PointerCommand::Up` | `gesture_commit`: **uma** entrada de undo ("Edit scene") |
@@ -201,8 +201,8 @@ ponteiro por Δ move o nó por Δ.
   `a_release_of_a_dead_drag_does_not_commit_somebody_elses_slider_gesture` (histórico, revisão e gesto do slider intactos),
   `a_release_of_a_live_drag_still_settles_the_slider_gesture`.
 - `scene.pointer.move` responde `changed: true` quando um arrasto **está aberto e foi recalculado**,
-  mesmo que o ponto não tenha sido aplicado (`applied: false`: raio degenerado, o candidato anterior
-  fica). `changed` não diz "o documento mudou" (`document_changed` é sempre `false` num move); leia `applied`.
+  mesmo que o ponto não tenha sido aplicado (`applied: false`: raio degenerado, ou `not_moved` no arrasto de um handle de
+  efeito cujo ponto é o da pressão sem posição aplicada antes; o candidato anterior fica). `changed` não diz "o documento mudou" (`document_changed` é sempre `false` num move); leia `applied`.
 - `scene.gizmo.state` é uma consulta, mas **pode limpar o registro de um arrasto cujo gesto já não
   existe** (`live_drag`: o gesto foi liquidado ou descartado por outro caminho): nunca é uma edição do
   documento nem toca um gesto vivo.
@@ -432,7 +432,7 @@ não prova o da escala).
 - **Moves** são coalescidos por frame de animação na página; o release carrega a posição final.
 - **Árvore** (`ui tree`): `monitor.gizmo` (só com cena anexada; estado `selection`, `dragging`,
   `handle`, `gesture`, e com BL015.1 `tool` e `space`, mais os campos `tool`/`space`) e
-  `monitor.viewport.state.overlay` (suportado, ligado, contadores, último layout e último `drawn`). O gizmo em si
+  `monitor.viewport.state.overlay` (suportado, ligado, contadores, último layout e último `drawn`, este só com `TESSEL_VIEWPORT_OVERLAY_ACK=1`). O gizmo em si
   não tem botão (é um canvas); a escolha da ferramenta tem (BL015.1) e o equivalente semântico do arrasto é
   `./scripts/ui op '{"op":"scene.pointer.down",…}'`. O resumo (`summary.scene_interaction.drag`)
   mostra o arrasto aberto.
@@ -1153,3 +1153,14 @@ sem histórico sem mudança, candidato inválido preserva o último legal e as g
 chaves recusa como `animated_position` (como `animated_scale`); rotação e escala dizem por quê (`light_has_no_rotation`,
 `light_has_no_scale`). Overlay v1 aditivo: `sphere`, `light_markers`, `metrics.marker_radius`. Contrato e provas em
 [scene-light.md](scene-light.md).
+
+## Alvo de efeito (G4.1, F061)
+
+O overlay v1 passou a servir um segundo alvo: o clipe de vinheta que a sessão marca com `scene.fx.select`. Um alvo por vez
+(o nó selecionado **ou** o clipe): com alvo de efeito o overlay do nó fica oculto (`hidden`, `reason: "fx_target"`,
+`visible: false`) e o bloco aditivo `target: "fx"` + `fx{clip, effect, frame, handles, disabled_handles, ellipses, active,
+metrics, values}` descreve as alças e as elipses; o carimbo ganha `fx_clip`, o resumo `fx_target` e `monitor.gizmo` os
+estados `target`/`fx_clip`. O ciclo do ponteiro (`scene.pointer.down|move|up|cancel`) é o mesmo, a página só posta `{u,v}`
+com o carimbo, e todas as guardas deste documento (revisão, quadro, época, seleção, diálogo, Escape, reprodução) valem
+para o arrasto de uma alça. O arrasto abre um gesto de efeito (`scene.fx.gesture.*`), não um gesto de propriedades.
+Contrato, geometria e provas em [fx-handles.md](fx-handles.md).

@@ -43,6 +43,7 @@ use crate::state::CommandError;
 mod command;
 mod fx;
 mod fx_gesture;
+mod fx_handles;
 mod fx_seek;
 mod gizmo;
 mod interaction;
@@ -51,7 +52,9 @@ mod run;
 mod scope;
 mod store;
 
-pub use command::{AdmittedScene, CameraAt, FxProbe, KeySeek, SceneCommand, SceneSource};
+pub use command::{
+    AdmittedScene, CameraAt, FxProbe, HandleProbe, KeySeek, SceneCommand, SceneSource,
+};
 pub use run::admit;
 pub use scope::{deferred_in_use, scope_json};
 pub use store::STORE_VERSION;

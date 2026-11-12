@@ -45,6 +45,7 @@ use tessel_editor_core::scene_interaction::{FxGestureCommand, Gesture, GestureCo
 use tessel_editor_core::scene_project::SceneCommand;
 
 use super::controls::{disabled_tool_button, glyph, tool_button, value_after_key};
+use super::scene_fx_handles::{HANDLES_ACTION, handles_action};
 use super::scene_fx_keys::{animation_actions, animation_at, animation_fields};
 use super::scene_fx_scope::{
     drawn_scopes, scope_actions, scope_field, section_actions, shot_here_id,
@@ -252,6 +253,7 @@ fn clip_actions(clip: &FxClip, view: &FxView) -> Vec<Value> {
             "disabled_reason": (!looks_changed).then_some(ALREADY_DEFAULT),
         }),
     ];
+    actions.push(handles_action(clip));
     for control in controls.iter().filter(|control| control.default.is_some()) {
         let away = !control.at_default();
         actions.push(json!({
@@ -508,7 +510,11 @@ impl Workstation {
         Ok(view)
     }
 
-    fn fx_known<'a>(&self, view: &'a FxView, clip: &str) -> Result<&'a ClipView, CommandError> {
+    pub(super) fn fx_known<'a>(
+        &self,
+        view: &'a FxView,
+        clip: &str,
+    ) -> Result<&'a ClipView, CommandError> {
         view.clip(clip)
             .ok_or_else(|| CommandError::unknown_element("effect clip", clip))
     }
@@ -927,6 +933,7 @@ impl Workstation {
                     "end_frame_exclusive": clip.end_frame_exclusive(),
                     "fade_in_frames": clip.fade_in_frames, "fade_out_frames": clip.fade_out_frames,
                     "hidden": clip.hidden, "params": params,
+                    "handles": self.fx_handles_on(&view.scene, &clip.id),
                     "animation": animation.to_json(LOCALE),
                     "scope": clip.scope.to_text(),
                     "scope_label": scope_label(&clip.scope, LOCALE),
@@ -1014,6 +1021,7 @@ impl Workstation {
                 None => Err(CommandError::unknown_element("effect clip", clip)),
             },
             Some("reset") => self.fx_reset(clip, None, Source::Cli, cx),
+            Some(HANDLES_ACTION) => self.fx_handles_toggle(clip, Source::Cli, cx),
             Some(reset) if reset.starts_with(RESET_PREFIX) => {
                 self.fx_reset(clip, Some(&reset[RESET_PREFIX.len()..]), Source::Cli, cx)
             }
@@ -1263,6 +1271,7 @@ impl Workstation {
                     )),
             )
             .child(toggle)
+            .child(self.fx_handles_button(view, clip, workstation.clone()))
             .child(reset)
             .child(remove);
         let mut block = v_flex().w_full().child(title);
@@ -1445,7 +1454,7 @@ fn unknown_control(clip: &str, control: &str) -> CommandError {
     )
 }
 
-fn no_scene() -> CommandError {
+pub(super) fn no_scene() -> CommandError {
     CommandError::new("unknown_element", super::scene_ui::NO_SCENE_REASON)
 }
 

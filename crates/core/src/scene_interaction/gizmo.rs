@@ -582,6 +582,9 @@ pub enum Hidden {
     /// The selected light is not on the picture: the scene's lighting is refused by the plan
     /// (`light_refusal::NOT_EVALUATED`).
     LightNotEvaluated,
+    /// The session's target is an effect clip (F061): the node gizmo gives way to the handles of
+    /// its vignette, and its reason is this.
+    FxTarget,
 }
 
 impl Hidden {
@@ -596,6 +599,7 @@ impl Hidden {
             }
             Self::BehindCamera => "behind_camera",
             Self::LightNotEvaluated => light::refusal::NOT_EVALUATED,
+            Self::FxTarget => "fx_target",
         }
     }
 }
@@ -626,6 +630,9 @@ pub struct Overlay {
     pub markers: Vec<LightMarker>,
     /// The handle being dragged, and the gesture it edits.
     pub active: Option<(Handle, String)>,
+    /// F061: the handles of the vignette clip the session targets. When present the overlay is of
+    /// that effect and the node gizmo is hidden (`Hidden::FxTarget`): one target at a time.
+    pub fx: Option<super::FxOverlay>,
     pub aspect: f64,
     /// Which scene, session, revision and frame this overlay was computed for (see
     /// `EditorState::gizmo_stamp`). The page echoes it in every pointer message, so a message
@@ -722,6 +729,12 @@ impl Overlay {
                     .collect(),
             );
             overlay["metrics"]["marker_radius"] = json!(MARKER_RADIUS);
+        }
+        // F061, additive: the handles of a vignette clip. Absent unless the session targets one, so
+        // every overlay of a node or a light is what it was.
+        if let Some(fx) = &self.fx {
+            overlay["target"] = json!("fx");
+            overlay["fx"] = fx.to_json();
         }
         overlay
     }

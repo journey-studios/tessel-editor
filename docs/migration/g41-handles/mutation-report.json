@@ -1,0 +1,377 @@
+{
+  "restored": true,
+  "dist_rebuilt": true,
+  "hashes": {
+    "crates/core/src/directed_scene/fx/handles.rs": "48beef716aa48ef73a797651fd922e4efeb8e4a9211725feef0ea0fc81036117",
+    "crates/core/src/scene_interaction/fx_handles.rs": "30a9ae9d3a5ace406596c6c1faebce0cf9b8f98260fa44c2dd7bdf017ad7da7b",
+    "crates/core/src/scene_interaction/gizmo.rs": "b56b0ef66b336c3f27d289a00855daa9cc6ffe02ad8c3cb33caea72e783a4e7f",
+    "crates/core/src/scene_project/fx_handles.rs": "34fb3c23bf431fe0fa91a6adc1b9f766d710644017eac90f6e5706f7e321478a",
+    "crates/core/src/scene_project/gizmo.rs": "aa44c348b736d8dfa2651e1fa5c5bfc53d5fdf9acf31f0de9b070d0f2d1d513a",
+    "crates/core/src/state/history.rs": "8d8d8dbd395ecc931f4839c4be6bbd35311806756580d87c5aee7bb4fcbcc16b",
+    "crates/core/src/state/mod.rs": "2ef14512acdb0d88781ae3f58bf60fe5b7ce92c96c199368d9dcf13d7d284bc1",
+    "runtime/src/overlay.js": "8d07b8a0430444f6e8a033425327bdc6b3d3be61f1d1a37075fb3795e8511bbe"
+  },
+  "mutants": [
+    {
+      "mutant": "M01 roundness ignored by the stretch",
+      "result": "KILLED",
+      "failed": [
+        "a_drag_leaves_the_document_scene_fx_edit_leaves_for_the_same_value",
+        "directed_scene::fx::handles::tests::the_handles_sit_where_an_independent_search_finds_the_ellipse",
+        "directed_scene::fx::handles::tests::the_semi_axes_describe_the_same_ellipse_the_distance_does",
+        "the_handles_sit_on_the_ellipses_the_reference_shade_draws",
+        "the_headless_executable_drags_a_handle_and_commits_one_entry",
+        "the_read_and_its_probe_write_nothing_and_judge_by_a_dry_run"
+      ],
+      "seconds": 11
+    },
+    {
+      "mutant": "M02 norm is not the length of the shape",
+      "result": "KILLED",
+      "failed": [
+        "a_drag_leaves_the_document_scene_fx_edit_leaves_for_the_same_value",
+        "directed_scene::fx::handles::tests::the_handles_sit_where_an_independent_search_finds_the_ellipse",
+        "directed_scene::fx::handles::tests::the_semi_axes_describe_the_same_ellipse_the_distance_does",
+        "the_ellipses_are_the_level_lines_of_the_distance",
+        "the_handles_sit_on_the_ellipses_the_reference_shade_draws",
+        "the_headless_executable_drags_a_handle_and_commits_one_entry"
+      ],
+      "seconds": 7
+    },
+    {
+      "mutant": "M03 horizontal semi-axis without the stretch",
+      "result": "KILLED",
+      "failed": [
+        "directed_scene::fx::handles::tests::a_pointer_on_a_handle_gives_back_the_value_that_put_it_there",
+        "directed_scene::fx::handles::tests::the_handles_sit_where_an_independent_search_finds_the_ellipse",
+        "directed_scene::fx::handles::tests::the_semi_axes_describe_the_same_ellipse_the_distance_does",
+        "directed_scene::fx::handles::tests::the_value_is_put_on_the_grid_of_its_control_and_inside_its_range",
+        "one_gesture_is_one_undo_entry_and_nothing_else_is",
+        "the_ellipses_are_the_level_lines_of_the_distance"
+      ],
+      "seconds": 7
+    },
+    {
+      "mutant": "M04 softness handle at the softness, not radius + softness",
+      "result": "KILLED",
+      "failed": [
+        "a_handle_off_the_picture_is_not_drawn_and_does_not_capture_the_pointer",
+        "directed_scene::fx::handles::tests::a_pointer_on_a_handle_gives_back_the_value_that_put_it_there",
+        "directed_scene::fx::handles::tests::the_handles_sit_where_an_independent_search_finds_the_ellipse",
+        "one_gesture_is_one_undo_entry_and_nothing_else_is",
+        "the_handles_sit_on_the_ellipses_the_reference_shade_draws"
+      ],
+      "seconds": 7
+    },
+    {
+      "mutant": "M05 softness value forgets the radius",
+      "result": "KILLED",
+      "failed": [
+        "a_drag_leaves_the_document_scene_fx_edit_leaves_for_the_same_value",
+        "directed_scene::fx::handles::tests::a_pointer_on_a_handle_gives_back_the_value_that_put_it_there",
+        "one_gesture_is_one_undo_entry_and_nothing_else_is"
+      ],
+      "seconds": 7
+    },
+    {
+      "mutant": "M06 centre not put on its grid",
+      "result": "KILLED",
+      "failed": [
+        "a_drag_away_writes_the_value_of_the_point_it_ends_on_even_if_it_came_back",
+        "directed_scene::fx::handles::tests::the_value_is_put_on_the_grid_of_its_control_and_inside_its_range"
+      ],
+      "seconds": 6
+    },
+    {
+      "mutant": "M07 radius value not put on its grid",
+      "result": "KILLED",
+      "failed": [
+        "a_drag_leaves_the_document_scene_fx_edit_leaves_for_the_same_value",
+        "directed_scene::fx::handles::tests::a_pointer_on_a_handle_gives_back_the_value_that_put_it_there",
+        "directed_scene::fx::handles::tests::the_value_is_put_on_the_grid_of_its_control_and_inside_its_range",
+        "the_drag_is_clamped_to_the_ranges_of_the_catalog",
+        "the_headless_executable_drags_a_handle_and_commits_one_entry",
+        "the_read_and_its_probe_write_nothing_and_judge_by_a_dry_run"
+      ],
+      "seconds": 6
+    },
+    {
+      "mutant": "M08 a tie goes to the inner handle",
+      "result": "KILLED",
+      "failed": [
+        "directed_scene::fx::handles::tests::the_nearest_handle_in_picture_heights_wins_and_a_tie_goes_to_the_outer_one",
+        "the_handles_are_listed_in_priority_order_the_outer_ones_first"
+      ],
+      "seconds": 6
+    },
+    {
+      "mutant": "M09 hit distance without the aspect",
+      "result": "KILLED",
+      "failed": [
+        "directed_scene::fx::handles::tests::the_nearest_handle_in_picture_heights_wins_and_a_tie_goes_to_the_outer_one"
+      ],
+      "seconds": 7
+    },
+    {
+      "mutant": "M10 a huge hit radius",
+      "result": "KILLED",
+      "failed": [
+        "a_parameter_with_keys_has_its_handle_off_and_a_press_on_it_is_refused",
+        "a_press_refused_on_a_greyed_handle_still_abandons_the_open_drag",
+        "the_hit_query_names_what_the_press_at_the_same_point_holds"
+      ],
+      "seconds": 6
+    },
+    {
+      "mutant": "M11 everything is on the picture",
+      "result": "KILLED",
+      "failed": [
+        "a_handle_off_the_picture_is_not_drawn_and_does_not_capture_the_pointer",
+        "directed_scene::fx::handles::tests::handles_are_on_the_picture_inside_its_border_only"
+      ],
+      "seconds": 6
+    },
+    {
+      "mutant": "M12 keys never disable a handle",
+      "result": "KILLED",
+      "failed": [
+        "a_parameter_with_keys_has_its_handle_off_and_a_press_on_it_is_refused",
+        "a_press_refused_on_a_greyed_handle_still_abandons_the_open_drag",
+        "the_handles_are_listed_in_priority_order_the_outer_ones_first",
+        "the_hit_query_names_what_the_press_at_the_same_point_holds"
+      ],
+      "seconds": 7
+    },
+    {
+      "mutant": "M13 the clip covers one frame too many",
+      "result": "KILLED",
+      "failed": [
+        "a_clip_that_does_not_cover_the_frame_has_no_handles"
+      ],
+      "seconds": 6
+    },
+    {
+      "mutant": "M14 a handle off the picture is offered",
+      "result": "KILLED",
+      "failed": [
+        "a_handle_off_the_picture_is_not_drawn_and_does_not_capture_the_pointer"
+      ],
+      "seconds": 6
+    },
+    {
+      "mutant": "M15 a press on a keyed handle is not refused by name",
+      "result": "KILLED",
+      "failed": [
+        "a_parameter_with_keys_has_its_handle_off_and_a_press_on_it_is_refused",
+        "a_press_refused_on_a_greyed_handle_still_abandons_the_open_drag",
+        "the_hit_query_names_what_the_press_at_the_same_point_holds"
+      ],
+      "seconds": 7
+    },
+    {
+      "mutant": "M16 selecting a clip keeps the entity selection",
+      "result": "KILLED",
+      "failed": [
+        "one_target_at_a_time_and_a_swap_leaves_no_phantom_drag"
+      ],
+      "seconds": 7
+    },
+    {
+      "mutant": "M17 moving the target keeps the drag",
+      "result": "KILLED",
+      "failed": [
+        "choosing_another_clip_cancels_the_drag_of_the_first",
+        "one_target_at_a_time_and_a_swap_leaves_no_phantom_drag"
+      ],
+      "seconds": 7
+    },
+    {
+      "mutant": "M18 selecting an entity keeps the drag of the clip",
+      "result": "KILLED",
+      "failed": [
+        "one_target_at_a_time_and_a_swap_leaves_no_phantom_drag"
+      ],
+      "seconds": 7
+    },
+    {
+      "mutant": "M19 the drag writes another parameter",
+      "result": "KILLED",
+      "failed": [
+        "a_cancelled_drag_leaves_the_document_and_history_as_they_were",
+        "a_drag_away_writes_the_value_of_the_point_it_ends_on_even_if_it_came_back",
+        "a_drag_leaves_the_document_scene_fx_edit_leaves_for_the_same_value",
+        "a_parameter_with_keys_has_its_handle_off_and_a_press_on_it_is_refused",
+        "a_press_and_release_on_the_same_point_writes_nothing",
+        "one_gesture_is_one_undo_entry_and_nothing_else_is"
+      ],
+      "seconds": 6
+    },
+    {
+      "mutant": "M20 a gone clip keeps the target",
+      "result": "KILLED",
+      "failed": [
+        "removing_the_clip_or_the_scene_drops_the_target_before_any_read",
+        "undoing_the_creation_of_the_clip_drops_the_target_and_redo_does_not_bring_it_back"
+      ],
+      "seconds": 7
+    },
+    {
+      "mutant": "M21 the release is a scene edit in the history",
+      "result": "KILLED",
+      "failed": [
+        "one_gesture_is_one_undo_entry_and_nothing_else_is"
+      ],
+      "seconds": 8
+    },
+    {
+      "mutant": "M22 the stamp does not name the clip",
+      "result": "KILLED",
+      "failed": [
+        "the_overlay_and_the_stamp_carry_the_clip_and_nothing_else_changes_without_it"
+      ],
+      "seconds": 6
+    },
+    {
+      "mutant": "M23 a command leaves a target the project no longer holds",
+      "result": "KILLED",
+      "failed": [
+        "removing_the_clip_or_the_scene_drops_the_target_before_any_read"
+      ],
+      "seconds": 7
+    },
+    {
+      "mutant": "M24 undo and redo leave a target the project no longer holds",
+      "result": "KILLED",
+      "failed": [
+        "undoing_the_creation_of_the_clip_drops_the_target_and_redo_does_not_bring_it_back"
+      ],
+      "seconds": 7
+    },
+    {
+      "mutant": "M25 the hit query does not predict the effect handles",
+      "result": "KILLED",
+      "failed": [
+        "the_hit_query_names_what_the_press_at_the_same_point_holds"
+      ],
+      "seconds": 8
+    },
+    {
+      "mutant": "M26 a press refused on a greyed handle leaves the open drag",
+      "result": "KILLED",
+      "failed": [
+        "a_press_refused_on_a_greyed_handle_still_abandons_the_open_drag"
+      ],
+      "seconds": 8
+    },
+    {
+      "mutant": "M27 a click without drag still writes the grid value of the press point",
+      "result": "KILLED",
+      "failed": [
+        "a_press_a_little_off_the_handle_and_released_there_writes_nothing",
+        "a_press_and_release_on_the_same_point_writes_nothing"
+      ],
+      "seconds": 8
+    },
+    {
+      "mutant": "M28 the query names the drag of a gesture the scene moved under",
+      "result": "KILLED",
+      "failed": [
+        "the_active_handle_of_a_query_follows_the_overlay_when_the_gesture_goes_stale"
+      ],
+      "seconds": 8
+    },
+    {
+      "mutant": "M29 a return to the press point is not a move either",
+      "result": "KILLED",
+      "failed": [
+        "a_drag_away_writes_the_value_of_the_point_it_ends_on_even_if_it_came_back",
+        "one_gesture_is_one_undo_entry_and_nothing_else_is"
+      ],
+      "seconds": 9
+    },
+    {
+      "mutant": "J01 a tie goes to the last handle of the core list",
+      "result": "KILLED",
+      "failed": [
+        "hover follows the core: the nearest offered handle, the first listed on a tie, nothing for a dimmed one"
+      ],
+      "seconds": 12
+    },
+    {
+      "mutant": "J02 hover distance without the aspect",
+      "result": "KILLED",
+      "failed": [
+        "a press on a handle, a drag and the release post picture coordinates under the clip stamp",
+        "hover follows the core: the nearest offered handle, the first listed on a tie, nothing for a dimmed one"
+      ],
+      "seconds": 11
+    },
+    {
+      "mutant": "J03 dimmed handles drawn wherever they are",
+      "result": "KILLED",
+      "failed": [
+        "a handle off the picture is listed, not drawn, and one with keys is drawn dimmed"
+      ],
+      "seconds": 11
+    },
+    {
+      "mutant": "J04 the softness ellipse is not dashed",
+      "result": "KILLED",
+      "failed": [
+        "the two ellipses are drawn inside the picture, the second dashed, and no node gizmo"
+      ],
+      "seconds": 11
+    },
+    {
+      "mutant": "J05 a dimmed handle lights up under the pointer",
+      "result": "KILLED",
+      "failed": [
+        "a handle with keys is dimmed, does not light up, and the page still posts the press for the core to refuse",
+        "hover follows the core: the nearest offered handle, the first listed on a tie, nothing for a dimmed one"
+      ],
+      "seconds": 11
+    },
+    {
+      "mutant": "J06 the vignette overlay is not the one hovered",
+      "result": "KILLED",
+      "failed": [
+        "a press on a handle, a drag and the release post picture coordinates under the clip stamp",
+        "hover follows the core: the nearest offered handle, the first listed on a tie, nothing for a dimmed one"
+      ],
+      "seconds": 11
+    },
+    {
+      "mutant": "J07 the page does not say the target is the fx",
+      "result": "KILLED",
+      "failed": [
+        "the page paints the handles and the ellipses and the pixels say so"
+      ],
+      "seconds": 11
+    },
+    {
+      "mutant": "J08 the ellipse is as wide as it is tall",
+      "result": "KILLED",
+      "failed": [
+        "the two ellipses are drawn inside the picture, the second dashed, and no node gizmo"
+      ],
+      "seconds": 12
+    },
+    {
+      "mutant": "J09 the active handle is lost in the parser",
+      "result": "KILLED",
+      "failed": [
+        "Escape ends a drag of a handle the host holds (fx.active) and posts nothing when no drag is open",
+        "the page paints the handles and the ellipses and the pixels say so"
+      ],
+      "seconds": 44
+    },
+    {
+      "mutant": "J10 hidden handles are hit too",
+      "result": "KILLED",
+      "failed": [
+        "hover follows the core: the nearest offered handle, the first listed on a tie, nothing for a dimmed one"
+      ],
+      "seconds": 11
+    }
+  ]
+}

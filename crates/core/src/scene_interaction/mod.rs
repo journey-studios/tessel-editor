@@ -25,11 +25,13 @@
 
 use serde_json::{Value, json};
 
+use crate::directed_scene::fx::{HandleValue, VignetteHandle};
 use crate::scene_project::SceneBook;
 
 mod address;
 mod command;
 mod frame;
+mod fx_handles;
 mod gesture;
 mod gizmo;
 mod selection;
@@ -43,6 +45,8 @@ pub use command::{
     SelectMode,
 };
 pub use frame::frame_json;
+pub(crate) use fx_handles::fx_clip_has_handles;
+pub use fx_handles::{FxHandlesView, FxOverlay, FxTarget, reason as fx_handle_reason};
 pub use gesture::{Gesture, GestureKind, GestureSlot, Invalidation, Refusal};
 pub use gizmo::{
     Anchor, CENTER_RADIUS, GizmoSpace, GizmoTool, HANDLE_LENGTH, HIT_RADIUS, Handle, Hidden,
@@ -69,6 +73,10 @@ pub struct SceneInteraction {
     pub(crate) tool: GizmoTool,
     /// The orientation of the rotate and scale tools' axes.
     pub(crate) space: GizmoSpace,
+    /// The vignette clip whose handles the monitor shows (F061). Session state like the selection,
+    /// and exclusive with it: selecting an effect clip empties the selection of its scene, and
+    /// selecting entities drops the target (`scene_project/fx_handles.rs`).
+    pub(crate) fx_target: Option<FxTarget>,
 }
 
 /// What a gizmo drag remembers from the press so that every later position is computed from the
@@ -121,6 +129,19 @@ pub(crate) enum DragAction {
         /// The document's `radius` of the light at the press.
         base_radius: f64,
     },
+    /// A handle of a vignette clip (F061): the pointer position becomes the value of the handle's
+    /// parameter, and the gesture is an effect gesture (`scene.fx.gesture.*`), not a property one.
+    Fx {
+        clip: String,
+        handle: VignetteHandle,
+        /// The clip as the monitor showed it at the press: the shape and the parameters every
+        /// later position is measured against (the document cannot change under a live drag).
+        press: Box<FxHandlesView>,
+        /// Where the pointer was at the press. The value of a handle is absolute (the position
+        /// becomes the value), so a position equal to this one, before the pointer ever left
+        /// it, is a click and not a drag: it writes nothing (see `fx_handle_update`).
+        from: Point,
+    },
 }
 
 /// What an update of a drag accepted.
@@ -146,6 +167,10 @@ pub(crate) enum Applied {
         delta: f64,
         radius: f64,
     },
+    Fx {
+        handle: VignetteHandle,
+        value: HandleValue,
+    },
 }
 
 impl Drag {
@@ -153,26 +178,43 @@ impl Drag {
         &self.gesture
     }
 
-    pub fn handle(&self) -> Handle {
+    /// The 3D handle the drag holds; `None` for the handle of an effect (F061, see
+    /// [`handle_id`](Self::handle_id)).
+    pub fn handle(&self) -> Option<Handle> {
         match &self.action {
             DragAction::Translate { anchor, .. } | DragAction::LightTranslate { anchor, .. } => {
-                anchor.handle
+                Some(anchor.handle)
             }
-            DragAction::Rotate { ring, .. } => ring.handle,
-            DragAction::Scale { anchor, .. } => anchor.handle,
-            DragAction::LightRange { .. } => Handle::Range,
+            DragAction::Rotate { ring, .. } => Some(ring.handle),
+            DragAction::Scale { anchor, .. } => Some(anchor.handle),
+            DragAction::LightRange { .. } => Some(Handle::Range),
+            DragAction::Fx { .. } => None,
         }
     }
 
-    /// The tool the drag was pressed with.
-    pub fn tool(&self) -> GizmoTool {
+    /// The name of the handle the drag holds, whatever its target (`x`, `range`, `radius`...).
+    pub fn handle_id(&self) -> &'static str {
+        match &self.action {
+            DragAction::Fx { handle, .. } => handle.as_str(),
+            _ => self.handle().map_or("", Handle::as_str),
+        }
+    }
+
+    /// The name of the tool the drag was pressed with, or `fx` for the handle of an effect clip.
+    pub fn tool_id(&self) -> &'static str {
         match &self.action {
             DragAction::Translate { .. }
             | DragAction::LightTranslate { .. }
-            | DragAction::LightRange { .. } => GizmoTool::Translate,
-            DragAction::Rotate { .. } => GizmoTool::Rotate,
-            DragAction::Scale { .. } => GizmoTool::Scale,
+            | DragAction::LightRange { .. } => GizmoTool::Translate.as_str(),
+            DragAction::Rotate { .. } => GizmoTool::Rotate.as_str(),
+            DragAction::Scale { .. } => GizmoTool::Scale.as_str(),
+            DragAction::Fx { .. } => "fx",
         }
+    }
+
+    /// Whether this is the drag of a vignette handle (an effect gesture rides under it).
+    pub fn is_fx(&self) -> bool {
+        matches!(self.action, DragAction::Fx { .. })
     }
 
     /// The edit frame the drag was pressed at.
@@ -206,6 +248,11 @@ impl SceneInteraction {
         self.space
     }
 
+    /// The effect clip whose handles the monitor shows, if any (F061).
+    pub fn fx_target(&self) -> Option<&FxTarget> {
+        self.fx_target.as_ref()
+    }
+
     /// The gizmo drag in progress, if any.
     pub fn drag(&self) -> Option<&Drag> {
         self.drag.as_ref()
@@ -230,20 +277,29 @@ impl SceneInteraction {
     /// went stale and a gesture that was invalidated, it does not prune or settle either.
     pub fn summary_json(&self, book: &SceneBook, revision: u64) -> Option<Value> {
         let selection = &self.selection;
-        if selection.is_empty() && selection.dropped().is_empty() && self.gesture().is_none() {
+        if selection.is_empty()
+            && selection.dropped().is_empty()
+            && self.gesture().is_none()
+            && self.fx_target.is_none()
+        {
             return None;
         }
-        Some(json!({
+        let mut summary = json!({
             "selection": selection.summary_json(book),
             "gesture": self.gesture().map(|gesture| gesture.to_json(book, revision)),
             // F055: the pointer drag riding on that gesture, if the gizmo opened it.
             "drag": self.drag().map(|drag| json!({
                 "gesture": drag.gesture(),
-                "handle": drag.handle().as_str(),
-                "tool": drag.tool().as_str(),
+                "handle": drag.handle_id(),
+                "tool": drag.tool_id(),
                 "scene": drag.scene,
                 "entity": drag.entity,
             })),
-        }))
+        });
+        // F061, additive: only while the monitor shows the handles of an effect clip.
+        if let Some(target) = &self.fx_target {
+            summary["fx_target"] = target.to_json();
+        }
+        Some(summary)
     }
 }
