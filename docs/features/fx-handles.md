@@ -144,7 +144,7 @@ Regras:
 | Janela | GPUI `crates/desktop/src/workstation/scene_fx_handles_tests.rs` (7); `scripts/scene-fx-handles-proof.py --surfaces native` (26 verificações): ação do painel = `scene.fx.select`, `monitor.gizmo target: fx`, página desenhou handles e elipses (pixels do canvas), handle ativo, imagem do monitor segue o candidato e volta com o undo, diálogo cancela o arrasto | passam |
 | Página/JS | `runtime/test/fx-handles-overlay.test.mjs` (9, Chrome real, mouse real): parse, desenho, hit, prioridade, arrasto, Escape (do press da página e do arrasto do host em `fx.active`), captura perdida, resize, handle apagado | passam |
 | Imagem/export | `crates/render/tests/scene_fx_handles.rs` (2, runtime e FFmpeg reais): perfil de escurecimento lido nos pontos dos handles que o core informa, contra `apply_pass_to_srgb`; export com o clipe alvo, o overlay descrito e um arrasto aberto = export do documento (hashes), só o release muda o export | passam |
-| Mutações | `docs/migration/g41-handles/mutate.py` (36 mutantes: 26 Rust, 10 JS), relatório `mutation-report.json`; o executor reconstrói e confere o `dist` do runtime (`restored: false` e saída 2 se falha; também numa interrupção) | todos mortos, arquivos restaurados com hash conferido |
+| Mutações | `docs/migration/g41-handles/mutate.py` (36 mutantes: 26 Rust, 10 JS), relatório `mutation-report.json`; o executor reconstrói e confere o `dist` do runtime (`restored: false` e saída 2 se falha; também numa interrupção) | todos mortos, arquivos restaurados com hash conferido; depois do corredor, reconstruir `tessel-editor` e `tessel-headless` antes da prova de duas superfícies (BL082.63) |
 
 Gates, hashes e mutações do head final estão no PR e em `docs/backlog.md` (BL082.35 e filhas).
 
