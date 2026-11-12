@@ -53,6 +53,13 @@ def sha256(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
+def absolute(path):
+    """`path` against the directory the runner was started from, `..` folded and symlinks left alone (a recorded path reads
+    the way it was given). Every child a runner starts has the checkout as its directory, not the caller's, so a relative
+    `--out` is one file for the runner (which checks, hashes and reads it from where it was typed) and another for the child."""
+    return Path(os.path.abspath(path))
+
+
 BUILD_TIMEOUT_S = 3600      # a release build through the cargo wrapper
 TEST_TIMEOUT_S = 1800       # a functional `cargo test` (build included)
 MEASURE_TIMEOUT_S = 900     # one controlled run of the benchmark executable

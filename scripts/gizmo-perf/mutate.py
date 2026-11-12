@@ -368,7 +368,7 @@ def main(argv=None):
                              'the lock and the controlled runs, from the executables `prepare` left in --out/exes '
                              '(no build, no waiting)')
     args = parser.parse_args(argv)
-    out = Path(args.out)
+    out = harness.absolute(args.out)  # the children start in the checkout: see `harness.absolute`
     # The checkout (`prepare` only: it builds from the checkout with a mutant IN its tree) and then the directory are
     # owned before anything in either is touched, and until this returns (the `with` is the `finally`: also on
     # SIGTERM/SIGINT, which are `SystemExit`). The locks never wait, the checkout's first, so no run can wait on another.

@@ -495,7 +495,7 @@ def main(argv=None):
     if args.rounds < 1:
         # `range(0)` runs nothing, and "every kind was judged" is vacuously true of zero kinds: refused as an argument.
         parser.error(f'--rounds must be at least 1 (got {args.rounds}): a run with no round has no sample to judge')
-    out = Path(args.out)
+    out = harness.absolute(args.out)  # the children start in the checkout: see `harness.absolute`
     # Ownership first, before anything in the checkout or in `--out` is read, written or removed (a refusal's own
     # manifest included), and kept until this returns: a build owns the CHECKOUT too (nothing else may build from it or
     # put a mutant in its tree meanwhile), every phase owns `--out/harness.OUT_LOCK`, the lock every runner shares. Neither

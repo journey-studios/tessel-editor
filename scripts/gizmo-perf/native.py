@@ -1231,7 +1231,7 @@ def main(argv=None):
                         help='run the journey and its functional checks WITHOUT the performance lock and the load '
                              'guard; the timings of such a run are not a measurement and the status says so')
     args = parser.parse_args(argv)
-    out = Path(args.out)
+    out = harness.absolute(args.out)  # the children start in the checkout: see `harness.absolute`
     # Ownership first, before anything in the checkout or in `--out` is read, written or removed (a refusal's own
     # manifest included), and kept until this returns: a build owns the CHECKOUT too (nothing else may build from it
     # or put a mutant in its tree meanwhile), every phase owns `--out/harness.OUT_LOCK`, the lock every runner shares.

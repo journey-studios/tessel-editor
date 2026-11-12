@@ -183,7 +183,7 @@ def main(argv=None):
     parser.add_argument('--allow-dirty', action='store_true',
                         help='run on a dirty tree (recorded as such; the status can never be PASS for HEAD)')
     args = parser.parse_args(argv)
-    out = Path(args.out)
+    out = harness.absolute(args.out)  # the child starts in the checkout: see `harness.absolute`
     # The checkout (a build only) and then `--out` are owned before anything in either is read, written or removed,
     # a refusal's own manifest included, and until this returns (the `with` is the `finally`: also on SIGTERM/SIGINT).
     # Neither lock waits: a run that finds one taken prints ONE `REFUSED` line, exits 1 and writes nothing. The lock of

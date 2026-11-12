@@ -2789,9 +2789,10 @@ class ChildEnvironment(unittest.TestCase):
             raise RuntimeError('the body failed')
         self.assertEqual(self.changed(os.environ, before), [])
 
-    def measure(self, stdout, *flags, after=None, code=0, env=None, dirty=False):
+    def measure(self, stdout, *flags, after=None, code=0, env=None, dirty=False, relative=False):
         """`run.py --phase measure` end to end: the executable is a file, the benchmark a function that notes the
-        environment it was started with and writes the report it was asked for."""
+        environment it was started with and writes the report it was asked for. `relative`: `--out` is given as `out`
+        from the directory that holds it, the way a person types it (the child is started in the checkout, not there)."""
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / 'out'
             (out / 'exes').mkdir(parents=True)
@@ -2812,16 +2813,45 @@ class ChildEnvironment(unittest.TestCase):
 
             quiet = ({'free_gib': 100, 'loadavg': (0.0, 0.0, 0.0)}, None)
             clean = {'head': 'h' * 40, 'tree': 't' * 40, 'branch': 'b', 'dirty': ''}
-            with patch.object(runner.harness, 'git_identity', return_value=clean), \
-                    patch.object(runner.harness, 'toolchain', return_value={}), \
-                    patch.object(runner.harness, 'guards', return_value=quiet), \
-                    patch.object(runner.harness, 'claims', return_value=[]), \
-                    patch.object(runner.harness, 'Lock', FakeLock), \
-                    patch.object(runner.harness, 'judge_after', side_effect=judge_after), \
-                    patch.object(runner.harness, 'run_bounded', side_effect=benchmark), \
-                    patch.dict(os.environ, env if env is not None else {}):
-                result = run_main(runner, ['--phase', 'measure', '--out', str(out), *flags])
+            here = os.getcwd()
+            try:
+                if relative:
+                    os.chdir(tmp)
+                with patch.object(runner.harness, 'git_identity', return_value=clean), \
+                        patch.object(runner.harness, 'toolchain', return_value={}), \
+                        patch.object(runner.harness, 'guards', return_value=quiet), \
+                        patch.object(runner.harness, 'claims', return_value=[]), \
+                        patch.object(runner.harness, 'Lock', FakeLock), \
+                        patch.object(runner.harness, 'judge_after', side_effect=judge_after), \
+                        patch.object(runner.harness, 'run_bounded', side_effect=benchmark), \
+                        patch.dict(os.environ, env if env is not None else {}):
+                    result = run_main(runner, ['--phase', 'measure', '--out', 'out' if relative else str(out), *flags])
+            finally:
+                os.chdir(here)
             return result, json.loads((out / 'manifest.json').read_text()), seen, out
+
+    def test_a_relative_out_is_made_absolute_before_a_child_started_elsewhere_is_given_its_paths(self):
+        # The child runs with the checkout as its directory and the runner in the caller's: the executable and the report named
+        # through a relative `--out` would be one file for the runner (that checks and hashes the first, then looks for the
+        # second where it was typed) and another file for the child.
+        code, manifest, seen, out = self.measure(self.PASSING, relative=True)
+        started, report = Path(seen['command'][0]), Path(seen['env']['TESSEL_GIZMO_PERF_OUT'])
+        self.assertTrue(started.is_absolute(), seen['command'])
+        self.assertTrue(report.is_absolute(), report)
+        self.assertEqual(started.resolve(), (out / 'exes' / 'candidate.exe').resolve())
+        self.assertEqual(report.resolve(), (out / 'report.json').resolve())
+        self.assertEqual((code, manifest['status']), (0, 'PASS'))
+
+    def test_every_runner_takes_its_out_directory_as_an_absolute_path_and_none_as_typed(self):
+        # `Path(args.out)` in a runner is the same defect as the one above: a new runner (or a copy of one) that forgets the
+        # helper fails here, not in the next review. Only the four runners that start a child are looked at.
+        for name in ('run', 'ab', 'native', 'mutate'):
+            source = (HERE / f'{name}.py').read_text()
+            with self.subTest(name):
+                self.assertNotIn('Path(args.out)', source, f'{name}.py takes --out as typed')
+                self.assertEqual(source.count('harness.absolute(args.out)'), 1, f'{name}.py must resolve --out once')
+        self.assertEqual(harness.absolute('relative/dir'), Path(os.getcwd()) / 'relative' / 'dir')
+        self.assertEqual(harness.absolute('/already/absolute/../there'), Path('/already/there'))
 
     def test_an_exported_calibrate_never_reaches_a_measured_run_nor_its_record(self):
         code, manifest, seen, out = self.measure(self.PASSING, env=self.INHERITED)
