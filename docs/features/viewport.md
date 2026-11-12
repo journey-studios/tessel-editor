@@ -506,3 +506,8 @@ está fora do escopo). Portanto o backend padrão **continua `gpui-pre`**.
 | Overlays/foco sobre a WebView | P | ver `gpui-fast` (o diálogo que esconde a WebView é coberto pelo harness de ciclo de vida; popover/tooltip e foco continuam P) |
 
 Limites conhecidos estão no [relatório](../viewport-foundation-report.md#lacunas).
+
+
+### Latência real não aceita (BL157/BL157.1, 2026-11-10)
+
+O usuário não aceitou a latência. Os números sintéticos e o merge do warm não representam aceite do projeto real. A [investigação e proposta](../viewport-real-latency-investigation.md) reproduziu entradas lentas sem warm e pausas fora dos cortes com warm; o experimento A/B do I/O assíncrono foi executado ([F063](viewport-asset-io.md), [relatório](../viewport-real-latency-ab-report.md)): o I/O síncrono do protocolo atrasa a janela (confirmado), mas o modo assíncrono (implementado, opt-in `TESSEL_VIEWPORT_ASSET_IO=async`, padrão `sync`) não demonstrou redução consistente da cauda das pausas; o trânsito do quadro (BL157.2) foi localizado, sem correção; a latência continua não aceita.

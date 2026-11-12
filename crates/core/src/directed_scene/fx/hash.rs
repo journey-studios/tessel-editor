@@ -21,6 +21,13 @@ pub fn fnv1a32(text: &str) -> u32 {
     hash
 }
 
+/// FNV-1a over `bytes`, 64 bits: short stable names (a thumbnail's file, a trace label). Not a security boundary.
+pub fn fnv1a64(bytes: &[u8]) -> u64 {
+    bytes.iter().fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
+        (hash ^ u64::from(*byte)).wrapping_mul(0x0000_0100_0000_01b3)
+    })
+}
+
 /// Chris Wellons' `lowbias32`: a bijective integer hash with good avalanche.
 pub fn lowbias32(value: u32) -> u32 {
     let mut hash = value;
@@ -104,6 +111,14 @@ mod tests {
         assert_eq!(fnv1a32("viñeta"), 419_953_240);
         assert_eq!(fnv1a32("fx-01"), 3_286_700_573);
         assert_eq!(fnv1a32("transition-01"), 1_697_369_554);
+    }
+
+    // The published 64-bit vectors of the algorithm.
+    #[test]
+    fn fnv1a64_matches_the_published_vectors() {
+        assert_eq!(fnv1a64(b""), 0xcbf2_9ce4_8422_2325);
+        assert_eq!(fnv1a64(b"a"), 0xaf63_dc4c_8601_ec8c);
+        assert_eq!(fnv1a64(b"foobar"), 0x8594_4171_f739_67e8);
     }
 
     #[test]

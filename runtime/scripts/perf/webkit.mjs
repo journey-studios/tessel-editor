@@ -18,11 +18,19 @@ const compile = () => {
   return binary;
 };
 
-export const runWebKit = ({ plan, out }) =>
-  new Promise((resolve, reject) => {
-    const binary = compile();
-    const planFile = join(cacheDir, `plan-${process.pid}.json`);
-    writeFileSync(planFile, JSON.stringify({ ...plan, page: join(here, 'page') }));
-    const child = spawn(binary, [planFile, out], { stdio: 'inherit' });
-    child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`wk-host exited ${code}`))));
-  });
+/**
+ * `fresh: true` starts one host process per run: every run then meets a WebContent and a GPU process that never drew, as an
+ * editor launch does (the default shares them between the runs of a plan, so only its first run is cold).
+ */
+export const runWebKit = async ({ plan, out, fresh = false }) => {
+  const binary = compile();
+  const groups = fresh ? plan.runs.map((run) => [run]) : [plan.runs];
+  for (const [index, runs] of groups.entries()) {
+    await new Promise((resolve, reject) => {
+      const planFile = join(cacheDir, `plan-${process.pid}-${index}.json`);
+      writeFileSync(planFile, JSON.stringify({ ...plan, runs, page: join(here, 'page') }));
+      const child = spawn(binary, [planFile, out], { stdio: 'inherit' });
+      child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`wk-host exited ${code}`))));
+    });
+  }
+};

@@ -96,3 +96,17 @@ fn standalone_cli_keeps_session_state_and_reports_errors_without_a_desktop() {
     assert_eq!(responses[2]["error"]["code"], "out_of_bounds");
     assert_eq!(responses[4]["error"]["code"], "invalid_json");
 }
+
+#[test]
+fn the_host_trace_belongs_to_the_window_and_the_headless_session_says_so_without_touching_state() {
+    // BL157.1: ticks, protocol requests and runtime spans exist only where there is a window.
+    let mut state = EditorState::default();
+    let before = state.summary();
+    let error = headless::execute(&mut state, &json!({"op":"render.trace","since":0})).unwrap_err();
+    assert_eq!(error.code, "desktop_required");
+    assert_eq!(state.summary(), before);
+    // A malformed cursor is the same typed error as everywhere else.
+    let error =
+        headless::execute(&mut state, &json!({"op":"render.trace","since":"x"})).unwrap_err();
+    assert_eq!(error.code, "invalid_request");
+}

@@ -47,8 +47,8 @@ pub use handles::{
     on_picture, params_at as vignette_params_at,
 };
 pub use hash::{
-    Reseed, base_seed, colored_triangular, fnv1a32, hash_pixel, lowbias32, seed_for, triangular,
-    unit_float,
+    Reseed, base_seed, colored_triangular, fnv1a32, fnv1a64, hash_pixel, lowbias32, seed_for,
+    triangular, unit_float,
 };
 pub use keys::{
     FX_EASINGS, FxEasing, FxKey, MAX_FX_KEYS_PER_CLIP, MAX_FX_KEYS_PER_CURVE,

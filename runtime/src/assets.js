@@ -38,8 +38,9 @@ const fetchChecked = async (url, label) => {
   return response;
 };
 
-const decodeImage = async (response, label) => {
-  const blob = await response.blob();
+const decodeImage = async (source, label) => {
+  // A Response (the body is read here) or an already-read Blob (the caller timed the read apart from the decode).
+  const blob = source instanceof Blob ? source : await source.blob();
   try {
     // No premultiply and no color conversion: pixels must reach the framebuffer untouched.
     return await createImageBitmap(blob, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' });
@@ -143,6 +144,14 @@ export class AssetStore {
     return entry;
   }
 
+  /** Takes the successful load's page-clock timings once, by its metadata object, never by a reusable asset id.
+   * Unread results are weakly held; a cancelled/failed older load cannot replace or delete a newer load's timings. */
+  takeLoadTimings(meta) {
+    const timings = this.loadTimings?.get(meta);
+    this.loadTimings?.delete(meta);
+    return timings ?? {};
+  }
+
   /** Loads (or reloads) an asset and returns the metadata the runtime measured. */
   async load(descriptor) {
     const { id, kind, source } = descriptor;
@@ -197,7 +206,9 @@ export class AssetStore {
       // The probe frame is kept as frame 0; its texture is made when a frame first draws it.
       entry.frames.set(0, { bitmap: after, texture: null, lastUsed: 0 });
     }
-    return meta;
+    const result = { ...meta };
+    if (loaded.timings) (this.loadTimings ??= new WeakMap()).set(result, loaded.timings);
+    return result;
   }
 
   /** Entries loaded for a directed scene (`descriptor.scene`), other than the one under `exceptId`. */
@@ -418,6 +429,30 @@ export class AssetStore {
     return entry.texture;
   }
 
+  /**
+   * BL157.3: makes the retained texture of the still `id` before a frame draws it, if (and only if) it is the entry that was
+   * loaded when the upload was asked for (`serial`), it has no texture yet and the texture fits the byte budget without
+   * freeing anything. `upload(texture)` sends it to the GPU. The recency clock is not touched: a texture nobody used yet is the
+   * first the budget gives back, never one of the textures the playhead is using. Returns `uploaded`, `resident`, `budget`,
+   * `stale` (another entry holds the id now) or `missing`; the frame that draws the still finds the texture and counts a reuse.
+   */
+  preuploadStill(id, serial, upload) {
+    const entry = this.entries.get(id);
+    if (!entry || entry.kind !== 'still' || !entry.bitmap) return 'missing';
+    if (entry.serial !== serial) return 'stale';
+    if (entry.texture) return 'resident';
+    if (this.textureBytes() + rgbaBytes(entry.width, entry.height) > this.limits.imageTextureBytes) return 'budget';
+    const texture = imageTexture(entry.bitmap);
+    try {
+      upload(texture);
+    } catch (error) {
+      texture.dispose();
+      throw error;
+    }
+    entry.texture = texture;
+    return 'uploaded';
+  }
+
   /** Frees every retained image texture (retention switched off); bitmaps stay. */
   dropTextures() {
     this.entries.forEach((entry) => this.disposeTextures(entry));
@@ -429,8 +464,13 @@ export class AssetStore {
 
   async loadStill({ id, source }) {
     const label = `\`${id}\` (${source.path})`;
-    const bitmap = await decodeImage(await fetchChecked(this.assetUrl(source.path), label), label);
+    const fetchStarted = performance.now();
+    const response = await fetchChecked(this.assetUrl(source.path), label);
+    const blob = await response.blob();
+    const decodeStarted = performance.now();
+    const bitmap = await decodeImage(blob, label);
     return {
+      timings: { fetch_ms: decodeStarted - fetchStarted, decode_ms: performance.now() - decodeStarted },
       entry: { bitmap, width: bitmap.width, height: bitmap.height },
       meta: { width: bitmap.width, height: bitmap.height },
     };
@@ -450,13 +490,16 @@ export class AssetStore {
 
   async loadSplat({ id, source, meta }) {
     const label = `\`${id}\` (${source.path})`;
+    const fetchStarted = performance.now();
     const bytes = await this.fetchSplatBytes(source, label);
     const fileName = splatFileName(meta.format, source.path);
+    const decodeStarted = performance.now();
     const mesh = await loadSplatMesh(bytes, fileName, label);
     const count = mesh.packedSplats.numSplats;
     // The file is NOT kept (66 MB for a 1.18 M splat PLY, as much again as the decoded splats): the GPU
     // side is rebuilt after a lost context by fetching it again (see splatLease and dropGpu).
     return {
+      timings: { fetch_ms: decodeStarted - fetchStarted, decode_ms: performance.now() - decodeStarted, bytes: bytes.byteLength },
       entry: { source, fileName, label, mesh, pool: splatPool(mesh), count },
       meta: { splat_count: count, format: fileName.split('.').pop() },
     };
