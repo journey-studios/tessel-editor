@@ -292,13 +292,23 @@ def scenario(surface, check, scratch, record):
     check('a press released in place is a no-op: same bytes, no history, no revision',
           (bundle(), depth()) == resting, (depth(), resting[1]))
 
-    far = point(1.0, cy)
-    drag('softness', far, 'clamp')
-    ok({'op': 'scene.pointer.up', 'point': far})
-    clamped = handles()['values']['softness']
-    check('a pointer past the catalog range is clamped to it', 0.05 <= clamped <= 1.0 and near(clamped, round(clamped, 2)),
-          clamped)
+    # The pointer is put where the closed formula lands OUTSIDE the range and the limit itself is asserted: on the
+    # centre the distance is 0, so the softness (distance - radius = -0.4) goes down to its floor, 0.05; far to the
+    # right the radius (4.96) goes up to its ceiling, 1.5. (u = 1.0 would give a softness of 0.59, inside the range.)
+    if not (radius_of(cx, cx) - RADIUS < 0.05 and radius_of(cx + 3.0, cx) > 1.5):
+        raise S8.ProofFailure('the clamp case lost its premise: the points no longer fall outside the range')
+    low = point(cx, cy)
+    drag('softness', low, 'clamp')
+    ok({'op': 'scene.pointer.up', 'point': low})
+    floor = handles()['values']['softness']
     ok({'op': 'history.undo'})
+    high = point(cx + 3.0, cy)
+    drag('radius', high, 'clamp')
+    ok({'op': 'scene.pointer.up', 'point': high})
+    ceiling = handles()['values']['radius']
+    ok({'op': 'history.undo'})
+    check('a pointer past the catalog range is clamped to it', near(floor, 0.05) and near(ceiling, 1.5),
+          {'softness_floor': floor, 'radius_ceiling': ceiling})
 
     resting = (bundle(), depth())
     drag('radius', point(cx + 0.1, cy), 'escape')
