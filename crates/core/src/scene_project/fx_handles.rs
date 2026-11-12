@@ -190,7 +190,8 @@ impl EditorState {
     }
 
     /// Drops the target when the project no longer holds it (the clip was removed, the scene
-    /// detached, an undo took it away) or it is no longer a vignette. Reports what it dropped.
+    /// detached, an undo took it away) or the clip no longer has handles (it is no longer a
+    /// vignette, or `set_scope` laid it on a shot). Reports what it dropped.
     /// Run where the project changes (`EditorState::apply`, `restore`), never by a read.
     pub(crate) fn prune_fx_target(&mut self) -> Option<FxTarget> {
         let target = self.scene_interaction.fx_target.as_ref()?;

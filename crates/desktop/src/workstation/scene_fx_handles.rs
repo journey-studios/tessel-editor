@@ -11,22 +11,28 @@ use tessel_editor_core::directed_scene::fx::FxClip;
 use tessel_editor_core::scene_project::SceneCommand;
 
 use super::controls::{disabled_tool_button, tool_button};
-use super::scene_fx::{FxView, no_scene};
+use super::scene_fx::{FxView, LOCALE, no_scene};
 use super::{Source, Workstation};
 use crate::state::CommandError;
 
 /// `handles` on a vignette clip node shows or hides its 2D handles on the monitor.
 pub(super) const HANDLES_ACTION: &str = "handles";
-const NO_HANDLES: &str = "Só a vinheta tem alças no monitor";
 
-/// The `handles` entry of a clip node's actions. Only a vignette has handles; another effect lists
-/// the action disabled with its reason, never as a callback that does nothing. The label is
-/// static: whether they are on is `state.handles`, and the button already says it.
+/// Why `clip` has no handles on the monitor, in the words of the core (`None` when it has them):
+/// ONE reading of `FxClip::handles_refusal` for the action and the button.
+fn no_handles_text(clip: &FxClip) -> Option<&'static str> {
+    clip.handles_refusal().map(|refusal| refusal.text(LOCALE))
+}
+
+/// The `handles` entry of a clip node's actions. Only a vignette on the output has handles;
+/// another effect, or a clip laid on a shot, lists the action disabled with the core's reason,
+/// never as a callback that does nothing. The label is static: whether they are on is
+/// `state.handles`, and the button already says it.
 pub(super) fn handles_action(clip: &FxClip) -> Value {
-    let has_handles = clip.has_handles();
+    let reason = no_handles_text(clip);
     json!({
         "action": HANDLES_ACTION, "label": "Alças no monitor",
-        "enabled": has_handles, "disabled_reason": (!has_handles).then_some(NO_HANDLES),
+        "enabled": reason.is_none(), "disabled_reason": reason,
     })
 }
 
@@ -42,7 +48,8 @@ impl Workstation {
 
     /// Shows the handles of `clip` on the monitor, or hides them when they are shown: ONE
     /// `scene.fx.select`, the command a script sends. The core refuses a clip that has none
-    /// (`fx_has_no_handles`) and empties the entity selection (one target at a time).
+    /// (`fx_has_no_handles`, or `scope_not_supported` on a shot) and empties the entity
+    /// selection (one target at a time).
     pub(super) fn fx_handles_toggle(
         &mut self,
         clip: &str,
@@ -62,8 +69,8 @@ impl Workstation {
         )
     }
 
-    /// The header button of a clip: lit while its handles are on the monitor, disabled with its
-    /// reason for an effect that has none.
+    /// The header button of a clip: lit while its handles are on the monitor, disabled with the
+    /// core's reason for a clip that has none (another effect, or a clip laid on a shot).
     pub(super) fn fx_handles_button(
         &self,
         view: &FxView,
@@ -73,7 +80,14 @@ impl Workstation {
         let id = clip.id.clone();
         let on = self.fx_handles_on(&view.scene, &id);
         let button_id = SharedString::from(format!("fx-handles:{id}"));
-        let button = if clip.has_handles() {
+        let button = if let Some(reason) = no_handles_text(clip) {
+            disabled_tool_button(
+                button_id,
+                IconName::Frame,
+                &format!("Alças de {id} no monitor"),
+                reason,
+            )
+        } else {
             let label = if on {
                 format!("Ocultar alças de {id} no monitor")
             } else {
@@ -88,13 +102,6 @@ impl Workstation {
                         let _ = this.fx_handles_toggle(&clip_id, Source::Gesture, cx);
                     });
                 })
-        } else {
-            disabled_tool_button(
-                button_id,
-                IconName::Frame,
-                &format!("Alças de {id} no monitor"),
-                NO_HANDLES,
-            )
         };
         div()
             .relative()

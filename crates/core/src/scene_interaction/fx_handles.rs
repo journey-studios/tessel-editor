@@ -11,8 +11,8 @@ use serde_json::{Value, json};
 
 use crate::directed_scene::DirectedScene;
 use crate::directed_scene::fx::{
-    HandleValue, VignetteHandle, VignetteParams, VignetteShape, hit_handle, on_picture,
-    vignette_params_at,
+    FxClip, HandleValue, NoHandles, VignetteHandle, VignetteParams, VignetteShape, hit_handle,
+    on_picture, vignette_params_at,
 };
 use crate::state::CommandError;
 
@@ -59,6 +59,31 @@ pub(crate) fn fx_clip_has_handles(scene: &DirectedScene, clip: &str) -> bool {
         .is_some_and(|(_, found)| found.has_handles())
 }
 
+/// The typed error of a clip the monitor draws no handles on: `fx_has_no_handles` for an effect
+/// without a spatial parameter, `scope_not_supported` for a clip laid on a shot (F062, BL082.41).
+/// It names the clip as its target, so the answer of every surface points at the same node.
+fn no_handles(clip: &str, found: &FxClip, refusal: NoHandles) -> CommandError {
+    let (message, details) = match refusal {
+        NoHandles::NotVignette => (
+            format!(
+                "`{clip}` is a `{}`: only the vignette has handles on the monitor",
+                found.effect.id
+            ),
+            json!({ "clip": clip, "effect": found.effect.id }),
+        ),
+        NoHandles::ScopeNotSupported => (
+            format!(
+                "`{clip}` is laid on `{}`: the handles of the monitor exist only for a clip on the output",
+                found.scope.to_text()
+            ),
+            json!({ "clip": clip, "scope": found.scope.to_text() }),
+        ),
+    };
+    CommandError::new(refusal.code(), message)
+        .target(clip)
+        .details(details)
+}
+
 /// One vignette clip as the monitor shows it at one edit frame.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FxHandlesView {
@@ -90,16 +115,8 @@ impl FxHandlesView {
         let Some((_, found)) = bundle.fx.clip(clip) else {
             return Err(CommandError::unknown_element("effect clip", clip));
         };
-        if !found.has_handles() {
-            return Err(CommandError::new(
-                "fx_has_no_handles",
-                format!(
-                    "`{clip}` is a `{}`: only the vignette has handles on the monitor",
-                    found.effect.id
-                ),
-            )
-            .target(clip)
-            .details(json!({ "clip": clip, "effect": found.effect.id })));
+        if let Some(refusal) = found.handles_refusal() {
+            return Err(no_handles(clip, found, refusal));
         }
         let (width, height) = (bundle.render_profile.width, bundle.render_profile.height);
         let mut view = Self {
@@ -266,7 +283,8 @@ mod tests {
     /// "Does this clip have handles?" is asked by the target the session holds (after every
     /// change of the project) and by the view every read and every press builds. Both go through
     /// `FxClip::has_handles`; this fixes that they cannot drift: the predicate says yes exactly
-    /// when the view is built, and the two refusals the view has stay the ones it names.
+    /// when the view is built, and the refusals the view has stay the ones it names (an effect
+    /// without handles, and a vignette laid on a shot: F062, BL082.64).
     #[test]
     fn the_target_predicate_says_yes_exactly_when_the_view_is_built() {
         let mut state = EditorState::empty(&ProjectSettings::default()).unwrap();
@@ -282,6 +300,8 @@ mod tests {
             &mut state,
             json!({"op":"scene.fx.edit","scene":"street","ops":[
                 {"op":"add_clip","effect":"vignette","start_frame":10,"duration_frames":30,"id":"v1"},
+                {"op":"add_clip","effect":"vignette","start_frame":10,"duration_frames":30,"id":"v2",
+                 "scope":"shot:shot-1"},
                 {"op":"add_clip","effect":"fade","start_frame":0,"duration_frames":10,"id":"f1"},
                 {"op":"add_clip","effect":"filmGrain","start_frame":0,"duration_frames":10,"id":"g1"}]}),
         );
@@ -289,6 +309,7 @@ mod tests {
         // `(clip, whether it has handles, the error the view names when it has none)`.
         let cases = [
             ("v1", true, None),
+            ("v2", false, Some("scope_not_supported")),
             ("f1", false, Some("fx_has_no_handles")),
             ("g1", false, Some("fx_has_no_handles")),
             ("ghost", false, Some("unknown_element")),

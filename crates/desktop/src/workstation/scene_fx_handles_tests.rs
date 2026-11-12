@@ -12,7 +12,7 @@
 //! Not proved here: pixels in the monitor and a physical pointer on the WebView.
 use serde_json::{Value, json};
 
-use super::scene_fx_tests::{field_value, invoke, mounted, node, undo_depth};
+use super::scene_fx_tests::{center_of, field_value, invoke, mounted, node, undo_depth};
 use super::*;
 // The Kit's test macro expands to `#[test]`; the glob import above would resolve it to the Kit macro again.
 use core::prelude::v1::test;
@@ -193,6 +193,86 @@ fn the_handles_action_is_the_shared_select_and_the_tree_says_what_is_targeted(
     invoke(&view, cx, CLIP, "handles").unwrap();
     assert_eq!(node(&view, cx, CLIP)["state"]["handles"], json!(false));
     assert_eq!(gizmo(&view, cx)["state"]["target"], json!("node"));
+}
+
+/// F062 x F061 (BL082.64): a vignette laid on a shot has no handles on the monitor. The core says it
+/// once (`FxClip::handles_refusal`) and the node, the button and the select answer with it; a clip
+/// that turns into a shot clip while it is the target leaves the target at the edit, with no read.
+#[gpui_kit::test]
+fn a_vignette_on_a_shot_has_no_handles_and_the_target_leaves_it(cx: &mut TestAppContext) {
+    const REASON: &str = "As alças só existem para efeitos na saída; este efeito está num shot";
+    let (view, cx) = mounted(cx);
+    let handles_action = |view: &Entity<Workstation>, cx: &mut VisualTestContext| {
+        node(view, cx, CLIP)["actions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|action| action["action"] == "handles")
+            .expect("the node always lists `handles`")
+            .clone()
+    };
+    let handles_on = |view: &Entity<Workstation>, cx: &mut VisualTestContext| {
+        view.read_with(cx, |view, _| view.fx_handles_on("street", "fx-1"))
+    };
+    let click_button = |view: &Entity<Workstation>, cx: &mut VisualTestContext| {
+        // A paint follows the change: the probe is the button of this state.
+        view.update(cx, |_, cx| cx.notify());
+        cx.run_until_parked();
+        let button = center_of(view, cx, "control:fx-handles:fx-1");
+        cx.simulate_click(button, Default::default());
+        cx.run_until_parked();
+    };
+
+    // Laid on the first shot: the action says why, and nothing the window offers turns them on. The
+    // button is inert: a click neither shows the handles nor raises the refusal a live one would.
+    invoke(&view, cx, "scene.fx", "add_in_shot:vignette").unwrap();
+    let off = handles_action(&view, cx);
+    assert_eq!(off["enabled"], json!(false));
+    assert_eq!(off["disabled_reason"], json!(REASON));
+    let depth = undo_depth(&view, cx);
+    click_button(&view, cx);
+    assert!(!handles_on(&view, cx), "the disabled button does nothing");
+    assert!(
+        view.read_with(cx, |view, _| view.scene_ui.notice.is_none()),
+        "and it asks the core nothing: no refusal reaches the panel"
+    );
+    let refused = invoke(&view, cx, CLIP, "handles").unwrap_err();
+    assert_eq!(refused.code, "scope_not_supported");
+    assert_eq!(refused.target.as_deref(), Some("fx-1"));
+    let selected = view.update(cx, |view, cx| {
+        view.execute(
+            Command::Scene(SceneCommand::FxSelect {
+                scene: "street".into(),
+                clip: Some("fx-1".into()),
+            }),
+            Source::Cli,
+            cx,
+        )
+    });
+    assert_eq!(selected.unwrap_err().code, "scope_not_supported");
+    assert_eq!(gizmo(&view, cx)["state"]["target"], json!("node"));
+    assert_eq!(undo_depth(&view, cx), depth, "a refusal writes nothing");
+
+    // Back on the output: the same action and the same button are live.
+    invoke(&view, cx, CLIP, "set_scope:output").unwrap();
+    let on = handles_action(&view, cx);
+    assert_eq!(on["enabled"], json!(true));
+    assert_eq!(on["disabled_reason"], Value::Null);
+    click_button(&view, cx);
+    assert!(handles_on(&view, cx), "the button shows the handles");
+    assert_eq!(gizmo(&view, cx)["state"]["fx_clip"], json!("fx-1"));
+
+    // The target clip is laid on a shot: the target is dropped by the edit itself, before any read.
+    invoke(&view, cx, CLIP, "set_scope:shot:shot-1").unwrap();
+    assert_eq!(
+        (
+            gizmo(&view, cx)["state"]["target"].clone(),
+            gizmo(&view, cx)["state"]["fx_clip"].clone()
+        ),
+        (json!("node"), json!(""))
+    );
+    assert!(!handles_on(&view, cx));
+    assert_eq!(handles_action(&view, cx)["enabled"], json!(false));
 }
 
 #[gpui_kit::test]
