@@ -124,8 +124,10 @@ artefatos/cache/builds em `/tmp` acima de aproximadamente 500 MB nem limpar cach
 ## Sequência de entregas
 
 **G1: rotação de um nó + orientação local/mundo**, mantendo a translação existente,
-seguida de escala em uma entrega delimitada. Próxima entrega de domínio: **luz pontual
-com posição e alcance editáveis**, sem habilitar spot/direcional antes de implementá-las.
+seguida de escala em uma entrega delimitada. Próxima entrega de domínio, à época (entregue
+como G2.1 pela [PR #45](https://github.com/journey-studios/tessel-editor/pull/45), F060;
+ver "Atualização G2.1" abaixo): **luz pontual com posição e alcance editáveis**, sem habilitar
+spot/direcional antes de implementá-las.
 
 Antes de iniciar cada entrega, conferir main, PRs e ownership ativos. A implementação
 usa Cursor Sonnet 5.5; a revisão independente é uma nova tarefa. O backlog registra
@@ -196,7 +198,8 @@ sujo da raiz é do coordenador e não pode ser substituído pelo de outra branch
 
 Fora desta PR: luzes, câmera espacial, snapping, seleção múltipla, grupos, edição de
 keys, translação em eixos locais e correção geral da flaky de vídeo B2. Após escala,
-a próxima entrega de domínio continua sendo luz pontual com posição e alcance.
+a próxima entrega de domínio continuava sendo luz pontual com posição e alcance (entregue
+como G2.1, F060, [PR #45](https://github.com/journey-studios/tessel-editor/pull/45)).
 
 ## Atualização G1.2 — escala de um nó (implementação, a validar)
 

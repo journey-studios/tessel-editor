@@ -9,6 +9,10 @@ busiest processes, the name of a worktree, the folder of a private project. The 
 measurement run is where those leak (the runner records its host), so this spec reads every
 tracked file of the feature, compressed ones decompressed, and fails with `file:line: pattern`.
 
+Three shared documents are read too (BL015.38): they are not the feature's, but they were where a
+real home path reached the public repository. They are scanned for the machine data only (see
+`SHARED_FORBIDDEN`).
+
 It only needs `git` and the standard library. A `git` that fails is an error of the spec, never a
 file list that happens to be empty, and the controls below prove that the scan CAN fail: the
 detector is tried on synthetic text and on an in-memory archive, and every pathspec must match at
@@ -46,6 +50,15 @@ FORBIDDEN = (
     'projects' + '/',
 )
 
+# The shared documents that already leaked a real home path. The backlog is where the `projects`
+# folder convention is described by name (BL162), so the folder pattern is the only one left out.
+SHARED_DOCS = (
+    'docs/backlog.md',
+    'docs/migration/gizmos-spatial-editing-plan.md',
+    'docs/migration/wave-s1-s10-plan.md',
+)
+SHARED_FORBIDDEN = tuple(pattern for pattern in FORBIDDEN if pattern != 'projects' + '/')
+
 
 def git(*args):
     """The stdout of a git command. A failure raises: the scan must never see "nothing" by accident."""
@@ -64,15 +77,16 @@ def decoded(name, data):
     return data.decode('utf-8', errors='replace')
 
 
-def forbidden_in(text):
+def forbidden_in(text, patterns=FORBIDDEN):
     """`(line, pattern)` for every forbidden pattern on every line of `text` (lines count from 1)."""
     return [(number, pattern)
             for number, line in enumerate(text.split('\n'), 1)
-            for pattern in FORBIDDEN if pattern in line]
+            for pattern in patterns if pattern in line]
 
 
-def scan(name, data):
-    return [f'{name}:{number}: {pattern}' for number, pattern in forbidden_in(decoded(name, data))]
+def scan(name, data, patterns=FORBIDDEN):
+    return [f'{name}:{number}: {pattern}'
+            for number, pattern in forbidden_in(decoded(name, data), patterns)]
 
 
 def feature_files():
@@ -90,11 +104,33 @@ class TheFeatureFiles(unittest.TestCase):
         self.assertEqual([], found, 'development-machine data in tracked files:\n' + '\n'.join(found))
 
 
+class TheSharedDocuments(unittest.TestCase):
+    def test_no_shared_document_carries_development_machine_data(self):
+        for name in SHARED_DOCS:
+            with self.subTest(name=name):
+                self.assertEqual([name], tracked(name), f'`{name}` is not a tracked file')
+                found = scan(name, (ROOT / name).read_bytes(), SHARED_FORBIDDEN)
+                self.assertEqual([], found, 'development-machine data in a shared document:\n' + '\n'.join(found))
+
+
 class TheControls(unittest.TestCase):
     def test_every_pathspec_matches_a_tracked_file(self):
         for pathspec in PATHSPECS:
             with self.subTest(pathspec=pathspec):
                 self.assertTrue(tracked(pathspec), f'`{pathspec}` matches no tracked file')
+
+    def test_the_shared_scan_leaves_out_only_the_folder_pattern(self):
+        self.assertEqual({'projects' + '/'}, set(FORBIDDEN) - set(SHARED_FORBIDDEN))
+        self.assertEqual(len(SHARED_FORBIDDEN), len(set(SHARED_FORBIDDEN)))
+
+    def test_the_shared_scan_can_fail_and_does_not_condemn_the_folder_convention(self):
+        for pattern in SHARED_FORBIDDEN:
+            with self.subTest(pattern=pattern):
+                data = ('clean\nthe copy is at ' + pattern + 'x\n').encode()
+                self.assertEqual([f'docs/x.md:2: {pattern}'], scan('docs/x.md', data, SHARED_FORBIDDEN))
+        folder = ('see the ' + 'projects' + '/README.md convention\n').encode()
+        self.assertEqual([], scan('docs/x.md', folder, SHARED_FORBIDDEN))
+        self.assertNotEqual([], scan('docs/x.md', folder))
 
     def test_a_failing_git_is_an_error_not_an_empty_listing(self):
         with self.assertRaises(subprocess.CalledProcessError):

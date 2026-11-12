@@ -6,7 +6,7 @@ Contratos, limites e o estado da medição (nada de tempo está validado):
 | Arquivo | Para quê |
 |---|---|
 | `corpus.py` | gera os bundles `dense`/`deep` e `corpus.manifest.json`; `--check` falha se um arquivo não é o que o gerador faz |
-| `hygiene.spec.py` | reprova dado de máquina de desenvolvimento (caminho absoluto, usuário, lista de processos) nos arquivos da feature |
+| `hygiene.spec.py` | reprova dado de máquina de desenvolvimento (caminho absoluto, usuário, lista de processos) nos arquivos da feature e em três documentos compartilhados (`docs/backlog.md`, o plano dos gizmos e o plano da rodada S1–S10; BL015.38) |
 | `harness.py` | o que os runners dividem: lock de GPU `/tmp/tessel-scene-gpu.lock` (uma tentativa, nunca apaga o arquivo), guardas de carga/térmica/disco, processos limitados, identidade do git, posse de `--out`, gravação **redigida** (`redact`) |
 | `run.py` | tempo do core em release: `--phase build`, `--phase measure` (`--calibrate` nunca julga) |
 | `ab.py` | baseline × candidato, o mesmo teste de orçamento construído duas vezes; cada gate (p50, p95) tem a sua maioria de rodadas |
