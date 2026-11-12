@@ -355,6 +355,17 @@ def unstable_corpora(reports, limit=MAX_UNSTABLE_FRACTION):
     return out
 
 
+def unstable_by_side(reports):
+    """{corpus: {side: [fraction, ...]}} for the corpora that were unstable in a kept report of either side. The sides stay
+    apart: merged into one mapping the side that comes last replaced the one before, and a corpus that was unstable on
+    both read as unstable only where it was seen last."""
+    out = {}
+    for side, kept in reports.items():
+        for corpus, fractions in unstable_corpora(kept).items():
+            out.setdefault(corpus, {})[side] = fractions
+    return out
+
+
 def pct(values, q):
     ordered = sorted(values)
     if not ordered:
@@ -566,8 +577,9 @@ def run_phase(args, out):
             try:
                 record = make_baseline(args.baseline, out)
             except (Refused, subprocess.CalledProcessError) as error:
-                manifest.update(status='REFUSED_CONTAMINATION', reason=str(error))
-                return harness.die(1, manifest, manifest_path)
+                # `make_baseline` extracts the pinned source before it can refuse (or before `git archive | tar` fails): like
+                # any other refusal of this phase, what it extracted is not kept.
+                return fail('REFUSED_CONTAMINATION', str(error))
             src = record.pop('src')
             manifest['prod_trees'] = record
             c_command, c_done, c_exe = build(ROOT)
@@ -601,11 +613,13 @@ def run_phase(args, out):
                     'the candidate and the baseline executables are the same file' if same_file else
                     'the candidate and the baseline executables have the same sha256') +
                     ': one artifact would be measured as both sides', same_file=same_file)
-            manifest['baseline_src_kept_at'] = str(kept_src)
-            too_big = harness.artifact_reason(exes_dir) or harness.artifact_reason(kept_src)
+            # ONE total for what this run leaves in /tmp: `artifact_reason` sums the paths it is given, so two calls joined with
+            # `or` would let the executables and the source each stay under the limit and the run keep up to twice of it. A
+            # refusal keeps no source, and its manifest does not say it does.
+            too_big = harness.artifact_reason(exes_dir, kept_src)
             if too_big:
-                manifest.update(status='REFUSED', reason=too_big)
-                return harness.die(1, manifest, manifest_path)
+                return fail('REFUSED', too_big)
+            manifest['baseline_src_kept_at'] = str(kept_src)
             manifest.update(status='BUILT', reason='no measurement was taken')
             harness.write(out / 'manifest.build.json', manifest)
             print(json.dumps({'status': 'BUILT', 'executables_sha256': manifest['executables_sha256'],
@@ -688,7 +702,7 @@ def run_phase(args, out):
                     return harness.die(1, manifest, manifest_path)
                 reports[side].append(json.loads(path.read_text()))
             after_reason = harness.judge_after(manifest)
-        unstable = {**unstable_corpora(reports['baseline']), **unstable_corpora(reports['candidate'])}
+        unstable = unstable_by_side({side: reports[side] for side in ('baseline', 'candidate')})
         verdicts = judge(pooled(reports['baseline']), pooled(reports['candidate']), unstable)
         harness.write(out / 'verdicts.json', verdicts)
         manifest['verdicts_sha256'] = harness.sha256(out / 'verdicts.json')

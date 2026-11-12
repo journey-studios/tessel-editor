@@ -681,6 +681,7 @@ class MeasurePhase(unittest.TestCase):
     REPORT = {'suite': 'gizmo-perf-core', 'corpora': [{'corpus': 'small', 'reference': {'unstable_fraction': 0.0}, 'cold': {},
               'hot': {'move.translate': {'samples_ns': [10, 11, 12, 13], 'p50_ns': 11, 'ratio_p50': 1.0, 'long_ticks': 0,
                                          'n': 4}}}]}
+    REPORT_BY_SIDE = None  # `{'baseline': report, 'candidate': report}` when the two sides must not write the same report
 
     def build_dir(self, out, candidate=None):
         """What a finished `--phase build` leaves in --out: its manifest, both executables and the baseline source."""
@@ -700,7 +701,7 @@ class MeasurePhase(unittest.TestCase):
 
     def measure(self, out, after_reason=None, *flags):
         def run_once(exe, path):
-            Path(path).write_text(json.dumps(self.REPORT))
+            Path(path).write_text(json.dumps((self.REPORT_BY_SIDE or {}).get(Path(exe).stem, self.REPORT)))
             return ab.harness.Done(['x'], 0, 'test result: ok. 1 passed; 0 failed; 0 ignored', '', False, 1.0, None)
 
         def judge_after(manifest):
@@ -801,6 +802,32 @@ class MeasurePhase(unittest.TestCase):
             self.assertEqual(len(names), 2, names)
             self.assertTrue(any(name.endswith('-NO_REGRESSION_IN_SCENARIO') for name in names), names)
 
+    def test_a_plan_reference_that_moved_on_both_sides_is_recorded_for_both(self):
+        # The two sides were merged with `{**baseline, **candidate}`: for a corpus that was unstable on both, the candidate's
+        # fractions replaced the baseline's, and the verdict (which only asks "is it there") read as if the baseline had been
+        # steady. The reason now names each side with what it measured.
+        def report(fraction):
+            corpus = {**self.REPORT['corpora'][0], 'reference': {'unstable_fraction': fraction}}
+            return {**self.REPORT, 'corpora': [corpus]}
+
+        with tempfile.TemporaryDirectory() as out:
+            self.build_dir(out)
+            with patch.object(self, 'REPORT_BY_SIDE', {'baseline': report(0.4), 'candidate': report(0.5)}):
+                code, manifest = self.measure(out)
+            verdict = json.loads((Path(out) / 'verdicts.json').read_text())['small/move.translate']
+        self.assertEqual((code, manifest['status']), (harness.INCONCLUSIVE_EXIT, 'INCONCLUSIVE'))
+        self.assertEqual(verdict['status'], 'INCONCLUSIVE')
+        text = ' '.join(verdict['reasons'])
+        for side, fraction in (('baseline', '0.4'), ('candidate', '0.5')):
+            self.assertIn(f"'{side}': [{fraction}", text)
+        with tempfile.TemporaryDirectory() as out:  # one side alone is named alone, and the other is not invented
+            self.build_dir(out)
+            with patch.object(self, 'REPORT_BY_SIDE', {'baseline': report(0.0), 'candidate': report(0.5)}):
+                self.measure(out)
+            text = ' '.join(json.loads((Path(out) / 'verdicts.json').read_text())['small/move.translate']['reasons'])
+        self.assertIn("'candidate': [0.5", text)
+        self.assertNotIn('baseline', text)
+
     def test_a_run_whose_reports_hold_no_sample_is_inconclusive_never_a_pass(self):
         with tempfile.TemporaryDirectory() as out:
             self.build_dir(out)
@@ -819,9 +846,11 @@ class AbBuild(unittest.TestCase):
 
     def run_build(self, root, candidate='candidate', baseline='baseline', candidate_exit=0, baseline_exit=0,
                   same_file=False, candidate_gone=False, baseline_gone=False, prune_candidate_in_baseline_build=False,
-                  env=None, plant=None):
+                  env=None, plant=None, refuse=None, limit_mb=None):
         """Returns `(exit code, manifest, out, calls)`; `calls` lists, for each build, which side it was and which
-        executables were already in `--out/exes` when it started."""
+        executables were already in `--out/exes` when it started. `refuse`: the exception `make_baseline` ends with AFTER
+        the pinned source was extracted (`ab.Refused` when the overlay touches the measured product, or the failure of
+        `git archive | tar`); `limit_mb`: the artifact limit of the run, in MB."""
         root = Path(root)
         out = root / 'out'
         if plant:
@@ -834,6 +863,8 @@ class AbBuild(unittest.TestCase):
             src = Path(directory) / 'baseline-src'
             src.mkdir(parents=True, exist_ok=True)
             (src / 'journey.json').write_text('{}')
+            if refuse:
+                raise refuse  # after the extraction, like the real one: the directory is already there
             return {'src': src, 'prod_tree_before_overlay': 'x', 'prod_tree_after_overlay': 'x',
                     'prod_tree_candidate': 'x', 'pinned_ref_tree': 'x', 'overlay_changed': [], 'allowlist': [],
                     'contaminated': [], 'product_files_that_differ': {'crates/core/src/x.rs': {}},
@@ -863,6 +894,8 @@ class AbBuild(unittest.TestCase):
             for fake in fakes:
                 stack.enter_context(fake)
             stack.enter_context(patch.dict(os.environ, env or {}))
+            if limit_mb is not None:
+                stack.enter_context(patch.object(ab.harness, 'ARTIFACT_LIMIT_MB', limit_mb))
             for name in ('CARGO_TARGET_DIR', 'TESSEL_CARGO_LANE'):
                 if name not in (env or {}):
                     os.environ.pop(name, None)  # this spec must not depend on how it was started
@@ -901,6 +934,34 @@ class AbBuild(unittest.TestCase):
             code, manifest, out, calls = self.run_build(root)
             self.assertEqual((code, manifest['status']), (0, 'BUILT'))
             self.assertEqual(len(set(manifest['executables_sha256'].values())), 2)
+
+    def test_a_refused_baseline_leaves_no_source_behind(self):
+        # `make_baseline` extracts the pinned source before it can refuse (or before `git archive | tar` fails half way): what
+        # stays in `--out` is a source tree nothing can be measured from, and it stays in /tmp until somebody removes it.
+        for label, error in (('contamination', ab.Refused('the overlay changes the measured product')),
+                             ('extraction', subprocess.CalledProcessError(2, ['tar']))):
+            with self.subTest(label), tempfile.TemporaryDirectory() as root:
+                code, manifest, out, calls = self.run_build(root, refuse=error)
+                self.assertEqual((code, manifest['status']), (1, 'REFUSED_CONTAMINATION'), label)
+                self.assertEqual(manifest['reason'], str(error))
+                self.assertFalse((out / 'baseline-src').exists())
+                self.assertFalse((out / 'manifest.build.json').exists())
+                self.assertEqual(calls, [])  # and no build started
+
+    def test_the_size_limit_counts_the_executables_and_the_baseline_source_together(self):
+        # 12 bytes of executables and 2 of source against a limit of 13: each is under it, both are not. `artifact_reason` sums
+        # the paths it is given; two calls joined with `or` never add them, so a run could keep up to twice the limit.
+        build = {'candidate': 'c' * 6, 'baseline': 'b' * 6}
+        with tempfile.TemporaryDirectory() as root:
+            code, manifest, out, calls = self.run_build(root, limit_mb=13 / 2 ** 20, **build)
+            self.assertEqual((code, manifest['status']), (1, 'REFUSED'))
+            self.assertIn('artifacts take', manifest['reason'])
+            self.assertFalse((out / 'manifest.build.json').exists())
+            self.assertFalse((out / 'baseline-src').exists())  # a refused build keeps no source
+        with tempfile.TemporaryDirectory() as root:  # the control: the same build under a limit that holds both is BUILT
+            code, manifest, out, calls = self.run_build(root, limit_mb=14 / 2 ** 20, **build)
+            self.assertEqual((code, manifest['status']), (0, 'BUILT'))
+            self.assertTrue((out / 'baseline-src').is_dir())
 
     def test_a_target_directory_in_the_environment_refuses_the_build_phase_before_any_build(self):
         for name in ('CARGO_TARGET_DIR', 'TESSEL_CARGO_LANE'):
