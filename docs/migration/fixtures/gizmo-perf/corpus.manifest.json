@@ -1,0 +1,34 @@
+{
+  "corpusVersion": 1,
+  "files": {
+    "deep.bundle.json": {
+      "bytes": 27080,
+      "sha256": "28e21da6baefb887eff30a88189ed801194fbaa9b01285ab2bfd39aadc14e784"
+    },
+    "dense.bundle.json": {
+      "bytes": 491475,
+      "sha256": "26c257121d0937f073fbc4a3291be380a379d3bbfa80768fcd7948805d41511f"
+    }
+  },
+  "gaps": [
+    "no splat case: the corpus has no splat asset (core tests cover the refusals)"
+  ],
+  "generator": {
+    "file": "scripts/gizmo-perf/corpus.py",
+    "sha256": "f96b82cc221f59cf9f311e3734c41da1fe3720f5d4a624907bbb5d164432c629"
+  },
+  "journey": {
+    "file": "docs/migration/fixtures/gizmo-perf/journey.json",
+    "sha256": "7f69fa961e21f9efc78c12c393c6adeaa2566628fef3d7923ce85208e3de0964"
+  },
+  "nodes": {
+    "deep.bundle.json": 44,
+    "dense.bundle.json": 618,
+    "small": 6
+  },
+  "private_media": false,
+  "source": {
+    "file": "scripts/directed-scene-proof/corpus/bundle.json",
+    "sha256": "6f2086eb2ffa919c93f74531145c2e3601ee91bd4c948b1965b67f5effc4c93b"
+  }
+}
