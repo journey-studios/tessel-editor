@@ -44,6 +44,7 @@ MUTANTS = [
     ('M26 a press refused on a greyed handle leaves the open drag', GLUE, 'if let Some(open) = self.live_drag() {\n            answer["abandoned"]', 'if let Some(open) = self.live_drag().filter(|_| pick.refusal().is_none()) {\n            answer["abandoned"]'),
     ('M27 a click without drag still writes the grid value of the press point', GLUE, 'if point == *from && drag.last.is_none() {', 'if false && point == *from && drag.last.is_none() {'),
     ('M29 a return to the press point is not a move either', GLUE, 'if point == *from && drag.last.is_none() {', 'if point == *from {'),
+    ('M28 the query names the drag of a gesture the scene moved under', GLUE, '.filter(|drag| self.drag_can_apply(drag))', '.filter(|_| true)'),
 ]
 
 JS_MUTANTS = [

@@ -437,15 +437,24 @@ impl EditorState {
     /// replaced or detached under it, or its gesture was settled by something else). Nobody will
     /// release such a drag usefully; the adapter cancels it. Reads only.
     pub fn gizmo_drag_is_dead(&self) -> bool {
-        let Some(drag) = self.scene_interaction.drag.as_ref() else {
-            return false;
-        };
-        match self.scene_interaction.gesture.current() {
-            Some(gesture) if gesture.id() == drag.gesture => gesture
-                .invalidation(&self.scenes, self.project.revision)
-                .is_some(),
-            _ => true,
-        }
+        self.scene_interaction
+            .drag
+            .as_ref()
+            .is_some_and(|drag| !self.drag_can_apply(drag))
+    }
+
+    /// Whether `drag` can still apply: its gesture is the open one and nothing changed under it. The
+    /// ONE criterion of "is dragging" (the overlay, `scene.fx.handles`); failing it is "dead" above.
+    pub(super) fn drag_can_apply(&self, drag: &Drag) -> bool {
+        self.scene_interaction
+            .gesture
+            .current()
+            .is_some_and(|gesture| {
+                gesture.id() == drag.gesture
+                    && gesture
+                        .invalidation(&self.scenes, self.project.revision)
+                        .is_none()
+            })
     }
 
     /// The drag in progress, or `None` after dropping one whose gesture is no longer the open
@@ -469,18 +478,9 @@ impl EditorState {
     ) -> Result<Overlay, CommandError> {
         // A drag whose gesture went stale (an undo, an edit elsewhere) draws as no drag: its
         // candidate is the scene as it was, not what the document is.
-        let dragging = self.live_drag().filter(|drag| {
-            drag.scene == scene_id
-                && self
-                    .scene_interaction
-                    .gesture
-                    .current()
-                    .is_some_and(|gesture| {
-                        gesture
-                            .invalidation(&self.scenes, self.project.revision)
-                            .is_none()
-                    })
-        });
+        let dragging = self
+            .live_drag()
+            .filter(|drag| drag.scene == scene_id && self.drag_can_apply(drag));
         let entry = self.attached_scene(scene_id)?;
         let document = std::sync::Arc::clone(&entry.scene);
         let shown = match &dragging {

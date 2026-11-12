@@ -163,9 +163,12 @@ impl EditorState {
         };
         let frame = edit_frame_of(scene, &entry.scene, at)?;
         let view = FxHandlesView::of(&entry.scene, &clip, frame)?;
+        // The overlay's criterion (`drag_can_apply`): a drag the scene moved under is drawn as no
+        // drag, so it is not the active one here either.
         let active = self
             .scene_interaction
             .live_drag()
+            .filter(|drag| self.drag_can_apply(drag))
             .and_then(|drag| match &drag.action {
                 DragAction::Fx {
                     clip: dragged,

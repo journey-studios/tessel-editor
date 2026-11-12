@@ -50,7 +50,8 @@ Duas operações novas (`SceneCommand::FxSelect` / `FxHandles`, `crates/core/src
   `fx_has_no_handles`; clipe inexistente, `unknown_element`.
 - `scene.fx.handles {scene, clip?, frame|time, probe?{handle, point{u,v}}}` — leitura. Responde `selected`, `visible`,
   `reason` (`clip_not_in_frame`, `degenerate_output`), `handles[{id,param,kind,at}]`, `disabled_handles[{id,reason,at?}]`,
-  `ellipses[{id,center,rx,ry}]`, `values`, `active` (o handle do arrasto aberto **desse** clipe; outro clipe da cena responde `null`), `metrics{hit_radius,unit}`. Com `probe` faz um *dry run* do mesmo
+  `ellipses[{id,center,rx,ry}]`, `values`, `active` (o handle do arrasto aberto **desse** clipe; outro clipe da cena responde `null`, e um arrasto que a cena
+  deixou para trás também: é o `fx.active` que o overlay desenha, pelo mesmo critério `drag_can_apply`), `metrics{hit_radius,unit}`. Com `probe` faz um *dry run* do mesmo
   `set_param` que o arrasto enviaria (`probe.ok/value/would_change`).
 
 O arrasto **reaproveita** `scene.fx.gesture.*`: o press num handle abre o gesto (`fx_gesture_begin`), cada `move` é UM
@@ -107,7 +108,9 @@ Regras:
   Um press precisa cair no quadro (`u`, `v` em 0..1), então um press além da borda é `invalid_value` do ponteiro.
 - **Gesto obsoleto**: cena trocada/desanexada, projeto substituído, undo, revisão nova, clipe removido ou o quadro fora do
   clipe matam o arrasto (e o alvo, quando o clipe deixa de existir: na própria escrita, sem esperar uma leitura). O
-  release de um arrasto morto é recusado (`gesture_invalidated`) e não escreve.
+  release de um arrasto morto é recusado (`gesture_invalidated`) e não escreve. O overlay o desenha como arrasto nenhum e
+  `scene.fx.handles` responde `active: null` pelo mesmo critério (`drag_can_apply`, o que `gizmo_drag_is_dead` nega); teste
+  `the_active_handle_of_a_query_follows_the_overlay_when_the_gesture_goes_stale`.
 - **Overlay.** Com alvo de efeito o overlay do nó fica oculto (`hidden: fx_target`, `visible:false`) e ganha o bloco
   aditivo `target:"fx"` + `fx{...}`. O carimbo (`gizmo_stamp`) ganha `fx_clip` e o resumo/árvore, `fx_target`/`target`.
   Durante a reprodução o overlay é limpo como o do gizmo.

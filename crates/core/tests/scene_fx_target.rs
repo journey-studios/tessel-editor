@@ -318,6 +318,49 @@ fn the_active_handle_of_a_query_is_the_one_dragged_in_that_clip() {
     assert_eq!(ask(&mut state, "v1")["active"], Value::Null, "no drag left");
 }
 
+/// A drag whose scene moved under it (an edit elsewhere, an undo) can never apply, and the overlay
+/// draws it as no drag. `scene.fx.handles` answers by the same criterion: its `active` is the
+/// overlay's `fx.active`, not "a drag is stored". The drag stays stored (`gizmo_drag_is_dead`) until
+/// the caller ends it, so the two answers must agree for the whole life of the stale drag.
+#[test]
+fn the_active_handle_of_a_query_follows_the_overlay_when_the_gesture_goes_stale() {
+    let mut state = session();
+    selected(&mut state);
+    let start = handle_at(&handles(&mut state), "radius");
+    down(&mut state, start);
+    mv(&mut state, (start.0 + 0.05, 0.5));
+    // What the query and the overlay each say is active, asked one right after the other.
+    let both = |state: &mut EditorState| {
+        let overlay = ok(
+            state,
+            json!({"op":"scene.gizmo.state","scene":"street","frame":FRAME}),
+        );
+        (
+            handles(state)["active"].clone(),
+            overlay["overlay"]["fx"]["active"].clone(),
+        )
+    };
+    assert_eq!(
+        both(&mut state),
+        (json!("radius"), json!("radius")),
+        "a live drag is named by both"
+    );
+
+    // The clip is edited under the open drag: its gesture is stale, the drag is not released yet.
+    ok(
+        &mut state,
+        json!({"op":"scene.fx.edit","scene":"street","ops":[
+            {"op":"set_param","clip":"v1","param":"roundness","value":0.9}]}),
+    );
+    assert!(state.gizmo_drag_is_dead(), "the edit went under the drag");
+    let (queried, drawn) = both(&mut state);
+    assert_eq!(drawn, Value::Null, "the overlay draws it as no drag");
+    assert_eq!(queried, drawn, "the query says what the overlay draws");
+
+    ok(&mut state, json!({"op":"scene.pointer.cancel"}));
+    assert_eq!(handles(&mut state)["active"], Value::Null);
+}
+
 /// A press that a greyed handle refuses still means "the release of the open drag was lost": the
 /// open drag goes first, as it does for every other press, so no drag outlives it and the gesture
 /// is free for the next one. Nothing is written either way.
