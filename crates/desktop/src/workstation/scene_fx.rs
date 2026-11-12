@@ -234,10 +234,11 @@ fn reason_text(reason: &str) -> &'static str {
     }
 }
 
-/// The actions of a clip node: remove, hide, and the resets the inspector model says make sense
-/// (the whole look, then every field away from its default), the keys, and where the clip can be
-/// laid (`set_scope:<scope>`). A reset with nothing to restore is listed disabled with its reason,
-/// never as a callback that does nothing.
+/// The actions of a clip node: remove, hide, the resets the inspector model says make sense (the
+/// whole look, then every field away from its default), `handles` (the vignette's handles on the
+/// monitor, disabled with the core's reason on another effect or on a clip laid on a shot), the
+/// keys, and where the clip can be laid (`set_scope:<scope>`). A reset with nothing to restore is
+/// listed disabled with its reason, never as a callback that does nothing.
 fn clip_actions(clip: &FxClip, view: &FxView) -> Vec<Value> {
     let controls = controls_in(view, clip);
     let looks_changed = has_reset(&controls);

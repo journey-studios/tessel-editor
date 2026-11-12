@@ -109,7 +109,8 @@ pub struct FxHandlesView {
 impl FxHandlesView {
     /// The handles of `clip` at the edit `frame` of `scene`. Errors are typed: `unknown_element`
     /// for a clip the layer does not have, `fx_has_no_handles` for an effect without a spatial
-    /// parameter (`fade`, `filmGrain`).
+    /// parameter (`fade`, `filmGrain`) and `scope_not_supported` for a vignette laid on a shot
+    /// ([`FxClip::handles_refusal`] decides both).
     pub fn of(scene: &DirectedScene, clip: &str, frame: i64) -> Result<Self, CommandError> {
         let bundle = scene.bundle();
         let Some((_, found)) = bundle.fx.clip(clip) else {
