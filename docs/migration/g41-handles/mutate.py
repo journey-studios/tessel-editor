@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """F061 (G4.1): one mutant at a time over the production code of the vignette handles; the file is restored (and its
-hash compared) after each. KILLED needs a named failing test; a non-zero exit without one is an execution error."""
+hash compared) after each. KILLED needs a named failing test; a non-zero exit without one is an execution error.
+
+Usage: `mutate.py` runs every mutant; `mutate.py M01 M27` (or `mutate.py --only M01 M27`) runs those. An id that does
+not exist (`M1` for `M01`, `M99`), `--only` with no id, or a selection that ran nothing, exits 2 before anything is
+touched: a run that tested nothing is never a success."""
 import hashlib, json, os, subprocess, sys, time
 from pathlib import Path
 
@@ -43,8 +47,8 @@ MUTANTS = [
     ('M25 the hit query does not predict the effect handles', GLUE, 'let Some(pick) = self.fx_pick(scene, frame, point) else {\n            return false;', 'let Some(pick) = self.fx_pick(scene, frame, point).filter(|_| false) else {\n            return false;'),
     ('M26 a press refused on a greyed handle leaves the open drag', GLUE, 'if let Some(open) = self.live_drag() {\n            answer["abandoned"]', 'if let Some(open) = self.live_drag().filter(|_| pick.refusal().is_none()) {\n            answer["abandoned"]'),
     ('M27 a click without drag still writes the grid value of the press point', GLUE, 'if point == *from && drag.last.is_none() {', 'if false && point == *from && drag.last.is_none() {'),
-    ('M29 a return to the press point is not a move either', GLUE, 'if point == *from && drag.last.is_none() {', 'if point == *from {'),
     ('M28 the query names the drag of a gesture the scene moved under', GLUE, '.filter(|drag| self.drag_can_apply(drag))', '.filter(|_| true)'),
+    ('M29 a return to the press point is not a move either', GLUE, 'if point == *from && drag.last.is_none() {', 'if point == *from {'),
 ]
 
 JS_MUTANTS = [
@@ -60,6 +64,25 @@ JS_MUTANTS = [
     ('J10 hidden handles are hit too', OVERLAY, "const { fx } = overlay;\n  if (!fx.visible) return null;", "const { fx } = overlay;"),
 ]
 ALL_PATHS = sorted({m[1] for m in MUTANTS + JS_MUTANTS})
+KNOWN_IDS = [m[0].split()[0] for m in MUTANTS + JS_MUTANTS]
+assert len(set(KNOWN_IDS)) == len(KNOWN_IDS), 'a mutant id is used twice'
+
+
+def selection(args):
+    """The ids asked for: `None` for "all", a set otherwise; raises `SystemExit(2)` on anything that is not a known id.
+    `--only` is accepted before the ids; with no id after it the selection is empty, which is refused."""
+    explicit = '--only' in args
+    ids = [arg for arg in args if arg != '--only']
+    if not ids:
+        if explicit:
+            print('--only needs at least one mutant id; known ids: ' + ' '.join(KNOWN_IDS), file=sys.stderr)
+            raise SystemExit(2)
+        return None
+    unknown = sorted({arg for arg in ids if arg not in KNOWN_IDS})
+    if unknown:
+        print('unknown mutant id(s): ' + ' '.join(unknown) + '; known ids: ' + ' '.join(KNOWN_IDS), file=sys.stderr)
+        raise SystemExit(2)
+    return set(ids)
 
 
 def digest(path):
@@ -85,7 +108,7 @@ def rebuild_dist():
 
 
 def main():
-    only = set(sys.argv[1:])
+    only = selection(sys.argv[1:]) or set()
     report = []
     hashes_before = {path: digest(path) for path in ALL_PATHS}
     dist_dirty = False  # a JS mutant was (or may have been) built into `runtime/dist`
@@ -137,7 +160,9 @@ def main():
     name = 'mutation-report.json' if not only else 'mutation-report-' + '-'.join(sorted(only)) + '.json'
     (EVIDENCE / name).write_text(json.dumps(out, indent=2) + '\n')
     print('restored:', out['restored'])
-    return 0 if restored and all(r['result'] in ('KILLED', 'SURVIVED') for r in report) else 2
+    ran = {r['mutant'].split()[0] for r in report}
+    complete = bool(report) and (not only or ran == only)  # nothing tested, or part of what was asked, is no success
+    return 0 if restored and complete and all(r['result'] in ('KILLED', 'SURVIVED') for r in report) else 2
 
 
 raise SystemExit(main())
