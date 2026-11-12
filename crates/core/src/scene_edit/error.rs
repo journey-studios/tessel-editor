@@ -79,8 +79,10 @@ pub struct EditError {
     pub path: Option<String>,
     /// The scene, node or clip ID that does not exist.
     pub id: Option<String>,
-    // WHY boxed: it keeps `Result<_, EditError>` small on every call path (clippy's
-    // `result_large_err`); only the rare candidate rejection carries it.
+    // WHY boxed (both): they keep `Result<_, EditError>` small on every call path (clippy's
+    // `result_large_err`); only the rare candidate rejection, or a refusal that has facts an
+    // adapter can act on (the legal interval of a shot), carries them.
+    details: Option<Box<Value>>,
     rejection: Option<Box<Rejection>>,
 }
 
@@ -92,6 +94,7 @@ impl EditError {
             index: None,
             path: None,
             id: None,
+            details: None,
             rejection: None,
         }
     }
@@ -127,6 +130,18 @@ impl EditError {
     pub fn with_id(mut self, id: impl Into<String>) -> Self {
         self.id = Some(id.into());
         self
+    }
+
+    /// Structured facts of the refusal (an object), merged into the `CommandError`'s `details`
+    /// next to the index and the path: the legal interval of a shot, the ids there are.
+    pub fn with_details(mut self, details: Value) -> Self {
+        self.details = Some(Box::new(details));
+        self
+    }
+
+    /// The facts [`Self::with_details`] attached, when the refusal has any.
+    pub fn details(&self) -> Option<&Value> {
+        self.details.as_deref()
     }
 
     /// The `CommandError` code adapters already speak. A rejected candidate keeps the importer's
@@ -177,6 +192,11 @@ impl From<EditError> for CommandError {
         }
         if let Some(path) = &error.path {
             details.insert("path".to_string(), json!(path));
+        }
+        if let Some(Value::Object(facts)) = error.details() {
+            for (key, value) in facts {
+                details.entry(key.clone()).or_insert_with(|| value.clone());
+            }
         }
         if !error.issues().is_empty() {
             let issues: Vec<Value> = error.issues().iter().map(LocalizedIssue::to_json).collect();

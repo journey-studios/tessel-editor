@@ -334,6 +334,12 @@ impl Shot {
     pub fn duration_frames(&self) -> u64 {
         self.end_frame_exclusive.saturating_sub(self.start_frame)
     }
+
+    /// Whether `frame` is one of the edit frames of this shot: `[start_frame, end_frame_exclusive)`.
+    /// The one predicate of "which shot plays at this frame".
+    pub fn holds_frame(&self, frame: u64) -> bool {
+        self.start_frame <= frame && frame < self.end_frame_exclusive
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -368,7 +374,8 @@ pub struct Bundle {
     pub shots: Vec<Shot>,
     pub composition_passes: Vec<CompositionPass>,
     pub audio: Option<AudioMix>,
-    /// The effects layer (`bundle.fx`, F016): output-scope looks over the edit's timeline.
+    /// The effects layer (`bundle.fx`, F016): looks over the edit's timeline, on the output or
+    /// (F062) on one shot's picture.
     pub fx: super::fx::Fx,
 }
 
@@ -413,8 +420,6 @@ impl Bundle {
 
     /// Shot that plays at an edit frame (shots tile the edit without gaps).
     pub fn shot_at_frame(&self, frame: u64) -> Option<&Shot> {
-        self.shots
-            .iter()
-            .find(|shot| shot.start_frame <= frame && frame < shot.end_frame_exclusive)
+        self.shots.iter().find(|shot| shot.holds_frame(frame))
     }
 }

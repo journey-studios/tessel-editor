@@ -36,6 +36,9 @@ pub struct Issue {
     pub code: &'static str,
     pub path: String,
     pub message: String,
+    /// What an adapter may act on besides the words (the legal interval of a shot, the ids there
+    /// are). Additive: `None` for almost every code, and then absent from [`Self::to_json`].
+    pub details: Option<Value>,
 }
 
 impl Issue {
@@ -44,11 +47,22 @@ impl Issue {
             code,
             path: path.into(),
             message: message.into(),
+            details: None,
         }
     }
 
+    /// This issue with structured facts attached (see [`Self::details`]).
+    pub fn with_details(mut self, details: Value) -> Self {
+        self.details = Some(details);
+        self
+    }
+
     pub fn to_json(&self) -> Value {
-        json!({ "code": self.code, "path": self.path, "message": self.message })
+        let mut issue = json!({ "code": self.code, "path": self.path, "message": self.message });
+        if let Some(details) = &self.details {
+            issue["details"] = details.clone();
+        }
+        issue
     }
 }
 

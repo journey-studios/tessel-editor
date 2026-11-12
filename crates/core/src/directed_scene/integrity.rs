@@ -9,6 +9,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use super::fx;
 use super::graph;
 use super::issue::Issue;
 use super::model::{
@@ -123,7 +124,40 @@ pub(super) fn check(draft: &Draft, document: &serde_json::Value) -> Vec<Issue> {
             "Use sceneDefinitions[].frameAudit; untyped pilotFrameAudit is unsupported",
         ));
     }
+    // Last, so every rule above keeps its place in the order of issues: only a document whose
+    // effects name a shot can add one.
+    fx_scopes(draft, &mut issues);
     issues
+}
+
+/// F062: an effect clip with scope `shot` names a shot of the edit (`UNKNOWN_SHOT`) and lies
+/// entirely inside it (`FX_SCOPE_MISMATCH`). It needs the shots, which stage 1 has read by now,
+/// so it is a reference rule, like the others of this stage; the rule itself is
+/// [`fx::scope_fault`], the one an edit judges its candidate with. The issue's `details` carry the
+/// shot's legal interval (or the ids there are), for an adapter to suggest instead of clamping.
+fn fx_scopes(draft: &Draft, issues: &mut Vec<Issue>) {
+    let tracks_path = child("/fx", "tracks");
+    for (track_index, track) in draft.fx.tracks.iter().enumerate() {
+        let clips_path = child(&at(&tracks_path, track_index), "clips");
+        for (clip_index, clip) in track.clips.iter().enumerate() {
+            let Some(fault) = fx::scope_fault(
+                &clip.scope,
+                &clip.id,
+                clip.start_frame,
+                clip.duration_frames,
+                &draft.shots,
+            ) else {
+                continue;
+            };
+            let clip_path = at(&clips_path, clip_index);
+            let path = if fault.code == fx::UNKNOWN_SHOT {
+                child(&child(&clip_path, "scope"), "shotId")
+            } else {
+                clip_path
+            };
+            issues.push(Issue::new(fault.code, path, fault.message).with_details(fault.details));
+        }
+    }
 }
 
 fn assets(draft: &Draft, issues: &mut Vec<Issue>) {

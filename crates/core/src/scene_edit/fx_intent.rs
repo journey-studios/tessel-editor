@@ -9,11 +9,11 @@
 //! apply a deliberate batch that mixes keys and base values.
 //!
 //! Compatibility with the first gestures (P2): every static write (`set_param`, `set_field`,
-//! `set_hidden`) is ONE intent, `value`, with no further target, as before; a slider gesture may
-//! still change from one field to another between updates, because each update derives from the
-//! base. What is new is that the key verbs have their own targets: a single key is named by its
-//! parameter and its frame **in the base the gesture began on** (a `move_key` names its `from`),
-//! a curve verb by its parameter (or the whole clip).
+//! `set_hidden`, and since F062 `set_scope`) is ONE intent, `value`, with no further target, as
+//! before; a slider gesture may still change from one field to another between updates, because
+//! each update derives from the base. What is new is that the key verbs have their own targets:
+//! a single key is named by its parameter and its frame **in the base the gesture began on** (a
+//! `move_key` names its `from`), a curve verb by its parameter (or the whole clip).
 
 use super::FxOp;
 
@@ -67,7 +67,10 @@ impl FxIntent {
         };
         Some(match op {
             FxOp::AddClip(_) | FxOp::RemoveClip { .. } => return None,
-            FxOp::SetParam { .. } | FxOp::SetField { .. } | FxOp::SetHidden { .. } => Self {
+            FxOp::SetParam { .. }
+            | FxOp::SetField { .. }
+            | FxOp::SetHidden { .. }
+            | FxOp::SetScope { .. } => Self {
                 verb: "value",
                 param: None,
                 key: None,

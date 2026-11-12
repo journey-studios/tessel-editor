@@ -89,7 +89,8 @@ impl EditorState {
 
     /// `scene.fx.select`: which effect clip the monitor draws handles for (`clip` omitted or null
     /// clears it). Session state, never an edit. Selecting a clip empties the entity selection and
-    /// cancels a live drag; only a vignette has handles (`fx_has_no_handles` for anything else).
+    /// cancels a live drag; only a vignette on the output has handles (`fx_has_no_handles` for
+    /// another effect, `scope_not_supported` for a clip laid on a shot).
     pub(super) fn fx_select(
         &mut self,
         scene: &str,
@@ -99,7 +100,8 @@ impl EditorState {
             None => None,
             Some(clip) => {
                 let entry = self.attached_scene(scene)?;
-                // The view says `unknown_element` / `fx_has_no_handles` by name.
+                // The view says `unknown_element` / `fx_has_no_handles` / `scope_not_supported`
+                // by name.
                 FxHandlesView::of(&entry.scene, clip, 0).map_err(|error| {
                     if error.code == "unknown_element" {
                         error.details(json!({ "scene": scene }))
@@ -190,7 +192,8 @@ impl EditorState {
     }
 
     /// Drops the target when the project no longer holds it (the clip was removed, the scene
-    /// detached, an undo took it away) or it is no longer a vignette. Reports what it dropped.
+    /// detached, an undo took it away) or the clip no longer has handles (it is no longer a
+    /// vignette, or `set_scope` laid it on a shot). Reports what it dropped.
     /// Run where the project changes (`EditorState::apply`, `restore`), never by a read.
     pub(crate) fn prune_fx_target(&mut self) -> Option<FxTarget> {
         let target = self.scene_interaction.fx_target.as_ref()?;

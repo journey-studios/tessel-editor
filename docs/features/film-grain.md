@@ -7,7 +7,7 @@ cada quadro**, somado à imagem. Fatia completa de ponta a ponta: catálogo (ró
 chaves e seed ([F058](fx-keys.md)), plano com seed já resolvida, desenho no runtime, monitor e export. É **3 dos 59**
 efeitos do piloto: os outros 56 não foram portados e não há controle habilitado para eles.
 
-Fora desta entrega: escopo `shot`/`node` e transições (P4), os 56 demais efeitos, GPU real, Windows e ponteiro físico.
+Fora desta entrega: escopo `shot`/`node` e transições (P4; o escopo `shot` chegou depois em [F062](fx-shot-scope.md)), os 56 demais efeitos, GPU real, Windows e ponteiro físico.
 
 Fonte (somente leitura, snapshot `d40ac3f7c0`): `fx/catalog/filmGrain.ts`, `runtime/fx/shaders/filmGrain.ts` e os
 chunks `hash.ts`/`color.ts`, `fx/fx-hash.ts`, `fx/resolve-fx-frame-hashes.spec.ts`; blob SHA de cada fonte em

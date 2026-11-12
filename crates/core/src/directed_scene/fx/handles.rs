@@ -26,8 +26,8 @@
 //! ([`quantize_control`]: the step of the catalog anchored at its minimum, inside its range), the
 //! same grid as the slider of the inspector and the keyboard.
 
+use super::{FxScope, ParamKind, VIGNETTE, VIGNETTE_CENTER, VIGNETTE_RADIUS, VIGNETTE_SOFTNESS};
 use super::{FxValue, quantize_control};
-use super::{ParamKind, VIGNETTE, VIGNETTE_CENTER, VIGNETTE_RADIUS, VIGNETTE_SOFTNESS};
 
 /// The grid of `center`'s two components. The catalog gives a point a range and no step, so this is
 /// the one place that says it: the handle quantizes with it and the inspector's `center_x` and
@@ -236,16 +236,73 @@ pub fn hit(
     best.map(|(_, handle)| handle)
 }
 
+/// Why the monitor offers no handles on a clip: the typed answer behind
+/// [`FxClip::has_handles`](super::FxClip::has_handles), so a refusal, the pruning of the target and
+/// the greyed action and button say the same thing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NoHandles {
+    /// The effect has no spatial parameter (`fade`, `filmGrain`).
+    NotVignette,
+    /// The clip is laid on a shot (F062): the window and the overlay of the handles are read for a
+    /// clip of the output, in output frames and over the finished picture, and nothing yet says
+    /// where the picture of one shot is drawn (BL082.41). Until then they are refused, not guessed.
+    ScopeNotSupported,
+}
+
+impl NoHandles {
+    /// The code of the typed refusal (`CommandError::code`).
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::NotVignette => "fx_has_no_handles",
+            Self::ScopeNotSupported => "scope_not_supported",
+        }
+    }
+
+    /// The words of the disabled action and button in the three languages. The scope is named as
+    /// the window names it (`Plano`/`Shot`/`Plano`, the inspector's `SHOT_LABEL`), so the button
+    /// and the selector of the clip never call it two different things.
+    pub const fn labels(self) -> super::Labels {
+        match self {
+            Self::NotVignette => super::Labels::new(
+                "Só a vinheta tem alças no monitor",
+                "Only the vignette has handles on the monitor",
+                "Solo la viñeta tiene asas en el monitor",
+            ),
+            Self::ScopeNotSupported => super::Labels::new(
+                "As alças só existem para efeitos na saída; este efeito está num plano",
+                "Handles exist only for effects on the output; this effect is laid on a shot",
+                "Las asas solo existen para efectos en la salida; este efecto está en un plano",
+            ),
+        }
+    }
+
+    /// The words of the disabled action and button, in `locale`.
+    pub fn text(self, locale: super::Locale) -> &'static str {
+        self.labels().get(locale)
+    }
+}
+
 impl super::FxClip {
-    /// Whether the monitor offers handles on this clip (today: only the vignette has a spatial
-    /// parameter). The one answer every layer asks: [`FxHandlesView::of`] refuses a clip without
-    /// them (`fx_has_no_handles`), the target the session holds is dropped when its clip stops
-    /// having them, and the inspector greys the action and the button. A new condition (a scope
-    /// the handles cannot draw) goes here, never next to one of those callers.
+    /// Why the monitor offers no handles on this clip, `None` when it does: a vignette (today the
+    /// only effect with a spatial parameter) laid on the output. The ONE decision every layer reads:
+    /// [`FxHandlesView::of`] answers it with the typed error, the target the session holds is
+    /// dropped when it turns into a refusal, and the inspector greys the action and the button with
+    /// its text. A new condition goes here, never next to one of those callers.
     ///
     /// [`FxHandlesView::of`]: crate::scene_interaction::FxHandlesView::of
+    pub fn handles_refusal(&self) -> Option<NoHandles> {
+        if self.effect.id != VIGNETTE.id {
+            Some(NoHandles::NotVignette)
+        } else if self.scope != FxScope::Output {
+            Some(NoHandles::ScopeNotSupported)
+        } else {
+            None
+        }
+    }
+
+    /// Whether the monitor offers handles on this clip: no [refusal](Self::handles_refusal).
     pub fn has_handles(&self) -> bool {
-        self.effect.id == VIGNETTE.id
+        self.handles_refusal().is_none()
     }
 }
 
@@ -526,5 +583,72 @@ mod tests {
             assert!(VIGNETTE.param(handle.param()).is_some());
         }
         assert_eq!(VignetteHandle::parse("roundness"), None);
+    }
+
+    fn clip_of(effect: &'static super::super::EffectSpec, scope: FxScope) -> super::super::FxClip {
+        super::super::FxClip {
+            id: "c".into(),
+            effect,
+            start_frame: 0,
+            duration_frames: 10,
+            params: effect
+                .params
+                .iter()
+                .map(|param| param.kind.default_value())
+                .collect(),
+            keys: Vec::new(),
+            fade_in_frames: 0,
+            fade_out_frames: 0,
+            seed: None,
+            hidden: false,
+            scope,
+        }
+    }
+
+    /// F062 x F061 (BL082.64): a vignette has handles on the output only, another effect never, and
+    /// `has_handles` is exactly the absence of a refusal. Each refusal has a code and words in every
+    /// language, and no two refusals share either.
+    #[test]
+    fn only_a_vignette_on_the_output_has_handles_and_every_refusal_has_its_words() {
+        use super::super::{FADE, FILM_GRAIN};
+        use crate::scene_edit::{OUTPUT_LABEL, SHOT_LABEL};
+        let shot = || FxScope::Shot("shot-1".into());
+        let cases = [
+            (&VIGNETTE, FxScope::Output, None),
+            (&VIGNETTE, shot(), Some(NoHandles::ScopeNotSupported)),
+            (&FADE, FxScope::Output, Some(NoHandles::NotVignette)),
+            // An effect that is not a vignette says that first: the scope is not why it has none.
+            (&FILM_GRAIN, shot(), Some(NoHandles::NotVignette)),
+        ];
+        for (effect, scope, expected) in cases {
+            let clip = clip_of(effect, scope.clone());
+            assert_eq!(
+                clip.handles_refusal(),
+                expected,
+                "{} on {}",
+                effect.id,
+                scope.to_text()
+            );
+            assert_eq!(clip.has_handles(), expected.is_none());
+        }
+        let (not_vignette, scope) = (NoHandles::NotVignette, NoHandles::ScopeNotSupported);
+        assert_eq!(not_vignette.code(), "fx_has_no_handles");
+        assert_eq!(scope.code(), "scope_not_supported");
+        for locale in super::super::Locale::ALL {
+            let (first, second) = (not_vignette.text(locale), scope.text(locale));
+            assert!(!first.is_empty() && !second.is_empty(), "{locale:?}");
+            assert_ne!(first, second, "{locale:?}");
+            // The refusal of a shot clip calls the scopes what the selector of the clip calls
+            // them, in each language (`Saída`/`Output`/`Salida`, `Plano`/`Shot`/`Plano`).
+            for label in [OUTPUT_LABEL, SHOT_LABEL] {
+                assert!(
+                    second
+                        .to_lowercase()
+                        .contains(&label.get(locale).to_lowercase()),
+                    "{locale:?}: `{second}` does not say `{}`",
+                    label.get(locale)
+                );
+            }
+        }
     }
 }

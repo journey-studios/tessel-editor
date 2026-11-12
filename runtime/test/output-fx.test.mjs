@@ -82,9 +82,13 @@ test('an effect or scope this runtime does not draw is refused by name, never sk
   assert.equal(effect.code, 'unsupported');
   assert.equal(effect.details.unsupported, 'fx_effect');
   assert.equal(effect.details.effect, 'glitch');
-  const scope = refusal(() => parseOutputFx([pass({ scope: { kind: 'shot' } })], ['outputFx']));
+  // A node has no target yet: the output and (F062) a shot are the scopes this runtime draws.
+  const scope = refusal(() => parseOutputFx([pass({ scope: { kind: 'node', nodeId: 'n1' } })], ['outputFx']));
   assert.equal(scope.code, 'unsupported');
   assert.equal(scope.details.unsupported, 'fx_scope');
+  assert.equal(scope.details.reason, 'scope_kind');
+  assert.equal(scope.details.scope, 'node');
+  assert.equal(scope.details.pointer, '/fx/0/scope');
 });
 
 test('malformed passes name the pointer instead of drawing something', () => {
@@ -350,4 +354,157 @@ test('the grain writes the source alpha back, so the editor alpha survives the p
   assert.ok(writes.length >= 2, 'the identity return and the grained result');
   assert.ok(writes.every((write) => /source(\.a|;)|, source\.a\)/.test(write)), writes.join(' | '));
   assert.ok(!/gl_FragColor = vec4\([^;]*, 1\.0\);/.test(fragmentShader), 'no write of an opaque alpha');
+});
+
+// ---- the scope `shot` (F062): what a pass of a shot must be, and the two stages ---------------------
+
+const shotPass = (overrides = {}, shotId = 's1') => pass({ scope: { kind: 'shot', shotId }, ...overrides });
+const FRAME = { shotId: 's1' };
+const SHOT = ['outputFx', 'fxShotScope'];
+const BASE = ['camera', 'nodeTransforms', 'imagePlanes', 'opaqueAlpha'];
+
+/** `plan(...)` with the plan's own `frame`, which is where the shot of the frame is read. */
+const planInFrame = (fx, requires, frame = FRAME) =>
+  scenePlan({
+    nodes: [node('back', 'wall', 0, 0, -2, 6, 3)],
+    layers: [['back', 'wall', 'opaque']],
+    resources: [resource('wall', 16, 9)],
+    requires,
+    extra: { fx, frame },
+  });
+const parseInFrame = (fx, requires, frame) => parseDirectedLayer(directedLayer(planInFrame(fx, requires, frame), [reference('wall', 'slot-0')]));
+
+test('fxShotScope is the 13th capability of this runtime, spelled as the core spells it', () => {
+  assert.ok(SCENE_CAPABILITIES.includes('fxShotScope'));
+  assert.equal(SCENE_CAPABILITIES.length, 13);
+  assert.equal(new Set(SCENE_CAPABILITIES).size, 13, 'no capability is listed twice');
+});
+
+test('a pass of a shot is accepted with the capability, in the frame of that shot, and is a deck pass', () => {
+  const [entry] = parseOutputFx([shotPass({ clipId: 'a' })], SHOT, FRAME);
+  assert.equal(entry.stage, 'deck');
+  assert.equal(entry.shotId, 's1');
+  assert.equal(entry.clipId, 'a');
+  const [output] = parseOutputFx([pass({ clipId: 'o' })], ['outputFx'], FRAME);
+  assert.equal(output.stage, 'output', 'a pass of the output is drawn after the deck');
+  assert.equal(Object.hasOwn(output, 'shotId'), false);
+  // Through the layer, the way the host sends it: the shot comes from the plan's own frame.
+  const spec = parseInFrame([shotPass({ clipId: 'a' }), pass({ clipId: 'o' })], [...BASE, 'outputFx', 'fxShotScope']);
+  assert.deepEqual(spec.fx.map((item) => [item.clipId, item.stage]), [['a', 'deck'], ['o', 'output']]);
+});
+
+test('without the capability a pass of a shot is refused by name, never drawn as if it were the output', () => {
+  const error = refusal(() => parseOutputFx([shotPass()], ['outputFx'], FRAME));
+  assert.equal(error.code, 'invalid_plan');
+  assert.equal(error.details.pointer, '/requires');
+  assert.match(error.message, /fxShotScope/);
+  const layer = refusal(() => parseInFrame([shotPass()], [...BASE, 'outputFx']));
+  assert.equal(layer.details.pointer, '/requires');
+  // A plan of the output alone does not need it: a runtime that predates F062 would serve it.
+  assert.equal(parseInFrame([pass()], [...BASE, 'outputFx']).fx.length, 1);
+});
+
+test('a pass of another shot than the frame\'s is unsupported, typed, and says which shot is which', () => {
+  const error = refusal(() => parseOutputFx([shotPass({}, 's2')], SHOT, FRAME));
+  assert.equal(error.code, 'unsupported', 'a runtime with one deck: not an invalid plan, a picture it cannot make');
+  assert.equal(error.details.unsupported, 'fx_scope');
+  assert.equal(error.details.reason, 'shot_not_in_frame');
+  assert.equal(error.details.shot, 's2');
+  assert.equal(error.details.frame_shot, 's1');
+  assert.equal(error.details.pointer, '/fx/0/scope/shotId');
+  // The one after a good one: the pointer is the pass that is wrong.
+  const second = refusal(() => parseOutputFx([shotPass({ clipId: 'a' }), shotPass({ clipId: 'b' }, 's2')], SHOT, FRAME));
+  assert.equal(second.details.pointer, '/fx/1/scope/shotId');
+});
+
+test('a plan with a pass of a shot names the shot of its own frame', () => {
+  for (const frame of [undefined, null, {}, { shotId: '' }, { shotId: 7 }, 'shot-1']) {
+    const error = refusal(() => parseOutputFx([shotPass()], SHOT, frame));
+    assert.equal(error.code, 'invalid_plan', JSON.stringify(frame));
+    assert.equal(error.details.pointer, '/frame/shotId', JSON.stringify(frame));
+  }
+  // The output needs no frame: its plans never named one in the tests that predate F062.
+  assert.equal(parseOutputFx([pass()], ['outputFx'], undefined).length, 1);
+});
+
+test('the shape of a scope is checked before what this runtime can do with it', () => {
+  const cases = [
+    ['/fx/0/scope/shotId', { kind: 'shot' }],
+    ['/fx/0/scope/shotId', { kind: 'shot', shotId: '' }],
+    ['/fx/0/scope/shotId', { kind: 'shot', shotId: 7 }],
+    ['/fx/0/scope/shotId', { kind: 'shot', shotId: null }],
+    ['/fx/0/scope/shotId', { kind: 'output', shotId: 's1' }],
+  ];
+  for (const [pointer, scope] of cases) {
+    const error = refusal(() => parseOutputFx([pass({ scope })], SHOT, FRAME));
+    assert.equal(error.code, 'invalid_plan', JSON.stringify(scope));
+    assert.equal(error.details.pointer, pointer, JSON.stringify(scope));
+  }
+  // A scope that is not one this runtime knows is refused as a kind, with what it was.
+  for (const [scope, named] of [[{ kind: 'node', nodeId: 'n' }, 'node'], [{ kind: 'frame' }, 'frame'], [{}, null], ['output', null], [undefined, null], [null, null]]) {
+    const error = refusal(() => parseOutputFx([pass({ scope })], SHOT, FRAME));
+    assert.equal(error.code, 'unsupported', JSON.stringify(scope));
+    assert.equal(error.details.unsupported, 'fx_scope', JSON.stringify(scope));
+    assert.equal(error.details.scope, named, JSON.stringify(scope));
+  }
+});
+
+test('the stages are listed in order: the passes of the shot, then the passes of the output', () => {
+  const ok = parseOutputFx([shotPass({ clipId: 'a' }), shotPass({ clipId: 'b' }), pass({ clipId: 'c' }), pass({ clipId: 'd' })], SHOT, FRAME);
+  assert.deepEqual(ok.map((item) => item.stage), ['deck', 'deck', 'output', 'output']);
+  // A pass of the output before one of the shot is a plan the core never builds and a runtime never reorders.
+  const error = refusal(() => parseOutputFx([pass({ clipId: 'o' }), shotPass({ clipId: 's' })], SHOT, FRAME));
+  assert.equal(error.code, 'invalid_plan');
+  assert.equal(error.details.pointer, '/fx/1/scope');
+  const later = refusal(() => parseOutputFx([shotPass({ clipId: 'a' }), pass({ clipId: 'o' }), shotPass({ clipId: 'b' })], SHOT, FRAME));
+  assert.equal(later.details.pointer, '/fx/2/scope');
+});
+
+const stageOf = (stage, clipId, amount, shotId = 's1') =>
+  parseOutputFx([stage === 'deck' ? shotPass({ clipId, amount }, shotId) : pass({ clipId, amount })], SHOT, FRAME)[0];
+const drawsOf = (renderer) => renderer.log.filter((entry) => !Array.isArray(entry));
+
+test('the passes of the shot and of the output the parser lists are drawn in that order, the ping-pong going on across them', () => {
+  const pipeline = new OutputFxPipeline();
+  const renderer = fakeRenderer();
+  const { targetOf, asked } = targetsOf();
+  const passes = parseOutputFx(
+    [shotPass({ clipId: 'd0', amount: 0.1 }), shotPass({ clipId: 'd1', amount: 0.2 }), pass({ clipId: 'o0', amount: 0.3 }), pass({ clipId: 'o1', amount: 0.4 })],
+    SHOT,
+    FRAME,
+  );
+  const result = pipeline.draw(renderer, fakeTarget('src'), passes, { targetOf, size: sizeOf });
+  assert.deepEqual(drawsOf(renderer).map((draw) => [draw.amount, draw.from, draw.into]), [
+    [0.1, 'src.texture', 'a'],
+    [0.2, 'a.texture', 'b'],
+    [0.3, 'b.texture', 'a'],
+    [0.4, 'a.texture', 'b'],
+  ], 'deck passes first, then the output; each reads the one before; the parity runs across the stages');
+  assert.ok(drawsOf(renderer).every((draw) => draw.from !== `${draw.into}.texture`), 'never a feedback loop');
+  assert.equal(result.name, 'b.texture');
+  assert.equal(new Set(asked).size, 2, 'no new target for the shot: two slots, whatever the stages');
+  assert.deepEqual(renderer.log.at(-1), ['target', null]);
+  pipeline.dispose();
+});
+
+test('one deck pass and one output pass need no more than the two targets and the one material of the effect', () => {
+  const pipeline = new OutputFxPipeline();
+  const renderer = fakeRenderer();
+  const seen = [];
+  const { targetOf, asked } = targetsOf();
+  pipeline.draw(renderer, fakeTarget('src'), [stageOf('deck', 'd', 0.5), stageOf('output', 'o', 0.25)], { targetOf, size: sizeOf, onMaterial: (created) => seen.push(created) });
+  assert.deepEqual(seen, [true, false], 'the vignette is linked once for the shot\'s pass and the output\'s');
+  assert.equal(pipeline.materials.size, 1);
+  assert.deepEqual([...new Set(asked)].sort(), [0, 1]);
+  pipeline.dispose();
+});
+
+test('a pass of the deck that fails restores the canvas and leaves the pipeline sound, as one of the output does', () => {
+  const pipeline = new OutputFxPipeline();
+  const renderer = fakeRenderer({ failOnRender: 1 });
+  assert.throws(() => pipeline.draw(renderer, fakeTarget('src'), [stageOf('deck', 'd', 0.5), stageOf('output', 'o', 0.5)], { targetOf: targetsOf().targetOf, size: sizeOf }), /boom/);
+  assert.deepEqual(renderer.log.at(-1), ['target', null]);
+  assert.equal(pipeline.materials.get('vignette').uniforms.tMap.value, null);
+  assert.equal(drawsOf(renderer).length, 1, 'the output stage did not run after the deck failed');
+  pipeline.dispose();
 });

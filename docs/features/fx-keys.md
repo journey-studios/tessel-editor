@@ -9,7 +9,7 @@ janela editam o mesmo documento pelos mesmos comandos. Não é a timeline dirigi
 chaves, nem arrasto de diamantes; o movimento de chaves é por controle semântico e por gesto ordenado.
 
 Fora desta entrega (continuam recusados com código tipado): escopo `shot`/`node` (`FX_SCOPE_NOT_YET`) e
-`transitions` (`FX_TRANSITION_NOT_YET`). O código `FX_KEYS_NOT_YET` deixou de existir: `keys` agora é válido.
+`transitions` (`FX_TRANSITION_NOT_YET`). *(Atualização P4a: o escopo `shot` passou a valer em [F062](fx-shot-scope.md); `node` e as transições seguem recusados. As chaves de um clipe de plano são as mesmas, locais ao clipe.)* O código `FX_KEYS_NOT_YET` deixou de existir: `keys` agora é válido.
 
 Fonte (somente leitura, snapshot `d40ac3f7c0`): `fx/fx-keys.ts`, `keyframes/{keyframe-rules,resolve-keyframes}.ts`,
 `camera/easing.ts`, `fx/fx-clip-sample.ts`, `fx/fx-hash.ts`; blobs pinados em

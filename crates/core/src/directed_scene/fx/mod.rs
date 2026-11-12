@@ -11,15 +11,17 @@
 //! What is implemented, and nothing else is accepted (an unsupported value is a typed refusal
 //! at import and at edit, never a quietly ignored one):
 //!
-//! * the `vignette`, `fade` and `filmGrain` looks, scope `output`, on tracks of non-overlapping
-//!   clips;
+//! * the `vignette`, `fade` and `filmGrain` looks, scope `output` or `shot` (F062), on tracks of
+//!   non-overlapping clips;
 //! * IDs of tracks and clips by the pilot's rule (see [`id_problem`]);
 //! * fixed parameters (`params`; a missing one is the catalog default), `fadeInFrames` /
 //!   `fadeOutFrames` envelope, `hidden` on clips and tracks;
 //! * **parameter keys** (`keys`, P3: whole frames local to the clip, strictly increasing, the
 //!   easing of the arrival key; see [`keys`]) and the `seed` of the noise effects, explicit or
 //!   derived from the clip ID (see [`hash`]);
-//! * **refused for now**: scope `shot`/`node` (`FX_SCOPE_NOT_YET`) and any `transitions` entry
+//! * the **scope** of a clip (see [`scope`]): the output, or one shot of the edit, whose clips are
+//!   drawn first, on the shot's own picture;
+//! * **refused for now**: scope `node` (`FX_SCOPE_NOT_YET`) and any `transitions` entry
 //!   (`FX_TRANSITION_NOT_YET`).
 //!
 //! Evaluation is a pure function of the document and an integer edit frame
@@ -32,6 +34,7 @@ mod hash;
 mod keys;
 mod read;
 mod reference;
+mod scope;
 
 use serde_json::{Value, json};
 
@@ -43,8 +46,8 @@ pub use catalog::{
 };
 pub use control::quantize_control;
 pub use handles::{
-    CENTER_STEP, HandleValue, VignetteHandle, VignetteParams, VignetteShape, hit as hit_handle,
-    on_picture, params_at as vignette_params_at,
+    CENTER_STEP, HandleValue, NoHandles, VignetteHandle, VignetteParams, VignetteShape,
+    hit as hit_handle, on_picture, params_at as vignette_params_at,
 };
 pub use hash::{
     Reseed, base_seed, colored_triangular, fnv1a32, fnv1a64, hash_pixel, lowbias32, seed_for,
@@ -59,6 +62,10 @@ pub use read::{ParamProblem, parse_param};
 pub use reference::{
     GRAIN_REFERENCE_HEIGHT, apply_pass_to_rgba8, apply_pass_to_srgb, grain_cell_px,
     grain_encoded_delta, linear_to_srgb, pass_strength, smoothstep, srgb_to_linear, vignette_shade,
+};
+pub use scope::{
+    FxScope, FxStage, SCOPE_OUTPUT, SCOPE_SHOT_PREFIX, ScopeFault, ScopeSyntax, default_duration,
+    scope_end, scope_fault, scope_start, shot_at, shot_holds, shot_json, shots_json,
 };
 
 /// The catalog this build draws. It goes up whenever the *result* of an existing effect changes
@@ -89,8 +96,14 @@ pub const FX_CLIP_EMPTY: &str = "FX_CLIP_EMPTY";
 pub const FX_CLIP_OUT_OF_RANGE: &str = "FX_CLIP_OUT_OF_RANGE";
 pub const ENVELOPE_TOO_LONG: &str = "ENVELOPE_TOO_LONG";
 pub const CATALOG_TOO_NEW: &str = "CATALOG_TOO_NEW";
-/// Scope `node` in the pilot (`NODE_SCOPE_NOT_YET`); here also `shot`, which is a later slice.
+/// Scope `node` in the pilot (`NODE_SCOPE_NOT_YET`): no node target exists here yet. Scope `shot`
+/// is drawn since F062.
 pub const FX_SCOPE_NOT_YET: &str = "FX_SCOPE_NOT_YET";
+/// A clip with scope `shot` names a shot the edit does not have (the pilot's `UNKNOWN_SHOT`).
+pub const UNKNOWN_SHOT: &str = "UNKNOWN_SHOT";
+/// A clip with scope `shot` does not lie entirely inside its shot (the pilot's
+/// `FX_SCOPE_MISMATCH`): it starts before the shot or ends after it.
+pub const FX_SCOPE_MISMATCH: &str = "FX_SCOPE_MISMATCH";
 /// A key outside its clip (`0..durationFrames`), the pilot's `KEY_OUT_OF_CLIP`.
 pub const KEY_OUT_OF_CLIP: &str = "KEY_OUT_OF_CLIP";
 /// Key frames that are not whole, not from 0 or not strictly increasing (`KEYFRAME_ORDER`).
@@ -106,12 +119,14 @@ pub const FX_LIMIT: &str = "FX_LIMIT";
 /// The code of the structured warning for a frame that asks for more passes than the budget.
 pub const FX_PASS_BUDGET_WARNING: &str = "FX_PASS_BUDGET";
 
-/// How many output passes a frame should have at most. **Policy: warn, never refuse.** Every pass
-/// is one fullscreen draw over the picture (the pilot's editor warns at the same number), so past
-/// it a frame is slower, not wrong: the document stays valid, the plan keeps every pass in order and
-/// the runtime draws them all (two ping-pong targets whatever the count), and `scene.fx.list`,
-/// `scene.fx.edit` and `scene.fx.frame` report the overrun as a structured warning
-/// ([`PassBudget`]). A refusal here would make a bundle the pilot accepts impossible to open.
+/// How many passes a frame should have at most: the passes of the shot's picture and the ones of
+/// the output count together (F062; both stages are fullscreen draws). **Policy: warn, never
+/// refuse.** Every pass is one fullscreen draw over the picture (the pilot's editor warns at the
+/// same number), so past it a frame is slower, not wrong: the document stays valid, the plan keeps
+/// every pass in order and the runtime draws them all (two ping-pong targets whatever the count),
+/// and `scene.fx.list`, `scene.fx.edit` and `scene.fx.frame` report the overrun as a structured
+/// warning ([`PassBudget`]). A refusal here would make a bundle the pilot accepts impossible to
+/// open.
 pub const FX_PASS_BUDGET: usize = 8;
 
 /// A resolved parameter value.
@@ -168,6 +183,9 @@ pub struct FxClip {
     pub fade_out_frames: i64,
     pub seed: Option<u32>,
     pub hidden: bool,
+    /// Where the clip lies: the output, or one shot of the edit (F062). The clip's frames are
+    /// the edit's in both cases; a `shot` clip lies entirely inside its shot.
+    pub scope: FxScope,
 }
 
 impl FxClip {
@@ -272,6 +290,9 @@ pub struct FxPass {
     pub params: Vec<(String, FxValue)>,
     /// The seed of the noise at this frame; only effects that draw noise carry one.
     pub seed: Option<u32>,
+    /// Where the pass is drawn: on the shot's picture or on the output (F062). A pass of a
+    /// `shot` scope exists only at the frames of that shot.
+    pub scope: FxScope,
 }
 
 impl FxPass {
@@ -303,7 +324,7 @@ impl FxPass {
             "weight": self.weight,
             "amount": self.amount,
             "params": Value::Object(params),
-            "scope": { "kind": "output" },
+            "scope": self.scope.to_wire(),
         });
         // Written only for an effect that draws noise, so the bytes of the passes of the looks
         // without it (and the digests of their plans) do not change.
@@ -364,7 +385,10 @@ impl PassBudget {
 
 impl Fx {
     /// The layer against [`FX_PASS_BUDGET`] over the `edit_duration_frames` of the edit: a sweep
-    /// over the visible clips, so it costs the number of clips, not of frames.
+    /// over the visible clips, so it costs the number of clips, not of frames. Both stages count
+    /// (F062): a clip with scope `shot` lies inside its shot (the importer's rule), so it draws at
+    /// every frame of its interval, exactly as an output clip does, and the peak is the most
+    /// passes [`Self::resolve`] returns at any frame, the shot's and the output's together.
     pub fn pass_budget(&self, edit_duration_frames: u64) -> PassBudget {
         let length = i64::try_from(edit_duration_frames).unwrap_or(i64::MAX);
         let mut edges: Vec<(i64, i32)> = Vec::new();
@@ -425,39 +449,34 @@ impl Fx {
         self.tracks.iter().map(|track| track.clips.len()).sum()
     }
 
-    /// The passes at an edit frame, in the order of the tracks (the order of composition). A
-    /// hidden track or clip draws nothing; a clip draws on `start_frame <= frame < end`. Pure and
-    /// deterministic: no clock, no state carried from another frame, so a seek to any frame
+    /// The passes at an edit frame, in the order of composition: **by stage first, then by track**.
+    /// The passes of the clips with scope `shot` (the shot's own picture, the *deck*) come first and
+    /// the passes of the output after them, each stage in the order of the tracks; so a `shot` clip
+    /// on a later track is still drawn before an `output` clip on an earlier one (the pilot's
+    /// `decks -> deck passes -> output passes`). A hidden track or clip draws nothing; a clip draws
+    /// on `start_frame <= frame < end`. The importer guarantees a `shot` clip lies inside its shot,
+    /// so the frames of its interval are the shot's: the resolver does not consult the shots. Pure
+    /// and deterministic: no clock, no state carried from another frame, so a seek to any frame
     /// answers what linear playback answered there.
     pub fn resolve(&self, edit_frame: i64) -> Vec<FxPass> {
-        let mut passes = Vec::new();
-        for track in self.tracks.iter().filter(|track| !track.hidden) {
-            for clip in track.clips.iter().filter(|clip| !clip.hidden) {
-                if edit_frame < clip.start_frame || edit_frame >= clip.end_frame_exclusive() {
-                    continue;
-                }
-                let frame_in_clip = edit_frame - clip.start_frame;
-                let weight = clip.weight_at(frame_in_clip);
-                let mut pass = FxPass {
-                    track_id: track.id.clone(),
-                    clip_id: clip.id.clone(),
-                    effect: clip.effect.id.to_string(),
-                    frame_in_clip,
-                    weight,
-                    amount: 0.0,
-                    params: clip
-                        .effect
-                        .params
-                        .iter()
-                        .zip(clip.sampled(frame_in_clip))
-                        .map(|(spec, value)| (spec.id.to_string(), value))
-                        .collect(),
-                    seed: clip.seed_at(frame_in_clip),
-                };
-                pass.amount = pass.expected_amount();
-                passes.push(pass);
-            }
-        }
+        let mut passes: Vec<FxPass> = self
+            .tracks
+            .iter()
+            .filter(|track| !track.hidden)
+            .flat_map(|track| {
+                track
+                    .clips
+                    .iter()
+                    .filter(move |clip| {
+                        !clip.hidden
+                            && clip.start_frame <= edit_frame
+                            && edit_frame < clip.end_frame_exclusive()
+                    })
+                    .map(move |clip| pass_of(track, clip, edit_frame))
+            })
+            .collect();
+        // `sort_by_key` is stable: each stage keeps the order of the tracks.
+        passes.sort_by_key(|pass| pass.scope.stage());
         passes
     }
 
@@ -471,6 +490,32 @@ impl Fx {
             })).collect::<Vec<_>>(),
         })
     }
+}
+
+/// The pass a clip draws at an edit frame inside it: the parameters sampled (keys applied), the
+/// envelope and the `amount` (`intensity x weight`) resolved here, never by a runtime.
+fn pass_of(track: &FxTrack, clip: &FxClip, edit_frame: i64) -> FxPass {
+    let frame_in_clip = edit_frame - clip.start_frame;
+    let weight = clip.weight_at(frame_in_clip);
+    let mut pass = FxPass {
+        track_id: track.id.clone(),
+        clip_id: clip.id.clone(),
+        effect: clip.effect.id.to_string(),
+        frame_in_clip,
+        weight,
+        amount: 0.0,
+        params: clip
+            .effect
+            .params
+            .iter()
+            .zip(clip.sampled(frame_in_clip))
+            .map(|(spec, value)| (spec.id.to_string(), value))
+            .collect(),
+        seed: clip.seed_at(frame_in_clip),
+        scope: clip.scope.clone(),
+    };
+    pass.amount = pass.expected_amount();
+    pass
 }
 
 /// A clip as `scene.fx.list` reports it (every parameter resolved, defaults included).
@@ -494,7 +539,7 @@ pub fn clip_json(clip: &FxClip) -> Value {
         "start_frame": clip.start_frame, "duration_frames": clip.duration_frames,
         "end_frame_exclusive": clip.end_frame_exclusive(),
         "fade_in_frames": clip.fade_in_frames, "fade_out_frames": clip.fade_out_frames,
-        "hidden": clip.hidden, "seed": clip.seed, "scope": "output",
+        "hidden": clip.hidden, "seed": clip.seed, "scope": clip.scope.to_text(),
         "params": Value::Object(params), "keys": Value::Object(keys),
     })
 }

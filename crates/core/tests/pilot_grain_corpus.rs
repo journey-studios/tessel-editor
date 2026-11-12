@@ -17,9 +17,9 @@
 use core::prelude::v1::test;
 use serde_json::Value;
 use tessel_editor_core::directed_scene::fx::{
-    self, FxEasing, FxKey, FxPass, FxValue, Reseed, apply_pass_to_srgb, colored_triangular,
-    fnv1a32, grain_cell_px, grain_encoded_delta, hash_pixel, lowbias32, resolve_keys, seed_for,
-    triangular,
+    self, FxEasing, FxKey, FxPass, FxScope, FxValue, Reseed, apply_pass_to_srgb,
+    colored_triangular, fnv1a32, grain_cell_px, grain_encoded_delta, hash_pixel, lowbias32,
+    resolve_keys, seed_for, triangular,
 };
 
 const CORPUS: &str = include_str!("../../../docs/migration/fixtures/pilot-fx/grain-cases.json");
@@ -250,6 +250,7 @@ fn grain_pass(case: &Value) -> FxPass {
             ("intensity".into(), FxValue::Number(1.0)),
         ],
         seed: Some(u32_of(&case["seed"])),
+        scope: FxScope::Output,
     }
 }
 

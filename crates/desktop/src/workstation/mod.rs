@@ -26,6 +26,7 @@ mod scene_fx;
 mod scene_fx_editors;
 mod scene_fx_handles;
 mod scene_fx_keys;
+mod scene_fx_scope;
 mod scene_gesture;
 mod scene_gizmo;
 mod scene_import;
@@ -869,6 +870,8 @@ mod scene_fx_editors_tests;
 mod scene_fx_handles_tests;
 #[cfg(test)]
 mod scene_fx_keys_tests;
+#[cfg(test)]
+mod scene_fx_scope_tests;
 #[cfg(test)]
 mod scene_fx_tests;
 #[cfg(test)]

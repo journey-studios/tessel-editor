@@ -453,7 +453,7 @@ fn the_add_and_remove_buttons_run_the_shared_handlers_when_clicked(cx: &mut Test
 
 use super::scene_fx::{FxKey, controls_of};
 
-fn attach_yard(view: &Entity<Workstation>, cx: &mut VisualTestContext) {
+pub(super) fn attach_yard(view: &Entity<Workstation>, cx: &mut VisualTestContext) {
     view.update(cx, |view, cx| {
         view.execute(
             Command::Scene(SceneCommand::Attach {
@@ -469,14 +469,14 @@ fn attach_yard(view: &Entity<Workstation>, cx: &mut VisualTestContext) {
     cx.run_until_parked();
 }
 
-fn choose(view: &Entity<Workstation>, cx: &mut VisualTestContext, scene: &str) {
+pub(super) fn choose(view: &Entity<Workstation>, cx: &mut VisualTestContext, scene: &str) {
     view.update(cx, |view, cx| view.scene_choose(scene, cx))
         .expect("an attached scene");
     cx.run_until_parked();
 }
 
 /// Every entry of the history, the attaches included: a test that compares two moments needs no offset.
-fn total_depth(view: &Entity<Workstation>, cx: &mut VisualTestContext) -> u64 {
+pub(super) fn total_depth(view: &Entity<Workstation>, cx: &mut VisualTestContext) -> u64 {
     view.read_with(cx, |view, _| {
         view.state.history.to_json()["undo_depth"].as_u64().unwrap()
     })
@@ -684,7 +684,7 @@ fn control_value_after(
     view.read_with(cx, |view, _| {
         let fx = view.fx_view().expect("a scene with effects");
         let found = fx.clip("fx-1").expect("fx-1");
-        controls_of(&found.clip, fx.edit_frames)
+        controls_of(&found.clip, fx.edit_frames, &fx.shots)
             .iter()
             .find(|control| control.id == id)
             .unwrap_or_else(|| panic!("no control `{id}`"))
@@ -1953,20 +1953,34 @@ fn the_fade_is_listed_by_the_same_model_as_the_vignette_with_no_section_of_its_o
 ) {
     let (view, cx) = mounted(cx);
     let section = node(&view, cx, "scene.fx");
-    let actions: Vec<Value> = section["actions"]
+    let names: Vec<&str> = section["actions"]
         .as_array()
         .unwrap()
         .iter()
-        .map(|action| action["action"].clone())
+        .map(|action| action["action"].as_str().unwrap())
+        .collect();
+    // The plain adds are the catalog's, in its order. F062 offers the same effects again on the shot
+    // the monitor shows (`add_in_shot:`) and nothing else: no section of its own for any of them.
+    let plain: Vec<&str> = names
+        .iter()
+        .copied()
+        .filter(|name| name.starts_with("add:"))
+        .collect();
+    assert_eq!(plain, ["add:vignette", "add:fade", "add:filmGrain"]);
+    let in_shot: Vec<&str> = names
+        .iter()
+        .copied()
+        .filter(|name| name.starts_with("add_in_shot:"))
         .collect();
     assert_eq!(
-        actions,
+        in_shot,
         [
-            json!("add:vignette"),
-            json!("add:fade"),
-            json!("add:filmGrain")
+            "add_in_shot:vignette",
+            "add_in_shot:fade",
+            "add_in_shot:filmGrain"
         ]
     );
+    assert_eq!(names.len(), plain.len() + in_shot.len());
     assert!(
         section["actions"]
             .as_array()
@@ -1998,7 +2012,8 @@ fn the_fade_is_listed_by_the_same_model_as_the_vignette_with_no_section_of_its_o
             "duration_frames",
             "fade_in_frames",
             "fade_out_frames",
-            "hidden"
+            "hidden",
+            "scope"
         ]
     );
     let amount = field_of(&clip, "amount");

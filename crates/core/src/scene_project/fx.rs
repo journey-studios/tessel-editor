@@ -19,7 +19,20 @@ pub(super) fn fx_scope_json() -> Value {
     json!({
         "catalog_version": FX_CATALOG_VERSION,
         "domain": "bundle.fx of the directed scene (render-bundle document key); one model, no copy in the sequence timeline",
-        "scope": ["output"],
+        "scope": ["output", "shot"],
+        "scope_text": {
+            "output": "the finished picture; the canonical document leaves `scope` out",
+            "shot": "shot:<id>: the picture of one shot, drawn before the output passes; the id is everything after the first `:`",
+        },
+        "shot_scope": {
+            "rule": "a clip with scope shot lies entirely inside [start, end) of a shot of the edit",
+            "refusals": {
+                "a shot the edit does not have": fx::UNKNOWN_SHOT,
+                "a clip that starts before the shot or ends after it": fx::FX_SCOPE_MISMATCH,
+            },
+            "composition": ["the passes of the shot, in track order", "the passes of the output, in track order"],
+            "requires": "capability fxShotScope, only in a plan with a shot pass",
+        },
         "inspector": "scene.fx.inspect: fields, ranges, defaults, labels (pt-br, en, es), applicability and the effects that can be added, from the catalog and the clip state",
         "evaluation": "deterministic per edit frame; envelope sampled at the middle of the frame",
         "pass_budget": {
@@ -43,7 +56,7 @@ pub(super) fn fx_scope_json() -> Value {
         },
         "seed": "uint32, explicit on the clip or the FNV-1a of its ID (never written by a read); noise effects reseed per frame as lowbias32(base xor frameInClip)",
         "refused": {
-            "scope shot|node": fx::FX_SCOPE_NOT_YET,
+            "scope node": fx::FX_SCOPE_NOT_YET,
             "transitions": fx::FX_TRANSITION_NOT_YET,
         },
     })
@@ -71,6 +84,7 @@ pub(super) fn list_answer(id: &str, scene: &DirectedScene) -> Value {
         "edit_duration_frames": scene.bundle().edit_duration_frames,
         "track_count": layer.tracks.len(), "clip_count": layer.clip_count(),
         "tracks": tracks,
+        "shots": fx::shots_json(&scene.bundle().shots),
         "budget": budget.to_json(), "warnings": budget.warnings(),
     })
 }
@@ -102,13 +116,17 @@ pub(super) fn frame_answer(
     at: &FrameAt,
 ) -> Result<Value, CommandError> {
     let frame = edit_frame_of(id, scene, at)?;
-    let passes: Vec<Value> = scene
-        .bundle()
-        .fx
-        .resolve(frame)
+    // The order is the composition: the shot's passes first, then the output's. The passes are
+    // the plan's own (`scope` says where each is drawn); `stages` counts them so the order
+    // explains itself.
+    let resolved = scene.bundle().fx.resolve(frame);
+    let deck = resolved
         .iter()
-        .map(fx::FxPass::to_json)
-        .collect();
+        .filter(|pass| pass.scope.stage() == fx::FxStage::Deck)
+        .count();
+    let stages = json!({ "deck": deck, "output": resolved.len() - deck });
+    let passes: Vec<Value> = resolved.iter().map(fx::FxPass::to_json).collect();
+    let shot = fx::shot_at(&scene.bundle().shots, frame).map(fx::shot_json);
     let over = passes.len() > fx::FX_PASS_BUDGET;
     let warnings: Vec<Value> = if over {
         vec![json!({
@@ -123,8 +141,8 @@ pub(super) fn frame_answer(
         Vec::new()
     };
     Ok(json!({
-        "action": "scene.fx.frame", "scene": id, "edit_frame": frame,
-        "count": passes.len(), "passes": passes,
+        "action": "scene.fx.frame", "scene": id, "edit_frame": frame, "shot": shot,
+        "count": passes.len(), "stages": stages, "passes": passes,
         "max_passes": fx::FX_PASS_BUDGET, "over_budget": over, "warnings": warnings,
     }))
 }

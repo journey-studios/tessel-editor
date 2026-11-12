@@ -544,6 +544,124 @@ fn only_the_vignette_has_handles() {
     );
 }
 
+/// F062 x F061 (BL082.64): a vignette laid on a shot has no handles, and every door that asks the
+/// core says it with the same typed refusal (`scope_not_supported`, the clip as target, the scope in
+/// `details`): the select, the read with and without a probe, and the hit query and the press, which
+/// answer by the absence of an effect handle because no target can exist for such a clip. A target
+/// that turns into a shot clip is dropped by the edit that does it, before any read.
+#[test]
+fn a_vignette_on_a_shot_has_no_handles_whichever_door_asks() {
+    let shot_scope = json!({"op":"scene.fx.edit","scene":"street","ops":[
+        {"op":"set_scope","clip":"v1","scope":"shot:shot-1"}]});
+    let output_scope = json!({"op":"scene.fx.edit","scene":"street","ops":[
+        {"op":"set_scope","clip":"v1","scope":"output"}]});
+    let mut state = session();
+    selected(&mut state);
+    assert_eq!(published_target(&state), (json!("fx"), json!("v1")));
+
+    // The edit that lays the target clip on a shot drops it: no read in between.
+    let depth = undo_depth(&state);
+    ok(&mut state, shot_scope.clone());
+    assert_eq!(undo_depth(&state), depth + 1, "the scope edit is one entry");
+    assert_eq!(published_target(&state), (json!("node"), json!("")));
+    assert!(state.scene_interaction.fx_target().is_none());
+
+    // The doors: the typed refusal, the same everywhere, and nothing written.
+    let (before, depth) = (document(&state), undo_depth(&state));
+    let refused = [
+        json!({"op":"scene.fx.select","scene":"street","clip":"v1"}),
+        json!({"op":"scene.fx.handles","scene":"street","clip":"v1","frame":FRAME}),
+        json!({"op":"scene.fx.handles","scene":"street","clip":"v1","frame":FRAME,
+               "probe":{"handle":"radius","point":{"u":0.7,"v":0.5}}}),
+    ];
+    for request in refused {
+        let error = err(&mut state, request.clone());
+        assert_eq!(error.code, "scope_not_supported", "{request}");
+        assert_eq!(error.target.as_deref(), Some("v1"), "{request}");
+        assert_eq!(
+            error.details.as_deref(),
+            Some(&json!({"clip": "v1", "scope": "shot:shot-1"})),
+            "{request}"
+        );
+    }
+    assert!(state.scene_interaction.fx_target().is_none());
+    let at = (0.5, 0.5);
+    let asked = ok(
+        &mut state,
+        json!({"op":"scene.gizmo.hit","scene":"street","frame":FRAME,
+               "point":{"u":at.0,"v":at.1}}),
+    );
+    assert_ne!(asked["hit"]["kind"], "fx_handle", "{asked}");
+    assert_ne!(down(&mut state, at)["hit"]["kind"], "fx_handle");
+    assert_eq!((document(&state), undo_depth(&state)), (before, depth));
+
+    // Back on the output the same doors answer, and a drag open when the scope changes is dead.
+    ok(&mut state, output_scope);
+    selected(&mut state);
+    let start = handle_at(&handles(&mut state), "radius");
+    assert_eq!(down(&mut state, start)["dragging"], true);
+    ok(&mut state, shot_scope);
+    assert!(state.gizmo_drag_is_dead(), "the edit kills the open drag");
+    assert!(state.scene_interaction.fx_target().is_none());
+}
+
+/// The target is dropped by `redo` too, not only by the edit: `restore` prunes as `apply` does, so a clip
+/// that history lays back on a shot stops being the target at that step, before any read. (The undo of a
+/// scope edit lays the clip back on the output, where selecting it is allowed again.)
+#[test]
+fn a_redo_that_lays_the_target_clip_on_a_shot_drops_the_target() {
+    let mut state = session();
+    ok(
+        &mut state,
+        json!({"op":"scene.fx.edit","scene":"street","ops":[
+            {"op":"set_scope","clip":"v1","scope":"shot:shot-1"}]}),
+    );
+    ok(&mut state, json!({"op":"history.undo"}));
+    selected(&mut state);
+    assert_eq!(published_target(&state), (json!("fx"), json!("v1")));
+
+    ok(&mut state, json!({"op":"history.redo"}));
+    assert_eq!(published_target(&state), (json!("node"), json!("")));
+    assert!(state.scene_interaction.fx_target().is_none());
+    // And the clip is a shot clip for every door again.
+    let error = err(
+        &mut state,
+        json!({"op":"scene.fx.select","scene":"street","clip":"v1"}),
+    );
+    assert_eq!(error.code, "scope_not_supported");
+}
+
+/// The same refusal through the real `tessel-headless` process (the surface a script uses without a
+/// window): the select and the read answer `scope_not_supported`, the document is untouched.
+#[test]
+fn the_headless_executable_refuses_the_handles_of_a_shot_clip() {
+    let mut process = Headless::start();
+    process.ask(json!({"op":"scene.attach","id":"street","bundle":bundle(320, 180)}));
+    let added = process.ask(json!({"op":"scene.fx.edit","scene":"street","ops":[
+        {"op":"add_clip","effect":"vignette","start_frame":10,"duration_frames":30,"id":"v1",
+         "scope":"shot:shot-1"}]}));
+    assert_eq!(added["ok"], true, "{added}");
+    let depth = |answer: &Value| answer["result"]["history"]["undo_depth"].as_u64().unwrap();
+    let base = depth(&process.ask(json!({"op":"history.status"})));
+    for request in [
+        json!({"op":"scene.fx.select","scene":"street","clip":"v1"}),
+        json!({"op":"scene.fx.handles","scene":"street","clip":"v1","frame":FRAME}),
+    ] {
+        let answer = process.ask(request.clone());
+        assert_eq!(answer["ok"], false, "{request}: {answer}");
+        assert_eq!(answer["error"]["code"], "scope_not_supported", "{answer}");
+        assert_eq!(answer["error"]["target"], "v1", "{answer}");
+        assert_eq!(
+            answer["error"]["details"]["scope"], "shot:shot-1",
+            "{answer}"
+        );
+    }
+    assert_eq!(depth(&process.ask(json!({"op":"history.status"}))), base);
+    drop(process.stdin);
+    // The executable ends with 1 when a request of the session was refused.
+    assert_eq!(process.child.wait().unwrap().code(), Some(1));
+}
+
 /// The page picks «the nearest, a tie to the first of the list», so the order of the lists IS the
 /// rule: the outer handles first, in the read, in the overlay, and among the disabled ones.
 #[test]

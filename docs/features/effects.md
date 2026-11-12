@@ -1,4 +1,4 @@
-# F016 — Adicionar e processar efeitos (vinheta, fade e filmGrain, escopo de saída)
+# F016 — Adicionar e processar efeitos (vinheta, fade e filmGrain; escopos de saída e de plano)
 
 ## Status
 
@@ -74,8 +74,8 @@ especificação a reabrir, não algo que se afirme portado.
   padrão). Fades de 0, `hidden: false` e `scope` de saída são grafia canônica (omitidos); uma camada sem
   clipes sai do documento, então adicionar e remover devolve o documento byte a byte.
 - Sem `fx` (ou vazia) o plano **não tem a chave `fx`** e os bytes do plano de antes não mudam (golden).
-- Recusado com código tipado, nunca ignorado: escopo `shot`/`node`
-  (`FX_SCOPE_NOT_YET`), qualquer entrada em `transitions` (`FX_TRANSITION_NOT_YET`), `catalogVersion > 1`
+- Recusado com código tipado, nunca ignorado: escopo `node` (`FX_SCOPE_NOT_YET`; o escopo `shot` é lido desde
+  F062, ver [fx-shot-scope.md](fx-shot-scope.md)), qualquer entrada em `transitions` (`FX_TRANSITION_NOT_YET`), `catalogVersion > 1`
   (`CATALOG_TOO_NEW`), efeito fora do catálogo (`UNKNOWN_EFFECT`), parâmetro desconhecido, de outro tipo ou
   fora da faixa, sobreposição de clipes na mesma trilha (`FX_CLIP_OVERLAP`), clipe vazio ou fora da edição,
   fades que não cabem (`ENVELOPE_TOO_LONG`), IDs duplicados/reservados e limites (ver abaixo).
@@ -118,8 +118,10 @@ com o mesmo arquivo (nomes, tipo, ordem e faixas): uma faixa mudada só de um la
 
 ### Avaliação determinística por quadro
 
-`Fx::resolve(frame)` devolve um `FxPass` por clipe visível que cobre o quadro, na ordem das trilhas e dos
-clipes. O peso do envelope é amostrado no **meio** do quadro:
+`Fx::resolve(frame)` devolve um `FxPass` por clipe visível que cobre o quadro, **por etapa e depois por trilha**:
+primeiro os clipes de escopo `shot` (o *deck*; só cobrem o quadro quando ele é do seu plano, porque o importador os
+mantém inteiros dentro dele), depois os de `output`, cada etapa na ordem das trilhas e dos clipes (ver
+[fx-shot-scope.md](fx-shot-scope.md)). O peso do envelope é amostrado no **meio** do quadro:
 `min((f + 0,5)/fadeIn, (dur − f − 0,5)/fadeOut)`; `amount = clamp(intensity × weight)`. `amount ≤ 0`
 é identidade exata (sem ida e volta sRGB, então intensidade 0 não move um pixel).
 
@@ -131,8 +133,9 @@ IEC 61966-2-1 exatas) por `shade × amount`.
 ### Plano e runtime
 
 `ScenePlan.fx` (chave aditiva, só quando há passes): `trackId`, `clipId`, `effect`, `frameInClip`, `weight`,
-`amount`, `params`, `scope: {kind: "output"}`. `Capability::OutputFx` (`outputFx`, a 10ª) entra em `requires`
-quando há passe; um runtime sem ela recusa o plano pelo nome. O validador recalcula `amount` e recusa um plano
+`amount`, `params`, `scope: {kind: "output"}` (ou, desde F062, `{kind: "shot", shotId}`: ver
+[fx-shot-scope.md](fx-shot-scope.md)). `Capability::OutputFx` (`outputFx`, a 10ª) entra em `requires`
+quando há passe; um runtime sem ela recusa o plano pelo nome. (Um passe de plano exige também `fxShotScope`, a 13ª.) O validador recalcula `amount` e recusa um plano
 adulterado. `PlanTimeline::at_frame` re-resolve `fx` e `requires` por quadro (igual a `ScenePlan::build` em
 todos os quadros, testado). O runtime só desenha (`runtime/src/output-fx.js`, `OutputFxPipeline`):
 
@@ -148,7 +151,7 @@ todos os quadros, testado). O runtime só desenha (`runtime/src/output-fx.js`, `
 - Efeito ou escopo desconhecido é `unsupported` tipado, nunca pulado; a busca do efeito e do parâmetro é por
   **propriedade própria** (`Object.hasOwn`), então `constructor`, `toString`, `__proto__`, `hasOwnProperty` e
   nomes não-string dão `unsupported`/parâmetro desconhecido tipados, não `TypeError`.
-- `frame.sources.directed_scene_fx` conta os passes.
+- `frame.sources.directed_scene_fx` conta os passes; `directed_scene_fx_shot` (F062) conta os que são de um plano.
 
 **Medição pareada** (`runtime/scripts/measure-fx-cost.mjs`, mesmo cenário antes/depois: parede plana de 1280×720,
 mediana de 30 quadros, 0/1/2/8 passes, pelo bridge real em Chrome headless). **Só SwiftShader (GL por software)**:
@@ -201,7 +204,8 @@ recusa com `invalid_bundle`/`ENVELOPE_TOO_LONG` e não altera nenhum valor que o
 são explícitos: encurtar os fades no mesmo lote ou antes. Códigos de erro do comando (`command_code`):
 `unknown_effect`, `unknown_param`, `param_type`, `param_out_of_range`, `unknown_fx_track`, `unknown_fx_clip`,
 `reserved_id`, `duplicate_id`, `fx_clip_overlap`, `fx_clip_empty`, `fx_clip_out_of_range`, `envelope_too_long`,
-`catalog_too_new`, `fx_scope_not_yet`, `fx_transition_not_yet`; um candidato recusado pelo
+`catalog_too_new`, `fx_scope_not_yet`, `fx_transition_not_yet`, e desde F062 `fx_scope_mismatch` e `unknown_shot`
+(ver [fx-shot-scope.md](fx-shot-scope.md)); um candidato recusado pelo
 importador mantém `invalid_bundle` com os issues em `details.issues[]` (os limites chegam como `FX_LIMIT`).
 
 ### Janela
@@ -441,7 +445,8 @@ outros); corrigido em `reset_ops` e coberto por teste de unidade e de GPUI.
 
 - Só `vignette`, `fade` e `filmGrain` (3 de 59). Os outros efeitos do piloto **não** foram portados; cada efeito novo é uma entrada no
   catálogo, um shader no runtime e um teste de pixel.
-- Só escopo `output`. `shot`/`node` são recusados. Chaves e `seed` valem desde P3 ([F058](fx-keys.md)).
+- Escopos `output` e, desde F062 (P4a), `shot` ([fx-shot-scope.md](fx-shot-scope.md)); `node` é recusado
+  (`FX_SCOPE_NOT_YET`). Chaves e `seed` valem desde P3 ([F058](fx-keys.md)).
 - Sem transições: `transitions` é recusado se não vazio. **Contrato de extensão** (sem controle habilitado): uma
   `crossDissolve` será `transitions[]` com `{id, type, fromShot, toShot, durationFrames}` resolvida no plano com
   **dois** quadros de origem (precisa que o plano e o runtime desenhem dois shots no mesmo quadro: capacidade nova
@@ -453,7 +458,8 @@ outros); corrigido em `reset_ops` e coberto por teste de unidade e de GPUI.
 - Ponteiro físico real continua não provado (BL043); a prova da janela é semântica e o GPUI injeta entrada.
 - Handles 2D da vinheta no monitor (G4.1, [F061](fx-handles.md), BL082.35): centro livre, `radius` e `softness` arrastáveis
   sobre as elipses que o `vignette_shade` desenha, pelo gesto de efeito já existente (documento ≡ `scene.fx.edit`). Só a
-  vinheta tem handles; gravar chaves pelo handle é BL082.37.
+  vinheta tem handles, e só a de um clipe da saída: a de um clipe de plano (F062) é recusada com `scope_not_supported`
+  (BL082.64; desenhá-las num plano é BL082.41); gravar chaves pelo handle é BL082.37.
 - Não há dithering (o runtime escreve 8 bits como a cena); gradientes suaves podem mostrar bandas de 1/255.
 - A janela pinta a seção só com uma cena anexada; sem cena, a edição é por `scene.fx.edit` (headless).
 
@@ -553,3 +559,16 @@ P3 acrescenta a animação dos parâmetros (`keys`, easing da chave de chegada, 
   são N/A (não existem no clipe de cena deste caminho).
 - **No-op tipado (BL082.34):** `key_param` compara valores tipados (`1` e `1.0`, ordem de chaves, cor/ponto).
 Detalhes e evidências: [F058](fx-keys.md).
+
+## P4a: escopo `shot` (BL082.3, F062)
+
+Um clipe pode ficar no **plano** em vez da saída: `scope: { "kind": "shot", "shotId": "<id>" }` no documento (a saída
+continua sendo a grafia canônica, **sem** a chave) e o clipe cabe **inteiro** em `[início, fim)` do plano. O importador
+recusa o que não cabe com `FX_SCOPE_MISMATCH` (com os limites legais em `details`) e o plano que não existe com
+`UNKNOWN_SHOT`; a edição (`add_clip.scope`, `set_scope`) usa a mesma regra e recusa com `fx_scope_mismatch`/`unknown_shot`,
+sem cortar nada. A composição passa a ter **duas etapas** (os passes dos planos, depois os da saída, cada uma na ordem
+das trilhas), o plano ganha `scope` por passe e a capacidade `fxShotScope` (a 13ª), pedida só quando algum passe é de
+plano (planos de cenas sem clipe de plano mantêm os bytes). O runtime desenha a lista do plano, que traz os passes do plano
+antes dos da saída, e recusa o plano que um runtime sem a capacidade não sabe desenhar. A seção Efeitos ganha o seletor de escopo por clipe e a ação de
+adicionar no plano exibido. `node` e as transições seguem recusados (`FX_SCOPE_NOT_YET`, `FX_TRANSITION_NOT_YET`).
+Contrato, decisões, evidências por superfície e limites: [F062](fx-shot-scope.md).

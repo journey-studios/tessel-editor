@@ -160,6 +160,38 @@ test('passes stack in the plan order and an unknown effect is refused, never ski
   }
 });
 
+// ---- F062: a pass of a shot -------------------------------------------------------------------------
+
+test('a pass of a shot draws the picture of the same pass of the output and the frame counts it apart', async (t) => {
+  if (skipUnavailable(t, assert)) return;
+  const paths = files(t);
+  const runtime = await directedRuntime(paths);
+  try {
+    assert.equal((await runtime.load(sceneAsset('slot-wall', paths.wall, 'wall'))).state, 'ready');
+    const onShot = (id, amount) => ({ ...pass(id, amount), scope: { kind: 'shot', shotId: 's1' } });
+    const drawShot = async (fx) => {
+      const base = plan(fx);
+      const layer = directedLayer({ ...base, requires: [...base.requires, 'fxShotScope'], frame: { shotId: 's1' } }, [reference('wall', 'slot-wall')]);
+      const message = await runtime.frame([layer], { size: SIZE, probes: PROBES });
+      assert.equal(message.type, 'frame.done', JSON.stringify(message.error));
+      return message;
+    };
+    const output = await draw(runtime, [pass('o', 0.8)]);
+    assert.equal(output.source.directed_scene_fx_shot, undefined, 'a plan of the output alone reports no pass of a shot');
+
+    const shot = await drawShot([onShot('s', 0.8)]);
+    assert.deepEqual(shot.probes, output.probes, 'one pass of the shot over the picture of the scene is the picture of the output pass');
+    assert.equal(shot.source.directed_scene_fx, 1);
+    assert.equal(shot.source.directed_scene_fx_shot, 1);
+
+    const both = await drawShot([onShot('s', 0.5), pass('o', 0.5)]);
+    assert.equal(both.source.directed_scene_fx, 2, 'both passes are drawn');
+    assert.equal(both.source.directed_scene_fx_shot, 1, 'and only the pass of the shot is counted apart');
+  } finally {
+    await runtime.close();
+  }
+});
+
 // ---- Order, ping-pong, lifetime (the review of F016: A1, A5) ------------------------------------------
 
 const RED = { r: 1, g: 0, b: 0 };

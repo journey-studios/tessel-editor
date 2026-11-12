@@ -31,7 +31,7 @@ use std::sync::Arc;
 use serde_json::{Value, json};
 
 use crate::directed_scene::DirectedScene;
-use crate::directed_scene::fx::{FX_CATALOG_VERSION, Locale};
+use crate::directed_scene::fx::{FX_CATALOG_VERSION, Locale, shot_at, shot_json, shots_json};
 use crate::scene_edit::{self, FxIntent, FxOp, IntentRefusal};
 use crate::scene_interaction::{FrameAt, FxGestureCommand, GestureKind};
 use crate::state::{CommandError, EditorState};
@@ -440,7 +440,7 @@ impl EditorState {
         let bundle = shown.bundle();
         let frame = at.map(|at| edit_frame_of(scene, &shown, at)).transpose()?;
         let edit_frames = i64::try_from(bundle.edit_duration_frames).unwrap_or(i64::MAX);
-        let mut inspectors = scene_edit::layer_inspector(&bundle.fx, edit_frames);
+        let mut inspectors = scene_edit::layer_inspector(&bundle.fx, edit_frames, &bundle.shots);
         let probed = probe.map(|probe| probe_answer(&shown, &inspectors, probe));
         if let Some(wanted) = clip {
             inspectors.retain(|inspector| inspector.clip == wanted);
@@ -455,6 +455,10 @@ impl EditorState {
             "source": if id.is_some() { "gesture" } else { "document" },
             "edit_duration_frames": bundle.edit_duration_frames,
             "frame": frame,
+            // The shots of the edit and the one the displayed frame is in (F062): where a clip
+            // with scope `shot` can be laid, and where a new one would land.
+            "shots": shots_json(&bundle.shots),
+            "shot": frame.and_then(|frame| shot_at(&bundle.shots, frame)).map(shot_json),
             "scopes": scene_edit::scopes().iter().map(|(kind, drawn, reason)| json!({
                 "kind": kind, "applicable": drawn, "reason": reason,
             })).collect::<Vec<_>>(),

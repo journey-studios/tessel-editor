@@ -215,6 +215,7 @@ mod tests {
     use core::prelude::v1::test;
 
     use super::*;
+    use crate::directed_scene::fx::FxScope;
     use crate::directed_scene::fx::catalog::VIGNETTE;
 
     fn pass_with(overrides: &[(&str, FxValue)]) -> FxPass {
@@ -242,6 +243,7 @@ mod tests {
             amount,
             params,
             seed: None,
+            scope: FxScope::Output,
         }
     }
 
@@ -332,6 +334,7 @@ mod tests {
             amount: weight,
             params,
             seed: None,
+            scope: FxScope::Output,
         }
     }
 

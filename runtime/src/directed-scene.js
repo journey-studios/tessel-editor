@@ -42,6 +42,7 @@ export const SCENE_CAPABILITIES = [
   'outputFx',
   'fxNoise',
   'pointLights',
+  'fxShotScope',
 ];
 
 /** Advertised in `ready.capabilities.directed_scene`, so a host can check before it sends. */
@@ -303,8 +304,9 @@ export const parseDirectedLayer = (layer) => {
   }
   if (splats.length > 0 && !requires.includes('splats')) throw invalid('/requires', 'a plan with splats must require `splats`');
 
-  // F016: the resolved effect passes drawn over the finished picture (absent means none).
-  const fx = parseOutputFx(plan.fx, requires);
+  // F016: the resolved effect passes drawn over the finished picture (absent means none). F062: the
+  // passes of a shot come first, and are compared with the shot of the plan's own frame.
+  const fx = parseOutputFx(plan.fx, requires, plan.frame);
 
   // F060: the evaluated point lights (absent means none). A hidden light is kept in the plan for the
   // editor's marker and takes no slot here; any visible one needs the capability, as in the core.

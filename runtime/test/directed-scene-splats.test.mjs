@@ -89,7 +89,7 @@ const refusal = (callback) => {
 
 test('splats are part of what this runtime advertises and of what it reads from a plan', () => {
   assert.ok(SCENE_CAPABILITIES.includes('splats'));
-  assert.equal(SCENE_CAPABILITIES.length, 12);
+  assert.equal(SCENE_CAPABILITIES.length, 13);
   assert.deepEqual(DIRECTED_SCENE_CAPABILITIES.resource_kinds, ['still', 'splat']);
 
   const plan = splatPlan({
@@ -280,7 +280,7 @@ test('a splat is drawn where its node matrix and the plan camera put it, at its 
     const ready = await runtime.hello();
     assert.deepEqual(ready.capabilities.directed_scene.resource_kinds, ['still', 'splat']);
     assert.ok(ready.capabilities.directed_scene.capabilities.includes('splats'));
-    assert.equal(ready.capabilities.directed_scene.capabilities.length, 12);
+    assert.equal(ready.capabilities.directed_scene.capabilities.length, 13);
     const refs = await loadScene(runtime, paths);
     const wide = await runtime.load(splatAsset('slot-wide', paths.wide, 'wide'));
     assert.equal(wide.state, 'ready', JSON.stringify(wide.error));

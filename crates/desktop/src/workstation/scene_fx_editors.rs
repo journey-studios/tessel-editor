@@ -38,7 +38,7 @@ use tessel_editor_core::directed_scene::fx::{FX_EASINGS, FxClip};
 use tessel_editor_core::scene_edit::{ClipAnimation, FieldKind, ParamAnimation};
 
 use super::controls::{disabled_tool_button, tool_button};
-use super::scene_fx::{ClipView, FxView, LOCALE, controls_of};
+use super::scene_fx::{ClipView, FxView, LOCALE, controls_in};
 use super::scene_fx_keys::{
     EASING, GO, KEY_FRAME, KEY_PREFIX, MOVE_KEY, REMOVE_ANIMATION, REMOVE_KEY, SCALE_KEYS,
     SEED_AUTO, SEED_FIELD, SHIFT_KEYS, animation_at, reason_text, value_text,
@@ -128,7 +128,7 @@ impl EditorKey {
         match &self.field {
             EditorField::Seed => animation_at(view, clip).seed.is_some(),
             EditorField::KeyFrame { param, frame } => has_key(clip, param, *frame),
-            EditorField::KeyValue { control, frame } => controls_of(clip, view.edit_frames)
+            EditorField::KeyValue { control, frame } => controls_in(view, clip)
                 .iter()
                 .find(|candidate| candidate.id == *control)
                 .and_then(|candidate| candidate.param())
@@ -628,7 +628,7 @@ impl Workstation {
         }
         rows = rows.child(nav);
 
-        let controls: Vec<_> = controls_of(clip, view.edit_frames)
+        let controls: Vec<_> = controls_in(view, clip)
             .into_iter()
             .filter(|control| control.param() == Some(id))
             .collect();

@@ -741,12 +741,12 @@ fn the_inspector_says_what_is_at_default_what_is_not_drawn_and_never_writes() {
     let applicable = |kind: &str| {
         scopes.iter().find(|scope| scope["kind"] == kind).unwrap()["applicable"].clone()
     };
+    // The output and (F062) a shot are drawn; a node target does not exist yet.
     assert_eq!(applicable("output"), true);
-    for absent in ["shot", "node"] {
-        assert_eq!(applicable(absent), false, "{absent} is not drawn");
-        let scope = scopes.iter().find(|scope| scope["kind"] == absent).unwrap();
-        assert!(scope["reason"].is_string(), "{absent} carries its reason");
-    }
+    assert_eq!(applicable("shot"), true);
+    assert_eq!(applicable("node"), false, "node is not drawn");
+    let node = scopes.iter().find(|scope| scope["kind"] == "node").unwrap();
+    assert!(node["reason"].is_string(), "node carries its reason");
     let clip = &answer["clips"][0];
     let amount = clip["fields"]
         .as_array()

@@ -133,7 +133,7 @@ fn the_catalog_lists_the_three_looks_this_slice_draws_and_what_it_refuses() {
             "center"
         ]
     );
-    assert_eq!(catalog["scope"]["scope"], json!(["output"]));
+    assert_eq!(catalog["scope"]["scope"], json!(["output", "shot"]));
     assert!(
         catalog["scope"]["refused"]
             .as_object()
@@ -444,9 +444,16 @@ fn a_bundle_that_asks_for_what_is_not_implemented_is_refused_at_import() {
         ["INVALID_VALUE"],
         "an empty curve is not a curve"
     );
+    // Scope `shot` is drawn since F062 (`scene_fx_shot_scope.rs`); scope `node` has no target yet.
+    assert!(
+        try_with(&|d| d["fx"]["tracks"][0]["clips"][0]["scope"] =
+            json!({"kind":"shot","shotId":"shot-1"}))
+        .is_empty(),
+        "a clip inside its shot is valid"
+    );
     assert_eq!(
         try_with(
-            &|d| d["fx"]["tracks"][0]["clips"][0]["scope"] = json!({"kind":"shot","shotId":"s1"})
+            &|d| d["fx"]["tracks"][0]["clips"][0]["scope"] = json!({"kind":"node","nodeId":"n1"})
         ),
         ["FX_SCOPE_NOT_YET"]
     );

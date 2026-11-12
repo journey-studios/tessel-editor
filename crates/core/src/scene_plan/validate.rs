@@ -10,7 +10,7 @@ use crate::directed_scene::{AssetAlpha, AssetFormat, CameraState, NodeAnimation,
 
 use super::model::{Capability, Domain, PlanLayer, PlanLight, PlanNode, PlanSplat, ScenePlan};
 use super::{PLAN_VERSION, PlanError};
-use crate::directed_scene::fx::FxPass;
+use crate::directed_scene::fx::{FxPass, FxScope, FxStage};
 
 /// Where each splat falls among the layers: the index of the first layer (plan order) whose node
 /// origin is in front of the camera and strictly nearer to it than the splat node's origin, else
@@ -137,6 +137,11 @@ pub(super) fn derive_requires(
     }
     if fx.iter().any(|pass| pass.seed.is_some()) {
         found.insert(Capability::FxNoise);
+    }
+    // Only a plan that has a pass of a shot asks for it: a plan with output passes alone keeps its
+    // `requires` (and its bytes) from before F062.
+    if fx.iter().any(|pass| !pass.scope.is_output()) {
+        found.insert(Capability::FxShotScope);
     }
     if lights.iter().any(|light| !light.hidden) {
         found.insert(Capability::PointLights);
@@ -448,11 +453,38 @@ impl ScenePlan {
 
     /// The effect passes are resolved data a runtime draws as listed, so they are checked against
     /// the catalog: a known effect, exactly its parameters in range, a weight in 0..1 and an
-    /// `amount` that is the intensity times the weight.
+    /// `amount` that is the intensity times the weight; and against the frame: a pass of a shot
+    /// names the shot of this frame, and the passes of the shot come before the output's (the
+    /// stages of the composition, F062), so a runtime that draws them as listed draws them in order.
     fn check_fx(&self) -> Result<(), PlanError> {
         let mut seen = std::collections::HashSet::new();
+        let mut stage = FxStage::Deck;
         for (position, pass) in self.fx.iter().enumerate() {
             let at = format!("/fx/{position}");
+            if let FxScope::Shot(shot) = &pass.scope {
+                if shot.is_empty() {
+                    return Err(PlanError::invalid(
+                        format!("{at}/scope/shotId"),
+                        "a shot scope names its shot",
+                    ));
+                }
+                if *shot != self.frame.shot_id {
+                    return Err(PlanError::invalid(
+                        format!("{at}/scope/shotId"),
+                        format!(
+                            "a pass of shot `{shot}` is only in the frames of that shot, not in a frame of shot `{}`",
+                            self.frame.shot_id
+                        ),
+                    ));
+                }
+            }
+            if pass.scope.stage() < stage {
+                return Err(PlanError::invalid(
+                    format!("{at}/scope"),
+                    "the passes of the shot are listed before the passes of the output",
+                ));
+            }
+            stage = pass.scope.stage();
             let Some(spec) = crate::directed_scene::fx::effect(&pass.effect) else {
                 return Err(PlanError::invalid(
                     format!("{at}/effect"),

@@ -30,7 +30,7 @@ use tessel_editor_core::directed_scene::fx::{FX_EASINGS, FxClip, FxValue};
 use tessel_editor_core::scene_edit::{ClipAnimation, FieldKind, FxOp, InspectorField};
 use tessel_editor_core::scene_project::{KeySeek, SceneCommand};
 
-use super::scene_fx::{ClipView, FxControl, FxView, LOCALE, clip_node_id, controls_of};
+use super::scene_fx::{ClipView, FxControl, FxView, LOCALE, clip_node_id, controls_in};
 use super::tokens::Tokens;
 use super::{Source, Workstation};
 use crate::state::{CommandError, Raw};
@@ -547,7 +547,7 @@ impl Workstation {
         let result = (|| {
             let (control, frame) = rest.split_once(':').ok_or_else(|| bad_action(field))?;
             let frame = frame_part(frame)?;
-            let controls = controls_of(&entry.clip, view.edit_frames);
+            let controls = controls_in(&view, &entry.clip);
             let target = controls
                 .iter()
                 .find(|candidate| candidate.id == control)

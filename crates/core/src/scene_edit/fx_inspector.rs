@@ -19,12 +19,14 @@
 
 use serde_json::{Value, json};
 
+use crate::directed_scene::Shot;
 use crate::directed_scene::fx::{
-    CENTER_STEP, EffectSpec, FX_SCOPE_NOT_YET, Fx, FxClip, FxTrack, FxValue, Labels, Locale,
-    ParamKind, catalog, quantize_control,
+    CENTER_STEP, EffectSpec, Fx, FxClip, FxTrack, FxValue, Labels, Locale, ParamKind, catalog,
+    default_duration, quantize_control,
 };
 use crate::state::CommandError;
 
+use super::fx_choice::{InspectorChoice, scope_choice, timing_limits};
 use super::{ClipField, FxOp};
 
 /// The words of the timing fields, which every effect clip has and the catalog does not list.
@@ -391,19 +393,23 @@ pub struct ClipInspector {
     /// Parameters first (`intensity` ahead of the others, the control people reach for), then
     /// the timing fields, so every adapter lists them in one order.
     pub fields: Vec<InspectorField>,
+    /// The settings that are one of a few options rather than a number (F062: the scope).
+    pub choices: Vec<InspectorChoice>,
 }
 
 impl ClipInspector {
     /// The inspector of `clip` on `track`, against an edit of `edit_frames` frames (the bounds of
-    /// the timing fields; the layer's own rules — overlap, envelope — still judge each op).
-    pub fn of(track: &FxTrack, clip: &FxClip, edit_frames: i64) -> Self {
+    /// the timing fields; the layer's own rules — overlap, envelope — still judge each op) whose
+    /// shots are `shots` (the options of the scope choice).
+    pub fn of(track: &FxTrack, clip: &FxClip, edit_frames: i64, shots: &[Shot]) -> Self {
         Self {
             clip: clip.id.clone(),
             track: track.id.clone(),
             track_label: track.label.clone(),
             effect: clip.effect,
             hidden: clip.hidden,
-            fields: fields_of(clip, edit_frames),
+            fields: fields_of(clip, edit_frames, shots),
+            choices: vec![scope_choice(clip, shots)],
         }
     }
 
@@ -447,6 +453,9 @@ impl ClipInspector {
             "effect_labels": self.effect.label.to_json(),
             "hidden": self.hidden,
             "fields": self.fields.iter().map(|field| field.to_json(locale)).collect::<Vec<_>>(),
+            "choices": self.choices.iter()
+                .map(|choice| choice.to_json(&self.clip, locale))
+                .collect::<Vec<_>>(),
         })
     }
 }
@@ -555,7 +564,7 @@ fn scalar(draft: Draft) -> InspectorField {
 }
 
 /// The fields of `clip`, in the order of [`ClipInspector::fields`].
-fn fields_of(clip: &FxClip, edit_frames: i64) -> Vec<InspectorField> {
+fn fields_of(clip: &FxClip, edit_frames: i64, shots: &[Shot]) -> Vec<InspectorField> {
     let mut fields = Vec::new();
     for (index, spec) in clip.effect.params.iter().enumerate() {
         let Some(value) = clip.params.get(index).copied() else {
@@ -651,7 +660,9 @@ fn fields_of(clip: &FxClip, edit_frames: i64) -> Vec<InspectorField> {
     }
     // The strength of the effect first: it is the control people reach for.
     fields.sort_by_key(|field| field.id != "intensity");
-    let typical = clip.effect.typical_duration_frames.min(edit_frames).max(1);
+    let start = clip.start_frame;
+    let typical = default_duration(clip.effect, &clip.scope, start, shots, edit_frames);
+    let (starts, longest) = timing_limits(clip, edit_frames, shots);
     let frames =
         |field: ClipField, base: Labels, min: i64, max: i64, value: i64, default: Option<i64>| {
             let mut built = scalar(Draft {
@@ -671,8 +682,8 @@ fn fields_of(clip: &FxClip, edit_frames: i64) -> Vec<InspectorField> {
     fields.push(frames(
         ClipField::StartFrame,
         START_LABEL,
-        0,
-        edit_frames - 1,
+        starts.0,
+        starts.1,
         clip.start_frame,
         None,
     ));
@@ -680,7 +691,7 @@ fn fields_of(clip: &FxClip, edit_frames: i64) -> Vec<InspectorField> {
         ClipField::DurationFrames,
         DURATION_LABEL,
         1,
-        edit_frames,
+        longest,
         clip.duration_frames,
         Some(typical),
     ));
@@ -701,15 +712,6 @@ fn fields_of(clip: &FxClip, edit_frames: i64) -> Vec<InspectorField> {
         Some(0),
     ));
     fields
-}
-
-/// The scopes an effect can be laid on and whether this build draws them: only `output` yet.
-pub fn scopes() -> Vec<(&'static str, bool, Option<&'static str>)> {
-    vec![
-        ("output", true, None),
-        ("shot", false, Some(FX_SCOPE_NOT_YET)),
-        ("node", false, Some(FX_SCOPE_NOT_YET)),
-    ]
 }
 
 /// One effect an author may add (the catalog entry as the inspector offers it).
@@ -756,20 +758,21 @@ impl Offer {
 
 /// The fields of a clip without the track around it (a window that already holds the clip): the
 /// same list [`ClipInspector::of`] returns.
-pub fn inspector_fields(clip: &FxClip, edit_frames: i64) -> Vec<InspectorField> {
-    fields_of(clip, edit_frames)
+pub fn inspector_fields(clip: &FxClip, edit_frames: i64, shots: &[Shot]) -> Vec<InspectorField> {
+    fields_of(clip, edit_frames, shots)
 }
 
 /// The inspector of a whole layer: the offers and one [`ClipInspector`] per clip. The data of
-/// `scene.fx.inspect` before the gesture and the probe are added.
-pub fn layer_inspector(fx: &Fx, edit_frames: i64) -> Vec<ClipInspector> {
+/// `scene.fx.inspect` before the gesture and the probe are added. `shots` are the edit's, for the
+/// options of each clip's scope choice.
+pub fn layer_inspector(fx: &Fx, edit_frames: i64, shots: &[Shot]) -> Vec<ClipInspector> {
     fx.tracks
         .iter()
         .flat_map(|track| {
             track
                 .clips
                 .iter()
-                .map(move |clip| ClipInspector::of(track, clip, edit_frames))
+                .map(move |clip| ClipInspector::of(track, clip, edit_frames, shots))
         })
         .collect()
 }
@@ -779,7 +782,7 @@ mod tests {
     use core::prelude::v1::test;
 
     use super::*;
-    use crate::directed_scene::fx::{FADE, VIGNETTE};
+    use crate::directed_scene::fx::{FADE, FxScope, VIGNETTE};
 
     fn clip_of(spec: &'static EffectSpec) -> (FxTrack, FxClip) {
         let clip = FxClip {
@@ -797,6 +800,7 @@ mod tests {
             fade_out_frames: 0,
             seed: None,
             hidden: false,
+            scope: FxScope::Output,
         };
         let track = FxTrack {
             id: "t1".into(),
@@ -841,7 +845,7 @@ mod tests {
     #[test]
     fn a_vignette_is_listed_with_intensity_first_and_the_timing_last() {
         let (track, clip) = clip_of(&VIGNETTE);
-        let inspector = ClipInspector::of(&track, &clip, 96);
+        let inspector = ClipInspector::of(&track, &clip, 96, &[]);
         let ids: Vec<&str> = inspector
             .fields
             .iter()
@@ -871,7 +875,7 @@ mod tests {
     #[test]
     fn a_fade_is_listed_by_the_same_rules_with_no_special_case() {
         let (track, clip) = clip_of(&FADE);
-        let inspector = ClipInspector::of(&track, &clip, 96);
+        let inspector = ClipInspector::of(&track, &clip, 96, &[]);
         let ids: Vec<&str> = inspector
             .fields
             .iter()
@@ -903,7 +907,7 @@ mod tests {
     fn a_field_away_from_its_default_resets_to_it_and_one_at_it_has_nothing_to_reset() {
         let (track, mut clip) = clip_of(&VIGNETTE);
         clip.params[2] = FxValue::Number(0.2);
-        let inspector = ClipInspector::of(&track, &clip, 96);
+        let inspector = ClipInspector::of(&track, &clip, 96, &[]);
         let intensity = inspector.field("intensity").unwrap();
         assert!(!intensity.at_default());
         assert_eq!(
@@ -923,8 +927,10 @@ mod tests {
             inspector.field("start_frame").unwrap().reset_op(&clip),
             None
         );
-        // The duration of 20 is not the typical 24 of the vignette's cut (96 is its typical).
-        assert!(!inspector.field("duration_frames").unwrap().at_default());
+        // The typical 96 is cut where the edit ends, 86 from frame 10; the duration of 20 is not it.
+        let duration = inspector.field("duration_frames").unwrap();
+        assert_eq!(duration.default, Some(86.0));
+        assert!(!duration.at_default());
     }
 
     #[test]
@@ -938,7 +944,7 @@ mod tests {
             b: 0.25,
         };
         clip.params[5] = FxValue::Point { x: 0.1, y: 0.9 };
-        let inspector = ClipInspector::of(&track, &clip, 96);
+        let inspector = ClipInspector::of(&track, &clip, 96, &[]);
         let ops = inspector.reset_ops(&clip);
         assert_eq!(
             ops,
@@ -962,7 +968,7 @@ mod tests {
             g: 0.5,
             b: 0.0,
         };
-        let inspector = ClipInspector::of(&track, &clip, 96);
+        let inspector = ClipInspector::of(&track, &clip, 96, &[]);
         assert_eq!(
             inspector.reset_ops(&clip),
             [FxOp::SetParam {
@@ -978,7 +984,7 @@ mod tests {
             b: 0.0,
         };
         clip.params[5] = FxValue::Point { x: 0.5, y: 0.5 };
-        let inspector = ClipInspector::of(&track, &clip, 96);
+        let inspector = ClipInspector::of(&track, &clip, 96, &[]);
         assert!(inspector.reset_ops(&clip).is_empty());
     }
 
@@ -986,7 +992,7 @@ mod tests {
     fn a_component_op_keeps_its_siblings_and_a_frame_op_refuses_a_fraction() {
         let (track, mut clip) = clip_of(&VIGNETTE);
         clip.params[5] = FxValue::Point { x: 0.2, y: 0.9 };
-        let inspector = ClipInspector::of(&track, &clip, 96);
+        let inspector = ClipInspector::of(&track, &clip, 96, &[]);
         let op = inspector.field("center_x").unwrap().op(&clip, 0.4).unwrap();
         assert_eq!(
             op,
@@ -1013,7 +1019,7 @@ mod tests {
     #[test]
     fn a_range_of_one_value_is_not_applicable_with_a_reason() {
         let (track, clip) = clip_of(&VIGNETTE);
-        let inspector = ClipInspector::of(&track, &clip, 1);
+        let inspector = ClipInspector::of(&track, &clip, 1, &[]);
         let start = inspector.field("start_frame").unwrap();
         assert!(!start.applicable);
         assert_eq!(start.reason, Some(REASON_SINGLE_VALUE));
@@ -1021,18 +1027,11 @@ mod tests {
     }
 
     #[test]
-    fn offers_cover_the_catalog_and_the_scopes_say_what_is_not_drawn() {
+    fn offers_cover_the_catalog() {
         let listed: Vec<&str> = offers().iter().map(|offer| offer.effect.id).collect();
         let catalog_ids: Vec<&str> = catalog().iter().map(|effect| effect.id).collect();
         assert_eq!(listed, catalog_ids);
         assert!(offers().iter().all(|offer| offer.applicable));
-        let scopes = scopes();
-        assert_eq!(scopes[0], ("output", true, None));
-        assert!(
-            scopes[1..]
-                .iter()
-                .all(|(_, drawn, reason)| !drawn && reason.is_some())
-        );
     }
 
     #[test]
