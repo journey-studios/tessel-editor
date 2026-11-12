@@ -84,16 +84,25 @@ WHITE = (1.0, 1.0, 1.0)
 
 # ---- the independent expectation ------------------------------------------------------------------------
 
+def paired(probes, points):
+    """`probes` and `points` side by side, one probe per point. A render that answers fewer (or more) probes than
+    there are points must not be judged on the ones that line up: it is a ValueError with the counts. `zip(strict=True)`
+    would say the same, but `strict=` needs Python 3.10 and this proof's spec also runs on the system Python 3.9
+    (the precedent of BL145.1)."""
+    if len(probes) != len(points):
+        raise ValueError(f"{len(probes)} probes for {len(points)} points")
+    return [(probes[i], points[i]) for i in range(len(points))]
+
+
 def vignette_of(probes, points, width=WIDTH, height=HEIGHT, **params):
-    # strict: a render that answers fewer probes than there are points must not be judged on the ones it has
-    return [P.vignette(p[:3], x, y, width, height, 1.0, **params) for p, (x, y) in zip(probes, points, strict=True)]
+    return [P.vignette(p[:3], x, y, width, height, 1.0, **params) for p, (x, y) in paired(probes, points)]
 
 
 def staged(probes, points, flipped=False):
     """The shot's vignette, then the output's white fade at 0.5: the composition the stages define (or the
     flipped order, which the stages must NOT draw)."""
     out = []
-    for p, (x, y) in zip(probes, points, strict=True):
+    for p, (x, y) in paired(probes, points):
         if flipped:
             out.append(P.vignette(P.fade(p[:3], WHITE, 0.5), x, y, WIDTH, HEIGHT, 1.0, **STRONG))
         else:

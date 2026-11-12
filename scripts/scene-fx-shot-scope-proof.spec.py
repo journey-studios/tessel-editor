@@ -208,7 +208,10 @@ class Rendered(unittest.TestCase):
         self.assertEqual(len(proof.P.checks), 1)
 
     def test_the_expectations_refuse_a_probe_list_that_does_not_match_the_points(self):
+        self.assertEqual(proof.paired(self.PROBES, self.POINTS), [(self.PROBES[i], self.POINTS[i]) for i in range(3)])
         for probes in (self.PROBES[:-1], self.PROBES + [[1, 2, 3, 255]]):
+            with self.assertRaisesRegex(ValueError, f"{len(probes)} probes for {len(self.POINTS)} points"):
+                proof.paired(probes, self.POINTS)
             with self.assertRaises(ValueError):
                 proof.vignette_of(probes, self.POINTS, **proof.STRONG)
             with self.assertRaises(ValueError):
