@@ -656,10 +656,9 @@ export class Compositor {
    *
    * Best effort and never an error. It makes only what fits the stage budget (an idle stage of what is on screen is
    * never freed for it), skips what already has a stage, and waits for nothing: the leases and the stage are kept until
-   * the sort ends and a frame that needs the lineage meanwhile waits for it (`prepareLayer`). Returns how many stages
-   * were started.
+   * the sort ends and a frame that needs the lineage meanwhile waits for it (`prepareLayer`). Returns how many stages were started.
    */
-  async warmScenes({ plan, assets }) {
+  async warmScenes({ plan, assets, onWarmed }) {
     if (!this.retain || this.gl.isContextLost()) return 0;
     const width = plan.canvas?.width ?? 16;
     const height = plan.canvas?.height ?? 9;
@@ -703,6 +702,7 @@ export class Compositor {
           scene.objects.flatMap((object, index) => (object.type === 'splat' ? [`${lineage}#${index}`] : [])),
         );
         this.counters.add('stage_warmed');
+        onWarmed?.({ layer, scene, lineage, stage, sorted, width, height }); // what the opt-in warm draw follows the sort with (warm-draw.js)
         started += 1;
       } catch (error) {
         rig?.dispose();

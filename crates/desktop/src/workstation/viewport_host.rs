@@ -17,18 +17,19 @@ mod directed;
 mod overlay_host;
 use overlay_host::OverlayHost;
 
-use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use async_channel::{Receiver, Sender};
 use serde_json::{Value, json};
 use tessel_editor_core::CommandError;
-use tessel_editor_core::backend::{BackendError, FrameDetail, FrameResult, Output};
-use tessel_editor_core::bridge::{BridgeBackend, HelloOptions, PreviewSort, Transport};
+use tessel_editor_core::backend::{
+    BackendError, FEATURE_SCENE_WARM_DRAW, FrameDetail, FrameResult, Output,
+};
+use tessel_editor_core::bridge::{BridgeBackend, HelloOptions, PageTiming, PreviewSort, Transport};
 use tessel_editor_core::headless::{backend_error, frame_geometry, frame_report, plan_summary};
 use tessel_editor_core::ops::RenderFrame;
 use tessel_editor_core::perf::{FrameContext, Meter};
@@ -37,12 +38,13 @@ use tessel_editor_core::plan::{PlanRequest, RenderPlan};
 use tessel_editor_core::preview::ProxyCoverage;
 use tessel_editor_core::session::{Preview, SessionEvent, Status, ViewportSession};
 use tessel_editor_core::state::EditorState;
-use tessel_editor_core::trace::TraceHandle;
+use tessel_editor_core::trace::{TraceHandle, ms, ms_since, round3};
 use tessel_editor_render::SetupError;
-use tessel_editor_render::host::{AssetAccess, Served, serve, write_png};
-use wry::http::{Request, Response};
+use tessel_editor_render::host::{AssetAccess, write_png};
 
+use super::env_mode;
 use super::perf_meter::PerfClock;
+use super::viewport_protocol::{AssetIo, AssetIoMode, ProtocolHandle, load_fields, trace_label};
 
 /// Scheme and host the page is served from. A custom scheme keeps the page same-origin with
 /// its assets and unreachable from any web page.
@@ -88,6 +90,10 @@ pub const INSPECT_ENV: &str = "TESSEL_VIEWPORT_INSPECT";
 /// accept, script evaluation, asset serving) and to ask the runtime for `frame.presented`.
 /// Reported under `trace` in `render.status` and in the `monitor.viewport` node. Off by default.
 pub const TRACE_ENV: &str = "TESSEL_VIEWPORT_TRACE";
+
+/// `1` (with the trace on) makes the page wait for the GPU after each draw and report the wait: a DIAGNOSTIC arm of the BL157.2
+/// experiments, never a default (it moves a wait the browser would have made at presentation into the frame).
+pub const GPU_FINISH_ENV: &str = "TESSEL_VIEWPORT_PROBE_GPU_FINISH";
 /// Set to `0` to run the runtime's per-frame create/dispose path instead of GPU retention, to
 /// compare the two in the same build or to roll back without a new release.
 pub const RETAIN_ENV: &str = "TESSEL_VIEWPORT_RETAIN";
@@ -96,6 +102,15 @@ pub const RESULT_CACHE_ENV: &str = "TESSEL_VIEWPORT_RESULT_CACHE";
 /// `TESSEL_VIEWPORT_WARM=0` stops the monitor from sending `frame.warm` (BL157), whatever the runtime announces: the
 /// same build with and without the warm is how its effect is measured. Anything else leaves it on.
 pub const WARM_ENV: &str = "TESSEL_VIEWPORT_WARM";
+/// `TESSEL_VIEWPORT_PREUPLOAD=1` (BL157.3, a DIAGNOSTIC experiment, off by default): the runtime uploads the textures of the still
+/// images of the cuts a moment ahead before the frame that draws them, between frames and inside its texture budget. The same build
+/// with and without it is how the effect is measured; it is not a product setting and not reachable from the interface. The report
+/// (`render.status` -> `session.preupload`) says whether it is on, whether the runtime announced it and how many cuts were sent.
+pub const PREUPLOAD_ENV: &str = "TESSEL_VIEWPORT_PREUPLOAD";
+/// `TESSEL_VIEWPORT_WARM_DRAW=1` (BL157.3, a DIAGNOSTIC experiment SEPARATE from `PREUPLOAD_ENV`, off by default): after the warm sort of
+/// a splat scene the runtime draws it once into a scratch target, so the GPU's first-use work happens before the cut. Not a product
+/// setting and not reachable from the interface; `render.status` -> `session.warm_draw` says whether it is on and announced.
+pub const WARM_DRAW_ENV: &str = "TESSEL_VIEWPORT_WARM_DRAW";
 /// `0`, `2` or `4` MSAA samples for scene targets. Unset keeps the runtime's 4 (OPT07 measured
 /// fewer samples as a real gain on large splat scenes but a visible edge-quality trade).
 pub const SCENE_SAMPLES_ENV: &str = "TESSEL_VIEWPORT_SCENE_SAMPLES";
@@ -121,6 +136,8 @@ pub const PREVIEW_SORT_ENV: &str = "TESSEL_VIEWPORT_PREVIEW_SORT";
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct HostOptions {
     pub trace: bool,
+    /// See [`GPU_FINISH_ENV`]; only has an effect with `trace`.
+    pub gpu_finish: bool,
     /// `Some(false)` disables the runtime's GPU retention; `None` keeps its default.
     pub retain: Option<bool>,
     pub result_cache: Option<bool>,
@@ -131,6 +148,11 @@ pub struct HostOptions {
     pub retained_bytes: Option<u64>,
     /// `Some(false)` never sends `frame.warm`; `None` keeps the default (on, for a runtime that announces it).
     pub warm: Option<bool>,
+    /// See [`PREUPLOAD_ENV`].
+    pub preupload: bool,
+    pub warm_draw: bool,
+    /// Who reads the page's files (BL157.1).
+    pub asset_io: AssetIoMode,
 }
 
 /// A MSAA sample count the runtime accepts, from an environment value.
@@ -172,6 +194,7 @@ impl HostOptions {
     pub fn from_env() -> Self {
         Self {
             trace: std::env::var(TRACE_ENV).is_ok_and(|value| value == "1"),
+            gpu_finish: std::env::var(GPU_FINISH_ENV).is_ok_and(|value| value == "1"),
             retain: std::env::var(RETAIN_ENV)
                 .is_ok_and(|value| value == "0")
                 .then_some(false),
@@ -181,6 +204,9 @@ impl HostOptions {
             warm: std::env::var(WARM_ENV)
                 .is_ok_and(|value| value == "0")
                 .then_some(false),
+            preupload: std::env::var(PREUPLOAD_ENV).is_ok_and(|value| value == "1"),
+            warm_draw: std::env::var(WARM_DRAW_ENV).is_ok_and(|value| value == "1"),
+            asset_io: env_mode::from_env(),
             scene_samples: samples_from_env(SCENE_SAMPLES_ENV),
             retained_bytes: retained_bytes_from_env(std::env::var(RETAIN_MIB_ENV).ok().as_deref()),
             preview_scene_samples: samples_from_env(PREVIEW_SCENE_SAMPLES_ENV),
@@ -217,6 +243,7 @@ pub struct WebTransport {
     outbox: Rc<RefCell<VecDeque<String>>>,
     inbox: Rc<RefCell<VecDeque<Value>>>,
     access: Rc<RefCell<AssetAccess>>,
+    trace: TraceHandle,
 }
 
 /// What the monitor's header adds when the picture is not the final quality: a proxy copy of a
@@ -253,6 +280,13 @@ impl Transport for WebTransport {
         if message["type"] == "asset.load" {
             // The page may only fetch what a load message named.
             self.access.borrow_mut().register(&message["asset"]);
+            self.trace.event("asset_load_sent", || load_fields(message));
+        }
+        if message["type"] == "frame.warm" {
+            self.trace.event(
+                "warm_sent",
+                || json!({ "layers": message["plan"]["layers"].as_array().map_or(0, Vec::len) }),
+            );
         }
         if message["type"] == "asset.proxy" && !message["proxy"].is_null() {
             // A proxy is read like a frame sequence, and only after the host attached it.
@@ -297,6 +331,10 @@ pub struct ViewportHost {
     outbox: Rc<RefCell<VecDeque<String>>>,
     inbox: Rc<RefCell<VecDeque<Value>>>,
     access: Rc<RefCell<AssetAccess>>,
+    /// Who reads the page's files, and the pool that does when it is not the receiving thread (BL157.1).
+    asset_io: AssetIo,
+    /// Whether the `hello` asked for the warm draw (BL157.3): the runtime does the work, this only makes the arm visible.
+    warm_draw: bool,
     phase: Phase,
     /// The last plan asked for, so a command that changes nothing the picture shows (selection,
     /// zoom, dock edits) does not render again.
@@ -348,25 +386,35 @@ impl ViewportHost {
         let outbox = Rc::new(RefCell::new(VecDeque::new()));
         let inbox = Rc::new(RefCell::new(VecDeque::new()));
         let access = Rc::new(RefCell::new(AssetAccess::default()));
+        // One recorder for the session, the transport and the protocol handler: their events share a log and a clock.
+        let trace = TraceHandle::default();
         let transport = WebTransport {
             outbox: outbox.clone(),
             inbox: inbox.clone(),
             access: access.clone(),
+            trace: trace.clone(),
         };
         let backend = BridgeBackend::new("three-webview", transport, HANDSHAKE_TIMEOUT)
             .with_options(HelloOptions {
                 retain: options.retain,
                 presented: options.trace,
+                timing: options.trace.then_some(PageTiming {
+                    gpu_finish: options.gpu_finish,
+                }),
                 result_cache: options.result_cache,
                 scene_samples: options.scene_samples,
                 preview_scene_samples: options.preview_scene_samples,
                 preview_sort: options.preview_sort,
+                preupload_textures: options.preupload,
+                warm_draw: options.warm_draw,
             });
-        let mut session =
-            ViewportSession::new(backend).with_demo_dir(tessel_editor_render::demo_dir());
+        let mut session = ViewportSession::new(backend)
+            .with_trace(trace)
+            .with_demo_dir(tessel_editor_render::demo_dir());
         session.set_retained_assets(RETAINED_ASSETS);
         session.set_retained_bytes(options.retained_bytes.unwrap_or(RETAINED_ASSET_BYTES));
         session.set_warm(options.warm != Some(false));
+        session.set_preupload(options.preupload);
         session.trace().set_enabled(options.trace);
         let (dist, phase) = match page {
             Ok(dist) => (Some(dist), Phase::Booting(Instant::now())),
@@ -381,6 +429,8 @@ impl ViewportHost {
             outbox,
             inbox,
             access,
+            asset_io: AssetIo::new(options.asset_io),
+            warm_draw: options.warm_draw,
             phase,
             last_key: None,
             dirty: true,
@@ -577,11 +627,21 @@ impl ViewportHost {
 
     /// What the protocol handler needs, detached from the host so its closure is `'static`.
     pub fn protocol_handle(&self) -> ProtocolHandle {
-        ProtocolHandle {
-            dist: self.dist.clone(),
-            access: self.access.clone(),
-            trace: self.trace(),
-        }
+        ProtocolHandle::new(
+            self.dist.clone(),
+            self.access.clone(),
+            self.trace(),
+            self.asset_io.reader.clone(),
+            self.asset_io.requests.clone(),
+        )
+    }
+
+    /// Lets the page read `file`, as an `asset.load` of it would (tests that drive the protocol handle of a host).
+    #[cfg(test)]
+    pub(super) fn allow_file(&self, file: &std::path::Path) {
+        self.access
+            .borrow_mut()
+            .register(&json!({"source": {"type": "file", "path": file}}));
     }
 
     /// Scripts to run in the page, in order.
@@ -608,6 +668,7 @@ impl ViewportHost {
         self.overlay_forget();
         self.session.reset_project();
         self.access.borrow_mut().clear();
+        self.asset_io.reader.invalidate();
         self.inbox.borrow_mut().clear();
         self.outbox.borrow_mut().clear();
         self.png_paths.clear();
@@ -629,6 +690,7 @@ impl ViewportHost {
         self.fail_waiters(&BackendError::new("cancelled", "The project was replaced"));
         self.session.reset_project();
         self.access.borrow_mut().clear();
+        self.asset_io.reader.invalidate();
         self.last_key = None;
         self.last_frame = None;
         // Frame IDs may now mean something else: what the monitor showed is not known anymore.
@@ -711,6 +773,7 @@ impl ViewportHost {
         self.proxy_coverage = state.preview_policy.coverage(state);
         let planned = trace.start();
         let plan = state.plan(&PlanRequest::of(state));
+        let plan_ms = ms_since(planned);
         if let Some(started) = planned {
             trace.note_plan(started.elapsed());
         }
@@ -741,6 +804,10 @@ impl ViewportHost {
         );
         if !self.dirty && busy && self.last_key.as_deref() == Some(key.as_str()) {
             trace.span("sync_unchanged", sync_started);
+            trace.event("sync", || {
+                json!({ "outcome": "unchanged", "frame": plan.frame, "plan_ms": plan_ms,
+                    "total_ms": ms_since(sync_started) })
+            });
             return;
         }
         self.dirty = false;
@@ -751,8 +818,13 @@ impl ViewportHost {
             height: size.1,
             png: None,
         };
+        let frame = plan.frame;
         self.request_preview(state, plan, output);
         trace.span("sync", sync_started);
+        trace.event("sync", || {
+            json!({ "outcome": "requested", "frame": frame, "plan_ms": plan_ms,
+                "total_ms": ms_since(sync_started) })
+        });
     }
 
     /// While the playhead moves: starts loading what clips about to start will need, so a cut or
@@ -764,26 +836,43 @@ impl ViewportHost {
         if self.directed_scene().is_some() || !self.is_ready() {
             return 0;
         }
+        let trace = self.session.trace().clone();
         let frames = state
             .timeline
             .rate
             .nominal_fps()
             .saturating_mul(PREFETCH_SECONDS);
+        let entered = trace.start();
+        let planned = trace.start();
         let plans = state.plans_ahead(frames);
+        let plans_ahead_ms = ms_since(planned);
+        trace.span("plans_ahead", planned);
         let mut assets = Vec::new();
         for asset in plans.iter().flat_map(|plan| plan.requires.iter()) {
             if !assets.contains(asset) {
                 assets.push(*asset);
             }
         }
+        let loading = trace.start();
         let started = if assets.is_empty() {
             0
         } else {
             self.session.prefetch(state, &assets)
         };
+        let prefetch_ms = ms_since(loading);
         // What was loaded on an earlier tick gets its splat scenes' first sort now, not at the cut (BL157). Also
         // with nothing ahead: the cuts that left the window are forgotten, so a return to one warms it again.
-        started + self.session.warm(&plans)
+        let warming = trace.start();
+        let warmed = self.session.warm(&plans);
+        trace.event("prefetch", || {
+            json!({
+                "plans": plans.len(), "assets": assets.len(), "loads_started": started, "warms_started": warmed,
+                "plans_ahead_ms": plans_ahead_ms, "prefetch_ms": prefetch_ms,
+                "warm_ms": ms_since(warming),
+                "total_ms": ms_since(entered),
+            })
+        });
+        started + warmed
     }
 
     /// The monitor's own frame. A frame already rendering is left to finish when only the
@@ -953,14 +1042,24 @@ impl ViewportHost {
     }
 
     /// One message from the page.
+    #[cfg(test)]
     pub fn on_ipc(&mut self, raw: &str, state: &EditorState) {
+        self.on_ipc_waited(raw, state, None);
+    }
+
+    /// One message from the page that waited `waited` between the WebView handing it over and the window's task taking
+    /// it (BL157.2; `None` when nobody measured, trace off).
+    pub fn on_ipc_waited(&mut self, raw: &str, state: &EditorState, waited: Option<Duration>) {
         let trace = self.session.trace().clone();
         let started = trace.start();
-        self.handle_ipc(raw, state);
+        if let Some(waited) = waited {
+            trace.record("ipc_wait", waited);
+        }
+        self.handle_ipc(raw, state, waited);
         trace.span("ipc", started);
     }
 
-    fn handle_ipc(&mut self, raw: &str, state: &EditorState) {
+    fn handle_ipc(&mut self, raw: &str, state: &EditorState, waited: Option<Duration>) {
         let Ok(mut message) = serde_json::from_str::<Value>(raw) else {
             // A page that speaks something else is not our runtime.
             self.set_unavailable(BackendError::new(
@@ -975,6 +1074,7 @@ impl ViewportHost {
         if matches!(self.phase, Phase::Booting(_)) && message["type"] != "page.ready" {
             return;
         }
+        self.trace_incoming(&message, waited);
         match message["type"].as_str() {
             Some("page.ready") => {
                 if matches!(self.phase, Phase::Booting(_)) {
@@ -993,6 +1093,51 @@ impl ViewportHost {
         }
         self.inbox.borrow_mut().push_back(message);
         self.drain(state);
+    }
+
+    /// Records what the page says about its own work, with the host's arrival stamp. The page's durations are on its
+    /// own clock and stay durations: nothing here subtracts a page timestamp from a host one.
+    fn trace_incoming(&self, message: &Value, waited: Option<Duration>) {
+        let trace = self.session.trace();
+        if !trace.enabled() {
+            return;
+        }
+        match message["type"].as_str() {
+            Some("asset.state") => trace.event("asset_state", || {
+                json!({
+                    "asset": trace_label('k', message["id"].as_str().unwrap_or_default()),
+                    "state": message["state"], "request": message["request"],
+                    "timings": message["timings"],
+                })
+            }),
+            Some("frame.done") => {
+                // BL157.2: the page's own account of this frame (durations on its clock) next to how long the message
+                // waited for the window's task. Only when the page was asked for it (`telemetry.timing`).
+                if message["page"].is_object() {
+                    trace.event("frame_page", || {
+                        json!({
+                            "id": message["id"],
+                            "page": message["page"],
+                            "runtime_total_ms": message["timings"]["total_ms"],
+                            "gpu_finish_ms": message["timings"]["gpu_finish_ms"],
+                            "ipc_wait_ms": waited.map(|waited| round3(ms(waited))),
+                        })
+                    });
+                }
+                if let Some(spans) = message["runtime_spans"].as_array() {
+                    for span in spans {
+                        trace.event("runtime_span", || {
+                            let mut span = span.clone();
+                            if let Some(id) = span["asset"].as_str() {
+                                span["asset"] = json!(trace_label('k', id));
+                            }
+                            span
+                        });
+                    }
+                }
+            }
+            _ => {}
+        }
     }
 
     /// The page wrote the PNG as base64; this side owns the filesystem.
@@ -1261,6 +1406,10 @@ impl ViewportHost {
             .map(BackendError::to_json);
         let mut summary = self.session.summary();
         summary["error"] = error.unwrap_or(Value::Null);
+        summary["warm_draw"] = json!({
+            "enabled": self.warm_draw,
+            "supported": self.session.known_capabilities().is_some_and(|caps| caps.supports(FEATURE_SCENE_WARM_DRAW)),
+        });
         if self.session.trace().enabled() {
             summary["trace"] = self.session.trace().snapshot(frames);
         }
@@ -1276,60 +1425,9 @@ impl ViewportHost {
             "capabilities": capabilities,
             "session": summary,
             "ui": json!({ "repaints": self.ui_repaints, "skipped": self.ui_skipped }),
+            "asset_io": self.asset_io.report(),
             "proxy_coverage": self.proxy_coverage.to_json(),
             "last_frame": self.last_frame.as_ref().map(FrameResult::to_json),
         })
     }
-}
-
-/// Serves `tessel://localhost/...` for the WebView.
-pub struct ProtocolHandle {
-    dist: Option<PathBuf>,
-    access: Rc<RefCell<AssetAccess>>,
-    trace: TraceHandle,
-}
-
-impl ProtocolHandle {
-    pub fn respond(&self, request: &Request<Vec<u8>>) -> Response<Cow<'static, [u8]>> {
-        let started = self.trace.start();
-        let response = build_response(self.dist.as_deref(), &self.access.borrow(), request);
-        self.trace.span("serve", started);
-        response
-    }
-}
-
-fn build_response(
-    dist: Option<&Path>,
-    access: &AssetAccess,
-    request: &Request<Vec<u8>>,
-) -> Response<Cow<'static, [u8]>> {
-    let served = match dist {
-        Some(dist) => serve(
-            dist,
-            access,
-            request.uri().path(),
-            request.uri().query().unwrap_or_default(),
-            request
-                .headers()
-                .get("range")
-                .and_then(|value| value.to_str().ok()),
-        ),
-        None => Served {
-            status: 404,
-            content_type: "text/plain; charset=utf-8",
-            body: b"the runtime bundle is not built".to_vec(),
-            content_range: None,
-        },
-    };
-    let mut response = Response::builder()
-        .status(served.status)
-        .header("Content-Type", served.content_type)
-        .header("Accept-Ranges", "bytes")
-        .header("Cache-Control", "no-store");
-    if let Some(range) = &served.content_range {
-        response = response.header("Content-Range", range);
-    }
-    response
-        .body(Cow::Owned(served.body))
-        .unwrap_or_else(|_| Response::new(Cow::Borrowed(&[][..])))
 }

@@ -210,6 +210,17 @@ componente; nunca atravessa zero nem espelha; splat só uniforme; `localScale` a
 Continuam fora: snapping, seleção múltipla, grupos, luzes, câmera espacial, edição de chaves, translação local, a flaky
 de vídeo B2 e o custo de desenho da escala (uma medição ruidosa em BL015.18; sem página nem WKWebView).
 
+## Atualização G2.1 e próxima entrega — 2026-11-11
+
+- **G1.2 (escala de um nó)** integrada pela [PR #43](https://github.com/journey-studios/tessel-editor/pull/43), merge `cbe9e1b`.
+- **G2.1 (luz pontual com posição e alcance)** integrada pela [PR #45](https://github.com/journey-studios/tessel-editor/pull/45),
+  merge `9fc491b` (contrato F060, `scene-light.md`). Spot, direcional, ambiente, sombras e iluminação de splats seguem fora
+  (BL023.x). Ponteiro físico, desempenho e aceite humano continuam pendentes e não foram declarados.
+- **Próxima entrega: G4.1, handles 2D da vinheta** (centro, raio e suavidade no monitor), brief em
+  [g4-vignette-handles-plan.md](g4-vignette-handles-plan.md). Escolhida por ser isolada, reusar o gesto de efeito (BL082.6) e o
+  overlay existente e provar um alvo que não é nó 3D. Ficam depois, sem ordem fixa: G2.2 (spot/direcional), G3 (câmera
+  espacial) e G5 (snapping, múltiplos, grupos).
+
 ## Atualização — escala integrada (2026-11-11)
 
 Escala de um nó integrada pela [PR #43](https://github.com/journey-studios/tessel-editor/pull/43), merge `cbe9e1b393861febf073633fbbaa0da9857780b6`, por autorização explícita do usuário. Revisão sem achado de código acionável, threads resolvidas. Os gates completos das últimas correções continuam pendentes por disco; não confundir merge com validação integral. Benchmark de escala e prova física continuam pendentes. Próximo domínio planejado: luz pontual com gizmos de posição e alcance.

@@ -451,6 +451,9 @@ outros); corrigido em `reset_ops` e coberto por teste de unidade e de GPUI.
   **Lacuna:** o gizmo de cena (F055) ainda usa o número do playhead como quadro do bundle; só o monitor e a
   inserção de efeito convertem o tempo (registrado em BL082.6).
 - Ponteiro físico real continua não provado (BL043); a prova da janela é semântica e o GPUI injeta entrada.
+- Handles 2D da vinheta no monitor (G4.1, [F061](fx-handles.md), BL082.35): centro livre, `radius` e `softness` arrastáveis
+  sobre as elipses que o `vignette_shade` desenha, pelo gesto de efeito já existente (documento ≡ `scene.fx.edit`). Só a
+  vinheta tem handles; gravar chaves pelo handle é BL082.37.
 - Não há dithering (o runtime escreve 8 bits como a cena); gradientes suaves podem mostrar bandas de 1/255.
 - A janela pinta a seção só com uma cena anexada; sem cena, a edição é por `scene.fx.edit` (headless).
 

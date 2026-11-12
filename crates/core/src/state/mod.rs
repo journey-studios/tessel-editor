@@ -567,6 +567,12 @@ impl EditorState {
         let Some(label) = command.history_label() else {
             return self.apply(command);
         };
+        // F061: the release of an effect handle's drag is an effect edit, not a scene edit.
+        let label = if self.is_fx_handle_release(&command) {
+            "Edit effects"
+        } else {
+            label
+        };
         let before = self.snapshot();
         let outcome = self.apply(command)?;
         if outcome["changed"] != false {
@@ -591,7 +597,16 @@ impl EditorState {
         ) && self.scene_interaction.live_drag().is_none()
     }
 
+    /// The funnel of every command: whatever it did to the scenes, an effect target the project no
+    /// longer holds is dropped before anything reads it (also after an error, which may have moved
+    /// the project halfway).
     fn apply(&mut self, command: Command) -> Result<Value, CommandError> {
+        let outcome = self.apply_command(command);
+        self.prune_fx_target();
+        outcome
+    }
+
+    fn apply_command(&mut self, command: Command) -> Result<Value, CommandError> {
         match command {
             Command::SetFolderExpanded { folder, expanded } => {
                 self.library.set_expanded(&folder, expanded)

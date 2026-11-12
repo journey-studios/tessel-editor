@@ -8,8 +8,9 @@ use serde_json::{Map, Value, json};
 
 use super::{
     Agg, BUCKET, BUCKETS, Context, Counters, Event, MAX_EVENTS, METRICS, Metric, Ring, SCHEMA,
-    SCHEMA_VERSION, Segment, WINDOW, bucket_of, build_info, ms, round3,
+    SCHEMA_VERSION, Segment, WINDOW, bucket_of, build_info,
 };
+use crate::trace::{ms, round3};
 
 /// What [`Snapshot::capture`] copies from the recorder.
 pub(super) struct Capture<'a> {

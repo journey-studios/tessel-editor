@@ -1,9 +1,11 @@
 """Pure-logic tests of the scene warm A/B harness; no editor, GPU or runtime page is started."""
 import fcntl
 import importlib.util
+import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 spec = importlib.util.spec_from_file_location("scene_warm_proof", Path(__file__).with_name("scene-warm-proof.py"))
 proof = importlib.util.module_from_spec(spec)
@@ -22,8 +24,8 @@ class FixtureTests(unittest.TestCase):
         self.assertNotEqual(first, proof.splat_bytes(50, 8), "another cut has another cloud, or the pixel control is vacuous")
 
     def test_the_arms_alternate_and_stay_balanced(self):
-        self.assertEqual(proof.arm_order(1), ["warm", "cold"])
-        order = proof.arm_order(4)
+        self.assertEqual(proof.arm_order(("warm", "cold"), 1), ["warm", "cold"])
+        order = proof.arm_order(("warm", "cold"), 4)
         self.assertEqual(order, ["warm", "cold", "cold", "warm", "warm", "cold", "cold", "warm"])
         self.assertEqual(order.count("warm"), order.count("cold"))
 
@@ -145,6 +147,48 @@ class PixelTests(unittest.TestCase):
         self.assertFalse(self.verdicts(sessions, [1])["after the pause the monitor shows the explicit render's picture"])
 
 
+class SpanTests(unittest.TestCase):
+    """What the page says it did reaches a proof through the host's trace; these drive the collection with a lab that answers from a script."""
+
+    class Lab:
+        def __init__(self, *answers):
+            self.answers, self.asked = list(answers), []
+
+        def op(self, request, timeout=60):
+            self.asked.append(request)
+            return self.answers.pop(0)
+
+    @staticmethod
+    def trace(*events, next=None):
+        return {"ok": True, "data": {"events": list(events), "next": next if next is not None else len(events)}}
+
+    @staticmethod
+    def span(**fields):
+        return {"kind": "runtime_span", "seq": 1, "t_ms": 1.0, "fields": fields}
+
+    def test_only_the_pages_spans_are_kept_and_the_cursor_moves_past_everything_read(self):
+        lab = self.Lab(self.trace({"kind": "frame_page", "fields": {}}, self.span(k="warm_draw", outcome="drawn", ms=4.0), next=7))
+        spans = []
+        self.assertEqual(proof.drain_spans(lab, 3, spans), 7)
+        self.assertEqual(spans, [{"k": "warm_draw", "outcome": "drawn", "ms": 4.0}])
+        self.assertEqual(lab.asked, [{"op": "render.trace", "since": 3, "limit": 16384}], "polled with the cursor, never from the start again")
+
+    def test_a_poll_with_nothing_new_or_one_the_host_refused_keeps_the_cursor_and_loses_nothing(self):
+        spans = [{"k": "warm_draw", "outcome": "drawn", "ms": 1.0}]
+        self.assertEqual(proof.drain_spans(self.Lab(self.trace(next=9)), 5, spans), 5)
+        self.assertEqual(proof.drain_spans(self.Lab({"ok": False, "error": {"code": "busy"}}), 5, spans), 5)
+        self.assertEqual(proof.drain_spans(self.Lab(None), 5, spans), 5)
+        self.assertEqual(len(spans), 1)
+
+    def test_counts_are_by_kind_and_outcome_and_a_span_without_an_outcome_is_not_lost(self):
+        counts = proof.span_counts([
+            {"k": "warm_draw", "outcome": "drawn", "ms": 4.0}, {"k": "warm_draw", "outcome": "drawn", "ms": 5.0},
+            {"k": "warm_draw", "outcome": "taken", "ms": 0.0}, {"k": "warm", "ms": 3.0, "started": 1},
+        ])
+        self.assertEqual(counts, {"warm_draw": {"drawn": 2, "taken": 1}, "warm": {"-": 1}})
+        self.assertEqual(proof.span_counts([]), {})
+
+
 class JobTests(unittest.TestCase):
     def test_a_succeeded_job_whose_result_the_window_has_not_applied_is_not_settled(self):
         self.assertFalse(proof.job_settled({"state": "running"}))
@@ -198,6 +242,28 @@ class LockTests(unittest.TestCase):
 
         stuck = proof.retry_while_preparing(lambda: {"ok": False, "error": {"code": "media_preparing"}}, timeout=25, sleep=lambda s: None, now=tick)
         self.assertEqual(proof.error_code(stuck), "media_preparing", "a wait that never ends is the caller's failure, not a pass")
+
+
+class LabEnvironmentTests(unittest.TestCase):
+    """What an editor of the lab inherits from the shell: nothing of `TESSEL_*`, so an arm is exactly what its own environment says."""
+
+    def test_no_switch_left_in_the_shell_reaches_the_editor_and_the_arms_own_switches_do(self):
+        shell = {"PATH": "/usr/bin", "HOME": "/real/home", "TESSEL_VIEWPORT_WARM_DRAW": "1", "TESSEL_GL": "cpu", "TESSEL_VIEWPORT_PROBE_GPU_FINISH": "1"}
+        made = proof.lab_environment(shell, "/lab/h", {"TESSEL_VIEWPORT_PROBE_GPU_FINISH": "0", "TESSEL_VIEWPORT_TRACE": "1"})
+        self.assertEqual(made["TESSEL_VIEWPORT_PROBE_GPU_FINISH"], "0", "the arm's own value wins over the shell's")
+        self.assertNotIn("TESSEL_VIEWPORT_WARM_DRAW", made, "a switch the arm did not name is not inherited")
+        self.assertNotIn("TESSEL_GL", made)
+        self.assertEqual((made["PATH"], made["HOME"], made["TESSEL_VIEWPORT_TRACE"]), ("/usr/bin", "/lab/h", "1"))
+
+    def test_the_editor_is_started_with_that_environment_not_the_shells(self):
+        started = {}
+        work = tempfile.mkdtemp(prefix="labenv-", dir="/tmp")
+        self.addCleanup(lambda: __import__("shutil").rmtree(work, ignore_errors=True))
+        with mock.patch.dict(os.environ, {"TESSEL_VIEWPORT_PREUPLOAD": "1", "TESSEL_VIEWPORT_WARM_DRAW": "1"}), \
+                mock.patch.object(proof.subprocess, "Popen", side_effect=lambda command, **named: started.update(named) or mock.Mock()):
+            proof.Lab("/bin/true", work, {"TESSEL_VIEWPORT_WARM_DRAW": "0"})
+        self.assertEqual(started["env"]["TESSEL_VIEWPORT_WARM_DRAW"], "0")
+        self.assertNotIn("TESSEL_VIEWPORT_PREUPLOAD", started["env"])
 
 
 if __name__ == "__main__":

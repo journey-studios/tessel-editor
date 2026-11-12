@@ -73,6 +73,11 @@ pub enum ProjectOp {
     Presets,
 }
 
+/// Events one `render.trace` answers when it is not told how many.
+pub const TRACE_EVENTS_PAGE: usize = 4096;
+/// The most events one `render.trace` answer may carry: all the log keeps.
+pub const TRACE_EVENTS_MAX: usize = crate::trace::EVENT_WINDOW;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Op {
     Run(Command),
@@ -85,6 +90,12 @@ pub enum Op {
     RenderAudio(RenderAudio),
     Capabilities,
     RenderStatus,
+    /// The correlation log of the host trace after cursor `since` (BL157.1): events with host-clock stamps, read without
+    /// asking for frames. Only a host with a trace has one.
+    RenderTrace {
+        since: u64,
+        limit: usize,
+    },
     Status,
     /// What the window header says about the open project (`project.header`).
     Header,
@@ -365,6 +376,26 @@ pub fn parse_op(state: &EditorState, request: &Value) -> Result<Option<Op>, Comm
         "project.header" => return Ok(Some(Op::Header)),
         "capabilities" => return Ok(Some(Op::Capabilities)),
         "render.status" => return Ok(Some(Op::RenderStatus)),
+        "render.trace" => {
+            let since = match request.get("since") {
+                None | Some(Value::Null) => 0,
+                Some(value) => value
+                    .as_u64()
+                    .ok_or_else(|| invalid("Field `since` must be a non-negative integer"))?,
+            };
+            let limit = match request.get("limit") {
+                None | Some(Value::Null) => TRACE_EVENTS_PAGE,
+                Some(value) => value
+                    .as_u64()
+                    .filter(|limit| (1..=TRACE_EVENTS_MAX as u64).contains(limit))
+                    .ok_or_else(|| {
+                        invalid(format!(
+                            "Field `limit` must be an integer in 1..={TRACE_EVENTS_MAX}"
+                        ))
+                    })? as usize,
+            };
+            return Ok(Some(Op::RenderTrace { since, limit }));
+        }
         "project.create" => return Ok(Some(Op::CreateProject(project_create(request)?))),
         "asset.add" => asset_add(request)?,
         "track.add" => Command::CreateTrack {
@@ -670,6 +701,21 @@ fn scene_command(op: &str, request: &Value) -> Result<SceneCommand, CommandError
                 Some(frame_at(request)?)
             } else {
                 None
+            },
+        },
+        // F061: the vignette's 2D handles on the monitor. Shape only; the geometry, the keys rule and
+        // the target rules are the core's.
+        "scene.fx.select" => SceneCommand::FxSelect {
+            scene: scene()?,
+            clip: optional_string(request, "clip")?,
+        },
+        "scene.fx.handles" => SceneCommand::FxHandles {
+            scene: scene()?,
+            clip: optional_string(request, "clip")?,
+            at: frame_at(request)?,
+            probe: match request.get("probe") {
+                None | Some(Value::Null) => None,
+                Some(probe) => Some(handle_probe(probe)?),
             },
         },
         "scene.fx.frame" => SceneCommand::FxFrame {
@@ -1022,6 +1068,25 @@ fn fx_probe(raw: &Value) -> Result<FxProbe, CommandError> {
     })
 }
 
+/// `{ handle, point: {u, v} }`: a pointer position proposed for one handle of a vignette.
+fn handle_probe(raw: &Value) -> Result<crate::scene_project::HandleProbe, CommandError> {
+    if !raw.is_object() {
+        return Err(invalid(
+            "`probe` must be { handle, point: {u, v} } (`center`, `radius` or `softness`)",
+        ));
+    }
+    let name = string(raw, "handle")?;
+    let handle = crate::directed_scene::fx::VignetteHandle::parse(name).ok_or_else(|| {
+        invalid(format!(
+            "`probe.handle` is `center`, `radius` or `softness`, not `{name}`"
+        ))
+    })?;
+    Ok(crate::scene_project::HandleProbe {
+        handle,
+        point: picture_point(raw, "point")?,
+    })
+}
+
 /// Exactly one of `frame` or `time` (exact seconds).
 fn frame_at(request: &Value) -> Result<FrameAt, CommandError> {
     let frame = request.get("frame").filter(|raw| !raw.is_null());
@@ -1110,5 +1175,36 @@ mod tests {
                 .code,
             "invalid_request"
         );
+    }
+
+    #[test]
+    fn render_trace_reads_a_cursor_and_a_bounded_page() {
+        let state = EditorState::demo();
+        assert_eq!(
+            parse_op(&state, &json!({"op":"render.trace"})).unwrap(),
+            Some(Op::RenderTrace {
+                since: 0,
+                limit: TRACE_EVENTS_PAGE
+            })
+        );
+        assert_eq!(
+            parse_op(&state, &json!({"op":"render.trace","since":41,"limit":10})).unwrap(),
+            Some(Op::RenderTrace {
+                since: 41,
+                limit: 10
+            })
+        );
+        for bad in [
+            json!({"op":"render.trace","since":-1}),
+            json!({"op":"render.trace","since":"1"}),
+            json!({"op":"render.trace","limit":0}),
+            json!({"op":"render.trace","limit":TRACE_EVENTS_MAX + 1}),
+        ] {
+            assert_eq!(
+                parse_op(&state, &bad).unwrap_err().code,
+                "invalid_request",
+                "{bad}"
+            );
+        }
     }
 }

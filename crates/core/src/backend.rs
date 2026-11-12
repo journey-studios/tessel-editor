@@ -75,6 +75,16 @@ impl std::fmt::Display for BackendError {
 
 impl std::error::Error for BackendError {}
 
+/// `capabilities.features` entry of a runtime that uploads the textures of a plan's still images ahead of the frame that draws
+/// them (BL157.3). Announced only to a host whose `hello` set `preupload_textures`; a host sends `frame.warm` with
+/// `textures: true` only to a runtime that lists it.
+pub const FEATURE_TEXTURE_PREUPLOAD: &str = "texture.preupload";
+
+/// `capabilities.features` entry of a runtime that, after the warm sort of a splat scene, draws that scene once into a scratch
+/// target so the GPU's first-use work is paid before the cut (BL157.3, a separate experiment). Announced only to a host whose
+/// `hello` set `warm_draw`; it changes no message the host sends, only what the runtime does at the end of a `frame.warm`.
+pub const FEATURE_SCENE_WARM_DRAW: &str = "scene.warm_draw";
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Capabilities {
     pub backend: String,
@@ -413,6 +423,12 @@ pub trait RenderBackend {
     /// for a frame that will draw them soon, without drawing anything. Only sent to a runtime that
     /// announced `scene.warm`; backends without it ignore it.
     fn warm_scene(&mut self, _plan: &RenderPlan) -> Result<(), BackendError> {
+        Ok(())
+    }
+    /// Asks the runtime to upload the textures of the still images of `plan` (BL157.3) before a frame draws them, without
+    /// drawing anything. Only sent to a runtime that announced [`FEATURE_TEXTURE_PREUPLOAD`] (which it does for a `hello` that
+    /// asked); backends without it ignore it.
+    fn warm_textures(&mut self, _plan: &RenderPlan) -> Result<(), BackendError> {
         Ok(())
     }
     fn submit(&mut self, request: &FrameRequest) -> Result<(), BackendError>;

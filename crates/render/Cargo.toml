@@ -12,5 +12,9 @@ tessel-editor-core = { path = "../core" }
 tessel-editor-media = { path = "../media" }
 serde_json.workspace = true
 
+[features]
+# `AssetPool::closed`, for the crates that test through the pool; only their dev-dependencies turn it on.
+test-support = []
+
 [lints]
 workspace = true

@@ -39,6 +39,8 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
+use crate::trace::{ms, round3};
+
 use crate::jobs::JobState;
 use crate::state::CommandError;
 
@@ -337,10 +339,6 @@ pub(crate) fn micros(at: Duration) -> u64 {
     u64::try_from(at.as_micros()).unwrap_or(u64::MAX)
 }
 
-pub(crate) fn ms(at: Duration) -> f64 {
-    at.as_secs_f64() * 1000.0
-}
-
 /// Index of the bucket `at` falls in.
 pub(crate) fn bucket_of(at: Duration) -> u64 {
     u64::try_from(at.as_nanos() / BUCKET.as_nanos()).unwrap_or(u64::MAX)
@@ -561,10 +559,6 @@ pub fn code(text: &str) -> Option<String> {
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'));
     clean.then(|| text.to_string())
-}
-
-pub(crate) fn round3(value: f64) -> f64 {
-    (value * 1000.0).round() / 1000.0
 }
 
 // ---------------------------------------------------------------------------- context

@@ -114,6 +114,16 @@ impl Workstation {
                 Ok(OpReply::Done(report["capabilities"].clone()))
             }
             Op::RenderStatus => Ok(OpReply::Done(self.viewport.report_with_frames(128))),
+            Op::RenderTrace { since, limit } => {
+                let trace = self.viewport.trace();
+                if !trace.enabled() {
+                    return Err(CommandError::new(
+                        "trace_disabled",
+                        "The host trace is off: start the editor with TESSEL_VIEWPORT_TRACE=1",
+                    ));
+                }
+                Ok(OpReply::Done(trace.events_since(since, limit)))
+            }
             Op::RenderFrame(frame) => {
                 let waiter = self.viewport_render_frame(&frame, cx)?;
                 self.note("render.frame", cx);

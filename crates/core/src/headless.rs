@@ -188,6 +188,10 @@ fn run_op(
             let renderer = renderer.ok_or_else(no_backend)?;
             Ok(renderer.summary())
         }
+        Op::RenderTrace { .. } => Err(CommandError::new(
+            "desktop_required",
+            "The host trace (ticks, protocol, runtime spans) belongs to the desktop window; the headless transport has none",
+        )),
         Op::RenderFrame(frame) => {
             let plan = state.plan(&frame.plan)?;
             let renderer = renderer.ok_or_else(no_backend)?;

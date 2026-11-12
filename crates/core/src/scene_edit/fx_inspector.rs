@@ -20,8 +20,8 @@
 use serde_json::{Value, json};
 
 use crate::directed_scene::fx::{
-    EffectSpec, FX_SCOPE_NOT_YET, Fx, FxClip, FxTrack, FxValue, Labels, Locale, ParamKind, catalog,
-    quantize_control,
+    CENTER_STEP, EffectSpec, FX_SCOPE_NOT_YET, Fx, FxClip, FxTrack, FxValue, Labels, Locale,
+    ParamKind, catalog, quantize_control,
 };
 use crate::state::CommandError;
 
@@ -600,7 +600,7 @@ fn fields_of(clip: &FxClip, edit_frames: i64) -> Vec<InspectorField> {
                         group: FieldGroup::Param,
                         base: spec.label,
                         component,
-                        range: (min, max, 0.01),
+                        range: (min, max, CENTER_STEP),
                         value,
                         default: Some(default),
                         target: Target::Param(spec.id, component),

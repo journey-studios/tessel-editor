@@ -211,6 +211,21 @@ pub enum SceneCommand {
     },
     /// F016 (BL082.6): the begin/update/commit/cancel cycle over one effect clip.
     FxGesture(FxGestureCommand),
+    /// F061: which vignette clip the monitor draws handles for (`clip: None` clears it). Session
+    /// state, not an edit: it empties the entity selection and cancels a live drag.
+    FxSelect {
+        scene: String,
+        clip: Option<String>,
+    },
+    /// F061: what the monitor offers for one vignette clip at one frame (handles, ellipses, the
+    /// handles that are off and why), and with a `probe` the value a pointer would give a handle.
+    /// A read. Without a `clip`, the one `scene.fx.select` holds.
+    FxHandles {
+        scene: String,
+        clip: Option<String>,
+        at: FrameAt,
+        probe: Option<HandleProbe>,
+    },
     /// F016 (P2): the inspector model of the effects layer (what a person can set on each clip,
     /// with ranges, defaults, labels in a language, applicability) and the effects that can be
     /// added. A read: it writes nothing. With a `gesture`, the model of that gesture's candidate
@@ -226,6 +241,13 @@ pub enum SceneCommand {
         /// one the keys and the base values are listed and nothing is sampled.
         at: Option<FrameAt>,
     },
+}
+
+/// A pointer position proposed for one handle of a vignette, to be judged without being applied.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct HandleProbe {
+    pub handle: crate::directed_scene::fx::VignetteHandle,
+    pub point: crate::scene_interaction::Point,
 }
 
 /// Which key `scene.fx.seek` goes to.
@@ -295,6 +317,9 @@ impl SceneCommand {
             // The commit of an fx gesture IS a `scene.fx.edit` of the same ops (it runs through
             // `edit_fx`), so it shows the same entry; `changed: false` records nothing.
             Self::FxGesture(FxGestureCommand::Commit { .. }) => Some("Edit effects"),
+            // F061: the release of a handle drag IS that commit; `EditorState::execute` names the
+            // entry "Edit effects" when the drag that is released is an effect handle's. Press,
+            // move, cancel, `scene.fx.select` and `scene.fx.handles` never write.
             _ => None,
         }
     }

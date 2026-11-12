@@ -10,6 +10,7 @@
 mod controls;
 mod dock;
 mod drag;
+mod env_mode;
 mod flows;
 mod geometry;
 mod inspector_panel;
@@ -20,8 +21,10 @@ mod ops;
 mod perf_history_view;
 mod perf_meter;
 mod playback;
+mod playback_poll;
 mod scene_fx;
 mod scene_fx_editors;
+mod scene_fx_handles;
 mod scene_fx_keys;
 mod scene_gesture;
 mod scene_gizmo;
@@ -36,6 +39,7 @@ mod timeline_panel;
 mod tokens;
 mod viewport;
 mod viewport_host;
+mod viewport_protocol;
 mod waveform;
 mod workflow;
 
@@ -342,7 +346,7 @@ impl Workstation {
             viewport_view,
             viewport_refine_armed: false,
             workflow: Workflow::new(),
-            playback: PlaybackState::default(),
+            playback: PlaybackState::from_env(),
             slider_gesture: SliderGesture::default(),
             scene_ui,
             perf,
@@ -838,11 +842,15 @@ impl Render for Workstation {
 }
 
 #[cfg(test)]
+mod asset_io_tests;
+#[cfg(test)]
 mod audio_fades_tests;
 #[cfg(test)]
 mod camera_keys_tests;
 #[cfg(test)]
 mod dock_tests;
+#[cfg(test)]
+mod env_mode_tests;
 #[cfg(test)]
 mod identity_tests;
 #[cfg(test)]
@@ -852,7 +860,13 @@ mod perf_history_tests;
 #[cfg(test)]
 mod perf_tests;
 #[cfg(test)]
+mod playback_poll_tests;
+#[cfg(test)]
+mod playback_tests;
+#[cfg(test)]
 mod scene_fx_editors_tests;
+#[cfg(test)]
+mod scene_fx_handles_tests;
 #[cfg(test)]
 mod scene_fx_keys_tests;
 #[cfg(test)]

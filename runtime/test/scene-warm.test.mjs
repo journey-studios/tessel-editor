@@ -295,3 +295,32 @@ test('a context lost while a warm sorts leaves nothing behind, and the old sort 
     assert.deepEqual(await runtime.page.evaluate(() => window.__unhandled), [], 'no rejection was left unhandled');
   });
 });
+
+test('the page reports its own load and warm durations to the host, additive and on its own clock (BL157.1)', async (t) => {
+  if (skipUnavailable(t, assert)) return;
+  const files = kit(['a']);
+  await withRuntime(files, SAME_MSAA, async (runtime) => {
+    // A load says how long it took on this page's clock and, for a splat, how that split into fetch and decode.
+    const loaded = await runtime.load({
+      id: 'splat-again',
+      kind: 'splat',
+      source: { type: 'file', path: files.clouds.a },
+      meta: { format: files.clouds.a.split('.').pop() },
+    });
+    assert.equal(loaded.state, 'ready');
+    assert.equal(typeof loaded.timings.load_ms, 'number');
+    assert.ok(loaded.timings.load_ms >= loaded.timings.fetch_ms, 'the whole load is at least its fetch');
+    assert.equal(typeof loaded.timings.decode_ms, 'number');
+    assert.ok(loaded.timings.bytes > 0);
+
+    // The frame that follows a warm carries the warm's span once, and the next frame does not repeat it.
+    await warm(runtime, [at('scene-a', -2)]);
+    const first = await draw(runtime, [at('scene-a', -1)], PREVIEW);
+    const warmSpans = (first.runtime_spans ?? []).filter((span) => span.k === 'warm');
+    assert.equal(warmSpans.length, 1);
+    assert.ok(warmSpans[0].started >= 1, 'the warm started a stage');
+    assert.ok(warmSpans[0].ms >= 0 && warmSpans[0].queued_ms >= 0);
+    const second = await draw(runtime, [at('scene-a', 0)], PREVIEW);
+    assert.equal(second.runtime_spans, undefined, 'a span is reported once');
+  });
+});
