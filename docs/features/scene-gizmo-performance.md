@@ -5,7 +5,7 @@ cenário de abrir o app visualmente; o que for possível por teste unitário".
 
 > **Desempenho: NÃO validado.** Esta página descreve a suíte **estrutural**: planos por requisição, uma jornada
 > única e versionada, sem relógio. Nenhuma medição de tempo vale: não há PASS de orçamento nem A/B medido. A pilha
-> de tempo (runners, orçamentos, A/B, mutantes, janela nativa) **não** faz parte desta entrega: ver
+> de tempo (runners, orçamentos, A/B, mutantes, janela nativa) **não** é descrita aqui: ver
 > "Tempo e janela nativa". Regra de leitura: **implementado** (código e testes que rodam) ≠ **validado** (números
 > ou provas com identidade).
 
@@ -142,7 +142,7 @@ a cena por `directed_scene()` (lido no código), então seguiriam a cena antiga.
   **saiu do git** por conter dados da máquina de desenvolvimento (caminhos e diretório de trabalho). Para repetir:
   recoloque a linha antiga da chave em `scene_monitor_host.rs` e rode `./scripts/cargo test -p tessel-editor --locked --
   scene_gizmo_perf a_scene_of_the_same_bundle`; o esperado são os três testes acima falhando.
-- **NÃO provado:** o efeito na **janela nativa**. Uma corrida da janela real em `12bc8da` (pilha de tempo, PR-B) passou
+- **NÃO provado:** o efeito na **janela nativa**. Uma corrida da janela real em `12bc8da` (pilha de tempo) passou
   os 15 checks `same.*` e `switch.*` de cada corpo, mas a corrida inteira deu `FAIL` por outros motivos e **não há
   controle com a chave antiga na janela**. Um relatório nativo antigo mostrou o monitor indo à cena pedida numa corrida
   em que o defeito não apareceu, e a diferença para o host com a chave antiga **não está explicada**.
@@ -199,15 +199,15 @@ documentação: o código, os scripts e os fixtures do head final são os de `c1
 trabalhos (média de carga de 1 minuto entre 9 e 74 durante as corridas); nenhum teste desta PR mede tempo.
 
 Os mutantes sintéticos que provaram que o detector discrimina (um plano a mais por handler morto pelo estrutural; o
-replanejar por tick morto pelo host) foram rodados pelo runner de mutantes da PR-B, uma vez, em `12bc8da`. **Esta
-árvore não traz esse runner**, então a discriminação do detector estrutural não é reprodutível só com ela, fora o
-controle negativo do teste de threads.
+replanejar por tick morto pelo host) foram rodados pelo runner de mutantes (`mutate.py`, [contrato de tempo](scene-gizmo-performance-timing.md)), uma vez, em
+`12bc8da`. O runner mudou depois e **não foi rodado de novo**: a discriminação do detector estrutural só é reproduzível por
+ele, a validar, fora o controle negativo do teste de threads.
 
 ## Lacunas
 
 Lista numerada herdada do item BL015.23 de [`docs/backlog.md`](../backlog.md). **A numeração (1) a (36) é a das
 lacunas e não deve ser confundida com os IDs BL015.24 a BL015.36**, que são dívidas separadas (registradas em
-`docs/backlog.md`). `[A]` = cobertura estrutural ou do host (esta PR); `[B]` = pilha de tempo ou janela (PR-B).
+`docs/backlog.md`). `[A]` = cobertura estrutural ou do host (PR #44); `[B]` = pilha de tempo ou janela (PR #49).
 "Runner corrigido, a validar" = o código mudou e nunca foi visto numa execução real.
 
 1. [A] **Sem caso com splat.** O corpus sintético pequeno não tem asset de splat. Aberto.
@@ -215,7 +215,7 @@ lacunas e não deve ser confundida com os IDs BL015.24 a BL015.36**, que são d�
 3. [B] **Compositor e `presented` não observáveis na janela.** Um quadro novo correlacionado não é prova física de pintura. Aberto.
 4. [A][B] **Sem orçamentos por passo**: o host usa teto por rótulo (item 9) e a janela nativa não tem orçamento. Aberto.
 5. [B] **`pointer.move`/`up`**: a razão requisição/plano de uma calibração antiga (relatório fora do git) é alta mesmo com 1 layout por requisição; o resto seria do gesto (hipótese, não medida). Sem baseline; nada foi otimizado. Aberto.
-6. [B] **Requisito de processo (M2(a)).** O estrutural conta chamadas, não custo; um planejador mais lento passa nele e nos orçamentos de tempo (derivação do desenho do teste, **não executada**). A única comparação absoluta prevista é o A/B da PR-B, contra uma baseline fixa no código; ele só vê o que passa dos limiares dele sobre o total da requisição (um layout de 1 para 2 ms numa requisição de 13 ms sobe 7,7% e escapa: aritmética, não medida) e **não vê host, renderer nem WebView**. Essa baseline fixa **recusa** hoje o head mergeado com a `main` atual (BL015.29), então o requisito não é executável sem `--baseline` e `--allow-other-baseline`, rota **sem teste**. Aberto.
+6. [B] **Requisito de processo (M2(a)).** O estrutural conta chamadas, não custo; um planejador mais lento passa nele e nos orçamentos de tempo (derivação do desenho do teste, **não executada**). A única comparação absoluta prevista é o A/B da pilha de tempo, contra uma baseline fixa no código; ele só vê o que passa dos limiares dele sobre o total da requisição (um layout de 1 para 2 ms numa requisição de 13 ms sobe 7,7% e escapa: aritmética, não medida) e **não vê host, renderer nem WebView**. Essa baseline fixa **recusa** hoje o head mergeado com a `main` atual (BL015.29), então o requisito não é executável sem `--baseline` e `--allow-other-baseline`, rota **sem teste**. Aberto.
 7. [A] **Contador determinístico de trabalho dentro do `probe`** (nós visitados, multiplicações de matriz). Mede trabalho, não tempo; um layout mais lento com as mesmas contagens passaria, então só estreita a lacuna (6). Não feito: muda produção. Aberto (BL015.31 prepara o `cfg`).
 8. [B] **Tick longo absoluto decide o veredito** (`long_ticks_max: 0` reprova por uma amostra > 16,6 ms): falso FAIL possível, não falso PASS. Aberto (BL015.28).
 9. [A] **Tetos do host com folga** (limite m7): um plano extra passa onde o medido é menor; o controle de "outra thread" só cobre o core. Aberto (BL015.30).
