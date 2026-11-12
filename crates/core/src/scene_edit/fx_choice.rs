@@ -12,7 +12,8 @@ use serde_json::{Value, json};
 
 use crate::directed_scene::Shot;
 use crate::directed_scene::fx::{
-    FX_SCOPE_MISMATCH, FX_SCOPE_NOT_YET, FxClip, FxScope, Labels, Locale, scope_fault, shot_holds,
+    FX_SCOPE_MISMATCH, FX_SCOPE_NOT_YET, FxClip, FxScope, Labels, Locale, scope_end, scope_fault,
+    scope_start, shot_holds,
 };
 use crate::state::CommandError;
 
@@ -26,6 +27,21 @@ pub fn scopes() -> Vec<(&'static str, bool, Option<&'static str>)> {
         ("shot", true, None),
         ("node", false, Some(FX_SCOPE_NOT_YET)),
     ]
+}
+
+/// The frames the timing fields of `clip` can take: `((first start, last start), longest duration)`.
+/// A clip on the output may start anywhere in the edit; a clip on a shot lies inside it (the rule
+/// [`scope_fault`] judges), so its start stops where the clip as it is would pass the shot's end and
+/// its duration where it would pass it from where it starts: the shot's limits, never the edit's.
+pub(super) fn timing_limits(clip: &FxClip, edit_frames: i64, shots: &[Shot]) -> ((i64, i64), i64) {
+    if clip.scope == FxScope::Output {
+        return ((0, edit_frames - 1), edit_frames);
+    }
+    let end = scope_end(&clip.scope, shots, edit_frames);
+    (
+        (scope_start(&clip.scope, shots), end - clip.duration_frames),
+        end - clip.start_frame,
+    )
 }
 
 /// The words of the scope choice (the model's first setting that is one of a few named options

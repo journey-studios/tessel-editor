@@ -26,7 +26,7 @@ use crate::directed_scene::fx::{
 };
 use crate::state::CommandError;
 
-use super::fx_choice::{InspectorChoice, scope_choice};
+use super::fx_choice::{InspectorChoice, scope_choice, timing_limits};
 use super::{ClipField, FxOp};
 
 /// The words of the timing fields, which every effect clip has and the catalog does not list.
@@ -662,6 +662,7 @@ fn fields_of(clip: &FxClip, edit_frames: i64, shots: &[Shot]) -> Vec<InspectorFi
     fields.sort_by_key(|field| field.id != "intensity");
     let start = clip.start_frame;
     let typical = default_duration(clip.effect, &clip.scope, start, shots, edit_frames);
+    let (starts, longest) = timing_limits(clip, edit_frames, shots);
     let frames =
         |field: ClipField, base: Labels, min: i64, max: i64, value: i64, default: Option<i64>| {
             let mut built = scalar(Draft {
@@ -681,8 +682,8 @@ fn fields_of(clip: &FxClip, edit_frames: i64, shots: &[Shot]) -> Vec<InspectorFi
     fields.push(frames(
         ClipField::StartFrame,
         START_LABEL,
-        0,
-        edit_frames - 1,
+        starts.0,
+        starts.1,
         clip.start_frame,
         None,
     ));
@@ -690,7 +691,7 @@ fn fields_of(clip: &FxClip, edit_frames: i64, shots: &[Shot]) -> Vec<InspectorFi
         ClipField::DurationFrames,
         DURATION_LABEL,
         1,
-        edit_frames,
+        longest,
         clip.duration_frames,
         Some(typical),
     ));

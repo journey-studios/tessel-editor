@@ -216,6 +216,49 @@ fn the_duration_reset_the_inspector_hands_out_is_an_op_the_edit_accepts() {
     }
 }
 
+/// The limits of the start and the duration fields are the clip's scope, never the edit's: a clip on a
+/// shot would be refused (`FX_SCOPE_MISMATCH`) past its shot, so the slider must stop there. The
+/// numbers are the corpus's shots, `[0, 48)` and `[48, 96)`, over an edit of 96 frames.
+#[test]
+fn the_timing_fields_of_a_shot_clip_stop_where_its_shot_ends() {
+    let mut state = session();
+    edit(
+        &mut state,
+        json!([
+            add_scoped("early", 40, 8, "shot:shot-1"),
+            add_scoped("late", 60, 10, "shot:shot-2"),
+            add("on-output", 40, 56)
+        ]),
+    );
+    // `(clip, first start, last start, longest duration)`: the last start leaves the clip as long
+    // as it is inside the shot, and the longest duration starts where the clip starts.
+    for (clip, first, last, longest) in [
+        ("early", 0.0, 40.0, 8.0),
+        ("late", 48.0, 86.0, 36.0),
+        ("on-output", 0.0, 95.0, 96.0),
+    ] {
+        let answer = ok(
+            &mut state,
+            json!({"op":"scene.fx.inspect","scene":"street","clip":clip}),
+        );
+        let range = |name: &str| -> (Value, Value) {
+            let field = answer["clips"][0]["fields"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|field| field["id"] == name)
+                .unwrap_or_else(|| panic!("no `{name}` in {answer}"));
+            (field["min"].clone(), field["max"].clone())
+        };
+        assert_eq!(range("start_frame"), (json!(first), json!(last)), "{clip}");
+        assert_eq!(
+            range("duration_frames"),
+            (json!(1.0), json!(longest)),
+            "{clip}"
+        );
+    }
+}
+
 // ---- persistence ---------------------------------------------------------------------------------------
 
 #[test]

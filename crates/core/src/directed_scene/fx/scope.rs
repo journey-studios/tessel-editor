@@ -233,6 +233,16 @@ pub fn scope_end(scope: &FxScope, shots: &[Shot], edit_frames: i64) -> i64 {
         .map_or(edit_frames, |shot| shot_limits(shot).1.min(edit_frames))
 }
 
+/// The first frame a clip of this scope can reach: the start of its shot, or the start of the edit
+/// for the output, and for a shot the edit does not have (that clip is refused by [`scope_fault`]
+/// anyway). The other end of [`scope_end`].
+pub fn scope_start(scope: &FxScope, shots: &[Shot]) -> i64 {
+    scope
+        .shot_id()
+        .and_then(|id| shots.iter().find(|shot| shot.id == id))
+        .map_or(0, |shot| shot_limits(shot).0)
+}
+
 /// The duration a new clip of `spec` gets when none is given (`add_clip`), and the one the
 /// inspector restores (`reset`): the typical one, cut where the scope ends so the clip fits, and
 /// never below one frame. A duration that is **given** is never cut: it is judged as it is and

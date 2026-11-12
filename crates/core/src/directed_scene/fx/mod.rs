@@ -65,7 +65,7 @@ pub use reference::{
 };
 pub use scope::{
     FxScope, FxStage, SCOPE_OUTPUT, SCOPE_SHOT_PREFIX, ScopeFault, ScopeSyntax, default_duration,
-    scope_end, scope_fault, shot_at, shot_holds, shot_json, shots_json,
+    scope_end, scope_fault, scope_start, shot_at, shot_holds, shot_json, shots_json,
 };
 
 /// The catalog this build draws. It goes up whenever the *result* of an existing effect changes
