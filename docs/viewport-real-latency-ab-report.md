@@ -650,7 +650,8 @@ sobrevivente é equivalente) e o laço (11 testes determinísticos; mutação 19
 
 A segunda onda de comentários automáticos (CodeRabbit e OpenCodeReview sobre `b9d92b4` e `a552661`) trouxe 32 comentários novos. **23 foram atendidos:** 20 em `scripts/**` (16 itens, S1–S16) e 3 em testes Rust (T1 `8af5793`, T2 `c7b21b3` e T3,
 que já estava corrigido em `9e0f18d` e ganhou o teste do pool fechado em `dbf90a7` e `9ef1bb0`). **9 foram adiados com ID** e o thread segue aberto: 5 do laboratório `runtime/scripts/perf` (BL157.21) e 4 de escopo maior (BL157.22–.25).
-O verificador independente acrescentou S17 (um só `stats`), T4 (`late_ms` e `next_ms` do `tick` a 3 casas) e os registros BL157.26–.28. O que cada correção muda no contrato dos runners está em
+O verificador independente acrescentou S17 (um só `stats`), T4 (`late_ms` e `next_ms` do `tick` a 3 casas) e o registro BL157.26 (arquivos de mais de 1000 linhas que cresceram). BL157.27 e BL157.28 vêm dos achados extras dos corretores: o de scripts (`percentile`/`stats` próprios e o `detail` de `stats`) e o de Rust (E1: `due_ms` e `ran_ms` sem arredondar). Ao reagir às respostas, o CodeRabbit ainda pediu mais em dois threads já resolvidos, e os dois pedidos viraram BL157.29 (S1: a conferência do `--out` vem antes das travas) e BL157.30 (S3: o play do projeto inteiro não confere o quadro final).
+O que cada correção muda no contrato dos runners está em
 [F063](features/viewport-asset-io.md#núcleo-comum-dos-runners-scriptsab); as provas dos testes Rust (mutantes e estresse de 3.600 execuções sem falha), em [F063](features/viewport-asset-io.md#evidências-e-status).
 
 **Gates do head de código `d57b42c`** (macOS, 21:10–21:29 de 11/11/2026; os commits seguintes só mudam `docs/`):
