@@ -45,7 +45,8 @@ HTML_BLOCK = re.compile(
     re.IGNORECASE,
 )
 
-FENCE = re.compile(r'(`{3,}|~{3,})')
+# A backtick fence has no backtick in its info string (else the line is a code span); a tilde fence may have anything.
+FENCE = re.compile(r'(?:(`{3,})[^`]*|(~{3,}).*)$')
 
 
 def cells_of(row):
@@ -97,7 +98,7 @@ def broken_rows(text):
             continue
         opening = FENCE.match(body)
         if opening:
-            fence, opened_at, expected = opening.group(1), number, None
+            fence, opened_at, expected = opening.group(1) or opening.group(2), number, None
             continue
         if expected is None and not body.startswith('|'):
             continue
@@ -176,7 +177,7 @@ class TheControls(unittest.TestCase):
     def test_what_is_only_text_stays_a_row_of_the_table_and_is_found(self):
         texts = (
             '***bold***', '-- two dashes', '--- with text', '===', '#nospace', '<span>x</span>', '<em>x</em> text',
-            '<a href="x">link</a> text', 'a < b', '<3 hearts',
+            '<a href="x">link</a> text', 'a < b', '<3 hearts', '```a``` text', '``` a`b',
         )
         for text in texts:
             found = broken_rows(self.HEAD + self.ROW + text + '\n')
@@ -184,7 +185,9 @@ class TheControls(unittest.TestCase):
             self.assertIn('leading pipe', found[0][4], text)
 
     def test_a_fence_ends_the_table_and_hides_what_is_inside_it(self):
-        for opening, closing in (('```', '```'), ('~~~ python', '~~~'), ('````', '````'), ('   ```', '   ```')):
+        fences = (('```', '```'), ('~~~ python', '~~~'), ('````', '````'), ('   ```', '   ```'), ('``` ~x', '```'),
+                  ('~~~ `x`', '~~~'))
+        for opening, closing in fences:
             fenced = self.HEAD + self.ROW + opening + '\n| A | B | C |\n| 1 | 2 |\n' + closing + '\n' + self.HEAD + self.ROW
             self.assertEqual([], broken_rows(fenced), opening)
         self.assertEqual([(4, '```', 0, 0, 'unclosed fence')], broken_rows(self.HEAD + self.ROW + '```\n| 1 | 2 | 3 |\n'))
