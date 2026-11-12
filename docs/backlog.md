@@ -592,18 +592,19 @@ Plano e contratos: [wave-s1-s10-plan.md](migration/wave-s1-s10-plan.md). R1–R1
 
 Conferida com a `main` `057b7db`. As dez PRs foram integradas e nenhuma PR da rodada continua aberta. Integrada não é
 validada: cada ID guarda o estado da própria linha, e o que ainda não tem prova na `main` de hoje continua **A validar**
-(a prova integrada é BL163). O quadro mostra só o que falta; as demais linhas de cada frente estão **A validar**.
+(a prova integrada é BL163). O quadro lista só o que falta (pendente, parcial ou decisão); os demais IDs da frente
+seguem o estado da própria linha, que pode ser A validar ou Concluído (por exemplo BL123 a BL127, da S7, e BL015.8, da S8).
 
 | Frente | PR → merge na `main` | Falta (pendente, parcial ou decisão) |
 |---|---|---|
-| S1 | [#6](https://github.com/journey-studios/tessel-editor/pull/6) → `b8598c7` (2026-11-06) | BL094.11 (preparação automática depois de `job.commit` antes do tick), BL112.1 (medir a pintura durante o descarte), BL112.5 (contenção no lock do ledger recusa o aceite do tick), BL112.6 (fechar a janela com descarte em curso), BL112.9 (versão de `claims.json` no caminho grande do ledger) |
-| S2 | [#9](https://github.com/journey-studios/tessel-editor/pull/9) → `ac04dca` (2026-11-06) | BL111.3 (`on_published` interromper `materialize_leased`) |
-| S3 | [#5](https://github.com/journey-studios/tessel-editor/pull/5) → `2bc340d` (2026-11-05) | nada pendente; BL109 a validar |
+| S1 | [#6](https://github.com/journey-studios/tessel-editor/pull/6) → `b8598c7` (2026-11-06) | BL094.11 (preparação automática depois de `job.commit` antes do tick), BL112.1 (medir a pintura durante o descarte), BL112.5 (contenção no lock do ledger recusa o aceite do tick), BL112.6 (fechar a janela com descarte em curso), BL112.9 (versão de `claims.json` no caminho grande do ledger), BL139 (teste intermitente do cancelamento com renderizador lento) |
+| S2 | [#9](https://github.com/journey-studios/tessel-editor/pull/9) → `ac04dca` (2026-11-06) | BL111.3 (`on_published` interromper `materialize_leased`), BL089 (parcial: o limite de multiprocesso e o hash fora da UI dependem da validação de BL094, BL111 e BL112) |
+| S3 | [#5](https://github.com/journey-studios/tessel-editor/pull/5) → `2bc340d` (2026-11-05) | BL110 (manutenção: compartilhar helpers de encode e de resolução entre os exports); BL109 a validar |
 | S4 | [#7](https://github.com/journey-studios/tessel-editor/pull/7) → `e296b36` (2026-11-06) | nada pendente; BL102, BL102b e BL102c a validar |
-| S5 | [#10](https://github.com/journey-studios/tessel-editor/pull/10) → `6f7a944` (2026-11-06) | BL113b (decidir se a sessão de edição também invalida mapas de recursos e imports de cenas) |
+| S5 | [#10](https://github.com/journey-studios/tessel-editor/pull/10) → `6f7a944` (2026-11-06) | BL113b (decidir se a sessão de edição também invalida mapas de recursos e imports de cenas), BL114 (cancelar também dentro do parse de um JSON grande; hoje só entre blocos e fases) |
 | S6 | [#12](https://github.com/journey-studios/tessel-editor/pull/12) → `141259e` (2026-11-06) | BL004 (parcial: keys/segmentos e propriedades dos novos domínios), BL005d (decisão: validar os estados intermediários do lote), BL005e (textos do corpus), BL004e (cobertura de docstrings) |
-| S7 | [#13](https://github.com/journey-studios/tessel-editor/pull/13) → `5ebb855` (2026-11-06) | BL025 (parcial: luz, clima e rig com splats; o subconjunto da S7 está validado) |
-| S8 | [#25](https://github.com/journey-studios/tessel-editor/pull/25) → `caeeeae` (2026-11-07) | BL015.1 (parcial: snapping, seleção múltipla, grupos e handles locais), BL015.2 (ponteiro físico), BL015.3 (decisão: arrastar durante a reprodução), BL015.4 (seleção de splats, câmera e grupos), BL015.15 (flaky de vídeo B2), BL015.19 e BL015.20 (seguimentos da escala e da prova de rotação); a suíte de desempenho dos gizmos (PRs #44 e #49) deixou BL015.23 a BL015.37, abertas ou a validar |
+| S7 | [#13](https://github.com/journey-studios/tessel-editor/pull/13) → `5ebb855` (2026-11-06) | BL025 (parcial: luz, clima e rig com splats; o subconjunto da S7 está validado), BL122 (ordem de pintura entre splat e plano por fragmento, limite assumido), BL128 (teste intermitente `video B2`, fora do diff da S7) |
+| S8 | [#25](https://github.com/journey-studios/tessel-editor/pull/25) → `caeeeae` (2026-11-07) | BL015.1 (parcial: snapping, seleção múltipla, grupos e handles locais), BL015.2 (ponteiro físico), BL015.6 (gates do head da PR: falta a prova física), BL015.3 (decisão: arrastar durante a reprodução), BL015.4 (seleção de splats, câmera e grupos), BL015.15 (flaky de vídeo B2, o mesmo teste de BL128), BL015.19 e BL015.20 (seguimentos da escala e da prova de rotação); a suíte de desempenho dos gizmos (PRs #44 e #49) deixou BL015.23 a BL015.37, abertas ou a validar |
 | S9 | [#11](https://github.com/journey-studios/tessel-editor/pull/11) → `8c6c3b9` (2026-11-06) | BL016.1 (transporte dirigido), BL016.3 (fonte acima de 48 kHz e formatos comprimidos) |
 | S10 | [#8](https://github.com/journey-studios/tessel-editor/pull/8) → `b5ce9ba` (2026-11-07) | BL019 (parcial), BL019-F11 (a atestação não prova build reproduzível); BL121 (reexecução viva com S7 e S9) a validar |
 
