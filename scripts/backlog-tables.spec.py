@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Every row of a table in the shared backlog keeps the columns of its header (BL165).
+"""Every row of the shared backlog is in a table and keeps the columns of its header (BL165, BL166).
 
     python3 scripts/backlog-tables.spec.py
 
@@ -8,15 +8,22 @@ its text outside the columns of the table, and renderers drop the extra cells (m
 MD056, as the review of PR #53 reported for BL015.15). `\\|` is an escaped pipe and does not split a
 cell. A line without the leading pipe is a defect too: GFM keeps it inside the table (its text lands in
 the first columns and whatever goes beyond the width of the header is dropped), and the tools that look
-for `| BL` rows do not see it. The backlog is where the evidence of every other task lives, so a row
-that hides it is a defect.
+for `| BL` rows do not see it. A run of rows with no header and delimiter row above it is no table at
+all: GitHub shows it as one paragraph of text with bars (BL166). The backlog is where the evidence of
+every other task lives, so a row that hides it is a defect.
 
 The scan reads a table the way GitHub does. Each rule below was checked against GitHub's own renderer
-(`gh api -X POST markdown -f mode=gfm`): a table ends at a blank line or where another block starts (a
+(`gh api -X POST markdown -f mode=gfm`): a table is a header line followed right away by its
+delimiter row, which has a pipe, as many cells as the header and only hyphens (one is enough) with an
+optional colon on each side in each cell (a bare `---`, a blank line, a row or a delimiter of another
+width in its place leave plain text, and a header may follow a line of text with no blank line; the scan
+opens a table at a header with the leading pipe, as the backlog writes them); a table ends at a blank
+line or where another block starts (a
 heading, a quote, a fence, a list item, a thematic break of one repeated marker, or an HTML block: a
 comment, a block-level tag, or a tag alone on its line); an inline tag with text after it, `a < b`,
-`#tag`, `***bold***` and `--- x` stay rows; a row or a block start may be indented by up to three
-spaces, and four spaces or a tab make it code, which ends the table; nothing inside a fence is a table.
+`#tag`, `***bold***` and `--- x` stay rows; a row, a header, a delimiter or a block start may be indented
+by up to three spaces, and four spaces or a tab make it code, which ends the table; nothing inside a fence
+is a table.
 
 It only needs the standard library. The controls try the scan on synthetic tables with each defect,
 so a scan that stopped finding anything would fail here and not pass in silence.
@@ -48,6 +55,12 @@ HTML_BLOCK = re.compile(
 # A backtick fence has no backtick in its info string (else the line is a code span); a tilde fence may have anything.
 FENCE = re.compile(r'(?:(`{3,})[^`]*|(~{3,}).*)$')
 
+# One cell of a delimiter row: hyphens (at least one) with an optional colon on each side, and spaces around them.
+DELIMITER_CELL = re.compile(r'\s*:?-+:?\s*')
+
+# What `broken_rows` says of a row that has no table: no header and delimiter row open one above it.
+NOT_A_TABLE = 'no delimiter row, not a table'
+
 
 def cells_of(row):
     """The cells of a table row, with the empty ones outside the first and the last pipe."""
@@ -71,15 +84,41 @@ def another_block_starts(body):
     return bool(ANOTHER_BLOCK.match(body) or HTML_BLOCK.match(body) or FENCE.match(body))
 
 
+def cells_between_pipes(row):
+    """The cells of a header or delimiter row, as GFM counts them: the outer pipes are optional."""
+    stripped = row.strip()
+    cells = cells_of(stripped)
+    if stripped.startswith('|'):
+        cells = cells[1:]
+    if stripped.endswith('|') and not stripped.endswith('\\|'):
+        cells = cells[:-1]
+    return cells
+
+
+def is_delimiter_row(line, width):
+    """Whether `line` is the delimiter row of a header with `width` cells."""
+    row = line.rstrip()
+    lead = len(row) - len(row.lstrip(' \t'))
+    if len(row[:lead].expandtabs(4)) > 3 or '|' not in row:  # indented code, or a bare `---` (a setext heading)
+        return False
+    cells = cells_between_pipes(row)
+    return len(cells) == width and all(DELIMITER_CELL.fullmatch(cell) for cell in cells)
+
+
 def broken_rows(text):
     """`(line, start of the row, cells, expected, what)` of each row that leaves its table.
 
-    A table starts at a line with the leading pipe (its header) and lasts until a blank line or the
-    start of another block. A line inside it counts as a row even without the leading pipe: that is
-    how GFM reads it, and it is a defect of its own.
+    A table starts at a line with the leading pipe (its header) when the next line is its delimiter row,
+    and lasts until a blank line or the start of another block. A line with the leading pipe that opens
+    no table is a row of no table (`expected` is 0): GitHub shows it as text. A line inside a table
+    counts as a row even without the leading pipe: that is how GFM reads it, and it is a defect of its own.
     """
-    broken, expected, fence, opened_at = [], None, None, 0
-    for number, line in enumerate(text.split('\n'), 1):
+    broken, expected, fence, opened_at, delimiter_next = [], None, None, 0, False
+    lines = text.split('\n')
+    for number, line in enumerate(lines, 1):
+        if delimiter_next:  # the delimiter row of the header above: `is_delimiter_row` checked it already
+            delimiter_next = False
+            continue
         row = line.rstrip()
         lead = len(row) - len(row.lstrip(' \t'))
         indent = len(row[:lead].expandtabs(4))
@@ -108,7 +147,11 @@ def broken_rows(text):
         leading = body.startswith('|')
         cells = cells_of(body if leading else '|' + body)
         if expected is None:
-            expected = len(cells)
+            next_line = lines[number] if number < len(lines) else ''
+            if not is_delimiter_row(next_line, len(cells_between_pipes(body))):
+                broken.append((number, row[:32], len(cells), 0, NOT_A_TABLE))
+                continue
+            expected, delimiter_next = len(cells), True
             continue
         closed = body.endswith('|') and not body.endswith('\\|')
         defects = [
@@ -124,9 +167,9 @@ def broken_rows(text):
 
 
 class TheBacklogTables(unittest.TestCase):
-    def test_every_row_keeps_the_columns_of_its_header(self):
+    def test_every_row_is_in_a_table_and_keeps_the_columns_of_its_header(self):
         broken = broken_rows(BACKLOG.read_text(encoding='utf-8'))
-        self.assertEqual([], broken, 'rows outside the columns of their table: (line, row, cells, expected, what)')
+        self.assertEqual([], broken, 'rows with no table or outside its columns: (line, row, cells, expected, what)')
 
     def test_the_backlog_is_read_and_has_tables_to_scan(self):
         text = BACKLOG.read_text(encoding='utf-8')
@@ -215,6 +258,41 @@ class TheControls(unittest.TestCase):
         self.assertEqual(
             [(9, '| 1 | 2 |', 4, 5, 'columns')], broken_rows(two_tables.replace('| 1 | 2 | 3 |', '| 1 | 2 |'))
         )
+
+    def test_rows_with_no_header_and_delimiter_are_no_table_and_each_one_is_found(self):
+        orphans = '| 1 | one |\n| 2 | two |\n'
+        expected = [(1, '| 1 | one |', 4, 0, NOT_A_TABLE), (2, '| 2 | two |', 4, 0, NOT_A_TABLE)]
+        self.assertEqual(expected, broken_rows(orphans))
+
+    def test_rows_after_text_or_after_a_table_with_a_blank_line_are_no_table_either(self):
+        after_text = [(3, '| 1 | one |', 4, 0, NOT_A_TABLE), (4, '| 2 | two |', 4, 0, NOT_A_TABLE)]
+        self.assertEqual(after_text, broken_rows('Text.\n\n| 1 | one |\n| 2 | two |\n'))
+        glued = [(2, '| 1 | one |', 4, 0, NOT_A_TABLE), (3, '| 2 | two |', 4, 0, NOT_A_TABLE)]
+        self.assertEqual(glued, broken_rows('Text.\n| 1 | one |\n| 2 | two |\n'))
+        after_a_table = [(5, '| 3 | three |', 4, 0, NOT_A_TABLE), (6, '| 4 | four |', 4, 0, NOT_A_TABLE)]
+        self.assertEqual(after_a_table, broken_rows(self.HEAD + self.ROW + '\n| 3 | three |\n| 4 | four |\n'))
+
+    def test_a_header_may_follow_a_line_of_text_and_may_have_no_rows(self):
+        self.assertEqual([], broken_rows('Text.\n' + self.HEAD + self.ROW))
+        self.assertEqual([], broken_rows(self.HEAD))
+        self.assertEqual([], broken_rows('| ID |\n|---|\n| 1 |\n'))
+
+    def test_the_delimiter_row_is_the_one_github_accepts(self):
+        accepted = (
+            '|---|---|', '| --- | :---: |', '|:-|-:|', '--- | ---', '|  ---  |  :---:  |', '|---|---|\t', '   |---|---|',
+        )
+        for delimiter in accepted:
+            self.assertEqual([], broken_rows('| a | b |\n' + delimiter + '\n| 1 | 2 |\n'), delimiter)
+        refused = ('|---|', '|---|---|---|', '|- -|---|', '|:|:|', '---', '', '    |---|---|', '| 1 | 2 |', '\t|---|---|')
+        for delimiter in refused:
+            found = broken_rows('| a | b |\n' + delimiter + '\n| 1 | 2 |\n')
+            self.assertEqual((1, '| a | b |', 4, 0, NOT_A_TABLE), found[0], repr(delimiter))
+        # Under a header of one cell, a bare `---` has the right width and is still no delimiter: it makes a heading.
+        self.assertEqual((1, '| ID |', 3, 0, NOT_A_TABLE), broken_rows('| ID |\n---\n| 1 |\n')[0])
+
+    def test_rows_in_a_fence_or_in_indented_code_are_no_table_and_not_a_defect(self):
+        self.assertEqual([], broken_rows('```\n| 1 | one |\n| 2 | two |\n```\n'))
+        self.assertEqual([], broken_rows('    | 1 | one |\n    | 2 | two |\n'))
 
 
 if __name__ == '__main__':
