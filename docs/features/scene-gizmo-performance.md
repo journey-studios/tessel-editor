@@ -5,7 +5,7 @@ cenário de abrir o app visualmente; o que for possível por teste unitário".
 
 > **Desempenho: NÃO validado.** Esta página descreve a suíte **estrutural**: planos por requisição, uma jornada
 > única e versionada, sem relógio. Nenhuma medição de tempo vale: não há PASS de orçamento nem A/B medido. A pilha
-> de tempo (runners, orçamentos, A/B, mutantes, janela nativa) **não** faz parte desta entrega: ver
+> de tempo (runners, orçamentos, A/B, mutantes, janela nativa) **não** é descrita aqui: ver
 > "Tempo e janela nativa". Regra de leitura: **implementado** (código e testes que rodam) ≠ **validado** (números
 > ou provas com identidade).
 
@@ -52,7 +52,7 @@ A jornada roda pelos **mesmos handlers**; cada passo é `document` (equivalente:
 |---|---|---|---|
 | Core (lib) | `crates/core/tests/gizmo_perf_support` e `crates/core/tests/scene_gizmo_perf_{structure,threads}.rs` | transformada, undo e redo idênticos ao golden (`journey.expected.json`); planos por requisição; independência do tamanho da cena | janela, GPU, página, tempo |
 | Host GPUI | `crates/desktop/src/workstation/scene_gizmo_perf_tests.rs` (5 testes) | a mesma jornada por `Workstation::run_op`, layouts por requisição no host, janela parada, cena de mesmo bundle | WebView, GPU, compositor, ponteiro físico; o diálogo (precisa do `Root` do Kit) |
-| Janela nativa | **N/A nesta entrega** (PR-B) | — | — |
+| Janela nativa | `scripts/gizmo-perf/native.py` (pilha de tempo, [contrato de tempo](scene-gizmo-performance-timing.md)) | a mesma jornada numa janela real, só como observação funcional: **a única corrida completa deu `FAIL`** | desempenho, baseline, compositor, ponteiro físico |
 
 ## Contrato do core / biblioteca
 
@@ -142,7 +142,7 @@ a cena por `directed_scene()` (lido no código), então seguiriam a cena antiga.
   **saiu do git** por conter dados da máquina de desenvolvimento (caminhos e diretório de trabalho). Para repetir:
   recoloque a linha antiga da chave em `scene_monitor_host.rs` e rode `./scripts/cargo test -p tessel-editor --locked --
   scene_gizmo_perf a_scene_of_the_same_bundle`; o esperado são os três testes acima falhando.
-- **NÃO provado:** o efeito na **janela nativa**. Uma corrida da janela real em `12bc8da` (pilha de tempo, PR-B) passou
+- **NÃO provado:** o efeito na **janela nativa**. Uma corrida da janela real em `12bc8da` (pilha de tempo) passou
   os 15 checks `same.*` e `switch.*` de cada corpo, mas a corrida inteira deu `FAIL` por outros motivos e **não há
   controle com a chave antiga na janela**. Um relatório nativo antigo mostrou o monitor indo à cena pedida numa corrida
   em que o defeito não apareceu, e a diferença para o host com a chave antiga **não está explicada**.
@@ -168,15 +168,14 @@ as duas primeiras linhas.
 
 ## Tempo e janela nativa
 
-**N/A nesta entrega: ver a PR-B.** A medição de tempo (runners em Python, orçamentos, comparação com baseline,
-mutantes de tempo e a janela nativa com WKWebView) fica na PR-B, em rascunho, empilhada sobre esta, e seu contrato é
-`docs/features/scene-gizmo-performance-timing.md` (arquivo que a PR-B traz; ele não existe nesta árvore). Motivo: essa
+**A medição de tempo tem contrato próprio:** [scene-gizmo-performance-timing.md](scene-gizmo-performance-timing.md) (runners
+em Python, orçamentos, comparação com baseline, mutantes de tempo e a janela nativa com WKWebView). Motivo da separação: essa
 pilha **nunca produziu um PASS válido nem uma comparação medida**. Os quatro runners rodaram pela primeira vez em
 `12bc8da`, sob carga de base no limite da guarda de carga: o runner de tempo do core deu `FAIL` (uma execução), o A/B
 deu `INVALID_GUARD_AFTER_RUN` nas duas tentativas (nada julgado), o runner de mutantes terminou `UNEXPECTED` e a janela
 nativa deu `FAIL` funcional (uma execução; 20 de 639 verificações, todas em `drag.*`). **Nada disso valida
 desempenho.** Os logs dessa execução **saíram do git**
-por conter dados da máquina de desenvolvimento; reexecutar é um comando da PR-B, em máquina silenciosa.
+por conter dados da máquina de desenvolvimento; reexecutar é um comando do contrato de tempo, em máquina silenciosa.
 
 ## Estado desta entrega
 
@@ -200,15 +199,15 @@ documentação: o código, os scripts e os fixtures do head final são os de `c1
 trabalhos (média de carga de 1 minuto entre 9 e 74 durante as corridas); nenhum teste desta PR mede tempo.
 
 Os mutantes sintéticos que provaram que o detector discrimina (um plano a mais por handler morto pelo estrutural; o
-replanejar por tick morto pelo host) foram rodados pelo runner de mutantes da PR-B, uma vez, em `12bc8da`. **Esta
-árvore não traz esse runner**, então a discriminação do detector estrutural não é reprodutível só com ela, fora o
-controle negativo do teste de threads.
+replanejar por tick morto pelo host) foram rodados pelo runner de mutantes (`mutate.py`, [contrato de tempo](scene-gizmo-performance-timing.md)), uma vez, em
+`12bc8da`. O runner mudou depois e **não foi rodado de novo**: a discriminação do detector estrutural só é reproduzível por
+ele, a validar, fora o controle negativo do teste de threads.
 
 ## Lacunas
 
 Lista numerada herdada do item BL015.23 de [`docs/backlog.md`](../backlog.md). **A numeração (1) a (36) é a das
 lacunas e não deve ser confundida com os IDs BL015.24 a BL015.36**, que são dívidas separadas (registradas em
-`docs/backlog.md`). `[A]` = cobertura estrutural ou do host (esta PR); `[B]` = pilha de tempo ou janela (PR-B).
+`docs/backlog.md`). `[A]` = cobertura estrutural ou do host (PR #44); `[B]` = pilha de tempo ou janela (PR #49).
 "Runner corrigido, a validar" = o código mudou e nunca foi visto numa execução real.
 
 1. [A] **Sem caso com splat.** O corpus sintético pequeno não tem asset de splat. Aberto.
@@ -216,14 +215,14 @@ lacunas e não deve ser confundida com os IDs BL015.24 a BL015.36**, que são d�
 3. [B] **Compositor e `presented` não observáveis na janela.** Um quadro novo correlacionado não é prova física de pintura. Aberto.
 4. [A][B] **Sem orçamentos por passo**: o host usa teto por rótulo (item 9) e a janela nativa não tem orçamento. Aberto.
 5. [B] **`pointer.move`/`up`**: a razão requisição/plano de uma calibração antiga (relatório fora do git) é alta mesmo com 1 layout por requisição; o resto seria do gesto (hipótese, não medida). Sem baseline; nada foi otimizado. Aberto.
-6. [B] **Requisito de processo (M2(a)).** O estrutural conta chamadas, não custo; um planejador mais lento passa nele e nos orçamentos de tempo (derivação do desenho do teste, **não executada**). A única comparação absoluta prevista é o A/B da PR-B, contra uma baseline fixa no código; ele só vê o que passa dos limiares dele sobre o total da requisição (um layout de 1 para 2 ms numa requisição de 13 ms sobe 7,7% e escapa: aritmética, não medida) e **não vê host, renderer nem WebView**. Essa baseline fixa **recusa** hoje o head mergeado com a `main` atual (BL015.29), então o requisito não é executável sem `--baseline` e `--allow-other-baseline`, rota **sem teste**. Aberto.
+6. [B] **Requisito de processo (M2(a)).** O estrutural conta chamadas, não custo; um planejador mais lento passa nele e nos orçamentos de tempo (derivação do desenho do teste, **não executada**). A única comparação absoluta prevista é o A/B da pilha de tempo, contra uma baseline fixa no código; ele só vê o que passa dos limiares dele sobre o total da requisição (um layout de 1 para 2 ms numa requisição de 13 ms sobe 7,7% e escapa: aritmética, não medida) e **não vê host, renderer nem WebView**. Essa baseline fixa **recusa** hoje o head mergeado com a `main` atual (BL015.29), então o requisito não é executável sem `--baseline` e `--allow-other-baseline`, rota **sem teste**. Aberto.
 7. [A] **Contador determinístico de trabalho dentro do `probe`** (nós visitados, multiplicações de matriz). Mede trabalho, não tempo; um layout mais lento com as mesmas contagens passaria, então só estreita a lacuna (6). Não feito: muda produção. Aberto (BL015.31 prepara o `cfg`).
 8. [B] **Tick longo absoluto decide o veredito** (`long_ticks_max: 0` reprova por uma amostra > 16,6 ms): falso FAIL possível, não falso PASS. Aberto (BL015.28).
 9. [A] **Tetos do host com folga** (limite m7): um plano extra passa onde o medido é menor; o controle de "outra thread" só cobre o core. Aberto (BL015.30).
 10. [B] **`within()` do teste de orçamento** não exige que todo tipo orçado tenha sido medido. Compilado, executado uma vez. Aberto.
 11. [B] **Nits do teste de orçamento e dos runners:** a injeção exige `--test-threads=1` (falta comentário); o runner de mutantes não roda os testes sem mutar antes de afirmar um kill; `MAX_BLOCK_SPREAD` × `budgets.json`; a guarda pós-corrida pode se autodisparar (uma corrida de ~1 CPU soma ~1 à carga de 1 min; recusou em 5 das 8 execuções guardadas de `12bc8da`). Aberto.
 12. [A] **Cabeçalho de `corpus.py`** dizia 5 nós e 605/617. Corrigido nesta PR para 6/618/44, os números do manifesto (o manifesto foi regenerado junto: só o sha do gerador mudou).
-13. [B] **(a)** `--allow-dirty` muda status e exit de modos diferentes em cada runner; **(b)** o runner de mutantes apagava `exes/` depois de uma corrida inválida: runner corrigido, a validar; **(c)** a spec não cobre `--baseline` e `--allow-other-baseline` do A/B; **(d)** o aviso "Docstring Coverage" do bot não foi tratado. (a), (c), (d) abertos.
+13. [B] **(a)** `--allow-dirty` mudava status e exit de modos diferentes em cada runner: uma corrida suja que seria `PASS`, "sem regressão" ou sucesso funcional termina agora com status próprio e exit 1 nos três (`run.py`, `ab.py`, `native.py`), só com dublês, a validar; **(b)** o runner de mutantes apagava `exes/` depois de uma corrida inválida e tratava como resposta um teste de tempo que passou com a guarda depois ruim: runner corrigido, a validar; **(c)** a spec não cobre `--baseline` e `--allow-other-baseline` do A/B; **(d)** o aviso "Docstring Coverage" do bot não foi tratado. (c), (d) abertos.
 14. [B] **Não existe comparação baseline × candidato para host, renderer nem WebView.** O A/B só roda o teste de orçamento do core; ele não mediria a mudança do monitor desta PR (BL015.22). Sem desenho. Aberto.
 15. [B] **Build do A/B** morreu uma vez quando o executável do candidato sumiu após o build da baseline (poda de cache; causa não isolada). Runner corrigido (cópia imediata, estados explícitos), a validar. Aberto: manifesto `BUILT` sem `exit` nem `utc_end`.
 16. [B] **Janela: 15 de 15 arrastos reprovaram "quadro novo" após a soltura.** Pelo código e pelos registros, o host deduplica um plano igual ao do candidato; nenhum defeito de produto indicado (inferido, não medido). Runner corrigido (`redrawn` ou `deduped`), a validar numa janela real.
