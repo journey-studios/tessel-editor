@@ -9,6 +9,7 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
@@ -593,12 +594,26 @@ fn a_decode_that_fails_is_reported_once_and_not_retried_every_tick() {
 fn a_slow_renderer_probe_in_preflight_is_a_cancellable_job() {
     let dir = temp("async-preflight");
     let video = video_with_audio(&tools(), &dir, "clip.mp4");
-    let factory: Arc<RendererFactory> = Arc::new(|| {
-        Ok(Box::new(Mock::new(Settings {
-            delay: Duration::from_millis(900),
-            ..Settings::default()
-        })))
-    });
+    // A renderer that is slow to start for as long as the test says (BL139). The mock's `delay`
+    // used to stand for that, but the probe only asks for capabilities and never waited for it:
+    // the cancel raced a job that took a few milliseconds and, on a busy machine, lost. Here
+    // `starting` says the probe is parked inside the factory, `go` lets it through and `returned`
+    // says it has left; the bound only keeps a regression from hanging the suite.
+    let starting = Arc::new(AtomicBool::new(false));
+    let go = Arc::new(AtomicBool::new(false));
+    let returned = Arc::new(AtomicBool::new(false));
+    let factory: Arc<RendererFactory> = {
+        let (starting, go, returned) = (starting.clone(), go.clone(), returned.clone());
+        Arc::new(move || {
+            starting.store(true, Ordering::SeqCst);
+            let give_up = Instant::now() + Duration::from_secs(60);
+            while !go.load(Ordering::SeqCst) && Instant::now() < give_up {
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            returned.store(true, Ordering::SeqCst);
+            Ok(Box::new(Mock::new(Settings::default())))
+        })
+    };
     let mut host = MediaHost::new()
         .with_renderer(factory)
         .with_tools(tools())
@@ -619,22 +634,52 @@ fn a_slow_renderer_probe_in_preflight_is_a_cancellable_job() {
         &mut state,
         json!({"op":"export.preflight","preset":"fullhd","destination":dir.join("out.mp4")}),
     );
+    // Parked renderer: a call that waited for it would sit here for the whole bound above.
     assert!(
-        started.elapsed() < Duration::from_millis(400),
-        "{:?}",
+        started.elapsed() < Duration::from_secs(30),
+        "the call returned a job, not the report, after {:?}",
         started.elapsed()
     );
     let job = answer["job"].as_str().unwrap().to_string();
+    // The job cannot end before it is cancelled: wait until the probe is inside the renderer.
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while !starting.load(Ordering::SeqCst) {
+        assert!(
+            Instant::now() < deadline,
+            "the probe never asked for a renderer"
+        );
+        std::thread::sleep(Duration::from_millis(2));
+    }
     ok(&mut host, &mut state, json!({"op":"job.cancel","job":job}));
+    // It ends as cancelled while the renderer is still parked: cancelling does not wait for it.
+    // (`poll_until` would also wait out the factory's own 60 s bound, so the state alone cannot
+    // tell a cancel that did not wait from one that did.)
     let event = poll_until(&mut host, &mut state, &job);
     assert_eq!(event["state"], "cancelled", "{event}");
-
-    // Asked again and left alone, the same preflight reports.
-    let again = ok(
-        &mut host,
-        &mut state,
-        json!({"op":"export.preflight","preset":"fullhd","destination":dir.join("out.mp4")}),
+    assert!(
+        !returned.load(Ordering::SeqCst),
+        "the job ended only after the factory returned: the cancel waited for the probe: {event}"
     );
+
+    // Let the orphaned probe go: it finishes alone and drops its renderer. Asked before that, the
+    // host answers that the renderer is busy; asked again and left alone, the same preflight reports.
+    go.store(true, Ordering::SeqCst);
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let again = loop {
+        let request =
+            json!({"op":"export.preflight","preset":"fullhd","destination":dir.join("out.mp4")});
+        match run(&mut host, &mut state, request.clone()) {
+            Ok(answer) => break answer,
+            Err(error) if error.code == "renderer_busy" => {
+                assert!(
+                    Instant::now() < deadline,
+                    "the orphaned probe never let go of its renderer"
+                );
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            Err(error) => panic!("{request}: {error:?}"),
+        }
+    };
     let event = poll_until(&mut host, &mut state, again["job"].as_str().unwrap());
     assert_eq!(event["state"], "succeeded", "{event}");
     assert_eq!(event["result"]["ok"], true, "{event}");

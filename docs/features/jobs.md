@@ -376,6 +376,39 @@ runtime que ele usa não mudaram; seus 23/23 de `683a511` continuam sendo a evid
 Todo trabalho escreve num `Staging` (pasta no mesmo volume do destino) e **publica por rename** só depois de
 verificar; falha ou cancelamento removem o staging e preservam o destino anterior e os originais.
 
+### O teste do cancelamento da sonda do preflight (BL139; a validar)
+
+`async_host::a_slow_renderer_probe_in_preflight_is_a_cancellable_job` falhou uma vez numa execução completa do workspace
+(`export.preflight` devolveu o job, `job.cancel` foi aceito e o job terminou `succeeded`, não `cancelled`) e passou isolado.
+Não era defeito do produto: era uma corrida do teste, e o host não mudou.
+
+**Causa.** O teste dizia "renderizador lento" com `Settings { delay: 900 ms }`, mas o atraso do `Mock` só vale em
+`render_frame`, e a sonda do preflight só pergunta `capabilities()`: ela nunca esperou. O job durava alguns milissegundos e o
+`job.cancel` só o alcançava a tempo com a máquina livre; sob carga o job já tinha terminado. A asserção de tempo (< 400 ms)
+também não provava o que dizia, porque a sonda nunca demorava.
+
+**Correção (só `crates/media/tests/async_host.rs`).** A fábrica do renderizador fica parada até o teste soltá-la (`go`) e
+avisa que chegou lá (`starting`). O teste pede o preflight (tem de voltar com um job: o teto passou a 30 s, e uma sonda
+síncrona ficaria presa na fábrica até os 60 s do limite), espera a sonda estar **dentro** da fábrica, cancela, confere
+`cancelled` **e** que a fábrica ainda não saiu (`returned`: cancelar não espera por ela), solta o sinal e pede o preflight
+de novo. Esse segundo pedido repete só enquanto a resposta for `renderer_busy` (a sonda órfã ainda segura o renderizador,
+BL144.18) e então confere `succeeded` com `ok: true`. Nenhuma espera por tempo decide o resultado; os limites de 60 s só
+impedem que uma regressão pendure a suíte.
+
+**Prova (2026-11-12, base `d5d641d`, FFmpeg real, máquina compartilhada com load médio de 20 a 40).**
+
+* *O defeito, sem depender de sorte:* uma cópia temporária do arquivo de testes, com 400 ms de pausa antes do `job.cancel` (a
+  máquina ocupada, de propósito), reprova com o teste antigo (`job_finished`: `Job job-3 already succeeded`) e passa com o novo.
+* *Estabilidade:* 20 execuções seguidas do teste novo, todas verdes; o `async_host` inteiro, 7 de 7 na época e verde depois.
+* *O cancelamento que não espera a sonda (achado do CodeRabbit na PR #53):* o estado `cancelled` sozinho não distingue um
+  cancelamento que esperou a sonda, porque o job só termina quando a fábrica solta (aos 60 s) e o `poll_until` espera até
+  120 s. Por isso o teste confere também que a fábrica ainda não retornou quando o evento chega. Prova, com uma mutação de
+  produção em `probe_capabilities` (a checagem de cancelamento só depois de a sonda retornar): a versão anterior do teste
+  **passa**, em 61 s, e a nova **reprova** (`the job ended only after the factory returned`); sem a mutação, 10 execuções
+  seguidas verdes e o `async_host` inteiro verde (8 de 8, 4,95 s); `host.rs` restaurado byte a byte.
+* *O produto não mudou:* a mutação acima só prova a asserção. O que torna o teste independente da velocidade é a fábrica
+  que espera o sinal do teste, não o atraso do `Mock`.
+
 ## Limites
 
 Sem retomada: um export/pacote interrompido reinicia. `job.discard`: o ownership entre processos é o ledger de claims (BL111, S2).

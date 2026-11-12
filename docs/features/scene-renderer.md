@@ -299,3 +299,26 @@ BL102c (validação do runtime): a suíte completa do S7 teve 107/108 com falha 
 Suíte completa após o fix (execução do **coordenador**, atribuída, não repetida aqui): `./scripts/runtime test` com `TESSEL_REQUIRE_RUNTIME=1` e lock da GPU, head `2c7cf7c`, saída 0, `# tests 108`, `# pass 108`, `# fail 0` (UTC 2026-11-06T16:11:18Z–16:12:26Z, livre mínimo 26,8 GiB); log `runtime-after-bl102c.log` sha256 `2f1844e8283b2391…` (cópia em `/tmp/te-711b-final/coordinator-runtime/`). Os 6/6 isolados anteriores seguem sem anular a falha 107/108 da execução antiga.
 
 No head `586a671` (runner dos gates, `TESSEL_REQUIRE_RUNTIME=1`, lock da GPU), a suíte completa deu 108/108 em duas execuções e 107/108 em outra: falhou `video B2: a frame superseded while it seeks is cancelled and the next one is exact` (`video.test.mjs:208`), um teste fora do diff do S7; registrado como BL128, sem relaxar nada. Detalhes em [scene-splat.md](scene-splat.md#revalidação-no-head-586a671-executado-com-proveniência).
+
+**BL128 / BL015.15, o teste de substituição de vídeo sem aposta de tempo (a validar).** O teste mandava dois `frame.render`
+(`runtime.send`, uma ida e volta de CDP cada) e apostava que o primeiro ainda esperava o seek quando o segundo chegasse. Um seek
+de clipe curto leva dezenas de milissegundos e as duas idas e voltas levam mais que isso com a máquina ocupada: o primeiro quadro
+terminava em `frame.done` antes de ser substituído (`expected 'frame.failed'`, 1 em 3 no head `586a671`, 1 em 10 em `main`
+`e18b0cf`, também na primeira execução completa de duas rodadas do gizmo). O produto não mudou (`latestRender !== id` e o
+poll de 20 ms de `seekTo` em `native-video.js` são os mesmos). O teste agora **segura o seek onde ele começa**: `holdSeek`
+(`runtime/test/support.mjs`, no estilo de `holdFetches`, BL102c) retém a primeira atribuição a `currentTime` e só a aplica
+quando a próxima chega, na mesma ordem em que o motor a veria; enquanto retido nenhum `seeked` pode chegar, então o primeiro
+quadro só termina sendo substituído. O teste espera o seek ficar retido (`held()`) antes de mandar o segundo quadro e solta
+tudo em `finally`. A asserção (`frame.failed` com `cancelled`, depois o quadro seguinte exato e a cabeça de leitura intacta)
+não foi relaxada. **Prova** (2026-11-12, base `d5d641d`, Chrome real, `TESSEL_REQUIRE_RUNTIME=1`, lock da GPU, máquina compartilhada com load médio de 20
+a 40):
+
+* *O defeito, sem depender de sorte:* uma cópia temporária do teste, com 800 ms de pausa entre os dois envios (a máquina ocupada, de
+  propósito), reprova na versão antiga (`expected 'frame.failed'`, veio `frame.done`, a assinatura exata de BL128 e BL015.15) e
+  passa na nova.
+* *A asserção continua pegando o produto:* com o poll de "fui substituído?" removido de `native-video.js` (build refeito, depois
+  a mutação desfeita e o build refeito; `runtime/src` voltou sem alteração), o teste novo reprova com `timeout` no lugar de
+  `cancelled`, depois dos 10 s do seek. É a mutação que a revisão de BL015.15 pediu.
+* *Estabilidade:* 20 execuções seguidas do teste sozinho, todas verdes (BL015.15 pedia 20 sob carga); o arquivo `video.test.mjs`
+  inteiro, 7 de 7. O primeiro item reproduz o mecanismo (a corrida entre os dois `send`); que ele causou as falhas históricas
+  continua sendo a explicação mais simples, não uma medição, e a taxa de 1 em 10 de `main` não foi medida de novo.
