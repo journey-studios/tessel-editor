@@ -300,7 +300,7 @@ Suíte completa após o fix (execução do **coordenador**, atribuída, não rep
 
 No head `586a671` (runner dos gates, `TESSEL_REQUIRE_RUNTIME=1`, lock da GPU), a suíte completa deu 108/108 em duas execuções e 107/108 em outra: falhou `video B2: a frame superseded while it seeks is cancelled and the next one is exact` (`video.test.mjs:208`), um teste fora do diff do S7; registrado como BL128, sem relaxar nada. Detalhes em [scene-splat.md](scene-splat.md#revalidação-no-head-586a671-executado-com-proveniência).
 
-**BL128 / BL015.15, o teste de substituição de vídeo sem aposta de tempo (a validar).** O teste mandava dois `frame.render`
+**BL128 / BL015.15, o teste de substituição de vídeo sem aposta de tempo (validado).** O teste mandava dois `frame.render`
 (`runtime.send`, uma ida e volta de CDP cada) e apostava que o primeiro ainda esperava o seek quando o segundo chegasse. Um seek
 de clipe curto leva dezenas de milissegundos e as duas idas e voltas levam mais que isso com a máquina ocupada: o primeiro quadro
 terminava em `frame.done` antes de ser substituído (`expected 'frame.failed'`, 1 em 3 no head `586a671`, 1 em 10 em `main`
@@ -322,3 +322,6 @@ a 40):
 * *Estabilidade:* 20 execuções seguidas do teste sozinho, todas verdes (BL015.15 pedia 20 sob carga); o arquivo `video.test.mjs`
   inteiro, 7 de 7. O primeiro item reproduz o mecanismo (a corrida entre os dois `send`); que ele causou as falhas históricas
   continua sendo a explicação mais simples, não uma medição, e a taxa de 1 em 10 de `main` não foi medida de novo.
+* *A suíte completa repetida (o aceite de BL128):* 3 execuções completas seguidas no head da PR #53, 384/384 cada (584 s, 378 s e
+  363 s, máquina compartilhada com load de 30 a 65), e mais uma na `main` `bc0c3ea` (a mescla da PR #53), 384/384; o teste
+  é o `ok 368` de todas.

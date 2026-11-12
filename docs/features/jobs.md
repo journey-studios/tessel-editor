@@ -286,7 +286,7 @@ há log para reler; o que existe é o relato acima, o código dos testes que as 
 **novas** deste fechamento (abaixo) são testes do próprio spec e deixam log (`/tmp/pr6n-logs/native/job-discard-spec*.log`). Os
 logs de workspace/clippy/build do gate ficaram em `/tmp/pr6fix/gates` (`test.log`, `summary`, `head`), não versionados.
 
-### Preparação automática depois de `job.commit` antes do tick (BL094.11; a validar)
+### Preparação automática depois de `job.commit` antes do tick (BL094.11)
 
 **Defeito (preexistente, também em `main`).** O host marca a preparação automática em andamento (`auto_prepare` e `auto_proxy`,
 com os ativos que ela cobre em `auto_assets` e `proxy_assets`), e `schedule_prepare`, `schedule_proxies` e `schedule_thumbnails`
@@ -321,8 +321,11 @@ reprova o teste de unidade (`auto_failed` vazio em vez do ativo).
 **Prova mais larga (mesma base, porque `host.rs` é usado pela maioria das suítes).** `cargo fmt --check` e `clippy -D warnings`
 (mídia e desktop, todos os alvos) limpos; crate de mídia inteiro: 499 passam, 6 ignorados e **1 falha de ambiente que já existe
 em `main`** (`export.rs::a_full_disk_ends_the_export_with_disk_full_and_leaves_the_volume_clean`: o `hdiutil attach` é negado
-nesta máquina, BL082.47); crate desktop inteiro: 509/509. **Não** foram repetidos o workspace inteiro nem a prova nativa da
-janela real.
+nesta máquina, BL082.47); crate desktop inteiro: 509/509. **Não** foram repetidos, nesta base, o workspace inteiro nem a prova
+nativa da janela real.
+
+**Depois da mescla (PR #52 → `a5c2966`).** Na `main` `bc0c3ea` o workspace inteiro rodou (2559 passam, 16 ignorados; a única
+falha é a de ambiente acima) e os três testes novos passam. A prova nativa da janela real segue sem repetição.
 
 ### Requisição que falha durante o descarte (BL112.12, CodeRabbit `4499357511`, revisão Sonnet `5809214591` N1/N2; a validar)
 
@@ -376,7 +379,7 @@ runtime que ele usa não mudaram; seus 23/23 de `683a511` continuam sendo a evid
 Todo trabalho escreve num `Staging` (pasta no mesmo volume do destino) e **publica por rename** só depois de
 verificar; falha ou cancelamento removem o staging e preservam o destino anterior e os originais.
 
-### O teste do cancelamento da sonda do preflight (BL139; a validar)
+### O teste do cancelamento da sonda do preflight (BL139)
 
 `async_host::a_slow_renderer_probe_in_preflight_is_a_cancellable_job` falhou uma vez numa execução completa do workspace
 (`export.preflight` devolveu o job, `job.cancel` foi aceito e o job terminou `succeeded`, não `cancelled`) e passou isolado.
@@ -408,6 +411,8 @@ impedem que uma regressão pendure a suíte.
   seguidas verdes e o `async_host` inteiro verde (8 de 8, 4,95 s); `host.rs` restaurado byte a byte.
 * *O produto não mudou:* a mutação acima só prova a asserção. O que torna o teste independente da velocidade é a fábrica
   que espera o sinal do teste, não o atraso do `Mock`.
+* *Na `main` `bc0c3ea` (a mescla da PR #53):* o teste passa no workspace inteiro com os demais (2559
+  passam; a única falha é a de ambiente BL082.47).
 
 ## Limites
 
