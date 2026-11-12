@@ -3,8 +3,10 @@
 drawn by the monitor's WebView, exported through the dialog. Only `op` / `get` / `set` / `invoke`: no pointer
 and no coordinates (the pointer over the Kit select is not proved here; BL043 stays open).
 
-    python3 scripts/directed-scene-proof/with-gpu-lock.py \\
-        python3 scripts/scene-fx-shot-scope-proof.py [--binary target/debug/tessel-editor] [--keep] [--json FILE]
+    python3 scripts/scene-fx-shot-scope-proof.py [--binary target/debug/tessel-editor] \\
+        [--headless target/debug/tessel-headless] [--keep] [--json FILE]
+
+(Functional proof: it does not take the GPU lock, which is for performance measurements only.)
 
 It reuses the plumbing of `scene-fx-ui-proof.py` (a private instance with a short isolated HOME over the
 synthetic corpus, no private media, the same cleanup and report) and brings its own expectation: the
@@ -28,6 +30,11 @@ What it checks, in order:
   * the refusals are typed and write nothing (value, history, picture): `fx_scope_mismatch`, `unknown_shot`,
     `fx_scope_not_yet`, `invalid_value`, a retime out of the shot (`invalid_bundle`), an unknown clip, an unknown
     effect, and `add_in_shot` where the monitor shows no shot (`disabled_element`); each is the panel notice;
+  * the handles of the vignette (F061, BL082.64): a vignette laid on a shot has none: its `handles` action is
+    disabled with the core's reason, `invoke handles` and `scene.fx.select` are the typed `scope_not_supported`
+    (the clip as target, the scope in `details`), the gizmo node keeps `target: node`, nothing is written; the
+    same select through a real `tessel-headless` process answers the same code, and the clip back on the output
+    has them again. (The header button greyed with that reason is the GPUI test's: this script has no pointer.)
   * the stages: an OUTPUT fade on the FIRST track and the shot's vignette on a LATER track are drawn
     vignette -> fade (the shot first, whatever the track order): every probe equals the Python composition
     in that order and differs from the flipped order;
@@ -44,6 +51,7 @@ import os
 import pathlib
 import shutil
 import signal
+import subprocess
 import sys
 import tempfile
 import time
@@ -137,9 +145,27 @@ def new_clip_node(win, before):
     return added[0] if len(added) == 1 else None
 
 
+def headless_refusal(headless, bundle):
+    """The select of a vignette laid on a shot through a real `tessel-headless` (JSON Lines over a pipe: no window,
+    no socket). `(answers, return code)`; the last two requests are the refusals, the first two build the scene."""
+    requests = [
+        {"op": "scene.attach", "id": "proof", "bundle": bundle},
+        {"op": "scene.fx.edit", "scene": "proof", "ops": [
+            {"op": "add_clip", "effect": "vignette", "start_frame": FRAME, "duration_frames": 36, "id": "v1", "scope": f"shot:{FIRST}"}]},
+        {"op": "scene.fx.select", "scene": "proof", "clip": "v1"},
+        {"op": "scene.fx.handles", "scene": "proof", "clip": "v1", "frame": FRAME},
+        {"op": "scene.fx.edit", "scene": "proof", "ops": [{"op": "set_scope", "clip": "v1", "scope": "output"}]},
+        {"op": "scene.fx.select", "scene": "proof", "clip": "v1"},
+    ]
+    done = subprocess.run([str(headless), "--empty"], input="".join(json.dumps(r) + "\n" for r in requests),
+                          capture_output=True, text=True, timeout=120)
+    return [json.loads(line) for line in done.stdout.splitlines() if line.strip()], done.returncode
+
+
 def run(args, surfaces):
     binary = pathlib.Path(args.binary).resolve()
-    for path in (binary, ROOT / "runtime" / "dist" / "runtime.js", P.CORPUS / "bundle.json"):
+    headless = pathlib.Path(args.headless).resolve()
+    for path in (binary, headless, ROOT / "runtime" / "dist" / "runtime.js", P.CORPUS / "bundle.json"):
         if not path.exists():
             print(f"missing prerequisite: {path}")
             return 2
@@ -313,6 +339,42 @@ def run(args, surfaces):
         unknown = win.invoke(SECTION, "add_in_shot:sepia")
         check("an effect the catalog does not have is refused by the core (unknown_effect)", not unknown.get("ok") and unknown.get("error", {}).get("code") == "unknown_effect", unknown)
 
+        # ---- the handles of the vignette (F061): none on a shot, the core's typed refusal everywhere ----
+        depth = win.undo_depth()
+        off = action_of(win.node(CLIP), "handles") or {}
+        check("the `handles` action of a vignette on a shot is disabled, with the reason of the core",
+              off.get("enabled") is False and "shot" in (off.get("disabled_reason") or ""), off)
+        by_action = win.invoke(CLIP, "handles")
+        check("invoke handles on it is scope_not_supported (nothing selected)",
+              not by_action.get("ok") and by_action.get("error", {}).get("code") == "scope_not_supported", by_action)
+        ok, body = win.op({"op": "scene.fx.select", "scene": "proof", "clip": "fx-1"})
+        check("scene.fx.select of it is the typed scope_not_supported: the clip is the target, the scope is in `details`",
+              not ok and body.get("code") == "scope_not_supported" and body.get("target") == "fx-1"
+              and (body.get("details") or {}).get("scope") == f"shot:{FIRST}", body)
+        ok, body = win.op({"op": "scene.fx.handles", "scene": "proof", "clip": "fx-1", "frame": FRAME})
+        check("scene.fx.handles of it says the same", not ok and body.get("code") == "scope_not_supported", body)
+        gizmo = (win.node("monitor.gizmo") or {}).get("state", {})
+        check("the monitor's gizmo keeps the node as its target", gizmo.get("target") == "node" and gizmo.get("fx_clip") == "", gizmo)
+        check("the refusals wrote nothing", win.undo_depth() == depth, (depth, win.undo_depth()))
+        headless_answers, headless_code = headless_refusal(headless, json.loads((P.CORPUS / "bundle.json").read_text()))
+        select, read, output_select = headless_answers[2], headless_answers[3], headless_answers[5]
+        check("through tessel-headless: scene.fx.select of the same vignette is scope_not_supported",
+              select.get("ok") is False and select["error"].get("code") == "scope_not_supported"
+              and select["error"].get("target") == "v1" and select["error"]["details"].get("scope") == f"shot:{FIRST}", select)
+        check("through tessel-headless: scene.fx.handles says the same", read.get("ok") is False and read["error"].get("code") == "scope_not_supported", read)
+        check("through tessel-headless: back on the output the select works again, and the process exits 1 for the two refusals",
+              output_select.get("ok") is True and headless_code == 1, (output_select, headless_code))
+        moved = win.invoke(CLIP, "set_scope:output")
+        check("the vignette laid back on the output has its handles again (action enabled, no reason)",
+              moved.get("ok") and (action_of(win.node(CLIP), "handles") or {}).get("enabled") is True
+              and (action_of(win.node(CLIP), "handles") or {}).get("disabled_reason") is None, moved)
+        shown = win.invoke(CLIP, "handles")
+        check("and `handles` shows them: the gizmo is the vignette's", shown.get("ok") and (win.node("monitor.gizmo") or {}).get("state", {}).get("fx_clip") == "fx-1", shown)
+        hidden = win.invoke(CLIP, "handles")
+        check("`handles` again hides them", hidden.get("ok") and (win.node("monitor.gizmo") or {}).get("state", {}).get("target") == "node", hidden)
+        back = win.invoke(CLIP, f"set_scope:shot:{FIRST}")
+        check("the vignette is on its shot again for what follows", back.get("ok") and win.field(CLIP, "scope") == f"shot:{FIRST}", back)
+
         # ---- a shot on the second shot, cut at its end ----
         lab.seek(IN_SECOND)
         win.shown_hash(IN_SECOND)
@@ -421,7 +483,7 @@ def run(args, surfaces):
               not refused.get("ok") and refused.get("error", {}).get("code") == "disabled_element" and (refused.get("error") or {}).get("target") == SECTION and win.undo_depth() == depth, refused)
         check("that refusal is the panel's notice", notice_code(win) == "disabled_element", notice_code(win))
         surfaces.append({"surface": "window", "how": "live semantic socket of a private instance: op/get/set/invoke, no pointer, no coordinates", "status": "exercised"})
-        surfaces.append({"surface": "headless/lib", "how": "N/A in this script: crates/core/tests/scene_fx_shot_scope.rs (incl. the tessel-headless process) and crates/render/tests/scene_fx_shot_scope.rs", "status": "not run here"})
+        surfaces.append({"surface": "headless", "how": "a real tessel-headless process, JSON Lines: only the refusal of the handles of a shot clip (scope_not_supported); the rest is N/A here, see crates/core/tests/scene_fx_shot_scope.rs (incl. the process) and crates/render/tests/scene_fx_shot_scope.rs", "status": "exercised (the refusal only)"})
         surfaces.append({"surface": "pointer", "how": "N/A: BL043 stays open; the GPUI tests emit the Kit select's confirmation and click the add buttons", "status": "not proved"})
     finally:
         if lab is not None and lab_pid is not None:
@@ -480,6 +542,7 @@ def judge_export(base_info, fx_info, out, from_frame, frames, decode, big=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--binary", default=str(ROOT / "target" / "debug" / "tessel-editor"))
+    parser.add_argument("--headless", default=str(ROOT / "target" / "debug" / "tessel-headless"))
     parser.add_argument("--keep", action="store_true")
     parser.add_argument("--json")
     args = parser.parse_args()
