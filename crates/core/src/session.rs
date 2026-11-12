@@ -24,14 +24,15 @@ use std::time::{Duration, Instant};
 
 use crate::assets::{MediaKind, ProxyFrames};
 use crate::backend::{
-    AssetDescriptor, AssetStatus, BackendError, BackendEvent, Capabilities, FrameRequest,
-    FrameResult, Output, ProxyState, RenderBackend, RequestId,
+    AssetDescriptor, AssetStatus, BackendError, BackendEvent, Capabilities,
+    FEATURE_TEXTURE_PREUPLOAD, FrameRequest, FrameResult, Output, ProxyState, RenderBackend,
+    RequestId,
 };
 use crate::id::Id;
 use crate::plan::{PlanRequest, PlanTime, PreviewIntent, RenderPlan};
 use crate::preview::{PreviewPolicy, Quality};
 use crate::state::EditorState;
-use crate::trace::TraceHandle;
+use crate::trace::{TraceHandle, ms_since};
 
 #[derive(Debug, Clone, PartialEq)]
 enum Slot {
@@ -94,6 +95,8 @@ pub struct Stats {
     pub evicted: u64,
     /// Cuts whose splat scenes the runtime was asked to prepare ahead (see [`ViewportSession::warm`]).
     pub warmed: u64,
+    /// Cuts whose still images the runtime was asked to upload ahead (see [`ViewportSession::warm_textures`]).
+    pub preuploaded: u64,
     /// Loads given up and asked for again after a frame ran out of time (see [`ViewportSession::cancel_timed_out`]).
     pub reloaded: u64,
 }
@@ -174,6 +177,10 @@ pub struct ViewportSession<B: RenderBackend> {
     prefetch_budget: u64,
     /// The cuts (by the assets their plan requires) the runtime was already asked to warm.
     warmed: HashSet<Vec<Id>>,
+    /// Same key, for the texture pre-upload (BL157.3): a cut is asked once per pass of the playhead, like its splat warm.
+    preuploaded: HashSet<Vec<Id>>,
+    /// Whether a runtime that announces `texture.preupload` is sent the cuts' stills (off unless the host turns it on).
+    preupload_enabled: bool,
     /// Whether a runtime that announces `scene.warm` is sent warms (on unless the host turns it off).
     warm_enabled: bool,
     /// Bytes of source files of every asset loaded or loading, and the request that last needed it.
@@ -221,6 +228,8 @@ impl<B: RenderBackend> ViewportSession<B> {
             prefetched: HashMap::new(),
             prefetch_budget: PREFETCH_BUDGET_BYTES,
             warmed: HashSet::new(),
+            preuploaded: HashSet::new(),
+            preupload_enabled: false,
             warm_enabled: true,
             asset_bytes: HashMap::new(),
             last_used: HashMap::new(),
@@ -245,6 +254,13 @@ impl<B: RenderBackend> ViewportSession<B> {
     /// places; see `trace.rs` for what is and is not measured.
     pub fn trace(&self) -> &TraceHandle {
         &self.trace
+    }
+
+    /// Uses `trace` as the recorder instead of a private one, so what the transport and the protocol handler record lands
+    /// in the same log as the session's spans.
+    pub fn with_trace(mut self, trace: TraceHandle) -> Self {
+        self.trace = trace;
+        self
     }
 
     /// Directory with the bundled demonstration images (`coast.png`, `highlands.png`).
@@ -512,6 +528,7 @@ impl<B: RenderBackend> ViewportSession<B> {
             if self.assets.contains_key(asset) {
                 continue;
             }
+            let probing = self.trace.start();
             let Some(item) = state.library.item(asset) else {
                 continue;
             };
@@ -526,13 +543,23 @@ impl<B: RenderBackend> ViewportSession<B> {
                 continue;
             }
             let bytes = files_bytes(&files);
+            let fs_ms = ms_since(probing);
             // The first prefetch always fits: the budget limits a burst, not a single big scene.
             let held: u64 = self.prefetched.values().sum();
             if held > 0 && held.saturating_add(bytes) > self.prefetch_budget {
                 self.stats.prefetch_skipped += 1;
                 continue;
             }
-            if self.backend.load_asset(&descriptor).is_err() {
+            let sending = self.trace.start();
+            let sent = self.backend.load_asset(&descriptor);
+            let send_ms = ms_since(sending);
+            // BL157.2: where a slow prefetch spent its time on the calling thread, per load: the file checks (stat) or
+            // the hand-over of the load to the backend. Only with the trace on; one event per load started, by kind and size
+            // (never the asset's name).
+            self.trace.event("prefetch_asset", || {
+                json!({ "kind": descriptor.kind.label(), "bytes": bytes, "fs_ms": fs_ms, "send_ms": send_ms, "ok": sent.is_ok() })
+            });
+            if sent.is_err() {
                 continue;
             }
             self.assets.insert(*asset, Slot::Loading);
@@ -564,36 +591,75 @@ impl<B: RenderBackend> ViewportSession<B> {
         // A cut the playhead passed (or that left the window) is forgotten: a later pass warms it again.
         self.warmed
             .retain(|key| plans.iter().any(|plan| &plan.requires == key));
-        if !self.warm_enabled
-            || !self
-                .capabilities
-                .as_ref()
-                .is_some_and(|caps| caps.supports("scene.warm"))
-        {
+        self.preuploaded
+            .retain(|key| plans.iter().any(|plan| &plan.requires == key));
+        let scenes = self.warm_enabled && self.announces("scene.warm");
+        let textures = self.preupload_enabled && self.announces(FEATURE_TEXTURE_PREUPLOAD);
+        if !scenes && !textures {
             return 0;
         }
         let mut sent = 0;
         for plan in plans {
-            if self.warmed.contains(&plan.requires)
-                || !plan
-                    .layers
-                    .iter()
-                    .any(|layer| layer.content.kind() == "scene" && !layer.occluded)
-                || plan
-                    .requires
-                    .iter()
-                    .any(|asset| self.assets.get(asset) != Some(&Slot::Ready))
+            // A warm never makes the runtime wait for a file: every asset of the cut is loaded first.
+            if plan
+                .requires
+                .iter()
+                .any(|asset| self.assets.get(asset) != Some(&Slot::Ready))
             {
                 continue;
             }
-            if self.backend.warm_scene(plan).is_err() {
-                continue;
+            if scenes
+                && !self.warmed.contains(&plan.requires)
+                && plan
+                    .layers
+                    .iter()
+                    .any(|layer| layer.content.kind() == "scene" && !layer.occluded)
+                && self.backend.warm_scene(plan).is_ok()
+            {
+                self.warmed.insert(plan.requires.clone());
+                self.stats.warmed += 1;
+                sent += 1;
             }
-            self.warmed.insert(plan.requires.clone());
-            self.stats.warmed += 1;
-            sent += 1;
+            if textures
+                && !self.preuploaded.contains(&plan.requires)
+                && plan
+                    .layers
+                    .iter()
+                    .any(|layer| layer.content.kind() == "image" && !layer.occluded)
+                && self.backend.warm_textures(plan).is_ok()
+            {
+                self.preuploaded.insert(plan.requires.clone());
+                self.stats.preuploaded += 1;
+                sent += 1;
+            }
         }
         sent
+    }
+
+    fn announces(&self, feature: &str) -> bool {
+        self.capabilities
+            .as_ref()
+            .is_some_and(|caps| caps.supports(feature))
+    }
+
+    /// Opts in to (or out of) the texture pre-upload (BL157.3, a diagnostic experiment, off by default): the
+    /// monitor then also sends the cuts a moment ahead whose still images are all loaded, to a runtime that announced
+    /// `texture.preupload` (it does only for a `hello` that asked). The runtime uploads those pictures' textures
+    /// between frames, within its texture budget; nothing here changes a frame, the status or the revision.
+    pub fn set_preupload(&mut self, enabled: bool) {
+        self.preupload_enabled = enabled;
+        if !enabled {
+            self.preuploaded.clear();
+        }
+    }
+
+    /// What the pre-upload asked and whether the runtime can do it, for `render.status`.
+    pub fn preupload_report(&self) -> serde_json::Value {
+        json!({
+            "enabled": self.preupload_enabled,
+            "supported": self.announces(FEATURE_TEXTURE_PREUPLOAD),
+            "sent": self.stats.preuploaded,
+        })
     }
 
     /// Turns the warm off (or on again): the monitor then never sends `frame.warm`, whatever the runtime
@@ -887,6 +953,7 @@ impl<B: RenderBackend> ViewportSession<B> {
                 self.refused.clear();
                 self.prefetched.clear();
                 self.warmed.clear();
+                self.preuploaded.clear();
                 let error = BackendError::new("context_lost", "The graphics context was lost");
                 SessionEvent::Failed(self.fail(error))
             }
@@ -898,6 +965,7 @@ impl<B: RenderBackend> ViewportSession<B> {
                 self.assets.clear();
                 self.prefetched.clear();
                 self.warmed.clear();
+                self.preuploaded.clear();
                 self.proxies.clear();
                 self.refused.clear();
                 self.capabilities = None;
@@ -1087,6 +1155,7 @@ impl<B: RenderBackend> ViewportSession<B> {
 
     fn forget_asset(&mut self, id: &Id) {
         self.warmed.retain(|key| !key.contains(id));
+        self.preuploaded.retain(|key| !key.contains(id));
         self.assets.remove(id);
         self.proxies.remove(id);
         self.refused.remove(id);
@@ -1126,6 +1195,7 @@ impl<B: RenderBackend> ViewportSession<B> {
         self.assets.clear();
         self.prefetched.clear();
         self.warmed.clear();
+        self.preuploaded.clear();
         self.asset_bytes.clear();
         self.last_used.clear();
         self.proxies.clear();
@@ -1148,6 +1218,7 @@ impl<B: RenderBackend> ViewportSession<B> {
                 "proxy_failed": self.stats.proxy_failed, "refined": self.stats.refined,
                 "prefetched": self.stats.prefetched, "prefetch_skipped": self.stats.prefetch_skipped, "evicted": self.stats.evicted, "warmed": self.stats.warmed, "reloaded": self.stats.reloaded,
             },
+            "preupload": self.preupload_report(),
             "preview_policy": self.policy.to_json(), "refine_pending": self.refine.is_some(),
             "proxy_error": self.proxy_error.as_ref().map(|(id, error)| json!({ "asset": id, "error": error.to_json() })),
             "proxies": self.proxies.keys().collect::<Vec<_>>(),

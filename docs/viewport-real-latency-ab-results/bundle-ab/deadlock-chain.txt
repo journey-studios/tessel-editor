@@ -1,0 +1,43 @@
+# BL157.4: the deadlocked worker thread of native session 24 (build without the fix)
+#
+# Symbol names only (no addresses, offsets, parameter lists or template arguments), reduced by a script from the two
+# `sample` outputs of the page process taken at 13.7 s and 24.5 s of the session; both give exactly this chain.
+# Read top to bottom: the worker's event loop runs a microtask, JavaScript calls ReadableStreamDefaultReader.releaseLock(),
+# an allocation inside it starts a garbage collection on this very thread, the marking visits the same reader and waits in
+# lockSlow for a lock that this thread already holds. The page's main thread was idle in its run loop.
+#
+WebCore::WorkerOrWorkletThread::runEventLoop
+WebCore::WorkerDedicatedRunLoop::run
+WebCore::WorkerDedicatedRunLoop::runInMode
+WebCore::WorkerDedicatedRunLoop::Task::performTask
+WebCore::EventLoop::run
+WebCore::MicrotaskQueue::performMicrotaskCheckpoint
+JSC::runInternalMicrotask
+(JIT code) x3
+WebCore::jsReadableStreamDefaultReaderPrototypeFunction_releaseLock
+WebCore::ReadableStreamDefaultReader::releaseLock
+WebCore::InternalReadableStreamDefaultReader::releaseLock
+WebCore::invokeReadableStreamDefaultReaderFunction
+JSC::call
+(JIT code)
+llint: get_by_id_direct (slow path entry)
+llint_slow_path_get_by_id_direct
+JSC::JSObject::getOwnPropertySlotInline
+JSC::Structure::materializePropertyTable
+JSC::Heap::decrementDeferralDepthAndGCIfNeededSlow
+JSC::Heap::collectInMutatorThread
+JSC::callWithCurrentThreadState
+WTF::ScopedLambdaFunctor::implFunction
+JSC::Heap::runCurrentPhase
+JSC::Heap::runFixpointPhase
+JSC::MarkingConstraintSet::executeConvergenceImpl
+JSC::MarkingConstraintSolver::execute
+JSC::Heap::runTaskInParallel
+JSC::MarkingConstraintSolver::runExecutionThread
+JSC::Subspace::forEachMarkedCellInParallel
+WebCore::JSReadableStreamDefaultReader::visitOutputConstraints
+WTF::LockAlgorithm::lockSlow
+WTF::ParkingLot::parkConditionallyImpl
+WTF::ThreadCondition::timedWait
+_pthread_cond_wait
+__psynch_cvwait

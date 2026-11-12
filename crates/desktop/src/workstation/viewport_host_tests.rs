@@ -19,6 +19,23 @@ use wry::http::Request;
 
 use super::viewport_host::{HostOptions, PAGE_URL, ViewportHost};
 
+/// What the handle answers for `request`, whichever thread answers (a worker answers later in `async` mode).
+pub(super) fn answer(
+    handle: &super::viewport_protocol::ProtocolHandle,
+    request: &Request<Vec<u8>>,
+) -> wry::http::Response<std::borrow::Cow<'static, [u8]>> {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    handle.handle(
+        request,
+        Box::new(move |response| {
+            let _ = sender.send(response);
+        }),
+    );
+    receiver
+        .recv_timeout(Duration::from_secs(20))
+        .expect("the request is answered exactly once")
+}
+
 pub(super) fn scratch(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("tessel-vh-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
@@ -670,12 +687,12 @@ fn assets_are_loaded_before_the_frame_and_only_those_are_served() {
             .uri(format!("tessel://localhost/asset?p={query}"))
             .body(Vec::new())
             .unwrap();
-        handle.respond(&request)
+        answer(&handle, &request)
     };
     assert_eq!(served(&encoded).status(), 200);
     assert_eq!(served("%2Fetc%2Fpasswd").status(), 403);
     let index = Request::builder().uri(PAGE_URL).body(Vec::new()).unwrap();
-    assert_eq!(handle.respond(&index).status(), 200);
+    assert_eq!(answer(&handle, &index).status(), 200);
 
     // Once every asset reports ready, the frame is submitted.
     for load in &loads {
@@ -715,7 +732,7 @@ fn replacing_the_project_forgets_loaded_assets_and_forbids_their_files() {
         .uri("tessel://localhost/asset?p=%2Fnot%2Fregistered.png")
         .body(Vec::new())
         .unwrap();
-    assert_eq!(handle.respond(&request).status(), 403);
+    assert_eq!(answer(&handle, &request).status(), 403);
 }
 
 #[test]
@@ -1042,12 +1059,90 @@ fn the_handshake_asks_for_nothing_extra_unless_the_host_opted_in() {
     let hello = &sent(&mut host)[0];
     assert_eq!(hello["retain"], false);
     assert_eq!(hello["telemetry"]["presented"], true);
+    assert_eq!(
+        hello["telemetry"]["timing"], true,
+        "the trace also asks the page to account for itself (BL157.2)"
+    );
+    assert!(
+        hello["telemetry"].get("gpu_finish").is_none(),
+        "the GPU wait is a separate diagnostic arm, never implied by the trace"
+    );
     assert_eq!(hello["preview_scene_samples"], 0);
     assert_eq!(hello["preview_sort"], "exact");
     assert!(
         hello.get("scene_samples").is_none(),
         "only what the host asked for"
     );
+
+    let arm = HostOptions {
+        trace: true,
+        gpu_finish: true,
+        ..HostOptions::default()
+    };
+    let mut host = ViewportHost::with_options(Ok(page("hello-finish")), arm);
+    from_page(&mut host, &state, json!({"type":"page.ready"}));
+    assert_eq!(sent(&mut host)[0]["telemetry"]["gpu_finish"], true);
+    let without_trace = HostOptions {
+        gpu_finish: true,
+        ..HostOptions::default()
+    };
+    let mut host = ViewportHost::with_options(Ok(page("hello-finish-alone")), without_trace);
+    from_page(&mut host, &state, json!({"type":"page.ready"}));
+    assert!(sent(&mut host)[0].get("telemetry").is_none());
+}
+
+#[test]
+fn the_texture_preupload_is_reported_and_the_hello_carries_it_only_when_asked() {
+    let state = empty_state();
+    let mut plain = ViewportHost::with_options(Ok(page("preupload-off")), HostOptions::default());
+    from_page(&mut plain, &state, json!({"type":"page.ready"}));
+    assert!(sent(&mut plain)[0].get("preupload_textures").is_none());
+    let off = plain.report()["session"]["preupload"].clone();
+    assert_eq!(off["enabled"], false);
+    assert_eq!(off["sent"], 0);
+
+    let options = HostOptions {
+        preupload: true,
+        ..HostOptions::default()
+    };
+    let mut host = ViewportHost::with_options(Ok(page("preupload-on")), options);
+    from_page(&mut host, &state, json!({"type":"page.ready"}));
+    assert_eq!(
+        sent(&mut host)[0],
+        json!({"v":1,"type":"hello","host":"tessel-editor","preupload_textures":true}),
+        "the flag is the only difference from the hello it always sent"
+    );
+    let on = host.report()["session"]["preupload"].clone();
+    assert_eq!(on["enabled"], true);
+    assert_eq!(
+        on["supported"], false,
+        "until the runtime announces `texture.preupload` in its `ready`"
+    );
+}
+
+#[test]
+fn the_warm_draw_is_reported_and_its_hello_flag_is_independent_of_the_preupload() {
+    let state = empty_state();
+    let mut plain = ViewportHost::with_options(Ok(page("warm-draw-off")), HostOptions::default());
+    from_page(&mut plain, &state, json!({"type":"page.ready"}));
+    assert!(sent(&mut plain)[0].get("warm_draw").is_none());
+    assert_eq!(plain.report()["session"]["warm_draw"]["enabled"], false);
+
+    let options = HostOptions {
+        warm_draw: true,
+        ..HostOptions::default()
+    };
+    let mut host = ViewportHost::with_options(Ok(page("warm-draw-on")), options);
+    from_page(&mut host, &state, json!({"type":"page.ready"}));
+    assert_eq!(
+        sent(&mut host)[0],
+        json!({"v":1,"type":"hello","host":"tessel-editor","warm_draw":true}),
+        "the flag says only itself: the pre-upload is not turned on with it"
+    );
+    let report = host.report()["session"].clone();
+    assert_eq!(report["warm_draw"]["enabled"], true);
+    assert_eq!(report["warm_draw"]["supported"], false);
+    assert_eq!(report["preupload"]["enabled"], false);
 }
 
 fn frame_done_with_source(id: u64, revision: u64, source: Value) -> Value {

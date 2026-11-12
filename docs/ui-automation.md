@@ -38,6 +38,10 @@ Started with `TESSEL_VIEWPORT_TRACE=1`, `get monitor.viewport` also carries `ses
 frame, the last 8 frames; `op render.status` carries the last 128). The proof reads the editor's own
 timestamps from it instead of polling during the drag. `TESSEL_VIEWPORT_RETAIN=0` starts the editor on the runtime's
 per-frame create/dispose path (A/B and rollback). Neither adds a control: both are read-only opt-ins in the environment.
+With the same trace, `ui op '{"op":"render.trace","since":0,"limit":4096}'` returns the correlation events (tick, prefetch, protocol
+requests, asset reads, page spans) after a cursor, with `lost` when the reader fell behind the 16 384-event window;
+`TESSEL_VIEWPORT_ASSET_IO=sync|async` (default `sync`) picks who reads project files for the `tessel://` protocol and
+`render.status` reports `asset_io`. `./scripts/headless` has no window, so it answers `desktop_required` ([F063](features/viewport-asset-io.md)).
 
 `scripts/proxy-live-proof.py` (OPT01/OPT04) starts the release binary with an isolated `HOME` per variant and checks, with
 semantic requests only: the media job builds the preview proxy (`op preview.policy` → `proxy_ready`), a scrub frame is drawn

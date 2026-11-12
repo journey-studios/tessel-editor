@@ -9,9 +9,11 @@ import { AssetStore } from './assets.js';
 import { Compositor, DEFAULT_PREVIEW_SORT, describePixels } from './compositor.js';
 import { DIRECTED_SCENE_CAPABILITIES } from './directed-scene.js';
 import { refreshAfterFrame } from './overlay.js';
+import { TexturePreupload, stillsToUpload } from './preupload.js';
 import { RetentionCounters } from './retention.js';
 import { SPLAT_FORMATS } from './splat-format.js';
 import { SPARK_VERSION } from './splat-stage.js';
+import { WarmDraws, drawWarmed } from './warm-draw.js';
 import {
   BRIDGE_VERSION,
   LAYERS,
@@ -56,8 +58,29 @@ const FEATURES = [
 // `wantsOverlay`), never by the headless worker (same bundle, no surface): a host sends `overlay.*`
 // messages only to a runtime that says it can draw them.
 const OVERLAY_FEATURE = 'overlay.gizmo';
+// BL157.3: announced only to a host whose `hello` asked for it (`preupload_textures: true`), so a default `ready` is the one it
+// always was. A `frame.warm` that says `textures: true` then uploads the textures of the loaded still images of its plan
+// before a frame draws them (preupload.js).
+const PREUPLOAD_FEATURE = 'texture.preupload';
+// BL157.3 (second, separate experiment): announced only to a host whose `hello` asked for it (`warm_draw: true`). A warm of
+// splat scenes then also draws each scene it sorted once into a scratch target (warm-draw.js).
+const WARM_DRAW_FEATURE = 'scene.warm_draw';
+// A warm draw older than this is dropped unrun: the cut it was for has come or gone.
+const WARM_DRAW_MAX_AGE_MS = 3000;
 
-export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
+// `createCompositor` and `warmDraw` are the seams of the Node unit tests (`test/orchestrator-fixtures.mjs`): a page never passes
+// them, and the defaults are the one compositor there has always been and the one warm draw (warm-draw.js). WebGL cannot run in
+// plain Node, so a test that wants to prove what THIS file decides (the serial queue, a frame going first, what a lost context
+// or a dispose drops, which span the host hears) hands in a compositor and a draw that record instead of drawing; what the real
+// ones do stays in the Chrome tests.
+export const createRuntime = ({
+  post,
+  assetUrl,
+  canvas,
+  overlay = null,
+  createCompositor = (target, compositorOptions) => new Compositor(target, compositorOptions),
+  warmDraw = drawWarmed,
+}) => {
   const send = (message) => post({ v: BRIDGE_VERSION, ...message });
   const counters = new RetentionCounters();
   const assets = new AssetStore({ assetUrl, counters });
@@ -65,11 +88,119 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
   // quick rollback), `telemetry.presented: true` asks for a `frame.presented` message per frame.
   // A host that never sends them gets retention on and no extra messages.
   // `result_cache: false` makes every splat scene frame sort and draw again (A/B and rollback).
-  const options = { retain: true, presented: false, resultCache: true };
+  const options = { retain: true, presented: false, timing: false, gpuFinish: false, resultCache: true, preupload: false, warmDraw: false };
   let compositor = null;
   let latestRender = 0;
+  // BL157.3: textures to upload before their clip starts (opt-in), and the frames waiting behind the one being drawn.
+  const preupload = new TexturePreupload();
+  let framesQueued = 0;
+  let preuploadPumping = false;
+  // The pause between two pre-uploads (a task of the page, see `pumpPreupload`), while there is one; `debug.idle` waits for it too.
+  let preuploadGap = null;
+  const warmDraws = new WarmDraws();
+  const warmDrawStats = { requested: 0, drawn: 0, skipped: 0, expired: 0, draw_ms: 0, max_draw_ms: 0, outcomes: {} };
   const cancelled = new Set();
   let renderQueue = Promise.resolve();
+  // Durations of the page's own background work (asset loads, warms), on the page's clock, handed to the host with the next
+  // `frame.done` so the host can place them next to its own stamps without ever subtracting the two clocks (BL157.1).
+  // Bounded: a page nobody drains keeps the newest, and says how many it let go.
+  const SPAN_LIMIT = 256;
+  const runtimeSpans = [];
+  let spansLost = 0;
+  const noteSpan = (span) => {
+    if (runtimeSpans.length >= SPAN_LIMIT) {
+      runtimeSpans.shift();
+      spansLost += 1;
+    }
+    // With `telemetry.timing` a span also says when it ended, as a duration back from the moment it is handed over
+    // (`ago_ms`), so the host can place it without a shared clock; the message that carries it may leave much later.
+    runtimeSpans.push(options.timing ? { ...span, at: performance.now() } : span);
+  };
+  const drainSpans = () => {
+    const now = performance.now();
+    const spans = runtimeSpans.splice(0).map(({ at, ...span }) =>
+      at === undefined ? span : { ...span, ago_ms: Math.max(0, now - at) });
+    if (spansLost > 0) spans.push({ k: 'lost', n: spansLost });
+    spansLost = 0;
+    return spans;
+  };
+
+  // BL157.2: what the page spends between receiving a frame request and answering it, and whether its own event loop was
+  // stalled. Only with `telemetry.timing`; every figure is a duration on this page's clock, never a stamp the host would
+  // subtract from its own. `ahead` is what shared the page's one serial queue when the request arrived.
+  const backlog = { frames: 0, warms: 0, loads: 0 };
+  const BEAT_MS = 4;
+  // A beat later than this is also kept as a span of its own, to be placed next to the host's events.
+  const STALL_MS = 16;
+  const beat = { timer: null, due: 0, n: 0, maxMs: 0, over: 0 };
+  const stopBeat = () => {
+    if (beat.timer !== null) clearTimeout(beat.timer);
+    beat.timer = null;
+  };
+  const startBeat = () => {
+    if (beat.timer !== null) return;
+    beat.due = performance.now() + BEAT_MS;
+    const tick = () => {
+      const now = performance.now();
+      const lag = Math.max(0, now - beat.due);
+      beat.n += 1;
+      if (lag > beat.maxMs) beat.maxMs = lag;
+      if (lag >= STALL_MS) {
+        beat.over += 1;
+        noteSpan({ k: 'loop_stall', ms: lag });
+      }
+      beat.due = now + BEAT_MS;
+      beat.timer = setTimeout(tick, BEAT_MS);
+    };
+    beat.timer = setTimeout(tick, BEAT_MS);
+  };
+  const drainBeat = () => {
+    const report = { n: beat.n, max_ms: beat.maxMs, over: beat.over, beat_ms: BEAT_MS };
+    beat.n = 0;
+    beat.maxMs = 0;
+    beat.over = 0;
+    return report;
+  };
+  // The WebGL calls that can make the page's thread wait for the GPU process (a readback, a fence, an upload, a link, a draw
+  // that has to flush). With `telemetry.timing` each is wrapped, and one that takes GL_SPAN_MS or more becomes a span
+  // `{ k: 'gl_call', name, ms }`: it says whether a stall of the event loop was inside a WebGL call (and which) or somewhere
+  // else. Wrapped on the prototype, restored when the timing goes off; bounded to one span per slow call.
+  const GL_SPAN_MS = 4;
+  const GL_CALLS = [
+    'readPixels', 'getBufferSubData', 'clientWaitSync', 'getSyncParameter', 'finish', 'flush', 'getError', 'getParameter',
+    'getProgramParameter', 'getShaderParameter', 'linkProgram', 'compileShader', 'useProgram', 'texImage2D', 'texSubImage2D',
+    'texImage3D', 'texSubImage3D', 'bufferData', 'bufferSubData', 'copyBufferSubData', 'blitFramebuffer', 'generateMipmap',
+    'drawArrays', 'drawElements', 'drawArraysInstanced', 'drawElementsInstanced', 'deleteTexture', 'deleteBuffer',
+    'deleteFramebuffer', 'deleteProgram', 'deleteRenderbuffer', 'createTexture', 'createBuffer', 'invalidateFramebuffer',
+  ];
+  const glWrapped = [];
+  const stopGlProbe = () => {
+    glWrapped.splice(0).forEach(({ prototype, name, original }) => {
+      prototype[name] = original;
+    });
+  };
+  const startGlProbe = () => {
+    if (glWrapped.length > 0) return;
+    for (const prototype of [globalThis.WebGL2RenderingContext?.prototype, globalThis.WebGLRenderingContext?.prototype]) {
+      if (!prototype) continue;
+      for (const name of GL_CALLS) {
+        const original = Object.getOwnPropertyDescriptor(prototype, name)?.value;
+        if (typeof original !== 'function') continue;
+        prototype[name] = function (...args) {
+          const started = performance.now();
+          try {
+            return original.apply(this, args);
+          } finally {
+            const ms = performance.now() - started;
+            if (ms >= GL_SPAN_MS) noteSpan({ k: 'gl_call', name, ms });
+          }
+        };
+        glWrapped.push({ prototype, name, original });
+      }
+    }
+  };
+  const finishPixel = new Uint8Array(4);
+  let lastPostMs = null;
   let contextLost = false;
   // Counts context losses; a frame that sees it change between its start and its end was drawn
   // on (or partly on) a context that died, whatever the outcome of the calls looked like.
@@ -80,7 +211,7 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
   const ensureCompositor = () => {
     if (compositor) return compositor;
     try {
-      compositor = new Compositor(canvas, { retain: options.retain, resultCache: options.resultCache, counters });
+      compositor = createCompositor(canvas, { retain: options.retain, resultCache: options.resultCache, counters });
       if (options.sceneSamples !== undefined) compositor.setSceneSamples(options.sceneSamples);
       if (options.previewSceneSamples !== undefined) compositor.setPreviewSceneSamples(options.previewSceneSamples);
       if (options.previewSort !== undefined) compositor.setPreviewSort(options.previewSort);
@@ -98,6 +229,8 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
       contextLosses += 1;
       // Spark's textures and the splat meshes' GPU data die with the context; both rebuild lazily.
       compositor?.dropSplatStage();
+      preupload.clear();
+      warmDraws.clear();
       // Retained textures, materials, rigs and targets belong to the lost context too; dropping
       // them now (before the restore) keeps three.js from addressing the new context with them.
       compositor?.dropRetained();
@@ -116,6 +249,21 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
   const applyOptions = (message) => {
     if (typeof message.retain === 'boolean') options.retain = message.retain;
     options.presented = message.telemetry?.presented === true;
+    options.timing = message.telemetry?.timing === true;
+    // BL157.3 (additive): every hello says it whole; absent is off, and turning it off forgets what was queued.
+    options.preupload = message.preupload_textures === true;
+    if (!options.preupload) preupload.clear();
+    options.warmDraw = message.warm_draw === true;
+    warmDraws.setEnabled(options.warmDraw);
+    // DIAGNOSTIC arm (BL157.2): wait for the GPU after each draw and report it; never without `timing`.
+    options.gpuFinish = options.timing && message.telemetry?.gpu_finish === true;
+    if (options.timing) {
+      startBeat();
+      startGlProbe();
+    } else {
+      stopBeat();
+      stopGlProbe();
+    }
     if (typeof message.result_cache === 'boolean') options.resultCache = message.result_cache;
     compositor?.setResultCache(options.resultCache);
     options.sceneSamples = Number.isInteger(message.scene_samples) ? message.scene_samples : undefined;
@@ -149,7 +297,7 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
         layers: LAYERS,
         formats: FORMATS,
         max_size: active.maxSize,
-        features: overlay ? [...FEATURES, OVERLAY_FEATURE] : FEATURES,
+        features: [...FEATURES, ...(overlay ? [OVERLAY_FEATURE] : []), ...(options.preupload ? [PREUPLOAD_FEATURE] : []), ...(options.warmDraw ? [WARM_DRAW_FEATURE] : [])],
         native_video: NATIVE_VIDEO,
         // Additive: what a `directed_scene` layer needs and how its resources are identified.
         directed_scene: DIRECTED_SCENE_CAPABILITIES,
@@ -171,11 +319,17 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
       return;
     }
     send({ type: 'asset.state', id: descriptor.id, state: 'loading', ...echo });
+    backlog.loads += 1;
     try {
+      const loadStarted = performance.now();
       const meta = await assets.load(descriptor);
-      send({ type: 'asset.state', id: descriptor.id, state: 'ready', meta, ...echo });
+      // Additive: how long the load took on this page's clock and, where measured, its fetch and decode parts.
+      const timings = { load_ms: performance.now() - loadStarted, ...assets.takeLoadTimings(meta) };
+      send({ type: 'asset.state', id: descriptor.id, state: 'ready', meta, timings, ...echo });
     } catch (error) {
       send({ type: 'asset.state', id: descriptor.id, state: 'failed', error: toErrorJson(error, 'asset_unreadable'), ...echo });
+    } finally {
+      backlog.loads -= 1;
     }
   };
 
@@ -220,8 +374,9 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
     };
   };
 
-  const renderFrame = async (request) => {
+  const renderFrame = async (request, arrival = null) => {
     const started = performance.now();
+    framesQueued -= 1;
     const { id, revision, plan, output, probes = [] } = request;
     // Additive field of bridge v1: `preview` lets a frame sequence draw its attached proxy; absent
     // (every host that predates it, and every explicit/export request) means the original.
@@ -249,6 +404,15 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
       const drawStarted = performance.now();
       const pixels = await active.draw({ plan, width, height, assets, aborted, readback, timings, quality, sources });
       if (lostDuringFrame()) throw new RuntimeError('context_lost', 'The graphics context was lost while the frame was drawn');
+      if (options.gpuFinish) {
+        // `finish()` alone returned at once in WebKit (the context is remote: it only flushes), so a one-pixel readback,
+        // which cannot return before the GPU has run what was drawn, is the wait.
+        const finishStarted = performance.now();
+        const { gl } = active;
+        gl.finish();
+        gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, finishPixel);
+        timings.gpu_finish_ms = performance.now() - finishStarted;
+      }
       const describeStarted = performance.now();
       // Not inspected: no hash/mean/probes (the host reads an empty hash as "not measured").
       const description = pixels
@@ -275,7 +439,25 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
       };
       // The host that owns the filesystem writes the file; the page only encodes it.
       if (output.png) message.png_data = canvas.toDataURL('image/png').split(',')[1];
+      // Additive: the page's own background work since the last picture (see `noteSpan`); absent when there was none. Drained after the
+      // encode: `ago_ms` counts back from this hand-over, and the PNG encode is time that has passed since a span ended.
+      const spans = drainSpans();
+      if (spans.length > 0) message.runtime_spans = spans;
+      if (arrival && options.timing) {
+        // Additive (`telemetry.timing`): the page's own account of this frame, durations on its clock. `queue_ms` is the
+        // wait in the page's serial queue before the frame started (which `total_ms` leaves out), `held_ms` all the time
+        // since the request arrived, up to the answer being handed to the transport.
+        message.page = {
+          queue_ms: started - arrival.at,
+          held_ms: performance.now() - arrival.at,
+          ahead: arrival.ahead,
+          post_prev_ms: lastPostMs,
+          loop: drainBeat(),
+        };
+      }
+      const postStarted = options.timing ? performance.now() : 0;
       send(message);
+      if (options.timing) lastPostMs = performance.now() - postStarted;
       if (options.presented) announcePresented(id, revision);
       // The canvas may have changed shape with this picture: an active overlay re-checks that it
       // still describes it (F055). After `frame.done` and `frame.presented`, so it never delays
@@ -286,7 +468,93 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
       send({ type: 'frame.failed', id, revision, error: failureOf(error, lostDuringFrame()) });
     } finally {
       cancelled.delete(id);
+      // Counted as ahead of a later request until it is answered, not only until it starts: a frame waiting at an await is still in the way.
+      if (arrival) backlog.frames -= 1;
     }
+  };
+
+  /**
+   * One upload of the queue (BL157.3) as a task of the page's serial queue. A frame that is waiting goes first: the upload
+   * puts itself back behind it. After an upload the page lets go of the thread for one macrotask (`preuploadGap`) and only then
+   * queues the next one behind whatever arrived meanwhile, which asks `framesQueued` again when it runs: a frame request is a
+   * message, delivered by a task of the page, and a chain of microtasks never lets one in (it would wait for the whole queue,
+   * up to 8 uploads of 13 to 27 ms each). A lost
+   * context, a retention switch-off or a dispose drops the queue instead of touching a context that is not the one asked.
+   */
+  const pumpPreupload = () => {
+    if (preuploadPumping || preupload.pending.length === 0) return;
+    preuploadPumping = true;
+    renderQueue = renderQueue.then(() => {
+      preuploadPumping = false;
+      if (framesQueued > 0) {
+        pumpPreupload();
+        return;
+      }
+      if (disposed || contextLost || !options.preupload || !options.retain || !compositor || compositor.gl.isContextLost()) {
+        preupload.clear();
+        return;
+      }
+      // `initTexture` only uploads: nothing is drawn and no render target or canvas pixel is touched (three.js binds the texture on
+      // unit 0 and unbinds it). The context was asked just above, in the same task.
+      const result = preupload.step(assets, (texture) => compositor.renderer.initTexture(texture));
+      if (result) noteSpan({ k: 'preupload', outcome: result.outcome, ms: result.ms });
+      if (preupload.pending.length === 0) return;
+      // Held (`preuploadPumping`) so a warm that arrives in the pause queues nothing of its own: this one pumps when it ends.
+      preuploadPumping = true;
+      preuploadGap = new Promise((resolve) => setTimeout(resolve, 0)).then(() => {
+        preuploadGap = null;
+        preuploadPumping = false;
+        pumpPreupload();
+      });
+    });
+  };
+
+  /**
+   * The warm draws of the scenes a warm just started (BL157.3, opt-in): each after ITS sort, as a task of the serial queue, behind
+   * any frame that is waiting (a frame that arrived has the page's GPU first; it also takes the lineage over, which turns the
+   * draw into a no-op). A dispose, a lost context or the switch off drops them.
+   */
+  const scheduleWarmDraws = () => {
+    for (const item of warmDraws.take()) {
+      warmDrawStats.requested += 1;
+      const run = () => {
+        renderQueue = renderQueue.then(async () => {
+          if (framesQueued > 0) {
+            run();
+            return;
+          }
+          const outcome = await runWarmDraw(item);
+          if (outcome) noteSpan({ k: 'warm_draw', outcome: outcome.outcome, ms: outcome.ms });
+        });
+      };
+      void item.sorted.then(run);
+    }
+  };
+
+  const runWarmDraw = async (item) => {
+    const note = (outcome, ms = 0) => {
+      warmDrawStats.outcomes[outcome] = (warmDrawStats.outcomes[outcome] ?? 0) + 1;
+      return { outcome, ms };
+    };
+    if (disposed || contextLost || !options.warmDraw || !compositor) {
+      warmDrawStats.skipped += 1;
+      return note('dropped');
+    }
+    if (performance.now() - item.at > WARM_DRAW_MAX_AGE_MS) {
+      warmDrawStats.expired += 1;
+      return note('expired');
+    }
+    const began = performance.now();
+    const outcome = await warmDraw(compositor, item, assets);
+    const ms = performance.now() - began;
+    if (outcome === 'drawn') {
+      warmDrawStats.drawn += 1;
+      warmDrawStats.draw_ms += ms;
+      warmDrawStats.max_draw_ms = Math.max(warmDrawStats.max_draw_ms, ms);
+    } else {
+      warmDrawStats.skipped += 1;
+    }
+    return note(outcome, ms);
   };
 
   const handlers = {
@@ -306,19 +574,40 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
     },
     'frame.render': (message) => {
       latestRender = message.id;
+      framesQueued += 1;
       // One GL context: frames run strictly one after another, newest wins.
-      renderQueue = renderQueue.then(() => renderFrame(message));
+      let arrival = null;
+      if (options.timing) {
+        arrival = { at: performance.now(), ahead: { ...backlog } };
+        backlog.frames += 1;
+      }
+      renderQueue = renderQueue.then(() => renderFrame(message, arrival));
     },
     // Additive (negotiated by `scene.warm`): no picture, no answer. Behind the frames in the queue, like them.
     'frame.warm': (message) => {
-      renderQueue = renderQueue.then(async () => {
-        if (disposed || contextLost) return;
-        try {
-          await ensureCompositor().warmScenes({ plan: message.plan, assets });
-        } catch {
-          // Best effort: a frame that needs the scene reports what is wrong with it.
-        }
-      });
+      const queuedAt = performance.now();
+      // `scenes: false` (BL157.3): a warm of textures only; absent is the warm of splat scenes it always was.
+      if (message.scenes !== false) {
+        backlog.warms += 1;
+        renderQueue = renderQueue.then(async () => {
+          try {
+            if (disposed || contextLost) return;
+            const warmStarted = performance.now();
+            const started = await ensureCompositor().warmScenes({ plan: message.plan, assets, onWarmed: (item) => warmDraws.record(item) });
+            noteSpan({ k: 'warm', queued_ms: warmStarted - queuedAt, ms: performance.now() - warmStarted, started });
+            scheduleWarmDraws();
+          } catch {
+            // Best effort: a frame that needs the scene reports what is wrong with it.
+          } finally {
+            backlog.warms -= 1;
+          }
+        });
+      }
+      // Asked for here (the serial of each entry is the one loaded now: a replacement before the upload makes it stale).
+      if (message.textures === true && options.preupload && options.retain && !disposed && !contextLost) {
+        preupload.enqueue(stillsToUpload(message.plan, assets));
+        pumpPreupload();
+      }
     },
     'frame.cancel': (message) => {
       cancelled.add(message.id);
@@ -345,6 +634,10 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
     ),
     dispose: () => {
       disposed = true;
+      preupload.clear();
+      warmDraws.clear();
+      stopBeat();
+      stopGlProbe();
       assets.releaseAll();
       compositor?.dispose();
       compositor = null;
@@ -412,7 +705,24 @@ export const createRuntime = ({ post, assetUrl, canvas, overlay = null }) => {
       if (!info) return null;
       return { textures: info.memory.textures, geometries: info.memory.geometries, programs: info.programs?.length ?? 0 };
     },
-    idle: () => renderQueue,
+    // The page's serial queue and, while there is one, the pause between two pre-uploads (which ends with the next step queued).
+    idle: () => (preuploadGap ? Promise.all([preuploadGap, renderQueue]) : renderQueue),
+    // Holds the page's serial queue until the returned function is called (tests): whatever is queued meanwhile waits.
+    holdQueue: () => {
+      let release;
+      const gate = new Promise((resolve) => {
+        release = resolve;
+      });
+      renderQueue = renderQueue.then(() => gate);
+      return release;
+    },
+    // The texture pre-upload queue and what it did (tests and measurements).
+    preupload: () => ({ enabled: options.preupload, ...preupload.report() }),
+    // What the scene warm draw did (tests and measurements).
+    warmDraw: () => ({ enabled: options.warmDraw, ...warmDrawStats, outcomes: { ...warmDrawStats.outcomes } }),
+    // The warms recorded for a draw and the draw itself, so a test can keep an item and ask for the same draw again.
+    warmDraws,
+    drawWarmed: (item) => warmDraw(compositor, item, assets),
     // Lineages whose warm sort is still running (tests).
     warming: () => compositor?.warming.size ?? 0,
     // Every SparkRenderer alive, to inject a failure into one or count them (tests and measurements).

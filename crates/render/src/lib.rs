@@ -5,6 +5,7 @@
 //! worker needs (Node, the built runtime, `puppeteer-core`, Chrome). Anything missing is a
 //! `backend_unavailable` error that says how to fix it; nothing here simulates rendering.
 
+pub mod asset_io;
 pub mod host;
 mod process;
 mod runtime;

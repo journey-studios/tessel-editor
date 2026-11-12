@@ -58,7 +58,7 @@
     source_time: { seconds: frame / 24 },
   });
   const camera = (angle) => ({ position: [Math.sin(angle) * 4, 0.3, Math.cos(angle) * 4], target: [0, 0, 0], fov: 50 });
-  const scene = (cam, time) => ({
+  const scene = (cam, time, extra = {}) => ({
     id: 'l:s',
     kind: 'scene',
     asset: 'scene',
@@ -67,7 +67,134 @@
     transform: T0,
     camera: cam,
     scene_time: { seconds: time },
+    ...extra,
   });
+  // Two different 1M clouds faded into each other, the way two overlapping scene clips are: both are drawn in every
+  // frame. The ramp stays inside (0.15, 0.85) so neither layer is ever skipped for being invisible.
+  const crossfade = (i) => {
+    const phase = (i % 28) / 28;
+    const ramp = 0.15 + 0.7 * (phase < 0.5 ? phase * 2 : 2 - phase * 2);
+    return [
+      scene(camera(i * 0.01), 0, { id: 'l:s1', asset: 'scene', opacity: 1 - ramp }),
+      scene(camera(i * 0.01 + 1), 0, { id: 'l:s2', asset: 'scene-b', opacity: ramp }),
+    ];
+  };
+  // The entry of a crossfade: one cloud alone, then (at frame ENTRY_AT) a second one that is loaded but was never drawn.
+  // With `cfg.entry_warm !== false` the page is sent the `frame.warm` the monitor sends a moment ahead of a cut
+  // (`cfg.warm_lead` frames before it), so the entry is measured the way the editor reaches it.
+  const ENTRY_AT = 40;
+  const entryLayers = (i) => (i < ENTRY_AT ? [scene(camera(i * 0.004), 0, { id: 'l:s1' })] : crossfade(i - ENTRY_AT));
+  const entryBefore = (i) =>
+    cfg.entry_warm === false || i !== ENTRY_AT - (cfg.warm_lead ?? 30)
+      ? []
+      : [{ type: 'frame.warm', plan: planFor(entryLayers(ENTRY_AT), ENTRY_AT) }];
+  // BL157.4, real clouds (private: passed on the command line and linked into `real/`, never copied): a scene is a ~1.18M-splat cloud
+  // plus the two small spinning effect clouds a project puts in each scene, seen by a camera that sits inside it and orbits slowly.
+  const realFile = (file) => `${dir}/real/${file}`;
+  const realSplat = (id, file, count) => ({ id, kind: 'splat', source: { type: 'file', path: realFile(file) }, meta: { format: 'ply', splat_count: count } });
+  const realScene = (id, file) => ({ id, kind: 'scene', source: { type: 'file', path: realFile(file) }, meta: { format: 'tessel-scene' } });
+  const realAssets = () => [
+    realSplat('cloud-a', 'cloud-a.ply', 1179648),
+    realSplat('cloud-b', 'cloud-b.ply', 1179648),
+    realSplat('ring', 'ring.ply', 52000),
+    realSplat('sparks', 'sparks.ply', 1400),
+    realScene('scene-a', 'scene-a.json'),
+    realScene('scene-b', 'scene-b.json'),
+  ];
+  const INSIDE = { position: [-0.11, 0, -0.05], target: [0, -0.14, -2.24], fov: 37, orbit: 0.72 };
+  /** `Camera::at` of the core: the position turned around the target's Y axis by `orbit` degrees per second. */
+  const orbitAt = (base, seconds) => {
+    const angle = (base.orbit * seconds * Math.PI) / 180;
+    const sin = Math.sin(angle);
+    const cos = Math.cos(angle);
+    const dx = base.position[0] - base.target[0];
+    const dz = base.position[2] - base.target[2];
+    return { ...base, position: [base.target[0] + dx * cos + dz * sin, base.position[1], base.target[2] - dx * sin + dz * cos] };
+  };
+  const realLayer = (id, asset, seconds, opacity) => scene(orbitAt(INSIDE, seconds), seconds, { id, asset, opacity });
+  const realOne = (i) => [realLayer('l:a', 'scene-a', i / 24, 1)];
+  const REAL_ENTRY_AT = 40;
+  const FADE_FRAMES = 14;
+  /** A scene alone; then a second one fades in over it for 14 frames (the project's `fade_in`), then it stands alone. */
+  const realEntryLayers = (i) => {
+    const since = i - REAL_ENTRY_AT;
+    if (since < 0) return [realLayer('l:a', 'scene-a', i / 24, 1)];
+    const second = realLayer('l:b', 'scene-b', since / 24, Math.min(1, since / FADE_FRAMES));
+    return since < FADE_FRAMES ? [realLayer('l:a', 'scene-a', i / 24, 1), second] : [second];
+  };
+  /** The same scenes without a fade: the second one replaces the first at the entry (no layer of the first is drawn with it). */
+  const realCutLayers = (i) => (i < REAL_ENTRY_AT ? [realLayer('l:a', 'scene-a', i / 24, 1)] : [realLayer('l:b', 'scene-b', (i - REAL_ENTRY_AT) / 24, 1)]);
+  /** A scene alone; then a still fades in over it (the crossfade of a layer that has no splat stage). */
+  const realFadeImageLayers = (i) => {
+    const since = i - REAL_ENTRY_AT;
+    if (since < 0) return [realLayer('l:a', 'scene-a', i / 24, 1)];
+    const picture = image('pic', { opacity: Math.min(1, since / FADE_FRAMES) });
+    return since < FADE_FRAMES ? [realLayer('l:a', 'scene-a', i / 24, 1), picture] : [picture];
+  };
+  // The whole sequence of the real project: four scenes, each faded into the one before (14 frames) at a different entry. Every
+  // entry is a cloud never drawn before in this process, so what the first one costs and what the next ones cost can be told apart.
+  const CHAIN = ['a', 'b', 'c', 'd'];
+  const CHAIN_AT = [40, 100, 160];
+  // `cuts` names the entries that are plain cuts (no fade): the others are the 14-frame crossfades.
+  const chainOf = (cuts = []) => {
+    const layersAt = (i) => {
+      let k = 0;
+      while (k < CHAIN_AT.length && i >= CHAIN_AT[k]) k += 1;
+      const clip = (n, opacity) => realLayer(`l:${CHAIN[n]}`, `scene-${CHAIN[n]}`, (i - (n === 0 ? 0 : CHAIN_AT[n - 1])) / 24, opacity);
+      if (k === 0) return [clip(0, 1)];
+      const since = i - CHAIN_AT[k - 1];
+      return since < FADE_FRAMES && !cuts.includes(k - 1) ? [clip(k - 1, 1), clip(k, since / FADE_FRAMES)] : [clip(k, 1)];
+    };
+    const before = (i) =>
+      cfg.entry_warm === false ? [] : CHAIN_AT.filter((at) => i === at - (cfg.warm_lead ?? 30)).map((at) => ({ type: 'frame.warm', plan: planFor(layersAt(at), at) }));
+    return { layers: layersAt, before };
+  };
+  // The chain played twice in one page: at frame LOOP the playhead goes back to the start (a replay, or a seek back), where the stages
+  // of the first scenes are no longer alive (the retention keeps two), so every entry of the second play is a stage made anew.
+  const LOOP = 220;
+  const chainLoop = () => {
+    const base = chainOf();
+    const entries = [...CHAIN_AT, ...CHAIN_AT.map((at) => at + LOOP)];
+    const layers = (i) => base.layers(i % LOOP);
+    const before = (i) =>
+      cfg.entry_warm === false ? [] : entries.filter((at) => i === at - (cfg.warm_lead ?? 30)).map((at) => ({ type: 'frame.warm', plan: planFor(layers(at), at) }));
+    return { layers, before, entries };
+  };
+  const chainLayers = chainOf().layers;
+  const chainBefore = chainOf().before;
+  const chainAssets = () => [
+    ...CHAIN.map((name) => realSplat(`cloud-${name}`, `cloud-${name}.ply`, 1179648)),
+    realSplat('ring', 'ring.ply', 52000),
+    realSplat('sparks', 'sparks.ply', 1400),
+    ...CHAIN.map((name) => realScene(`scene-${name}`, `scene-${name}.json`)),
+  ];
+  const realEntryBefore = (i) =>
+    cfg.entry_warm === false || i !== REAL_ENTRY_AT - (cfg.warm_lead ?? 30)
+      ? []
+      : [{ type: 'frame.warm', plan: planFor(realEntryLayers(REAL_ENTRY_AT), REAL_ENTRY_AT) }];
+  // The same crossfade entry at another frame of the run: how long the page has been drawing before the first second scene.
+  const realEntryOf = (at) => {
+    const layers = (i) => {
+      const since = i - at;
+      if (since < 0) return [realLayer('l:a', 'scene-a', i / 24, 1)];
+      const second = realLayer('l:b', 'scene-b', since / 24, Math.min(1, since / FADE_FRAMES));
+      return since < FADE_FRAMES ? [realLayer('l:a', 'scene-a', i / 24, 1), second] : [second];
+    };
+    const before = (i) => (cfg.entry_warm === false || i !== at - (cfg.warm_lead ?? 30) ? [] : [{ type: 'frame.warm', plan: planFor(layers(at), at) }]);
+    return { layers, before };
+  };
+  // The load of the next scene while the playhead moves (the monitor's prefetch, a moment ahead of a cut): frames of one scene keep
+  // being asked for, and the second scene's cloud and scene file are loaded meanwhile. What this shows is the jank the load itself
+  // causes, nothing of the entry (the scene is never drawn).
+  const REAL_PREFETCH_AT = 20;
+  const LATE = new Set(['cloud-b', 'scene-b']);
+  const realPrefetchBefore = (i) => (i === REAL_PREFETCH_AT ? realAssets().filter((asset) => LATE.has(asset.id)).map((asset) => ({ type: 'asset.load', asset })) : []);
+  const crossfadeAssets = () => [
+    splatFile('s1m.splat'),
+    sceneFile('s1m.json'),
+    { id: 'splat-b', kind: 'splat', source: { type: 'file', path: `${dir}/s1m-b.splat` }, meta: { format: 'splat' } },
+    { id: 'scene-b', kind: 'scene', source: { type: 'file', path: `${dir}/s1m-b.json` }, meta: {} },
+  ];
 
   // The fixed matrix. `frames` is the declared N of the warm window (splats are slower, so fewer).
   const CASES = {
@@ -88,6 +215,54 @@
     'spark-100k-orbit': { assets: () => [splatFile('s100k.splat'), sceneFile('s100k.json')], layers: (i) => [scene(camera(i * 0.05), 0)], frames: 120 },
     'spark-1m': { assets: () => [splatFile('s1m.splat'), sceneFile('s1m.json')], layers: () => [scene(camera(0), 0)], frames: 90 },
     'spark-1m-orbit': { assets: () => [splatFile('s1m.splat'), sceneFile('s1m.json')], layers: (i) => [scene(camera(i * 0.05), 0)], frames: 90 },
+    // One cloud moving slowly (the pace of a camera move in a film) and two clouds crossfading: the two shapes of a frame
+    // of the real project that are drawn with splats.
+    'spark-1m-slow': { assets: () => [splatFile('s1m.splat'), sceneFile('s1m.json')], layers: (i) => [scene(camera(i * 0.004), 0)], frames: 90 },
+    'spark-1m-xfade': { assets: crossfadeAssets, layers: crossfade, frames: 90 },
+    // BL157.4: the frames around the entry of a crossfade (index ENTRY_AT of the run), series kept per frame.
+    'spark-1m-entry': { assets: crossfadeAssets, layers: entryLayers, before: entryBefore, frames: 80, series: true, entryAt: ENTRY_AT },
+    // The same, with the real clouds (needs `--real-*`): one scene, and the entry of the next one over it.
+    'real-one': { assets: realAssets, layers: realOne, frames: 60 },
+    'real-cut': { assets: realAssets, layers: realCutLayers, before: (i) => (cfg.entry_warm === false || i !== REAL_ENTRY_AT - (cfg.warm_lead ?? 30) ? [] : [{ type: 'frame.warm', plan: planFor(realCutLayers(REAL_ENTRY_AT), REAL_ENTRY_AT) }]), frames: 90, series: true, entryAt: REAL_ENTRY_AT },
+    // The `frame.warm` the monitor sends ahead of the fade also asks for the textures of its stills when the variant is `preupload`.
+    'real-fade-image': {
+      assets: () => [...realAssets(), { id: 'pic', kind: 'still', source: { type: 'file', path: realFile('image.png') }, meta: {} }],
+      layers: realFadeImageLayers,
+      before: (i) =>
+        cfg.entry_warm === false || i !== REAL_ENTRY_AT - (cfg.warm_lead ?? 30)
+          ? []
+          : [{ type: 'frame.warm', plan: planFor(realFadeImageLayers(REAL_ENTRY_AT), REAL_ENTRY_AT), ...(cfg.warm_textures ? { textures: true } : {}) }],
+      frames: 90,
+      series: true,
+      entryAt: REAL_ENTRY_AT,
+    },
+    // The load alone: how long it takes and whether it always ends (the real clouds, decoded on Spark's workers).
+    'real-load': { assets: realAssets, layers: realOne, frames: 1, loadOnly: true },
+    // The same, with eight more of each small effect cloud (the same files under other ids): sixteen small decodes in one load, so a
+    // fault that hits a small decode now and then shows in a few dozen runs instead of a few hundred.
+    'real-load-many': {
+      assets: () => [
+        realSplat('cloud-a', 'cloud-a.ply', 1179648),
+        realSplat('cloud-b', 'cloud-b.ply', 1179648),
+        ...Array.from({ length: 8 }, (_, i) => realSplat(`ring-${i}`, 'ring.ply', 52000)),
+        ...Array.from({ length: 8 }, (_, i) => realSplat(`sparks-${i}`, 'sparks.ply', 1400)),
+      ],
+      layers: realOne,
+      frames: 1,
+      loadOnly: true,
+    },
+    // The first entry is a cut: the first frame with two scenes in it is then the second entry (what the first crossfade of a process costs).
+    'real-chain-cut': { assets: chainAssets, layers: chainOf([0]).layers, before: chainOf([0]).before, frames: 230, series: true, entryAt: CHAIN_AT[0], entries: CHAIN_AT },
+    ...Object.fromEntries(
+      [100, 186].map((at) => {
+        const entry = realEntryOf(at);
+        return [`real-entry-${at}`, { assets: realAssets, layers: entry.layers, before: entry.before, frames: at + 40, series: true, entryAt: at }];
+      }),
+    ),
+    'real-chain-loop': { assets: chainAssets, layers: chainLoop().layers, before: chainLoop().before, frames: LOOP * 2 - 10, series: true, entryAt: CHAIN_AT[0], entries: chainLoop().entries },
+    'real-chain': { assets: chainAssets, layers: chainLayers, before: chainBefore, frames: 230, series: true, entryAt: CHAIN_AT[0], entries: CHAIN_AT },
+    'real-prefetch': { assets: () => realAssets().filter((asset) => !LATE.has(asset.id)), layers: realOne, before: realPrefetchBefore, frames: 120, series: true, entryAt: REAL_PREFETCH_AT },
+    'real-entry': { assets: realAssets, layers: realEntryLayers, before: realEntryBefore, frames: 90, series: true, entryAt: REAL_ENTRY_AT },
     // Scrub forward (every frame new) and at random (revisits): original vs preview proxy.
     ...Object.fromEntries(
       [['', null], ['-jpg', 'jpg'], ['-png', 'png']].flatMap(([suffix, format]) =>
@@ -188,6 +363,7 @@
   const renderFrame = async (layers, index, extra = {}) => {
     sequenceNumber += 1;
     const id = sequenceNumber;
+    window.__frame = index;
     const started = performance.now();
     send({
       type: 'frame.render',
@@ -202,6 +378,7 @@
       `frame ${id}`,
     );
     if (done.type === 'frame.failed') throw new Error(`frame ${index}: ${JSON.stringify(done.error)}`);
+    window.__frame = -1;
     return { done, wall: performance.now() - started };
   };
 
@@ -228,6 +405,10 @@
     if (typeof cfg.retain === 'boolean') options.retain = cfg.retain;
     if (typeof cfg.result_cache === 'boolean') options.result_cache = cfg.result_cache;
     if (Number.isInteger(cfg.scene_samples)) options.scene_samples = cfg.scene_samples;
+    if (Number.isInteger(cfg.preview_scene_samples)) options.preview_scene_samples = cfg.preview_scene_samples;
+    if (typeof cfg.preview_sort === 'string') options.preview_sort = cfg.preview_sort;
+    if (typeof cfg.preupload_textures === 'boolean') options.preupload_textures = cfg.preupload_textures;
+    if (typeof cfg.warm_draw === 'boolean') options.warm_draw = cfg.warm_draw;
     return options;
   };
 
@@ -248,7 +429,7 @@
     const started = performance.now();
     for (const asset of assets) send({ type: 'asset.load', asset });
     for (const asset of assets) {
-      const message = await within(until((m) => m.type === 'asset.state' && m.id === asset.id && m.state !== 'loading'), `asset ${asset.id}`);
+      const message = await within(until((m) => m.type === 'asset.state' && m.id === asset.id && m.state !== 'loading'), `asset ${asset.id}`, cfg.load_timeout_ms ?? 60000);
       if (message.state !== 'ready') throw new Error(`asset ${asset.id}: ${JSON.stringify(message.error)}`);
     }
     return performance.now() - started;
@@ -276,28 +457,71 @@
     const warmup = cfg.warmup ?? 10;
     const frames = cfg.frames ?? definition.frames ?? 300;
     result.asset_load_ms = await loadAll(definition.assets());
+    // A case about the load alone (does it always end, and how long does it take): nothing is drawn.
+    if (definition.loadOnly) return result;
     if (definition.proxy) {
       const { asset, ...proxy } = definition.proxy;
       send({ type: 'asset.proxy', id: asset, proxy });
       const attached = await within(until((m) => m.type === 'asset.proxy' && m.id === asset), 'asset.proxy');
       if (attached.state !== 'attached') throw new Error(`proxy: ${JSON.stringify(attached.error)}`);
     }
-    // `quality` is the monitor's: only the proxy cases ask for `preview`.
-    const base = definition.quality ? { inspect: false, quality: definition.quality } : { inspect: false };
-    result.declared = { warmup, frames, width, height, pacing: cfg.pacing ?? 'raf', drain: cfg.drain ?? null, quality: definition.quality ?? 'original' };
+    // `cfg.prime_open`: the warm of the case's first transition is sent once, now, and the page idles for `prime_wait_ms` (the monitor
+    // warming when the project is opened, before anybody presses play). The warm ahead of the transition still follows, as the monitor
+    // sends it, unless `cfg.prime_only` (`sendBefore`).
+    if (cfg.prime_open && definition.entryAt !== undefined) {
+      for (const message of definition.before?.(definition.entryAt - (cfg.warm_lead ?? 30)) ?? []) send(message);
+      await new Promise((resolve) => setTimeout(resolve, cfg.prime_wait_ms ?? 1500));
+    }
+    // `quality` is the monitor's: only the proxy cases ask for `preview` (and `--quality preview` asks for it for any case: the
+    // monitor draws a moving playhead with it).
+    const quality = cfg.quality ?? definition.quality;
+    const base = quality ? { inspect: false, quality } : { inspect: false };
+    result.declared = { warmup, frames, width, height, pacing: cfg.pacing ?? 'raf', drain: cfg.drain ?? null, quality: quality ?? 'original' };
+    // `raf` waits for the next animation frame, `film` keeps the clock of a playing project (24 frames a second: a frame that is late
+    // does not make the next one early), anything else only yields.
+    let filmNext = 0;
     const pace = async () => {
-      if ((cfg.pacing ?? 'raf') === 'raf') {
+      const mode = cfg.pacing ?? 'raf';
+      if (mode === 'raf') {
         const started = performance.now();
         await nextRaf();
         return performance.now() - started;
+      }
+      if (mode === 'film') {
+        const now = performance.now();
+        if (filmNext === 0) filmNext = now;
+        filmNext += 1000 / 24;
+        const wait = filmNext - now;
+        if (wait <= 0) {
+          filmNext = now;
+          return 0;
+        }
+        await new Promise((resolve) => setTimeout(resolve, wait));
+        return wait;
       }
       await yieldTask();
       return 0;
     };
 
+    // Messages a case sends between frames (a warm, a load): a load also records how long it took to answer, and at which frame it began.
+    const sendBefore = (index) => {
+      for (const message of cfg.prime_only ? [] : (definition.before?.(index) ?? [])) {
+        send(message);
+        if (message.type !== 'asset.load') continue;
+        const started = performance.now();
+        const note = ((result.late ??= {})[message.asset.id] = { sent_at_frame: index, ms: null, state: null });
+        void until((m) => m.type === 'asset.state' && m.id === message.asset.id && m.state !== 'loading').then((m) => {
+          note.ms = round(performance.now() - started);
+          note.state = m.state;
+          note.timings = m.timings ?? null;
+        });
+      }
+    };
+
     // Cold: a page that never drew. Frame 0 compiles and uploads, frame 1 shows what is left.
     const cold = [];
     for (let index = 0; index < warmup; index += 1) {
+      sendBefore(index);
       const coldFrame = await renderFrame(definition.layers(index), index, base);
       if (coldFrame.done.source?.proxy_error) result.proxy_error ??= coldFrame.done.source.proxy_error;
       cold.push(timingsOf(coldFrame));
@@ -314,7 +538,25 @@
     const cacheSum = Object.fromEntries(CACHE_EVENTS.map((name) => [name, 0]));
     let lastCache = null;
     const windowStart = performance.now();
+    // A page whose main thread was busy: a timer that asks to run every 4 ms and is late by `BUSY_LATE_MS` or more records WHEN and by how much.
+    // (A case about one event only; the timer itself costs nothing a frame notices.) At 12 ms the list held nearly every frame of a
+    // 24 fps run (13-27 ms late each, the frame's own work); 30 ms keeps what stands out of that: a stall of most of a frame.
+    const BUSY_LATE_MS = 30;
+    const gaps = [];
+    let monitoring = Boolean(definition.series);
+    if (monitoring) {
+      let expected = performance.now() + 4;
+      const tick = () => {
+        if (!monitoring) return;
+        const now = performance.now();
+        if (now - expected >= BUSY_LATE_MS) gaps.push({ at: round(expected - windowStart), late_ms: round(now - expected) });
+        expected = now + 4;
+        setTimeout(tick, 4);
+      };
+      setTimeout(tick, 4);
+    }
     for (let index = warmup; index < warmup + frames; index += 1) {
+      sendBefore(index);
       const frame = await renderFrame(definition.layers(index), index, base);
       const row = timingsOf(frame);
       row.source = frame.done.source?.proxy_layers ? 'proxy' : 'original';
@@ -332,6 +574,10 @@
         for (const name of CACHE_EVENTS) cacheSum[name] += frame.done.cache[name] ?? 0;
       }
     }
+    monitoring = false;
+    if (definition.series) result.gaps = gaps;
+    if (window.__slow) result.slow_gl = window.__slow;
+    if (window.__pso) result.pso = window.__pso;
     result.window_ms = performance.now() - windowStart;
     result.raf_fallbacks = rafFallbacks;
     result.frames_per_second = frames / (result.window_ms / 1000);
@@ -340,6 +586,17 @@
     }
     // The raw series stays in the record: a mean can be recomputed, a hidden outlier cannot.
     result.series = { render: rows.map((row) => round(row.render)), wall: rows.map((row) => round(row.wall)) };
+    if (definition.series) {
+      // A case about the frames around one event: every phase of every frame, in order (a mean would hide the one frame that matters).
+      for (const key of ['prepare', 'draw', 'drain', 'complete', 'raf_wait']) result.series[key] = rows.map((row) => round(row[key] ?? 0));
+      result.first_index = warmup;
+      result.entry_at = definition.entryAt ?? null;
+      result.entries = definition.entries ?? null;
+      // One explicit frame after the window: proof that the last picture is not an empty one (a run that draws nothing is fast too).
+      const last = warmup + frames - 1;
+      const { done } = await renderFrame(definition.layers(last), last, { probes: probesOf() });
+      result.last_frame = { index: last, hash: done.hash, probes: done.probes, mean: done.mean };
+    }
     result.sources = { proxy_frames: rows.filter((row) => row.source === 'proxy').length, original_frames: rows.filter((row) => row.source === 'original').length };
     result.cache_events = lastCache ? cacheSum : null;
     result.cache_last = lastCache;
@@ -498,7 +755,27 @@
     return bench(result, definition);
   };
 
+  // `cfg.end_hold_ms`: keeps the page (and its processes) alive after the run, so a sampler attached to them (macOS `sample`) can
+  // finish before they exit; a process that dies under a sampler leaves an empty profile.
+  const hold = () => (cfg.end_hold_ms ? new Promise((resolve) => setTimeout(resolve, cfg.end_hold_ms)) : Promise.resolve());
+  // `cfg.workerlog` (preamble): the Workers and fetches of the page, in the record of a run that ended and of one that was given up.
+  const diagnostics = () => ({
+    ...(window.__workers ? { workers: window.__workers } : {}),
+    ...(window.__fetches ? { fetches: window.__fetches } : {}),
+    ...(cfg.workerlog ? { unread: window.__msgs.map((message) => `${message.type}:${message.id ?? ''}:${message.state ?? ''}`) } : {}),
+  });
   main()
-    .then((result) => window.__benchDone({ ...result, errors: window.__errs }))
-    .catch((error) => window.__benchDone({ cfg: { ...cfg, assetsDir: undefined }, fatal: String(error?.stack ?? error), errors: window.__errs }));
+    .then(async (result) => {
+      await hold();
+      window.__benchDone({ ...result, errors: window.__errs, ...diagnostics() });
+    })
+    // WebKit's `stack` has no message: the label of a timeout (`frame 12`, `asset x`) would be lost with it. `state` says how far the run got.
+    .catch((error) =>
+      window.__benchDone({
+        cfg: { ...cfg, assetsDir: undefined },
+        fatal: `${error?.message ?? error}\n${error?.stack ?? ''}`,
+        state: { sequence: sequenceNumber, unread_messages: window.__msgs.map((message) => message.type) },
+        errors: window.__errs,
+        ...diagnostics(),
+      }));
 })();

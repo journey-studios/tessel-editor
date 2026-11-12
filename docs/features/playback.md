@@ -26,6 +26,15 @@ comando do clique na régua) e o áudio sai do mesmo plano (`plan_audio`) que o 
   playhead piscava de volta — corrigido depois de aparecer ao vivo sob carga).
 - Fim: a fonte acabou e a última amostra foi ouvida (latência incluída) → o playhead para no fim e o estado vira `stopped` com
   o relatório. Abrir/criar/restaurar projeto para a reprodução.
+- **Quando o relógio é consultado (BL157.6, `TESSEL_PLAYBACK_POLL`).** O laço pergunta "em que quadro estamos?" e só depois arma o próximo timer; a variável escolhe **quanto** ele espera,
+  nunca o que o relógio diz nem o `Command::SetPlayhead`. `fixed` (**padrão**) espera meio quadro (`1/(fps·2)`, 20,83 ms a 24 fps) depois de cada resposta: com o atraso do timer (≈ 1,5 ms) um quadro
+  de 41,67 ms vale 1,87 consultas, então 13% das trocas de quadro são vistas ≈ 22 ms depois da anterior e 87% ≈ 44 ms depois. `deadline` espera até a próxima fronteira de quadro **mais 1 ms de folga**,
+  descontado o tempo desde a leitura do relógio e nunca mais que meio quadro (continua a consultar ao menos 2 vezes por quadro); volta a esperar meio quadro quando não há leitura, o relógio não anda
+  (pausa, nível igual, ou voltou por um `seek`) ou a taxa não é um número válido. A conta é a função pura `playback_poll::next_poll`
+  (`crates/desktop/src/workstation/playback_poll.rs`), testada sem janela nem dispositivo; o laço em `playback.rs` tem testes determinísticos (a leitura do relógio roteirizada; a idade dela é a do relógio real, e os testes aceitam toda espera até a folga mínima de 1 ms).
+  `playback.status.poll` diz o modo em uso; com `TESSEL_VIEWPORT_TRACE=1`, `play_clock_started` traz `poll` e cada `tick` traz `clock` (o que o relógio disse, em quadros fracionários) e `next_ms`
+  (a espera armada; `late_ms` e `next_ms` saem em ms a 3 casas, e `due_ms` e `ran_ms` são instantes desde o início do traço, sem arredondar: BL157.28). O padrão **só muda** por um A/B nativo pareado com regra fixada antes de medir ([F063 §BL157.6](viewport-asset-io.md#bl1576--a-cadência-do-relógio-de-reprodução-e-o-agendamento-da-consulta));
+  o ganho esperado é de **regularidade das imagens**, não das pausas de 60–160 ms.
 
 | `op` | Campos | Resultado |
 |---|---|---|
@@ -33,7 +42,7 @@ comando do clique na régua) e o áudio sai do mesmo plano (`plan_audio`) que o 
 | `playback.pause` / `playback.resume` | — | relatório; `not_playing` |
 | `playback.seek` | `frame` | move imagem e som; `out_of_bounds`, `not_playing` |
 | `playback.stop` | — | relatório final (`{action, report}`) |
-| `playback.status` | — | `state`, `frame`, `fps`, `clock`, `elapsed_ms`, `lag_frames`, `ticks`, `skipped_frames`, `max_gap_frames`, `audio{output{name,host,sample_rate,channels,sample_format,buffer}, open_ms, latency_ms, buffer_frames, callbacks, underruns, late_callbacks, device_underruns, max_callback_gap_ms, position_frames, paused, finished, messages, heard:false}` ou `audio{output:null, error{code,message}}` |
+| `playback.status` | — | `state`, `frame`, `fps`, `clock`, `poll`, `elapsed_ms`, `lag_frames`, `ticks`, `skipped_frames`, `max_gap_frames`, `audio{output{name,host,sample_rate,channels,sample_format,buffer}, open_ms, latency_ms, buffer_frames, callbacks, underruns, late_callbacks, device_underruns, max_callback_gap_ms, position_frames, paused, finished, messages, heard:false}` ou `audio{output:null, error{code,message}}` |
 
 `underruns` = `late_callbacks` (callback que chegou a mais de 1,75 período do anterior: jitter de agendamento) +
 `device_underruns` (o que o host declarou como `BufferUnderrun`).

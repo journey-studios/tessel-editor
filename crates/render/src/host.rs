@@ -132,7 +132,7 @@ pub struct Served {
 }
 
 impl Served {
-    fn text(status: u16, message: impl Into<String>) -> Self {
+    pub fn text(status: u16, message: impl Into<String>) -> Self {
         Self {
             status,
             content_type: "text/plain; charset=utf-8",
@@ -187,7 +187,8 @@ fn percent_decode(raw: &str) -> Option<String> {
     String::from_utf8(out).ok()
 }
 
-fn query_param(query: &str, key: &str) -> Option<String> {
+/// The percent-decoded value of `key` in a query string (`None` when absent or malformed).
+pub fn query_param(query: &str, key: &str) -> Option<String> {
     query
         .split('&')
         .filter_map(|pair| pair.split_once('='))
@@ -232,37 +233,63 @@ fn clamp_range(start: u64, end: u64, suffix: bool) -> (u64, u64) {
     }
 }
 
-/// Answers `GET <path>?<query>`: the page (`/`, `/runtime.js`) from `dist`, or a registered
-/// asset (`/asset?p=<absolute path>`), with byte ranges.
-pub fn serve(
+/// What to read: a file and the `Range` the page sent for it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReadJob {
+    pub file: PathBuf,
+    pub range: Option<String>,
+}
+
+/// What a request resolves to before any file is touched: an answer that needs no read (the page's own refusals, an empty
+/// `204`), or a file to read. Authorization is decided here, on the caller's thread, from the allow-list as it is at this
+/// moment; the read that follows can then run elsewhere without sharing that list. The two kinds of file are told apart
+/// because only a project's asset may be read elsewhere (and refused or made stale with its project): the page's own code
+/// is always read by the caller.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Resolved {
+    Answer(Served),
+    /// The page itself: `/`, `/index.html`, `/runtime.js`.
+    Bundle(ReadJob),
+    /// A file of the project an `asset.load` registered: `/asset?p=<absolute path>`.
+    Asset(ReadJob),
+}
+
+/// Decides what `GET <path>?<query>` refers to: the page (`/`, `/runtime.js`) from `dist`, or a registered asset
+/// (`/asset?p=<absolute path>`). No file is opened.
+pub fn resolve(
     dist: &Path,
     access: &AssetAccess,
     path: &str,
     query: &str,
     range: Option<&str>,
-) -> Served {
-    let file = match path {
-        "/" | "/index.html" => dist.join("index.html"),
-        "/runtime.js" => dist.join("runtime.js"),
-        "/favicon.ico" => return Served::text(204, ""),
-        "/asset" => {
-            let Some(requested) = query_param(query, "p") else {
-                return Served::text(403, "not an asset of this project");
-            };
-            if !access.allows(&requested) {
-                return Served::text(403, "not an asset of this project");
-            }
-            absolute(&requested)
-        }
-        _ => return Served::text(404, "not found"),
+) -> Resolved {
+    let job = |file: PathBuf| ReadJob {
+        file,
+        range: range.map(str::to_owned),
     };
-    let Ok(mut handle) = File::open(&file) else {
+    match path {
+        "/" | "/index.html" => Resolved::Bundle(job(dist.join("index.html"))),
+        "/runtime.js" => Resolved::Bundle(job(dist.join("runtime.js"))),
+        "/favicon.ico" => Resolved::Answer(Served::text(204, "")),
+        "/asset" => match query_param(query, "p") {
+            Some(requested) if access.allows(&requested) => {
+                Resolved::Asset(job(absolute(&requested)))
+            }
+            _ => Resolved::Answer(Served::text(403, "not an asset of this project")),
+        },
+        _ => Resolved::Answer(Served::text(404, "not found")),
+    }
+}
+
+/// Reads what a [`ReadJob`] names: open, size, byte range, body. All the blocking I/O of serving is here.
+pub fn read_file(file: &Path, range: Option<&str>) -> Served {
+    let Ok(mut handle) = File::open(file) else {
         return Served::text(404, format!("missing {}", file.display()));
     };
     let Ok(size) = handle.metadata().map(|meta| meta.len()) else {
         return Served::text(404, format!("unreadable {}", file.display()));
     };
-    let kind = content_type(&file);
+    let kind = content_type(file);
     let ranged = range.and_then(|header| parse_range(header, size));
     let (start, end, status) = match ranged {
         Some(Ok((start, end))) => {
@@ -298,6 +325,20 @@ pub fn serve(
         content_type: kind,
         body,
         content_range: (status == 206).then(|| format!("bytes {start}-{end}/{size}")),
+    }
+}
+
+/// Answers `GET <path>?<query>`: [`resolve`] and, for a file, [`read_file`], on the calling thread.
+pub fn serve(
+    dist: &Path,
+    access: &AssetAccess,
+    path: &str,
+    query: &str,
+    range: Option<&str>,
+) -> Served {
+    match resolve(dist, access, path, query, range) {
+        Resolved::Answer(served) => served,
+        Resolved::Bundle(job) | Resolved::Asset(job) => read_file(&job.file, job.range.as_deref()),
     }
 }
 
