@@ -45,6 +45,7 @@ mod build;
 mod error;
 mod json;
 mod model;
+pub mod probe;
 mod timeline;
 mod validate;
 

@@ -1,0 +1,1167 @@
+{
+  "assets": [
+    {
+      "alphaMode": "opaque",
+      "assetId": "sky",
+      "colorSpace": "srgb",
+      "contentHash": "e32d40ae8c87cde266bf73a58cb2fe800e12221b76aaa5ce4028ad126346964a",
+      "heightPx": 36,
+      "relativePath": "assets/sky.png",
+      "revisionId": "rev-1",
+      "widthPx": 64
+    },
+    {
+      "alphaMode": "straight",
+      "assetId": "mid",
+      "colorSpace": "srgb",
+      "contentHash": "205942c4e79e910b10ea184d1368b7c6436427e1e45d9db8c1639bf56946bd08",
+      "heightPx": 48,
+      "relativePath": "assets/mid.png",
+      "revisionId": "rev-1",
+      "widthPx": 48
+    },
+    {
+      "alphaMode": "straight",
+      "assetId": "hero",
+      "colorSpace": "srgb",
+      "contentHash": "7bacab4e0dd6aff8d146e6f208c06a63f58b26dbfc5fee54b1c32a712f356ef6",
+      "heightPx": 32,
+      "relativePath": "assets/hero.png",
+      "revisionId": "rev-1",
+      "widthPx": 32
+    }
+  ],
+  "bundleId": "proof-p-corpus",
+  "cameraClips": [
+    {
+      "id": "cam-main",
+      "initialFovDeg": 45,
+      "initialPosition": {
+        "x": 0,
+        "y": 1,
+        "z": 8
+      },
+      "initialTarget": {
+        "x": 0,
+        "y": 0.5,
+        "z": 0
+      },
+      "segments": [
+        {
+          "distanceSceneUnits": 1.5,
+          "durationFrames": 32,
+          "easing": "easeInOutCubic",
+          "from": "initial",
+          "recipe": "dollyIn"
+        },
+        {
+          "durationFrames": 16,
+          "from": "previousEnd",
+          "recipe": "hold"
+        },
+        {
+          "distanceSceneUnits": 1,
+          "durationFrames": 48,
+          "easing": "easeOutCubic",
+          "from": "previousEnd",
+          "recipe": "truckRight"
+        }
+      ]
+    }
+  ],
+  "compositionPasses": [],
+  "editDurationFrames": 96,
+  "fps": {
+    "denominator": 1,
+    "numerator": 24
+  },
+  "performanceTracks": [
+    {
+      "channels": [
+        {
+          "channelId": "stage-slide",
+          "delta": {
+            "x": 2,
+            "y": 0,
+            "z": 0
+          },
+          "durationFrames": 24,
+          "holdFinal": true,
+          "kind": "event",
+          "nodeId": "stage",
+          "property": "localPosition",
+          "startInstanceFrame": 12
+        },
+        {
+          "amplitude": 12,
+          "axis": {
+            "x": 0,
+            "y": 0,
+            "z": 1
+          },
+          "channelId": "hero-sway",
+          "kind": "cycle",
+          "nodeId": "hero",
+          "periodFrames": 48,
+          "phaseOffsetFrames": 5,
+          "property": "localRotation"
+        },
+        {
+          "channelId": "echo-small",
+          "kind": "static",
+          "nodeId": "echo",
+          "property": "localScale",
+          "value": {
+            "x": 0.6,
+            "y": 0.6,
+            "z": 0.6
+          }
+        }
+      ],
+      "id": "perf-main",
+      "instanceId": "inst-a"
+    }
+  ],
+  "renderProfile": {
+    "alphaMode": "straight",
+    "browserChannel": "synthetic-proof-p",
+    "colorSpace": "srgb-display",
+    "fps": {
+      "denominator": 1,
+      "numerator": 24
+    },
+    "height": 180,
+    "premultiplyOnUpload": false,
+    "threeRevision": "0.187.0",
+    "videoCodec": "h264-yuv420p",
+    "width": 320
+  },
+  "revisionId": "rev-1",
+  "sceneDefinitions": [
+    {
+      "id": "scene-a",
+      "nodes": [
+        {
+          "id": "root",
+          "localPosition": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "localRotation": {
+            "w": 1,
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          },
+          "parentId": null,
+          "type": "group"
+        },
+        {
+          "assetRef": {
+            "assetId": "sky",
+            "contentHash": "e32d40ae8c87cde266bf73a58cb2fe800e12221b76aaa5ce4028ad126346964a",
+            "relativePath": "assets/sky.png",
+            "revisionId": "rev-1"
+          },
+          "heightSceneUnits": 11.25,
+          "id": "sky",
+          "localPosition": {
+            "x": 0,
+            "y": 0,
+            "z": -4
+          },
+          "localRotation": {
+            "w": 1,
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          },
+          "parentId": "root",
+          "renderOrder": 0,
+          "type": "imagePlane",
+          "widthSceneUnits": 20
+        },
+        {
+          "assetRef": {
+            "assetId": "mid",
+            "contentHash": "205942c4e79e910b10ea184d1368b7c6436427e1e45d9db8c1639bf56946bd08",
+            "relativePath": "assets/mid.png",
+            "revisionId": "rev-1"
+          },
+          "heightSceneUnits": 4,
+          "id": "mid",
+          "localPosition": {
+            "x": -1.8,
+            "y": 0.3,
+            "z": -2
+          },
+          "localRotation": {
+            "w": 1,
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          },
+          "parentId": "root",
+          "renderOrder": 1,
+          "type": "imagePlane",
+          "widthSceneUnits": 4
+        },
+        {
+          "id": "stage",
+          "localPosition": {
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "localRotation": {
+            "w": 1,
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          },
+          "parentId": "root",
+          "type": "group"
+        },
+        {
+          "assetRef": {
+            "assetId": "hero",
+            "contentHash": "7bacab4e0dd6aff8d146e6f208c06a63f58b26dbfc5fee54b1c32a712f356ef6",
+            "relativePath": "assets/hero.png",
+            "revisionId": "rev-1"
+          },
+          "heightSceneUnits": 2.4,
+          "id": "hero",
+          "localPosition": {
+            "x": 0.5,
+            "y": -0.2,
+            "z": 0
+          },
+          "localRotation": {
+            "w": 1,
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          },
+          "parentId": "stage",
+          "renderOrder": 3,
+          "type": "imagePlane",
+          "widthSceneUnits": 2.4
+        },
+        {
+          "assetRef": {
+            "assetId": "hero",
+            "contentHash": "7bacab4e0dd6aff8d146e6f208c06a63f58b26dbfc5fee54b1c32a712f356ef6",
+            "relativePath": "assets/hero.png",
+            "revisionId": "rev-1"
+          },
+          "heightSceneUnits": 2.4,
+          "id": "echo",
+          "localPosition": {
+            "x": -2.4,
+            "y": -1.0,
+            "z": 0.5
+          },
+          "localRotation": {
+            "w": 1,
+            "x": 0,
+            "y": 0,
+            "z": 0
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          },
+          "parentId": "root",
+          "renderOrder": 2,
+          "type": "imagePlane",
+          "widthSceneUnits": 2.4
+        },
+        {
+          "id": "chain-0",
+          "localPosition": {
+            "x": 0.02,
+            "y": 0.01,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 0.998134798422,
+            "x": 0.0,
+            "y": 0.043167836287,
+            "z": 0.043167836287
+          },
+          "localScale": {
+            "x": 0.99,
+            "y": 0.99,
+            "z": 0.99
+          },
+          "parentId": "root",
+          "type": "group"
+        },
+        {
+          "id": "chain-1",
+          "localPosition": {
+            "x": 0.02,
+            "y": 0.01,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 0.998134798422,
+            "x": 0.0,
+            "y": 0.043167836287,
+            "z": 0.043167836287
+          },
+          "localScale": {
+            "x": 0.99,
+            "y": 0.99,
+            "z": 0.99
+          },
+          "parentId": "chain-0",
+          "type": "group"
+        },
+        {
+          "id": "chain-2",
+          "localPosition": {
+            "x": 0.02,
+            "y": 0.01,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 0.998134798422,
+            "x": 0.0,
+            "y": 0.043167836287,
+            "z": 0.043167836287
+          },
+          "localScale": {
+            "x": 0.99,
+            "y": 0.99,
+            "z": 0.99
+          },
+          "parentId": "chain-1",
+          "type": "group"
+        },
+        {
+          "id": "chain-3",
+          "localPosition": {
+            "x": 0.02,
+            "y": 0.01,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 0.998134798422,
+            "x": 0.0,
+            "y": 0.043167836287,
+            "z": 0.043167836287
+          },
+          "localScale": {
+            "x": 0.99,
+            "y": 0.99,
+            "z": 0.99
+          },
+          "parentId": "chain-2",
+          "type": "group"
+        },
+        {
+          "id": "chain-4",
+          "localPosition": {
+            "x": 0.02,
+            "y": 0.01,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 0.998134798422,
+            "x": 0.0,
+            "y": 0.043167836287,
+            "z": 0.043167836287
+          },
+          "localScale": {
+            "x": 0.99,
+            "y": 0.99,
+            "z": 0.99
+          },
+          "parentId": "chain-3",
+          "type": "group"
+        },
+        {
+          "id": "chain-5",
+          "localPosition": {
+            "x": 0.02,
+            "y": 0.01,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 0.998134798422,
+            "x": 0.0,
+            "y": 0.043167836287,
+            "z": 0.043167836287
+          },
+          "localScale": {
+            "x": 0.99,
+            "y": 0.99,
+            "z": 0.99
+          },
+          "parentId": "chain-4",
+          "type": "group"
+        },
+        {
+          "id": "chain-6",
+          "localPosition": {
+            "x": 0.02,
+            "y": 0.01,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 0.998134798422,
+            "x": 0.0,
+            "y": 0.043167836287,
+            "z": 0.043167836287
+          },
+          "localScale": {
+            "x": 0.99,
+            "y": 0.99,
+            "z": 0.99
+          },
+          "parentId": "chain-5",
+          "type": "group"
+        },
+        {
+          "id": "chain-7",
+          "localPosition": {
+            "x": 0.02,
+            "y": 0.01,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 0.998134798422,
+            "x": 0.0,
+            "y": 0.043167836287,
+            "z": 0.043167836287
+          },
+          "localScale": {
+            "x": 0.99,
+            "y": 0.99,
+            "z": 0.99
+          },
+          "parentId": "chain-6",
+          "type": "group"
+        },
+        {
+          "id": "chain-8",
+          "localPosition": {
+            "x": 0.02,
+            "y": 0.01,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 0.998134798422,
+            "x": 0.0,
+            "y": 0.043167836287,
+            "z": 0.043167836287
+          },
+          "localScale": {
+            "x": 0.99,
+            "y": 0.99,
+            "z": 0.99
+          },
+          "parentId": "chain-7",
+          "type": "group"
+        },
+        {
+          "id": "chain-9",
+          "localPosition": {
+            "x": 0.02,
+            "y": 0.01,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 0.998134798422,
+            "x": 0.0,
+            "y": 0.043167836287,
+            "z": 0.043167836287
+          },
+          "localScale": {
+            "x": 0.99,
+            "y": 0.99,
+            "z": 0.99
+          },
+          "parentId": "chain-8",
+          "type": "group"
+        },
+        {
+          "id": "chain-10",
+          "localPosition": {
+            "x": 0.02,
+            "y": 0.01,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 0.998134798422,
+            "x": 0.0,
+            "y": 0.043167836287,
+            "z": 0.043167836287
+          },
+          "localScale": {
+            "x": 0.99,
+            "y": 0.99,
+            "z": 0.99
+          },
+          "parentId": "chain-9",
+          "type": "group"
+        },
+        {
+          "id": "chain-11",
+          "localPosition": {
+            "x": 0.02,
+            "y": 0.01,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 0.998134798422,
+            "x": 0.0,
+            "y": 0.043167836287,
+            "z": 0.043167836287
+          },
+          "localScale": {
+            "x": 0.99,
+            "y": 0.99,
+            "z": 0.99
+          },
+          "parentId": "chain-10",
+          "type": "group"
+        },
+        {
+          "id": "chain-12",
+          "localPosition": {
+            "x": 0.02,
+            "y": 0.01,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 0.998134798422,
+            "x": 0.0,
+            "y": 0.043167836287,
+            "z": 0.043167836287
+          },
+          "localScale": {
+            "x": 0.99,
+            "y": 0.99,
+            "z": 0.99
+          },
+          "parentId": "chain-11",
+          "type": "group"
+        },
+        {
+          "id": "chain-13",
+          "localPosition": {
+            "x": 0.02,
+            "y": 0.01,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 0.998134798422,
+            "x": 0.0,
+            "y": 0.043167836287,
+            "z": 0.043167836287
+          },
+          "localScale": {
+            "x": 0.99,
+            "y": 0.99,
+            "z": 0.99
+          },
+          "parentId": "chain-12",
+          "type": "group"
+        },
+        {
+          "id": "chain-14",
+          "localPosition": {
+            "x": 0.02,
+            "y": 0.01,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 0.998134798422,
+            "x": 0.0,
+            "y": 0.043167836287,
+            "z": 0.043167836287
+          },
+          "localScale": {
+            "x": 0.99,
+            "y": 0.99,
+            "z": 0.99
+          },
+          "parentId": "chain-13",
+          "type": "group"
+        },
+        {
+          "id": "chain-15",
+          "localPosition": {
+            "x": 0.02,
+            "y": 0.01,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 0.998134798422,
+            "x": 0.0,
+            "y": 0.043167836287,
+            "z": 0.043167836287
+          },
+          "localScale": {
+            "x": 0.99,
+            "y": 0.99,
+            "z": 0.99
+          },
+          "parentId": "chain-14",
+          "type": "group"
+        },
+        {
+          "id": "chain-16",
+          "localPosition": {
+            "x": 0.02,
+            "y": 0.01,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 0.998134798422,
+            "x": 0.0,
+            "y": 0.043167836287,
+            "z": 0.043167836287
+          },
+          "localScale": {
+            "x": 0.99,
+            "y": 0.99,
+            "z": 0.99
+          },
+          "parentId": "chain-15",
+          "type": "group"
+        },
+        {
+          "id": "chain-17",
+          "localPosition": {
+            "x": 0.02,
+            "y": 0.01,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 0.998134798422,
+            "x": 0.0,
+            "y": 0.043167836287,
+            "z": 0.043167836287
+          },
+          "localScale": {
+            "x": 0.99,
+            "y": 0.99,
+            "z": 0.99
+          },
+          "parentId": "chain-16",
+          "type": "group"
+        },
+        {
+          "id": "chain-18",
+          "localPosition": {
+            "x": 0.02,
+            "y": 0.01,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 0.998134798422,
+            "x": 0.0,
+            "y": 0.043167836287,
+            "z": 0.043167836287
+          },
+          "localScale": {
+            "x": 0.99,
+            "y": 0.99,
+            "z": 0.99
+          },
+          "parentId": "chain-17",
+          "type": "group"
+        },
+        {
+          "id": "chain-19",
+          "localPosition": {
+            "x": 0.02,
+            "y": 0.01,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 0.998134798422,
+            "x": 0.0,
+            "y": 0.043167836287,
+            "z": 0.043167836287
+          },
+          "localScale": {
+            "x": 0.99,
+            "y": 0.99,
+            "z": 0.99
+          },
+          "parentId": "chain-18",
+          "type": "group"
+        },
+        {
+          "id": "chain-20",
+          "localPosition": {
+            "x": 0.02,
+            "y": 0.01,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 0.998134798422,
+            "x": 0.0,
+            "y": 0.043167836287,
+            "z": 0.043167836287
+          },
+          "localScale": {
+            "x": 0.99,
+            "y": 0.99,
+            "z": 0.99
+          },
+          "parentId": "chain-19",
+          "type": "group"
+        },
+        {
+          "id": "chain-21",
+          "localPosition": {
+            "x": 0.02,
+            "y": 0.01,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 0.998134798422,
+            "x": 0.0,
+            "y": 0.043167836287,
+            "z": 0.043167836287
+          },
+          "localScale": {
+            "x": 0.99,
+            "y": 0.99,
+            "z": 0.99
+          },
+          "parentId": "chain-20",
+          "type": "group"
+        },
+        {
+          "id": "chain-22",
+          "localPosition": {
+            "x": 0.02,
+            "y": 0.01,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 0.998134798422,
+            "x": 0.0,
+            "y": 0.043167836287,
+            "z": 0.043167836287
+          },
+          "localScale": {
+            "x": 0.99,
+            "y": 0.99,
+            "z": 0.99
+          },
+          "parentId": "chain-21",
+          "type": "group"
+        },
+        {
+          "id": "chain-23",
+          "localPosition": {
+            "x": 0.02,
+            "y": 0.01,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 0.998134798422,
+            "x": 0.0,
+            "y": 0.043167836287,
+            "z": 0.043167836287
+          },
+          "localScale": {
+            "x": 0.99,
+            "y": 0.99,
+            "z": 0.99
+          },
+          "parentId": "chain-22",
+          "type": "group"
+        },
+        {
+          "assetRef": {
+            "assetId": "hero",
+            "contentHash": "7bacab4e0dd6aff8d146e6f208c06a63f58b26dbfc5fee54b1c32a712f356ef6",
+            "relativePath": "assets/hero.png",
+            "revisionId": "rev-1"
+          },
+          "heightSceneUnits": 1.0,
+          "id": "leaf-rot",
+          "localPosition": {
+            "x": 0.1,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 1.0,
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          },
+          "parentId": "chain-23",
+          "renderOrder": 20,
+          "type": "imagePlane",
+          "widthSceneUnits": 1.0
+        },
+        {
+          "id": "aniso-0",
+          "localPosition": {
+            "x": -0.02,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 0.999048221582,
+            "x": 0.043619387365,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "localScale": {
+            "x": 1.04,
+            "y": 0.97,
+            "z": 1.0
+          },
+          "parentId": "root",
+          "type": "group"
+        },
+        {
+          "id": "aniso-1",
+          "localPosition": {
+            "x": -0.02,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 0.999048221582,
+            "x": 0.043619387365,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "localScale": {
+            "x": 1.04,
+            "y": 0.97,
+            "z": 1.0
+          },
+          "parentId": "aniso-0",
+          "type": "group"
+        },
+        {
+          "id": "aniso-2",
+          "localPosition": {
+            "x": -0.02,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 0.999048221582,
+            "x": 0.043619387365,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "localScale": {
+            "x": 1.04,
+            "y": 0.97,
+            "z": 1.0
+          },
+          "parentId": "aniso-1",
+          "type": "group"
+        },
+        {
+          "id": "aniso-3",
+          "localPosition": {
+            "x": -0.02,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 0.999048221582,
+            "x": 0.043619387365,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "localScale": {
+            "x": 1.04,
+            "y": 0.97,
+            "z": 1.0
+          },
+          "parentId": "aniso-2",
+          "type": "group"
+        },
+        {
+          "id": "aniso-4",
+          "localPosition": {
+            "x": -0.02,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 0.999048221582,
+            "x": 0.043619387365,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "localScale": {
+            "x": 1.04,
+            "y": 0.97,
+            "z": 1.0
+          },
+          "parentId": "aniso-3",
+          "type": "group"
+        },
+        {
+          "id": "aniso-5",
+          "localPosition": {
+            "x": -0.02,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 0.999048221582,
+            "x": 0.043619387365,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "localScale": {
+            "x": 1.04,
+            "y": 0.97,
+            "z": 1.0
+          },
+          "parentId": "aniso-4",
+          "type": "group"
+        },
+        {
+          "id": "aniso-6",
+          "localPosition": {
+            "x": -0.02,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 0.999048221582,
+            "x": 0.043619387365,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "localScale": {
+            "x": 1.04,
+            "y": 0.97,
+            "z": 1.0
+          },
+          "parentId": "aniso-5",
+          "type": "group"
+        },
+        {
+          "id": "aniso-7",
+          "localPosition": {
+            "x": -0.02,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 0.999048221582,
+            "x": 0.043619387365,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "localScale": {
+            "x": 1.04,
+            "y": 0.97,
+            "z": 1.0
+          },
+          "parentId": "aniso-6",
+          "type": "group"
+        },
+        {
+          "id": "aniso-8",
+          "localPosition": {
+            "x": -0.02,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 0.999048221582,
+            "x": 0.043619387365,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "localScale": {
+            "x": 1.04,
+            "y": 0.97,
+            "z": 1.0
+          },
+          "parentId": "aniso-7",
+          "type": "group"
+        },
+        {
+          "id": "aniso-9",
+          "localPosition": {
+            "x": -0.02,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 0.999048221582,
+            "x": 0.043619387365,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "localScale": {
+            "x": 1.04,
+            "y": 0.97,
+            "z": 1.0
+          },
+          "parentId": "aniso-8",
+          "type": "group"
+        },
+        {
+          "id": "aniso-10",
+          "localPosition": {
+            "x": -0.02,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 0.999048221582,
+            "x": 0.043619387365,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "localScale": {
+            "x": 1.04,
+            "y": 0.97,
+            "z": 1.0
+          },
+          "parentId": "aniso-9",
+          "type": "group"
+        },
+        {
+          "id": "aniso-11",
+          "localPosition": {
+            "x": -0.02,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 0.999048221582,
+            "x": 0.043619387365,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "localScale": {
+            "x": 1.04,
+            "y": 0.97,
+            "z": 1.0
+          },
+          "parentId": "aniso-10",
+          "type": "group"
+        },
+        {
+          "assetRef": {
+            "assetId": "mid",
+            "contentHash": "205942c4e79e910b10ea184d1368b7c6436427e1e45d9db8c1639bf56946bd08",
+            "relativePath": "assets/mid.png",
+            "revisionId": "rev-1"
+          },
+          "heightSceneUnits": 1.0,
+          "id": "leaf-aniso",
+          "localPosition": {
+            "x": 0.0,
+            "y": 0.1,
+            "z": 0.0
+          },
+          "localRotation": {
+            "w": 1.0,
+            "x": 0.0,
+            "y": 0.0,
+            "z": 0.0
+          },
+          "localScale": {
+            "x": 1,
+            "y": 1,
+            "z": 1
+          },
+          "parentId": "aniso-11",
+          "renderOrder": 21,
+          "type": "imagePlane",
+          "widthSceneUnits": 1.0
+        }
+      ],
+      "rootNodeId": "root",
+      "schemaVersion": "1.0"
+    }
+  ],
+  "sceneInstances": [
+    {
+      "durationFrames": 96,
+      "id": "inst-a",
+      "performanceTrackIds": [
+        "perf-main"
+      ],
+      "sceneDefinitionId": "scene-a"
+    }
+  ],
+  "schemaVersion": "1.0",
+  "shots": [
+    {
+      "cameraClipId": "cam-main",
+      "cameraInFrame": 0,
+      "editRange": {
+        "endFrameExclusive": 48,
+        "startFrame": 0
+      },
+      "id": "shot-1",
+      "instanceStartFrame": 0,
+      "intent": "synthetic shot 1",
+      "sceneInstanceId": "inst-a"
+    },
+    {
+      "cameraClipId": "cam-main",
+      "cameraInFrame": 48,
+      "editRange": {
+        "endFrameExclusive": 96,
+        "startFrame": 48
+      },
+      "id": "shot-2",
+      "instanceStartFrame": 48,
+      "intent": "synthetic shot 2",
+      "sceneInstanceId": "inst-a",
+      "transitionInto": {
+        "type": "continuous"
+      }
+    }
+  ]
+}
