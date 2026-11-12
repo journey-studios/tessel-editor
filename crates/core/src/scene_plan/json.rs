@@ -16,14 +16,16 @@
 use serde_json::{Map, Value, json};
 
 use crate::directed_scene::fx::{FxPass, FxValue, ParamKind, effect};
+use crate::directed_scene::lighting::{LightingReason, Rgb};
 use crate::directed_scene::{
     AssetAlpha, AssetColorSpace, AssetFormat, CameraState, Fps, Mat4, NodeAnimation, NodeKind, Vec3,
 };
 use crate::time::Ratio;
 
 use super::model::{
-    Capability, Domain, PlanFrame, PlanLayer, PlanNode, PlanOutput, PlanParent, PlanResource,
-    PlanSource, PlanSplat, ScenePlan, UninterpretedField, UninterpretedReason, UnsupportedDomain,
+    Capability, Domain, PlanFrame, PlanLayer, PlanLight, PlanNode, PlanOutput, PlanParent,
+    PlanResource, PlanSource, PlanSplat, ScenePlan, UninterpretedField, UninterpretedReason,
+    UnsupportedDomain,
 };
 use super::{OUTPUT_COLOR_SPACE, PLAN_KIND, PLAN_VERSION, PlanError};
 
@@ -104,6 +106,43 @@ fn resource_json(resource: &PlanResource) -> Value {
     })
 }
 
+fn light_json(light: &PlanLight) -> Value {
+    let mut wire = json!({
+        "id": light.id,
+        "position": light.position.to_json(),
+        "color": light.color.to_json(),
+        "intensity": light.intensity,
+        "radius": light.radius,
+    });
+    // Additive inside the light: only a hidden one says so.
+    if light.hidden {
+        wire["hidden"] = json!(true);
+    }
+    wire
+}
+
+fn read_light(light: &Obj<'_>) -> Result<PlanLight, PlanError> {
+    light.only(&["id", "position", "color", "intensity", "radius", "hidden"])?;
+    let color = light.object("color")?;
+    color.only(&["r", "g", "b"])?;
+    Ok(PlanLight {
+        id: light.text("id")?,
+        position: light.vec3("position")?,
+        color: Rgb {
+            r: color.number("r")?,
+            g: color.number("g")?,
+            b: color.number("b")?,
+        },
+        intensity: light.number("intensity")?,
+        radius: light.number("radius")?,
+        hidden: if light.map.contains_key("hidden") {
+            light.boolean("hidden")?
+        } else {
+            false
+        },
+    })
+}
+
 impl ScenePlan {
     /// The wire form, for a runtime or an adapter. A hand-built plan with a non-finite number
     /// writes `null` there and `from_json` refuses it; `validate` says so first.
@@ -155,10 +194,18 @@ impl ScenePlan {
             "nodes": self.nodes.iter().map(node_json).collect::<Vec<_>>(),
             "layers": self.layers.iter().map(layer_json).collect::<Vec<_>>(),
             "resources": self.resources.iter().map(resource_json).collect::<Vec<_>>(),
-            "unsupported": self.unsupported.iter().map(|entry| json!({
-                "domain": entry.domain.as_str(),
-                "subject": entry.subject,
-            })).collect::<Vec<_>>(),
+            "unsupported": self.unsupported.iter().map(|entry| {
+                let mut item = json!({
+                    "domain": entry.domain.as_str(),
+                    "subject": entry.subject,
+                });
+                // Additive: written only when there is a reason (F060), so plans without one
+                // keep their bytes.
+                if let Some(reason) = entry.reason {
+                    item["reason"] = json!(reason.as_str());
+                }
+                item
+            }).collect::<Vec<_>>(),
             "uninterpreted": self.uninterpreted.iter().map(|field| json!({
                 "pointer": field.pointer,
                 "reason": field.reason.as_str(),
@@ -173,6 +220,10 @@ impl ScenePlan {
         // The same for `fx` (F016): written only when the frame has effect passes.
         if !self.fx.is_empty() {
             wire["fx"] = Value::Array(self.fx.iter().map(FxPass::to_json).collect());
+        }
+        // The same for `lights` (F060): written only when the scene has point lights.
+        if !self.lights.is_empty() {
+            wire["lights"] = Value::Array(self.lights.iter().map(light_json).collect());
         }
         wire
     }
@@ -639,6 +690,7 @@ impl ScenePlan {
             "layers",
             "splats",
             "fx",
+            "lights",
             "resources",
             "unsupported",
             "uninterpreted",
@@ -687,12 +739,20 @@ impl ScenePlan {
             .items("unsupported")?
             .iter()
             .map(|entry| -> Result<UnsupportedDomain, PlanError> {
-                entry.only(&["domain", "subject"])?;
+                entry.only(&["domain", "subject", "reason"])?;
                 let name = entry.text_ref("domain")?;
                 Ok(UnsupportedDomain {
                     domain: Domain::parse(name)
                         .ok_or_else(|| entry.fail("domain", "unknown domain"))?,
                     subject: entry.nullable_text("subject")?,
+                    reason: if entry.map.contains_key("reason") {
+                        Some(
+                            LightingReason::parse(entry.text_ref("reason")?)
+                                .ok_or_else(|| entry.fail("reason", "unknown reason"))?,
+                        )
+                    } else {
+                        None
+                    },
                 })
             })
             .collect::<Result<Vec<_>, PlanError>>()?;
@@ -766,6 +826,15 @@ impl ScenePlan {
                 root.items("fx")?
                     .iter()
                     .map(read_fx_pass)
+                    .collect::<Result<Vec<_>, _>>()?
+            } else {
+                Vec::new()
+            },
+            // Optional (additive): absent means no lights.
+            lights: if root.map.contains_key("lights") {
+                root.items("lights")?
+                    .iter()
+                    .map(read_light)
                     .collect::<Result<Vec<_>, _>>()?
             } else {
                 Vec::new()

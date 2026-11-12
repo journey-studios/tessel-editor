@@ -8,7 +8,7 @@
 
 use std::fmt;
 
-use super::catalog::{CameraProperty, NodeProperty, PropertySpec};
+use super::catalog::{CameraProperty, LightProperty, NodeProperty, PropertySpec};
 use super::error::{EditError, UNKNOWN_PATH};
 
 /// What `encodeURIComponent` leaves as it is, besides ASCII letters and digits.
@@ -61,6 +61,13 @@ pub enum PropertyRef {
         clip_id: String,
         property: CameraProperty,
     },
+    /// A point light of a scene definition (F060); like a node, its id is unique inside the
+    /// definition, so the path carries the scene.
+    Light {
+        scene_id: String,
+        light_id: String,
+        property: LightProperty,
+    },
 }
 
 impl PropertyRef {
@@ -79,10 +86,19 @@ impl PropertyRef {
         }
     }
 
+    pub fn light(scene_id: &str, light_id: &str, property: LightProperty) -> Self {
+        Self::Light {
+            scene_id: scene_id.to_string(),
+            light_id: light_id.to_string(),
+            property,
+        }
+    }
+
     pub fn spec(&self) -> &'static PropertySpec {
         match self {
             Self::Node { property, .. } => property.spec(),
             Self::Camera { property, .. } => property.spec(),
+            Self::Light { property, .. } => property.spec(),
         }
     }
 
@@ -102,6 +118,16 @@ impl PropertyRef {
             Self::Camera { clip_id, property } => {
                 format!("camera/{}/{}", encode(clip_id), property.spec().name)
             }
+            Self::Light {
+                scene_id,
+                light_id,
+                property,
+            } => format!(
+                "scene/{}/light/{}/{}",
+                encode(scene_id),
+                encode(light_id),
+                property.spec().name
+            ),
         }
     }
 
@@ -133,6 +159,20 @@ impl PropertyRef {
                 };
                 Ok(Self::node(scene_id, node_id, property))
             }
+            ["scene", scene_id, "light", light_id, rest @ ..]
+                if !scene_id.is_empty()
+                    && !light_id.is_empty()
+                    && (1..=2).contains(&rest.len()) =>
+            {
+                let name = name_of(rest).unwrap_or_default();
+                let Some(property) = LightProperty::from_name(&name) else {
+                    return Err(unknown(format!(
+                        "no light property `{name}`; known: {}",
+                        known_names(LightProperty::ALL.map(|property| property.spec().name))
+                    )));
+                };
+                Ok(Self::light(scene_id, light_id, property))
+            }
             ["camera", clip_id, "start", rest @ ..]
                 if !clip_id.is_empty() && (1..=2).contains(&rest.len()) =>
             {
@@ -148,7 +188,7 @@ impl PropertyRef {
             _ => Err(unknown(format!(
                 "`{path}` is not a property path; paths look like \
                  scene/<sceneId>/node/<nodeId>/position, scene/<sceneId>/node/<nodeId>/position/x \
-                 or camera/<clipId>/start/fov"
+                 scene/<sceneId>/light/<lightId>/radius or camera/<clipId>/start/fov"
             ))),
         }
     }

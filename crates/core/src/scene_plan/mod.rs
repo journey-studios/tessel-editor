@@ -52,9 +52,9 @@ mod validate;
 pub use build::PlanOptions;
 pub use error::PlanError;
 pub use model::{
-    Capabilities, Capability, Domain, PlanFrame, PlanLayer, PlanNode, PlanOutput, PlanParent,
-    PlanResource, PlanSource, PlanSplat, ScenePlan, UninterpretedField, UninterpretedReason,
-    UnsupportedDomain, capabilities,
+    Capabilities, Capability, Domain, PlanFrame, PlanLayer, PlanLight, PlanNode, PlanOutput,
+    PlanParent, PlanResource, PlanSource, PlanSplat, ScenePlan, UninterpretedField,
+    UninterpretedReason, UnsupportedDomain, capabilities,
 };
 pub use timeline::PlanTimeline;
 

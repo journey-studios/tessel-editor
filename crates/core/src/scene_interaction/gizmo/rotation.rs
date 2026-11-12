@@ -283,7 +283,7 @@ impl RotationFrame {
             Handle::X => Some(self.axes[0]),
             Handle::Y => Some(self.axes[1]),
             Handle::Z => Some(self.axes[2]),
-            Handle::Screen | Handle::Uniform => None,
+            Handle::Screen | Handle::Uniform | Handle::Range => None,
         }
     }
 
@@ -312,7 +312,7 @@ impl RotationFrame {
 
 /// Orthonormal `(u, v)` with `u × v = axis`: the angle of a point of the ring is measured from `u`
 /// towards `v`, so it grows counter-clockwise about the axis.
-fn ring_basis(axis: V3) -> (V3, V3) {
+pub(super) fn ring_basis(axis: V3) -> (V3, V3) {
     let helper = if axis[0].abs() < 0.9 {
         [1.0, 0.0, 0.0]
     } else {
@@ -355,6 +355,7 @@ impl Layout {
             origin,
             handles,
             disabled: Vec::new(),
+            sphere: Vec::new(),
         })
     }
 

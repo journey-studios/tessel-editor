@@ -11,6 +11,7 @@
 //! |---|---|
 //! | `scene/<definition>` | scene definition (`sceneDefinitions[]`) |
 //! | `scene/<definition>/node/<node>` | node (IDs are unique inside a definition only) |
+//! | `scene/<definition>/light/<light>` | point light (`lighting.lights[]`, F060) |
 //! | `instance/<id>` | scene instance |
 //! | `track/<id>` | performance track |
 //! | `camera/<id>` | camera clip |
@@ -36,7 +37,7 @@ use crate::state::CommandError;
 const UNRESERVED: &[u8] = b"-_.!~*'()";
 
 const GRAMMAR: &str = "addresses look like scene/<definition>/node/<node>, camera/<clip>, \
-     scene/<definition>, instance/<id>, track/<id>, shot/<id>, asset/<id> or pass/<id>";
+     scene/<definition>/light/<light>, scene/<definition>, instance/<id>, track/<id>, shot/<id>, asset/<id> or pass/<id>";
 
 fn encode(id: &str) -> String {
     let mut out = String::with_capacity(id.len());
@@ -83,6 +84,7 @@ pub fn kind_label(kind: EntityKind) -> &'static str {
         EntityKind::CameraClip => "camera_clip",
         EntityKind::Shot => "shot",
         EntityKind::CompositionPass => "composition_pass",
+        EntityKind::Light => "light",
     }
 }
 
@@ -92,6 +94,10 @@ pub fn entity_path(entity: &Entity) -> String {
     match entity.kind {
         EntityKind::Node => format!(
             "scene/{}/node/{id}",
+            encode(entity.scope.as_deref().unwrap_or_default())
+        ),
+        EntityKind::Light => format!(
+            "scene/{}/light/{id}",
             encode(entity.scope.as_deref().unwrap_or_default())
         ),
         EntityKind::SceneDefinition => format!("scene/{id}"),
@@ -128,6 +134,12 @@ pub fn parse_entity(path: &str) -> Result<Entity, CommandError> {
             }
             Ok(Entity::node(scene, node))
         }
+        ["scene", scene, "light", light] => {
+            if scene.is_empty() || light.is_empty() {
+                return Err(invalid("has an empty ID"));
+            }
+            Ok(Entity::light(scene, light))
+        }
         ["instance", id] => single(EntityKind::SceneInstance, id),
         ["track", id] => single(EntityKind::PerformanceTrack, id),
         ["camera", id] => single(EntityKind::CameraClip, id),
@@ -149,6 +161,12 @@ pub fn exists(bundle: &Bundle, entity: &Entity) -> bool {
             .as_deref()
             .and_then(|scope| bundle.scene(scope))
             .is_some_and(|graph| graph.node(id).is_some()),
+        // A light whose id is declared twice is not one entity: it cannot be addressed.
+        EntityKind::Light => entity
+            .scope
+            .as_deref()
+            .and_then(|scope| bundle.scene(scope))
+            .is_some_and(|graph| graph.light(id).is_some()),
         EntityKind::SceneInstance => bundle.instance(id).is_some(),
         EntityKind::PerformanceTrack => {
             bundle.performance_tracks.iter().any(|track| track.id == id)
@@ -181,6 +199,9 @@ pub fn entity_of_property(property: &PropertyRef) -> Entity {
             scene_id, node_id, ..
         } => Entity::node(scene_id, node_id),
         PropertyRef::Camera { clip_id, .. } => Entity::new(EntityKind::CameraClip, clip_id),
+        PropertyRef::Light {
+            scene_id, light_id, ..
+        } => Entity::light(scene_id, light_id),
     }
 }
 
@@ -209,6 +230,7 @@ mod tests {
             Entity::new(EntityKind::Asset, "a/b"),
             Entity::new(EntityKind::SceneDefinition, "scene a"),
             Entity::node("def/1", "hero plane%"),
+            Entity::light("def/1", "lamp 1/%"),
             Entity::new(EntityKind::SceneInstance, "inst"),
             Entity::new(EntityKind::PerformanceTrack, "perf-1"),
             Entity::new(EntityKind::CameraClip, "é"),

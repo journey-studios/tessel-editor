@@ -15,6 +15,9 @@ pub enum EntityKind {
     CameraClip,
     Shot,
     CompositionPass,
+    /// A point light of a scene definition (F060). Like a node, its id is unique inside the
+    /// definition only; `Entity::scope` names it.
+    Light,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -37,6 +40,17 @@ impl Entity {
     pub fn node(scene_id: &str, id: &str) -> Self {
         Self {
             kind: EntityKind::Node,
+            scope: Some(scene_id.to_string()),
+            id: id.to_string(),
+        }
+    }
+}
+
+impl Entity {
+    /// A light of scene definition `scene_id`.
+    pub fn light(scene_id: &str, id: &str) -> Self {
+        Self {
+            kind: EntityKind::Light,
             scope: Some(scene_id.to_string()),
             id: id.to_string(),
         }
@@ -78,6 +92,17 @@ impl Bundle {
                         from,
                         Entity::node(scene.id(), &attachment.owner),
                         "attachToSocket.parentNodeId",
+                    );
+                }
+            }
+        }
+        for scene in &self.scenes {
+            for light in scene.lights() {
+                if let Some(parent) = &light.parent {
+                    push(
+                        Entity::light(scene.id(), &light.id),
+                        Entity::node(scene.id(), parent),
+                        "lighting.lights.parent",
                     );
                 }
             }

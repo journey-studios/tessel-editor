@@ -31,9 +31,14 @@
 
 use serde_json::{Value, json};
 
+mod light;
 mod rotation;
 mod scaling;
 
+pub use light::{
+    MARKER_RADIUS, MAX_RADIUS, RangeAnchor, light_position, light_range, marker_at, pick_marker,
+    refusal as light_refusal,
+};
 pub use rotation::{
     GizmoSpace, GizmoTool, RING_RADIUS, RING_SEGMENTS, RingAnchor, RotationFrame, quat_json,
     refusal,
@@ -111,6 +116,9 @@ pub enum Handle {
     /// neither an axis nor a translation plane, so it is not in [`Handle::ALL`] (the translate
     /// handles) and no rotation or translation command accepts it.
     Uniform,
+    /// A point light's range knob (F060): moves the radius of its sphere. Not a translate handle
+    /// (not in [`Handle::ALL`]); only the gizmo of a light has it.
+    Range,
 }
 
 impl Handle {
@@ -123,13 +131,14 @@ impl Handle {
             Self::Z => "z",
             Self::Screen => "screen",
             Self::Uniform => "uniform",
+            Self::Range => "range",
         }
     }
 
     pub fn parse(text: &str) -> Option<Self> {
         Self::ALL
             .into_iter()
-            .chain([Self::Uniform])
+            .chain([Self::Uniform, Self::Range])
             .find(|handle| handle.as_str() == text)
     }
 
@@ -138,7 +147,7 @@ impl Handle {
             Self::X => Some([1.0, 0.0, 0.0]),
             Self::Y => Some([0.0, 1.0, 0.0]),
             Self::Z => Some([0.0, 0.0, 1.0]),
-            Self::Screen | Self::Uniform => None,
+            Self::Screen | Self::Uniform | Self::Range => None,
         }
     }
 }
@@ -344,6 +353,9 @@ pub struct Layout {
     /// typed reason (the scale tool: `splat_non_uniform`, `world_axis_shear`). They are not drawn
     /// and cannot be pressed; the overlay lists them so nothing is silently missing.
     pub disabled: Vec<(Handle, &'static str)>,
+    /// The three great circles of a point light's range sphere, each closed (the last point is the
+    /// first) and `None` where behind the camera. Empty for every other gizmo.
+    pub sphere: Vec<Vec<Option<Point>>>,
 }
 
 impl Layout {
@@ -374,6 +386,7 @@ impl Layout {
             origin,
             handles,
             disabled: Vec::new(),
+            sphere: Vec::new(),
         })
     }
 
@@ -385,7 +398,20 @@ impl Layout {
             GizmoTool::Scale => return self.hit_scale(view, point),
             GizmoTool::Translate => {}
         }
-        if view.distance(point, self.origin) <= CENTER_RADIUS {
+        let has = |handle: Handle| {
+            self.handles
+                .iter()
+                .find(|geometry| geometry.handle == handle)
+        };
+        // A light's range knob is a small target on the sphere, away from the centre: whichever
+        // of the two is nearer wins, and only a light has one.
+        if let Some(knob) = has(Handle::Range)
+            && view.distance(point, knob.to) <= HIT_RADIUS
+        {
+            return Some(Handle::Range);
+        }
+        // The centre is absent from the gizmo of a light whose position is animated.
+        if has(Handle::Screen).is_some() && view.distance(point, self.origin) <= CENTER_RADIUS {
             return Some(Handle::Screen);
         }
         let mut best: Option<(f64, Handle)> = None;
@@ -553,6 +579,9 @@ pub enum Hidden {
     /// The scale tool is active and this node cannot be scaled (`scale_refusal::*`).
     NotScalable(&'static str),
     BehindCamera,
+    /// The selected light is not on the picture: the scene's lighting is refused by the plan
+    /// (`light_refusal::NOT_EVALUATED`).
+    LightNotEvaluated,
 }
 
 impl Hidden {
@@ -566,8 +595,20 @@ impl Hidden {
                 reason
             }
             Self::BehindCamera => "behind_camera",
+            Self::LightNotEvaluated => light::refusal::NOT_EVALUATED,
         }
     }
+}
+
+/// One point light on the picture: where to draw its marker and whether it is lit.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LightMarker {
+    /// The entity address (`scene/<definition>/light/<id>`).
+    pub entity: String,
+    pub at: Point,
+    /// Kept in the scene but not lit (the document's `hidden`): drawn dimmed, still selectable.
+    pub hidden: bool,
+    pub selected: bool,
 }
 
 /// What a runtime draws, in picture coordinates. Version 1; fields are only ever added.
@@ -580,6 +621,9 @@ pub struct Overlay {
     pub layout: Option<Layout>,
     pub hidden: Option<Hidden>,
     pub outlines: Vec<(String, [Point; 4])>,
+    /// A marker for every point light of the frame (F060), selected or not: where a press selects
+    /// it. Empty for a scene without lights, and then absent from the JSON.
+    pub markers: Vec<LightMarker>,
     /// The handle being dragged, and the gesture it edits.
     pub active: Option<(Handle, String)>,
     pub aspect: f64,
@@ -602,6 +646,7 @@ impl Overlay {
                         (GizmoTool::Rotate, _) => "ring",
                         (GizmoTool::Scale, Handle::Uniform) => "scale_uniform",
                         (GizmoTool::Scale, _) => "scale_axis",
+                        (_, Handle::Range) => "range",
                         (_, Handle::Screen) => "center",
                         _ => "axis",
                     },
@@ -613,7 +658,7 @@ impl Overlay {
                 handle
             })
             .collect();
-        json!({
+        let mut overlay = json!({
             "version": 1,
             "tool": self.tool.as_str(),
             "space": self.space.as_str(),
@@ -642,6 +687,42 @@ impl Overlay {
                 "scale_limits": { "min": MIN_SCALE, "max": MAX_SCALE },
                 "unit": "picture_height",
             },
-        })
+        });
+        // F060, additive: the range sphere of the selected light and a marker for every light.
+        // Absent unless the scene has lights, so the overlay of a scene without any is what it was.
+        if let Some(layout) = self
+            .layout
+            .as_ref()
+            .filter(|layout| !layout.sphere.is_empty())
+        {
+            overlay["sphere"] = Value::Array(
+                layout
+                    .sphere
+                    .iter()
+                    .map(|ring| {
+                        Value::Array(
+                            ring.iter()
+                                .map(|point| point.map_or(Value::Null, Point::to_json))
+                                .collect(),
+                        )
+                    })
+                    .collect(),
+            );
+        }
+        if !self.markers.is_empty() {
+            overlay["light_markers"] = Value::Array(
+                self.markers
+                    .iter()
+                    .map(|marker| {
+                        json!({
+                            "entity": marker.entity, "at": marker.at.to_json(),
+                            "hidden": marker.hidden, "selected": marker.selected,
+                        })
+                    })
+                    .collect(),
+            );
+            overlay["metrics"]["marker_radius"] = json!(MARKER_RADIUS);
+        }
+        overlay
     }
 }

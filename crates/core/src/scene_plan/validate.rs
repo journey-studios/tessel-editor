@@ -8,7 +8,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 
 use crate::directed_scene::{AssetAlpha, AssetFormat, CameraState, NodeAnimation, NodeKind, Vec3};
 
-use super::model::{Capability, Domain, PlanLayer, PlanNode, PlanSplat, ScenePlan};
+use super::model::{Capability, Domain, PlanLayer, PlanLight, PlanNode, PlanSplat, ScenePlan};
 use super::{PLAN_VERSION, PlanError};
 use crate::directed_scene::fx::FxPass;
 
@@ -113,6 +113,7 @@ pub(super) fn derive_requires(
     splats: &[PlanSplat],
     animation: &NodeAnimation,
     fx: &[FxPass],
+    lights: &[PlanLight],
 ) -> Vec<Capability> {
     let mut found = BTreeSet::from([Capability::Camera, Capability::NodeTransforms]);
     if nodes.iter().any(|node| {
@@ -136,6 +137,9 @@ pub(super) fn derive_requires(
     }
     if fx.iter().any(|pass| pass.seed.is_some()) {
         found.insert(Capability::FxNoise);
+    }
+    if lights.iter().any(|light| !light.hidden) {
+        found.insert(Capability::PointLights);
     }
     for layer in layers {
         found.insert(match layer.alpha {
@@ -196,12 +200,14 @@ impl ScenePlan {
         self.check_splats(&index)?;
         self.check_resources()?;
         self.check_fx()?;
+        self.check_lights()?;
         if derive_requires(
             &self.nodes,
             &self.layers,
             &self.splats,
             &self.animation,
             &self.fx,
+            &self.lights,
         ) != self.requires
         {
             return Err(PlanError::invalid(
@@ -515,6 +521,55 @@ impl ScenePlan {
         Ok(())
     }
 
+    /// The lights are resolved data a runtime draws as listed: bounded in number, finite and in the
+    /// ranges the document allows, each id once.
+    fn check_lights(&self) -> Result<(), PlanError> {
+        use crate::directed_scene::lighting::{MAX_INTENSITY, MAX_SCENE_LIGHTS};
+        if self.lights.len() > MAX_SCENE_LIGHTS {
+            return Err(PlanError::invalid(
+                "/lights",
+                format!("at most {MAX_SCENE_LIGHTS} lights"),
+            ));
+        }
+        let mut seen = std::collections::HashSet::new();
+        for (position, light) in self.lights.iter().enumerate() {
+            let at = format!("/lights/{position}");
+            if light.id.is_empty() || !seen.insert(light.id.as_str()) {
+                return Err(PlanError::invalid(
+                    format!("{at}/id"),
+                    "a light has a non-empty id, once per frame",
+                ));
+            }
+            require_finite(&format!("{at}/position"), &components(light.position))?;
+            require_finite(
+                &format!("{at}/color"),
+                &[light.color.r, light.color.g, light.color.b],
+            )?;
+            if ![light.color.r, light.color.g, light.color.b]
+                .iter()
+                .all(|channel| (0.0..=1.0).contains(channel))
+            {
+                return Err(PlanError::invalid(
+                    format!("{at}/color"),
+                    "each channel is between 0 and 1",
+                ));
+            }
+            if !(0.0..=MAX_INTENSITY).contains(&light.intensity) {
+                return Err(PlanError::invalid(
+                    format!("{at}/intensity"),
+                    format!("must be between 0 and {MAX_INTENSITY}"),
+                ));
+            }
+            if !(light.radius.is_finite() && light.radius > 0.0) {
+                return Err(PlanError::invalid(
+                    format!("{at}/radius"),
+                    "must be a number greater than zero",
+                ));
+            }
+        }
+        Ok(())
+    }
+
     fn check_splats(&self, index: &HashMap<&str, usize>) -> Result<(), PlanError> {
         let nodes: Vec<&str> = self
             .nodes
@@ -641,6 +696,12 @@ impl ScenePlan {
         }
         for (position, entry) in self.unsupported.iter().enumerate() {
             let at = format!("/unsupported/{position}");
+            if entry.reason.is_some() && entry.domain != Domain::Lighting {
+                return Err(PlanError::invalid(
+                    format!("{at}/reason"),
+                    "only the lighting domain carries a reason",
+                ));
+            }
             match &entry.subject {
                 Some(node_id) => {
                     if !index.contains_key(node_id.as_str()) {

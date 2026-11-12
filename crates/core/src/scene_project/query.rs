@@ -65,6 +65,10 @@ fn spec_json(spec: &PropertySpec) -> Value {
     let (target, path_pattern) = match spec.applies_to {
         Applicability::CameraClip => ("camera-clip", format!("camera/<clip>/{}", spec.name)),
         Applicability::Node(_) => ("node", format!("scene/<scene>/node/<node>/{}", spec.name)),
+        Applicability::Light => (
+            "light",
+            format!("scene/<scene>/light/<light>/{}", spec.name),
+        ),
     };
     json!({
         "name": spec.name,
@@ -226,6 +230,8 @@ pub(super) fn run(book: &SceneBook, command: SceneCommand) -> Result<Value, Comm
                 "scene.rotate", "scene.gizmo.tool",
                 // BL015.1 (G1.2): the scale tool's semantic equivalent.
                 "scene.scale",
+                // F060: the point light's range knob without the pointer.
+                "scene.range",
                 // F016 (docs/features/effects.md): the effects layer, additive.
                 "scene.fx.edit", "scene.fx.list", "scene.fx.catalog", "scene.fx.frame",
                 "scene.fx.inspect", "scene.fx.seek",
