@@ -2,6 +2,13 @@
 
 Base funcional: main `c099f10` (PR #4). A reconciliação documental `0074f8e` é preservada no preparo desta rodada. O usuário autorizou dez subthreads Cursor Sonnet 5.5, cada uma em worktree e PR própria, com correção de findings antes de aceite pelo coordenador. Esta instrução substitui a regra histórica de uma PR única para esta rodada.
 
+## Situação final (2026-11-12)
+
+As dez PRs (S1 a S10) foram integradas na `main` e nenhuma segue aberta. O quadro com cada PR, o commit de merge e o que
+falta por frente está em [backlog.md](../backlog.md#situação-em-2026-11-12). Este plano guarda o que foi decidido ao abrir a
+rodada (ownership, contratos, regras de PR e de recursos); as frases abaixo no tempo presente descrevem aquele momento, não o
+estado atual. A prova integrada da `main` é BL163.
+
 ## Auditoria de encerramento
 
 R1–R10 e o follow-up de cleanup: threads completed, sem activeRunId; task_cancel confirmou completed para encerrar também eventuais filas/watches. Nenhum cargo/rustc/mbx/proof da rodada anterior estava ativo; somente o checkout principal estava registrado por git worktree. Resultados e código mergeados são preservados. Não apagar o app/projeto do usuário, cache compartilhado ou temporários de autoria incerta.
@@ -49,8 +56,8 @@ Atualização de autorização do usuário em 2026-11-06: nas PRs sem quota Code
 
 ## Recursos e execução
 
-- Cargo apenas pelo helper serial `/Users/wallyssonnunes/.cache/tessel-editor/cargo-serial.py`, executado no próprio worktree; ele chama ./scripts/cargo. Target próprio por worktree com cache mbx compartilhado; nunca target único para os dez. Não rodar gc/clean nem trocar HOME em wrappers.
+- Cargo apenas pelo helper serial `~/.cache/tessel-editor/cargo-serial.py`, executado no próprio worktree; ele chama ./scripts/cargo. Target próprio por worktree com cache mbx compartilhado; nunca target único para os dez. Não rodar gc/clean nem trocar HOME em wrappers.
 - GPU/Chrome/prova nativa sob `/tmp/tessel-scene-gpu.lock`; adquirir GPU antes de Cargo quando ambos forem usados. Testes proporcionais por frente; gate completo do coordenador após integração.
 - Dependências Node: usar pnpm e runtime existente; não instalar no repositório de origem. Não abrir/editar projetos ou janelas do usuário. Instância própria com HOME curto apenas ao executar binário direto.
 - Artefatos próprios <=2 GiB por frente; parar geração/build pesado se livre <12 GiB e avisar. Não rodar ZIP64 4GiB, soak longo ou splat enorme sem coordenação. Não apagar temporários de outro agente.
-- Branch/worktree preparados pelo T3. Verificar remote journey-studios/tessel-editor e cwd isolado antes de editar. Não criar checkout/worktree em shell, não escrever no canônico /Users/wallyssonnunes/www/tessel-editor, no tesselapp nem no checkout de outro agente.
+- Branch/worktree preparados pelo T3. Verificar remote journey-studios/tessel-editor e cwd isolado antes de editar. Não criar checkout/worktree em shell, não escrever no checkout canônico do usuário, no tesselapp nem no checkout de outro agente.
