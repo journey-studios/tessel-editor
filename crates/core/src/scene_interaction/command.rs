@@ -220,6 +220,16 @@ pub enum GizmoCommand {
         factor: f64,
         space: Option<GizmoSpace>,
     },
+    /// F060: the range knob of a point light without the pointer. Adds `delta` (scene units,
+    /// signed) to the `radius` of `entity`, in one `scene.edit`: the same result as the drag that
+    /// reported that `delta`. Refused for anything but a light, and for a radius outside
+    /// `(0, MAX_RADIUS]`.
+    Range {
+        scene: String,
+        entity: String,
+        at: FrameAt,
+        delta: f64,
+    },
     /// Reads or sets the tool (translate/rotate/scale) and the space of the rotate and scale
     /// axes. With neither field it is a read. Presentation state, not an edit: no history, no
     /// revision. Refused while a drag is open (a ring cannot turn into an arrow under the

@@ -14,10 +14,10 @@ use serde_json::Value;
 use crate::directed_scene::{DirectedScene, Entity, EntityKind, ImportError, Limits};
 
 use super::camera_keys::{MovementConversion, convert_first_movement};
-use super::catalog::{CameraProperty, NodeProperty, PropertySpec};
+use super::catalog::{CameraProperty, LightProperty, NodeProperty, PropertySpec};
 use super::error::{
-    CANDIDATE_REJECTED, DOCUMENT_MISMATCH, EditError, LocalizedIssue, NO_DEFAULT, NOT_APPLICABLE,
-    UNKNOWN_CLIP, UNKNOWN_NODE, UNKNOWN_SCENE,
+    ANIMATED_PROPERTY, CANDIDATE_REJECTED, DOCUMENT_MISMATCH, EditError, LocalizedIssue,
+    NO_DEFAULT, NOT_APPLICABLE, UNKNOWN_CLIP, UNKNOWN_LIGHT, UNKNOWN_NODE, UNKNOWN_SCENE,
 };
 use super::op::EditOp;
 use super::reference::PropertyRef;
@@ -184,6 +184,57 @@ impl<'a> Locator<'a> {
                 )?;
                 format!("/sceneDefinitions/{scene_index}/nodes/{slot}")
             }
+            PropertyRef::Light {
+                scene_id,
+                light_id,
+                property,
+            } => {
+                let Some(scene_index) = bundle
+                    .scenes
+                    .iter()
+                    .position(|graph| graph.id() == scene_id.as_str())
+                else {
+                    return Err(
+                        EditError::new(UNKNOWN_SCENE, format!("no scene `{scene_id}`"))
+                            .with_id(scene_id.as_str()),
+                    );
+                };
+                let graph = &bundle.scenes[scene_index];
+                let Some(declared) = graph.light(light_id) else {
+                    return Err(EditError::new(
+                        UNKNOWN_LIGHT,
+                        format!(
+                            "scene `{scene_id}` has no light `{light_id}` (or declares it twice)"
+                        ),
+                    )
+                    .with_id(light_id.as_str()));
+                };
+                let pointer = format!(
+                    "/sceneDefinitions/{scene_index}/lighting/lights/{}",
+                    declared.index
+                );
+                verify_id(scene.document(), &pointer, light_id)?;
+                verify_id(
+                    scene.document(),
+                    &format!("/sceneDefinitions/{scene_index}"),
+                    scene_id,
+                )?;
+                // A keyed channel takes its value from the keys and ignores the static field.
+                if let Some(channel) = property.channel()
+                    && declared.is_keyed(channel.as_str())
+                {
+                    return Err(EditError::new(
+                        ANIMATED_PROPERTY,
+                        format!(
+                            "light `{light_id}` has keys on `{}`: its static value is not what \
+                             the picture shows, and an edit never writes a key",
+                            channel.as_str()
+                        ),
+                    )
+                    .with_id(light_id.as_str()));
+                }
+                pointer
+            }
             PropertyRef::Camera { clip_id, .. } => {
                 let Some(clip_index) = bundle
                     .camera_clips
@@ -203,6 +254,7 @@ impl<'a> Locator<'a> {
         let expected = match property {
             PropertyRef::Node { node_id, .. } => node_id,
             PropertyRef::Camera { clip_id, .. } => clip_id,
+            PropertyRef::Light { light_id, .. } => light_id,
         };
         verify_id(scene.document(), &entity, expected)?;
         Ok(Located {
@@ -467,6 +519,9 @@ impl PropertyInfo {
                 scene_id, node_id, ..
             } => Entity::node(scene_id, node_id),
             PropertyRef::Camera { clip_id, .. } => Entity::new(EntityKind::CameraClip, clip_id),
+            PropertyRef::Light {
+                scene_id, light_id, ..
+            } => Entity::light(scene_id, light_id),
         }
     }
 }
@@ -504,6 +559,15 @@ fn list_properties(scene: &DirectedScene, components: bool) -> Vec<PropertyInfo>
                 let spec = property.spec();
                 if listed(spec) && spec.applies_to.accepts_node(node.kind) {
                     properties.push(PropertyRef::node(graph.id(), &node.id, property));
+                }
+            }
+        }
+    }
+    for graph in &bundle.scenes {
+        for light in graph.lights() {
+            for property in LightProperty::ALL {
+                if listed(property.spec()) {
+                    properties.push(PropertyRef::light(graph.id(), &light.id, property));
                 }
             }
         }

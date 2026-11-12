@@ -69,10 +69,17 @@ impl PlanError {
         match self {
             Self::Unsupported { domains } => Some(json!({
                 "unsupported": "scene_plan_domains",
-                "domains": domains.iter().map(|entry| json!({
-                    "domain": entry.domain.as_str(),
-                    "subject": entry.subject,
-                })).collect::<Vec<_>>(),
+                "domains": domains.iter().map(|entry| {
+                    let mut item = json!({
+                        "domain": entry.domain.as_str(),
+                        "subject": entry.subject,
+                    });
+                    // Additive: only a partly supported domain says which part is refused.
+                    if let Some(reason) = entry.reason {
+                        item["reason"] = json!(reason.as_str());
+                    }
+                    item
+                }).collect::<Vec<_>>(),
             })),
             Self::CapabilityUnavailable { missing } => Some(json!({
                 "unsupported": "scene_plan_capabilities",
@@ -95,9 +102,12 @@ impl fmt::Display for PlanError {
             Self::Unsupported { domains } => {
                 let names: Vec<String> = domains
                     .iter()
-                    .map(|entry| match &entry.subject {
-                        Some(node) => format!("{} on {node}", entry.domain.as_str()),
-                        None => entry.domain.as_str().to_string(),
+                    .map(|entry| match (&entry.subject, entry.reason) {
+                        (Some(node), _) => format!("{} on {node}", entry.domain.as_str()),
+                        (None, Some(reason)) => {
+                            format!("{} ({})", entry.domain.as_str(), reason.as_str())
+                        }
+                        (None, None) => entry.domain.as_str().to_string(),
                     })
                     .collect();
                 write!(

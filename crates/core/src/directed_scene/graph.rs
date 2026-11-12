@@ -24,8 +24,30 @@ pub(super) struct SceneDef {
     /// Sections of the definition that change the frame and that nothing evaluates yet
     /// (`weather`, `lighting`, `nodes[].rigBind`...), sorted, without repeats.
     pub unevaluated: Vec<&'static str>,
+    /// The lights `lighting.lights[]` declares that can be addressed (they have an id).
+    pub lights: Vec<LightDecl>,
     /// JSON Pointer of the definition (`/sceneDefinitions/0`).
     pub pointer: String,
+}
+
+/// A light as the scene declares it, enough to address it: the editor reads and writes the rest
+/// through the document (`scene_edit`) and the plan reads it through `lighting.rs`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LightDecl {
+    pub id: String,
+    /// The node the light follows (its translation only), if any.
+    pub parent: Option<String>,
+    /// Position in `lighting.lights[]`.
+    pub index: usize,
+    /// Channels with a non-empty key track (`keys.position|intensity|color`): their static value
+    /// is not what the picture shows.
+    pub keyed: Vec<&'static str>,
+}
+
+impl LightDecl {
+    pub fn is_keyed(&self, channel: &str) -> bool {
+        self.keyed.contains(&channel)
+    }
 }
 
 /// What a node hangs from, once the declared `parentId`/`attachToSocket` are resolved.
@@ -59,6 +81,7 @@ pub struct SceneGraph {
     local: Vec<Mat4>,
     world: Vec<Mat4>,
     unevaluated: Vec<&'static str>,
+    lights: Vec<LightDecl>,
 }
 
 impl SceneGraph {
@@ -81,6 +104,19 @@ impl SceneGraph {
 
     pub fn node(&self, id: &str) -> Option<&Node> {
         self.index.get(id).map(|&i| &self.nodes[i])
+    }
+
+    /// The addressable lights, in document order (including ones whose id repeats).
+    pub fn lights(&self) -> &[LightDecl] {
+        &self.lights
+    }
+
+    /// The light with this id, `None` when there is none or when the id is declared twice (an
+    /// address must name exactly one light; the plan refuses the section as invalid).
+    pub fn light(&self, id: &str) -> Option<&LightDecl> {
+        let mut found = self.lights.iter().filter(|light| light.id == id);
+        let first = found.next()?;
+        found.next().is_none().then_some(first)
     }
 
     pub fn socket(&self, owner: &str, name: &str) -> Option<&Socket> {
@@ -556,6 +592,7 @@ impl SceneGraph {
             local,
             world: Vec::new(),
             unevaluated: def.unevaluated,
+            lights: def.lights,
         };
         graph.world = graph.compose_world(&graph.local);
         for &i in &graph.order {

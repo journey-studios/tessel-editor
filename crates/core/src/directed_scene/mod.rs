@@ -33,6 +33,7 @@ mod graph;
 mod integrity;
 mod issue;
 mod joins;
+pub mod lighting;
 mod model;
 mod parse;
 mod read;
@@ -43,7 +44,7 @@ mod transform;
 use serde_json::Value;
 
 pub use animation::{NodeFrame, NodeOverride, NodeState, NodeTimeline, PerformancePlan};
-pub use graph::{Parent, SceneGraph};
+pub use graph::{LightDecl, Parent, SceneGraph};
 pub use integrity::KNOWN_EASINGS;
 pub use issue::{
     FPS_OUT_OF_RANGE, INVALID_TYPE, INVALID_VALUE, ImportError, Issue, LIMIT_EXCEEDED,

@@ -263,7 +263,7 @@ fn the_tree_lists_entities_by_address_and_the_catalog_keeps_its_first_eight() {
 
     let catalog = ok(&mut state, json!({"op":"scene.catalog"}));
     // S6 appends `renderOrder` and the components; the original eight keep their place.
-    assert_eq!(catalog["count"], 21);
+    assert_eq!(catalog["count"], 30);
     let names: Vec<&str> = catalog["properties"]
         .as_array()
         .unwrap()

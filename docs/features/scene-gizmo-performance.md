@@ -56,7 +56,7 @@ A jornada roda pelos **mesmos handlers**; cada passo é `document` (equivalente:
 
 ## Contrato do core / biblioteca
 
-`scene_plan::probe` (`crates/core/src/scene_plan/probe.rs`, 42 linhas, só `std`) conta cada `ScenePlan::build_with`
+`scene_plan::probe` (`crates/core/src/scene_plan/probe.rs`, 43 linhas, só `std`) conta cada `ScenePlan::build_with`
 (o layout completo da cena) de duas formas: **por thread** (`layouts_built()`, exata mesmo num `cargo test` paralelo) e
 **por processo** (`layouts_built_in_process()`, um `fetch_add` relaxado). É o **detector estrutural**: um plano a mais
 por handler ou por tick falha o teste sem ler relógio. A chamada fica em `build_with`; nenhum `Cargo.toml` mudou.
@@ -134,7 +134,7 @@ a cena por `directed_scene()` (lido no código), então seguiriam a cena antiga.
   O `showing_a_scene_that_shares…` **falhava em `a97a0a7`** (`left: Some("proof-b")`, `right: Some("proof-c")`), antes
   da correção. Não se afrouxou teste nem corpus.
 - **Verificado no host** (árvore limpa de `c3ae380`): os 5 testes `scene_gizmo_perf` passam e o crate `tessel-editor`
-  inteiro dá 418 passaram, 0 falharam.
+  inteiro dá 418 passaram, 0 falharam; no head final `c1c8fda`, com a `main` integrada, são 424 e 0 (ver "Estado desta entrega").
 - **Controle negativo, só o que o log mostra.** Com a chave **antiga** recolocada
   (`format!("{}|{:?}|{:?}", plan.to_json(), map, options)`), uma execução filtrada rodou 8 testes: **3 falharam** (os
   três acima) e 5 passaram (os outros 3 do host e 2 rascunhos de investigação que não fazem parte da árvore). Essa
@@ -183,17 +183,20 @@ Regra: **implementado** ≠ **validado**. Cada linha diz em que head foi executa
 
 | Item | Estado | Head |
 |---|---|---|
-| Estrutural do core (7 testes) | passa | `a97a0a7` (7/7); `c3ae380`, árvore limpa (7/7); `081353e`, árvore limpa (7/7, dentro do workspace) |
-| Threads do core (1 teste, com controle negativo) | passa | `a97a0a7` (1/1, 3,58 s); `081353e` (1/1) |
-| Host GPUI `scene_gizmo_perf` (5 testes) | passa; crate `tessel-editor` 418/0/0 | `c3ae380`, árvore limpa; `081353e` (418/0/0 no workspace) |
-| Teste de mesmo bundle (BL015.22) | **falhava**, passa depois da correção | falha em `a97a0a7`; passa em `c3ae380` |
+| Estrutural do core (7 testes) | passa (7/7) | `c1c8fda` (merge da `main` `ca06345`, árvore limpa) |
+| Threads do core (1 teste, com controle negativo) | passa (1/1) | `c1c8fda` |
+| Host GPUI `scene_gizmo_perf` (5 testes) e o teste de mesmo bundle de `scene_lifecycle_tests` (1) | passam (5/5 e 1/1); crate `tessel-editor`: 424 passaram, 0 falharam | `c1c8fda` |
+| Teste de mesmo bundle (BL015.22) | **falhava**, passa depois da correção | falha em `a97a0a7`; passa em `c3ae380` e em `c1c8fda` |
 | Controle negativo do BL015.22 (chave antiga) | 3 falham, 5 passam | `9a72e03`, árvore suja; log fora do git |
-| Workspace inteiro com `TESSEL_REQUIRE_RUNTIME=1`, `fmt`, `check`, `clippy --workspace --all-targets -D warnings`, `build -p tessel-editor`, `cargo tree -p tessel-editor-core` sem gpui/wry | exit 0; workspace 2299 passaram, 0 falharam, 16 ignorados | `081353e`, árvore limpa. **Esse head ainda tinha a pilha de tempo** (os 16 ignorados incluem seu teste de orçamento): os números não são os desta árvore. O Rust de `b938971` é idêntico ao de `081353e` |
-| `corpus.py --check` | exit 0 | `a97a0a7`, `c3ae380`, `081353e` |
-| `hygiene.spec.py` | a validar | novo nesta entrega |
+| `fmt --all -- --check`, `check --workspace`, `clippy --workspace --all-targets -D warnings`, `build -p tessel-editor`, `cargo tree -p tessel-editor-core` sem gpui/wry | exit 0 | `c1c8fda` |
+| `test --workspace --locked --no-fail-fast` com `TESSEL_REQUIRE_RUNTIME=1` | 2340 passaram, **1 falhou**, 13 ignorados. A falha é `a_full_disk_ends_the_export_with_disk_full_and_leaves_the_volume_clean` (`hdiutil: attach failed - Permissão negada`): com o `TMPDIR` da corrida num volume externo o `hdiutil attach` foi negado (duas vezes); com o `TMPDIR` padrão o mesmo teste passou (1/1). Causa não investigada; nada em `crates/media` mudou nesta PR | `c1c8fda` |
+| `corpus.py --check`, `hygiene.spec.py` (10 testes) e as outras 18 specs de `scripts/*.spec.py` (313 testes) | exit 0 (19 specs, 323 testes, nenhuma falhou) | `c1c8fda` |
 | Efeito do BL015.22 na janela nativa | **não provado** | — |
-| Gates do head final | **a validar**: ver o corpo da PR #44 | — |
 | Desempenho (tempo) | **NÃO validado** | — |
+
+`c1c8fda` é o merge da `main` no branch da PR #44. O commit seguinte, que escreve esta tabela, só altera
+documentação: o código, os scripts e os fixtures do head final são os de `c1c8fda`. A máquina estava ocupada por outros
+trabalhos (média de carga de 1 minuto entre 9 e 74 durante as corridas); nenhum teste desta PR mede tempo.
 
 Os mutantes sintéticos que provaram que o detector discrimina (um plano a mais por handler morto pelo estrutural; o
 replanejar por tick morto pelo host) foram rodados pelo runner de mutantes da PR-B, uma vez, em `12bc8da`. **Esta
@@ -242,6 +245,6 @@ lacunas e não deve ser confundida com os IDs BL015.24 a BL015.36**, que são d�
 33. [B] **`present.resize.*`** aceita qualquer quadro convergido. Aberto.
 34. [B] **`check_deadline` e `CORPUS_TIMEOUT_S`** (1200 s) sem teste. Aberto.
 35. [B] **`commit_job` mede 60 s com `time.time()`** (relógio de parede). Aberto.
-36. [A] **Nada exercita luz.** A `main` já tem pedidos de luz pontual (`scene.range`); esta árvore não os tem, eles ficam **fora do orçamento de layouts** e o corpus e a jornada não têm luz. Aberto.
+36. [A] **Nada exercita luz.** A luz pontual (F060, PR #45: posição e `scene.range`) está nesta árvore desde o merge da `main`, mas o corpus e a jornada não têm luz nem passo de luz: nenhum pedido de luz passa pelo detector nem tem teto de layouts. Aberto.
 
 Dívidas da revisão desta PR (BL015.24 a BL015.36) e o que cada uma exige para fechar: `docs/backlog.md`.

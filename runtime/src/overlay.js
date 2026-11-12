@@ -38,6 +38,8 @@ export const PALETTE = {
   active: '#ffd60a',
   outline: '#4cc2ff',
   shadow: 'rgba(0, 0, 0, 0.55)',
+  // F060: a point light's range knob and sphere, and its marker.
+  range: '#ffb224',
 };
 
 const isObject = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -97,7 +99,7 @@ export const parseOverlay = (raw) => {
   const metrics = isObject(raw.metrics) ? raw.metrics : {};
   const handles = (Array.isArray(raw.handles) ? raw.handles : []).map((handle, index) => {
     if (!isObject(handle) || typeof handle.id !== 'string') throw new Error(`handles[${index}] needs an id`);
-    const kind = ['center', 'ring', 'scale_axis', 'scale_uniform'].includes(handle.kind) ? handle.kind : 'axis';
+    const kind = ['center', 'ring', 'scale_axis', 'scale_uniform', 'range'].includes(handle.kind) ? handle.kind : 'axis';
     const parsed = { id: handle.id, kind, from: point(handle.from, `handles[${index}].from`), to: point(handle.to, `handles[${index}].to`) };
     if (kind === 'ring') {
       // The polygon of a rotation ring: a point, or `null` where the ring is behind the camera.
@@ -110,6 +112,16 @@ export const parseOverlay = (raw) => {
     const quad = Array.isArray(outline?.quad) ? outline.quad.map((p, i) => point(p, `outlines[${index}].quad[${i}]`)) : [];
     if (quad.length !== 4) throw new Error(`outlines[${index}].quad needs four points`);
     return { entity: String(outline.entity ?? ''), quad };
+  });
+  // F060, additive: the range sphere of the selected light (three closed great circles, a point or
+  // `null` where the circle is behind the camera) and a marker for every light of the frame.
+  const sphere = (Array.isArray(raw.sphere) ? raw.sphere : []).map((ring, index) => {
+    if (!Array.isArray(ring) || ring.length < 3) throw new Error(`sphere[${index}] needs the polygon of the circle`);
+    return ring.map((value, at) => (value === null ? null : point(value, `sphere[${index}][${at}]`)));
+  });
+  const lightMarkers = (Array.isArray(raw.light_markers) ? raw.light_markers : []).map((marker, index) => {
+    if (!isObject(marker) || typeof marker.entity !== 'string') throw new Error(`light_markers[${index}] needs an entity`);
+    return { entity: marker.entity, at: point(marker.at, `light_markers[${index}].at`), hidden: marker.hidden === true, selected: marker.selected === true };
   });
   return {
     // `translate` (arrows and a centre), `rotate` (one ring per axis) or `scale` (axis handles
@@ -127,6 +139,9 @@ export const parseOverlay = (raw) => {
       .filter((entry) => isObject(entry) && typeof entry.id === 'string')
       .map((entry) => ({ id: entry.id, reason: String(entry.reason ?? '') })),
     outlines,
+    sphere,
+    lightMarkers,
+    markerRadius: finite(metrics.marker_radius) ? metrics.marker_radius : 0.025,
     active: isObject(raw.active) && typeof raw.active.handle === 'string' ? { handle: raw.active.handle, gesture: raw.active.gesture ?? null } : null,
     aspect: raw.aspect,
     // Opaque to the page: echoed in every pointer message and ack so the host can tell an answer
@@ -166,11 +181,14 @@ export const hoverHandle = (overlay, point) => {
     if (uniform && Math.hypot(here.x - uniform.to.u * overlay.aspect, here.y - uniform.to.v) <= overlay.centerRadius) return uniform.id;
   }
   let best = null;
-  for (const handle of overlay.handles.filter((candidate) => ['axis', 'ring', 'scale_axis'].includes(candidate.kind))) {
+  for (const handle of overlay.handles.filter((candidate) => ['axis', 'ring', 'scale_axis', 'range'].includes(candidate.kind))) {
+    // The range knob is a point on the sphere, not a segment from the centre.
     const distance =
       handle.kind === 'ring'
         ? distanceToRing(here, handle.points, overlay.aspect)
-        : distanceToSegment(here, toHeights(handle.from), toHeights(handle.to));
+        : handle.kind === 'range'
+          ? Math.hypot(here.x - handle.to.u * overlay.aspect, here.y - handle.to.v)
+          : distanceToSegment(here, toHeights(handle.from), toHeights(handle.to));
     if (distance <= overlay.handleRadius && (best === null || distance < best.distance)) best = { distance, id: handle.id };
   }
   return best?.id ?? null;
@@ -327,6 +345,23 @@ const drawScaleHandle = (context, from, to, color, width, boxRadius, dashed) => 
   context.fillRect(to.x - boxRadius, to.y - boxRadius, 2 * boxRadius, 2 * boxRadius);
 };
 
+/** The polygon of a circle stroked as it is, with the gaps (behind the camera) left open. */
+const drawRingPath = (context, rect, points) => {
+  context.beginPath();
+  let open = false;
+  for (const point of points) {
+    if (point === null) {
+      open = false;
+      continue;
+    }
+    const at = toPane(rect, point);
+    if (open) context.lineTo(at.x, at.y);
+    else context.moveTo(at.x, at.y);
+    open = true;
+  }
+  context.stroke();
+};
+
 /** One ring: its polygon in the pane, shadowed, with the gaps (behind the camera) left open. */
 const drawRing = (context, rect, points, color, width) => {
   const path = () => {
@@ -356,9 +391,35 @@ const drawRing = (context, rect, points, color, width) => {
   context.stroke();
 };
 
+/** The marker of a light: a small disc with a ring, dimmed and dashed while the light is hidden. */
+const drawMarker = (context, at, radius, { hidden, selected }) => {
+  context.setLineDash([]);
+  context.fillStyle = PALETTE.shadow;
+  context.beginPath();
+  context.arc(at.x, at.y, radius + 1.5, 0, Math.PI * 2);
+  context.fill();
+  context.strokeStyle = selected ? PALETTE.active : PALETTE.range;
+  context.fillStyle = selected ? PALETTE.active : PALETTE.range;
+  context.lineWidth = selected ? 2.5 : 1.75;
+  if (hidden) context.setLineDash([3, 2]);
+  context.globalAlpha = hidden ? 0.55 : 1;
+  context.beginPath();
+  context.arc(at.x, at.y, radius, 0, Math.PI * 2);
+  context.stroke();
+  context.beginPath();
+  context.arc(at.x, at.y, Math.max(2, radius * 0.35), 0, Math.PI * 2);
+  context.fill();
+  context.globalAlpha = 1;
+  context.setLineDash([]);
+};
+
 /** Draws `overlay` into `context` over `rect` (the picture, in CSS px). `hover` is a handle id. */
 export const drawOverlay = (context, rect, overlay, hover = null) => {
   if (!overlay || !rect) return;
+  // Every light of the frame has a marker, selected or not: it is where a press selects it.
+  for (const marker of overlay.lightMarkers) {
+    drawMarker(context, toPane(rect, marker.at), overlay.markerRadius * rect.height * 0.5, marker);
+  }
   for (const outline of overlay.outlines) {
     const corners = outline.quad.map((point) => toPane(rect, point));
     context.strokeStyle = PALETTE.shadow;
@@ -376,6 +437,16 @@ export const drawOverlay = (context, rect, overlay, hover = null) => {
   }
   if (!overlay.visible) return;
   const heightPx = rect.height;
+  // The range sphere of the selected light: three thin great circles, under the handles.
+  for (const ring of overlay.sphere) {
+    context.strokeStyle = PALETTE.range;
+    context.globalAlpha = 0.6;
+    context.lineWidth = 1;
+    context.setLineDash([4, 4]);
+    drawRingPath(context, rect, ring);
+    context.globalAlpha = 1;
+    context.setLineDash([]);
+  }
   for (const handle of overlay.handles) {
     const active = overlay.active?.handle === handle.id;
     const lit = active || hover === handle.id;
@@ -392,6 +463,19 @@ export const drawOverlay = (context, rect, overlay, hover = null) => {
       context.beginPath();
       context.arc(from.x, from.y, overlay.centerRadius * heightPx, 0, Math.PI * 2);
       context.stroke();
+      continue;
+    }
+    if (handle.kind === 'range') {
+      const knob = toPane(rect, handle.to);
+      const radius = 6;
+      context.fillStyle = PALETTE.shadow;
+      context.beginPath();
+      context.arc(knob.x, knob.y, radius + 2, 0, Math.PI * 2);
+      context.fill();
+      context.fillStyle = lit ? PALETTE.active : PALETTE.range;
+      context.beginPath();
+      context.arc(knob.x, knob.y, radius, 0, Math.PI * 2);
+      context.fill();
       continue;
     }
     if (handle.kind === 'ring') {
@@ -490,12 +574,22 @@ export const attachOverlay = ({ canvas, post, win = window, doc = document }) =>
             const middle =
               handle.kind === 'center'
                 ? handle.from
-                : handle.kind === 'scale_uniform'
+                : handle.kind === 'scale_uniform' || handle.kind === 'range'
                   ? handle.to
                   : vertex ?? { u: (handle.from.u + handle.to.u) / 2, v: (handle.from.v + handle.to.v) / 2 };
             const at = toPane(picture, middle);
             const pixel = context.getImageData(Math.round(at.x * ratio), Math.round(at.y * ratio), 1, 1).data;
             return { id: handle.id, rgba: [...pixel] };
+          })
+        : [];
+    // F060: what the canvas holds at the middle of each light marker (the ring of its disc is
+    // not at the middle, so the probe is the dot inside it).
+    const markerProbes =
+      overlay && picture
+        ? overlay.lightMarkers.map((marker) => {
+            const at = toPane(picture, marker.at);
+            const pixel = context.getImageData(Math.round(at.x * ratio), Math.round(at.y * ratio), 1, 1).data;
+            return { entity: marker.entity, rgba: [...pixel] };
           })
         : [];
     draws += 1;
@@ -511,6 +605,7 @@ export const attachOverlay = ({ canvas, post, win = window, doc = document }) =>
       outlines: overlay?.outlines.length ?? 0,
       disabled: overlay?.disabledHandles ?? [],
       probes,
+      markers: markerProbes,
     });
   };
 

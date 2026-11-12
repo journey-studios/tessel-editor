@@ -66,6 +66,7 @@ fn entity_icon(kind: &str) -> IconName {
         "camera_clip" => IconName::Film,
         "shot" => IconName::ChartGantt,
         "performance_track" => IconName::AudioLines,
+        "light" => IconName::Lightbulb,
         _ => IconName::Layers,
     }
 }

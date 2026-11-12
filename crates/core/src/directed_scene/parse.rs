@@ -13,7 +13,7 @@ use serde_json::Value;
 use crate::time::Rate;
 
 use super::SCHEMA_VERSION;
-use super::graph::SceneDef;
+use super::graph::{LightDecl, SceneDef};
 use super::issue::{
     FPS_OUT_OF_RANGE, INVALID_VALUE, UNSAFE_RELATIVE_PATH, UNSUPPORTED_SCHEMA_VERSION,
 };
@@ -363,8 +363,13 @@ fn scene_definition(obj: &Obj<'_>, pointer: String) -> Option<SceneDef> {
     for section in ["contactPlaneId", "frameAudit"] {
         obj.deferred(section);
     }
+    let mut lights = Vec::new();
     for section in UNEVALUATED_DEFINITION_SECTIONS {
-        if declared(obj.deferred(section)) {
+        let value = obj.deferred(section);
+        if section == "lighting" {
+            lights = light_decls(value);
+        }
+        if declared(value) {
             unevaluated.insert(section);
         }
     }
@@ -376,8 +381,47 @@ fn scene_definition(obj: &Obj<'_>, pointer: String) -> Option<SceneDef> {
         sockets: sockets?,
         data_assets,
         unevaluated: unevaluated.into_iter().collect(),
+        lights,
         pointer,
     })
+}
+
+/// The lights a scene definition declares, as far as an editor needs to address them: the id and
+/// the parent node. Tolerant on purpose (the section is kept raw, and what is wrong with a light
+/// is a typed refusal of the plan, `lighting.rs`, not an import error), so an entry without a
+/// usable id is simply not addressable.
+fn light_decls(lighting: Option<&Value>) -> Vec<LightDecl> {
+    lighting
+        .and_then(|section| section.get("lights"))
+        .and_then(Value::as_array)
+        .map(|lights| {
+            lights
+                .iter()
+                .enumerate()
+                .filter_map(|(index, light)| {
+                    let id = light.get("id").and_then(Value::as_str)?;
+                    (!id.is_empty()).then(|| LightDecl {
+                        id: id.to_string(),
+                        parent: light
+                            .get("parent")
+                            .and_then(Value::as_str)
+                            .filter(|parent| !parent.is_empty())
+                            .map(str::to_string),
+                        index,
+                        keyed: ["position", "intensity", "color"]
+                            .into_iter()
+                            .filter(|channel| {
+                                light
+                                    .pointer(&format!("/keys/{channel}"))
+                                    .and_then(Value::as_array)
+                                    .is_some_and(|keys| !keys.is_empty())
+                            })
+                            .collect(),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn instance(obj: &Obj<'_>) -> Option<SceneInstance> {

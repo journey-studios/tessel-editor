@@ -98,13 +98,15 @@ pub enum Applicability {
     /// Nodes of these kinds.
     Node(&'static [NodeKind]),
     CameraClip,
+    /// The point lights of a scene definition (F060).
+    Light,
 }
 
 impl Applicability {
     pub fn accepts_node(&self, kind: NodeKind) -> bool {
         match self {
             Self::Node(kinds) => kinds.contains(&kind),
-            Self::CameraClip => false,
+            Self::CameraClip | Self::Light => false,
         }
     }
 
@@ -115,6 +117,7 @@ impl Applicability {
                 format!("{} nodes", names.join(", "))
             }
             Self::CameraClip => "camera clips".to_string(),
+            Self::Light => "point lights".to_string(),
         }
     }
 }
@@ -183,11 +186,29 @@ pub enum CameraProperty {
     StartTargetZ,
 }
 
+/// The properties of a point light (F060). `Radius` is the document's `radius`: the distance at
+/// which the light has fallen to a quarter, the "alcance" the range handle edits. `Color*` are
+/// the three linear channels, each a number of its own (the catalog has no colour value kind and
+/// an inspector wants one slider per channel).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum LightProperty {
+    Position,
+    Intensity,
+    Radius,
+    PositionX,
+    PositionY,
+    PositionZ,
+    ColorR,
+    ColorG,
+    ColorB,
+}
+
 /// Identifies a catalog entry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PropertyId {
     Node(NodeProperty),
     Camera(CameraProperty),
+    Light(LightProperty),
 }
 
 /// A property that is one component of a vector property (`position/x` of `position`).
@@ -230,6 +251,30 @@ pub struct PropertySpec {
     /// (the origin's `start/position` write).
     pub converts_first_movement: bool,
 }
+
+/// `[0, 20]`: the origin's bounds of a light's intensity.
+const LIGHT_INTENSITY: NumberRange = NumberRange {
+    min: Some(Limit {
+        value: 0.0,
+        inclusive: true,
+    }),
+    max: Some(Limit {
+        value: crate::directed_scene::lighting::MAX_INTENSITY,
+        inclusive: true,
+    }),
+};
+
+/// `[0, 1]`: one linear channel of a light's colour.
+const UNIT_INTERVAL: NumberRange = NumberRange {
+    min: Some(Limit {
+        value: 0.0,
+        inclusive: true,
+    }),
+    max: Some(Limit {
+        value: 1.0,
+        inclusive: true,
+    }),
+};
 
 const EVERY_NODE: &[NodeKind] = &[NodeKind::Group, NodeKind::ImagePlane, NodeKind::Splat];
 const IMAGE_PLANES: &[NodeKind] = &[NodeKind::ImagePlane];
@@ -407,6 +452,78 @@ static NODE_RENDER_ORDER: PropertySpec = PropertySpec {
     converts_first_movement: false,
 };
 
+// A light has no neutral value to reset to (a lamp at the origin, intensity 1, is as arbitrary as
+// any other), so none of these has a default: `reset` is refused, not guessed.
+static LIGHT_POSITION: PropertySpec = PropertySpec {
+    id: PropertyId::Light(LightProperty::Position),
+    name: "position",
+    kind: ValueKind::Vec3,
+    unit: Unit::SceneUnits,
+    range: None,
+    default: None,
+    applies_to: Applicability::Light,
+    document_field: "position",
+    origin: OriginRelation::EditorOnly,
+    component: None,
+    optional: false,
+    converts_first_movement: false,
+};
+
+static LIGHT_INTENSITY_SPEC: PropertySpec = PropertySpec {
+    id: PropertyId::Light(LightProperty::Intensity),
+    name: "intensity",
+    kind: ValueKind::Number,
+    unit: Unit::Unitless,
+    range: Some(LIGHT_INTENSITY),
+    default: None,
+    applies_to: Applicability::Light,
+    document_field: "intensity",
+    origin: OriginRelation::EditorOnly,
+    component: None,
+    optional: false,
+    converts_first_movement: false,
+};
+
+static LIGHT_RADIUS: PropertySpec = PropertySpec {
+    id: PropertyId::Light(LightProperty::Radius),
+    name: "radius",
+    kind: ValueKind::Number,
+    unit: Unit::SceneUnits,
+    range: Some(POSITIVE),
+    default: None,
+    applies_to: Applicability::Light,
+    document_field: "radius",
+    origin: OriginRelation::EditorOnly,
+    component: None,
+    optional: false,
+    converts_first_movement: false,
+};
+
+const fn light_channel(
+    id: LightProperty,
+    name: &'static str,
+    document_field: &'static str,
+) -> PropertySpec {
+    PropertySpec {
+        id: PropertyId::Light(id),
+        name,
+        kind: ValueKind::Number,
+        unit: Unit::Unitless,
+        range: Some(UNIT_INTERVAL),
+        default: None,
+        applies_to: Applicability::Light,
+        document_field,
+        origin: OriginRelation::EditorOnly,
+        component: None,
+        optional: false,
+        converts_first_movement: false,
+    }
+}
+
+static LIGHT_COLOR_R: PropertySpec = light_channel(LightProperty::ColorR, "color/r", "color/r");
+static LIGHT_COLOR_G: PropertySpec = light_channel(LightProperty::ColorG, "color/g", "color/g");
+static LIGHT_COLOR_B: PropertySpec = light_channel(LightProperty::ColorB, "color/b", "color/b");
+
 /// One component of a vector property. A `const fn` so the twelve entries below stay data: the
 /// only things that differ are the names, the index and the neutral value of the component.
 const fn component_spec(
@@ -470,6 +587,31 @@ macro_rules! camera_component {
         );
     };
 }
+
+static LIGHT_POSITION_X: PropertySpec = component_spec(
+    &LIGHT_POSITION,
+    PropertyId::Light(LightProperty::PositionX),
+    "position/x",
+    "position/x",
+    0,
+    None,
+);
+static LIGHT_POSITION_Y: PropertySpec = component_spec(
+    &LIGHT_POSITION,
+    PropertyId::Light(LightProperty::PositionY),
+    "position/y",
+    "position/y",
+    1,
+    None,
+);
+static LIGHT_POSITION_Z: PropertySpec = component_spec(
+    &LIGHT_POSITION,
+    PropertyId::Light(LightProperty::PositionZ),
+    "position/z",
+    "position/z",
+    2,
+    None,
+);
 
 node_component!(
     NODE_POSITION_X,
@@ -576,7 +718,7 @@ camera_component!(
 
 // The first eight entries and their order are the original catalog; later ones are only appended,
 // so an index or a listing written against the first slice keeps meaning the same thing.
-static CATALOG: [&PropertySpec; 21] = [
+static CATALOG: [&PropertySpec; 30] = [
     &NODE_POSITION,
     &NODE_ROTATION,
     &NODE_SCALE,
@@ -598,6 +740,15 @@ static CATALOG: [&PropertySpec; 21] = [
     &CAMERA_START_TARGET_X,
     &CAMERA_START_TARGET_Y,
     &CAMERA_START_TARGET_Z,
+    &LIGHT_POSITION,
+    &LIGHT_INTENSITY_SPEC,
+    &LIGHT_RADIUS,
+    &LIGHT_POSITION_X,
+    &LIGHT_POSITION_Y,
+    &LIGHT_POSITION_Z,
+    &LIGHT_COLOR_R,
+    &LIGHT_COLOR_G,
+    &LIGHT_COLOR_B,
 ];
 
 /// Every property the editor can change by ID, in a stable order: the first slice's eight, then
@@ -685,11 +836,60 @@ impl CameraProperty {
     }
 }
 
+impl LightProperty {
+    pub const ALL: [Self; 9] = [
+        Self::Position,
+        Self::Intensity,
+        Self::Radius,
+        Self::PositionX,
+        Self::PositionY,
+        Self::PositionZ,
+        Self::ColorR,
+        Self::ColorG,
+        Self::ColorB,
+    ];
+
+    pub fn spec(self) -> &'static PropertySpec {
+        match self {
+            Self::Position => &LIGHT_POSITION,
+            Self::Intensity => &LIGHT_INTENSITY_SPEC,
+            Self::Radius => &LIGHT_RADIUS,
+            Self::PositionX => &LIGHT_POSITION_X,
+            Self::PositionY => &LIGHT_POSITION_Y,
+            Self::PositionZ => &LIGHT_POSITION_Z,
+            Self::ColorR => &LIGHT_COLOR_R,
+            Self::ColorG => &LIGHT_COLOR_G,
+            Self::ColorB => &LIGHT_COLOR_B,
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|property| property.spec().name == name)
+    }
+
+    /// The key track that replaces this property's static value, if the origin has one. `radius`
+    /// has no keys in the origin's schema: it is never animated.
+    pub fn channel(self) -> Option<crate::directed_scene::lighting::LightChannel> {
+        use crate::directed_scene::lighting::LightChannel;
+        match self {
+            Self::Position | Self::PositionX | Self::PositionY | Self::PositionZ => {
+                Some(LightChannel::Position)
+            }
+            Self::Intensity => Some(LightChannel::Intensity),
+            Self::ColorR | Self::ColorG | Self::ColorB => Some(LightChannel::Color),
+            Self::Radius => None,
+        }
+    }
+}
+
 impl PropertyId {
     pub fn spec(self) -> &'static PropertySpec {
         match self {
             Self::Node(property) => property.spec(),
             Self::Camera(property) => property.spec(),
+            Self::Light(property) => property.spec(),
         }
     }
 }

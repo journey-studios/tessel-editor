@@ -18,6 +18,9 @@ cada acesso pela UI, CLI com UI, CLI headless e biblioteca Rust.
 - [Backlog compartilhado](backlog.md): registro único de pendências, responsáveis, dependências e aceite; obrigatório para todos os agentes.
 - [Inventário de migração do Scene Studio](migration/README.md): 121 itens classificados,
   evidências na origem, diferenças do branch piloto, matriz de migração e fatias sugeridas.
+- [Triagem dos docs do piloto](migration/pilot-docs-triage-2026-11-11.md): 52 documentos avaliados, o que veio, o que ficou de fora e por quê.
+- [Especificações da origem](migration/origin-specs/README.md): dez documentos do piloto copiados literalmente (efeitos, comandos de câmera, ripple, fronteira Studio/core, glossário), somente leitura.
+- [Projetos locais](../projects/README.md): `projects/<nome>/` guarda projetos privados ou pesados e é ignorado pelo Git.
 - [Fade de entrada e saída em clipe de áudio (BL142)](features/audio-fades.md): rampa linear de ganho relativa ao clipe, mix em blocos = mix inteiro, sobreposição encurtada.
 - [Recursos da cena dirigida](features/scene-resources.md): manifesto, preflight e materialização inicial; identidade por assetId, transporte parcial e pacote ainda protegido pelas guardas.
 - [Interação de cenas dirigidas](features/scene-interaction.md): seleção, árvore, avaliação e gestos via comandos; gate local da rodada passou; inspector parcial em F039-UI.

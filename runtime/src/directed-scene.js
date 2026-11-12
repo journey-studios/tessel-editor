@@ -6,8 +6,13 @@
 // runtime can draw whole?) and *executed* (a perspective camera, one textured plane per layer,
 // in the order the plan lists them, and the Gaussian splats of Spark painted between them where the
 // plan's `afterLayers` says, each placed by its node's world matrix, which must be a similarity).
-// Anything the plan does not carry (light, weather, effects, rigs, data maps, a splat matrix with a
-// non-uniform or mirrored scale) is refused with a typed error, never approximated.
+// Anything the plan does not carry (ambient or shadowed light, weather, rigs, data maps, a splat matrix
+// with a non-uniform or mirrored scale) is refused with a typed error, never approximated.
+//
+// Point lights (F060) are the one light this runtime draws: they brighten the IMAGE PLANES by
+// `lambert * falloff^2` (see `LIGHT_FRAGMENT`). Splats are not lit: Spark draws them with its own
+// shader and nothing here infers a normal for a Gaussian, so a lit scene's splats keep their picture.
+// That is a stated limit of this slice, not an accident.
 //
 // The checks are pure (no GL, no DOM), so they run under `node --test` without a browser.
 
@@ -36,6 +41,7 @@ export const SCENE_CAPABILITIES = [
   'splats',
   'outputFx',
   'fxNoise',
+  'pointLights',
 ];
 
 /** Advertised in `ready.capabilities.directed_scene`, so a host can check before it sends. */
@@ -47,6 +53,11 @@ export const DIRECTED_SCENE_CAPABILITIES = {
   resource_identity: ['generation', 'asset_id', 'revision_id', 'content_hash'],
   resource_kinds: ['still', 'splat'],
 };
+
+/** At most this many lights, the origin's `MAX_SCENE_LIGHTS` (the core refuses more). */
+export const MAX_POINT_LIGHTS = 4;
+/** The origin's bounds of a light's intensity (the core refuses more). */
+const MAX_LIGHT_INTENSITY = 20;
 
 /**
  * Relative tolerance of the similarity test of a splat's world matrix; the same number as the core's
@@ -174,7 +185,14 @@ export const parseDirectedLayer = (layer) => {
     throw new RuntimeError(
       'unsupported',
       `The plan declares ${unsupported.length} domain(s) it does not carry; this runtime draws complete plans only`,
-      { domains: unsupported.map((entry) => ({ domain: entry?.domain ?? null, subject: entry?.subject ?? null })) },
+      {
+        domains: unsupported.map((entry) => {
+          const domain = { domain: entry?.domain ?? null, subject: entry?.subject ?? null };
+          // Additive (F060): why a partly supported domain is refused, when the plan says.
+          if (typeof entry?.reason === 'string') domain.reason = entry.reason;
+          return domain;
+        }),
+      },
     );
   }
   const requires = arrayAt(plan.requires, '/requires').map((item, index) => stringAt(item, `/requires/${index}`));
@@ -288,6 +306,10 @@ export const parseDirectedLayer = (layer) => {
   // F016: the resolved effect passes drawn over the finished picture (absent means none).
   const fx = parseOutputFx(plan.fx, requires);
 
+  // F060: the evaluated point lights (absent means none). A hidden light is kept in the plan for the
+  // editor's marker and takes no slot here; any visible one needs the capability, as in the core.
+  const lights = parsePointLights(plan.lights, requires);
+
   return {
     output: { width, height },
     fx,
@@ -298,9 +320,48 @@ export const parseDirectedLayer = (layer) => {
     },
     planes,
     splats,
+    lights,
     resources,
     references: parseResourceReferences(layer.resources ?? []),
   };
+};
+
+/**
+ * `plan.lights`: the lights at this frame, world position, linear colour, the intensity already
+ * multiplied by its flicker, and the radius (the distance at which a light has fallen to a quarter).
+ * Returns the visible ones, in plan order.
+ */
+const parsePointLights = (raw, requires) => {
+  const items = arrayAt(raw ?? [], '/lights');
+  if (items.length > MAX_POINT_LIGHTS) throw invalid('/lights', `expected at most ${MAX_POINT_LIGHTS} lights`);
+  const seen = new Set();
+  const lights = items.map((item, index) => {
+    const at = `/lights/${index}`;
+    const light = objectAt(item, at);
+    const id = stringAt(light.id, `${at}/id`);
+    if (seen.has(id)) throw invalid(`${at}/id`, `light \`${id}\` is listed twice`);
+    seen.add(id);
+    const color = objectAt(light.color, `${at}/color`);
+    const channels = ['r', 'g', 'b'].map((channel) => {
+      const value = finiteAt(color[channel], `${at}/color/${channel}`);
+      if (value < 0 || value > 1) throw invalid(`${at}/color/${channel}`, 'expected a number between 0 and 1');
+      return value;
+    });
+    const intensity = finiteAt(light.intensity, `${at}/intensity`);
+    if (intensity < 0 || intensity > MAX_LIGHT_INTENSITY) throw invalid(`${at}/intensity`, `expected a number between 0 and ${MAX_LIGHT_INTENSITY}`);
+    if (light.hidden !== undefined && typeof light.hidden !== 'boolean') throw invalid(`${at}/hidden`, 'expected true or false');
+    return {
+      id,
+      position: vec3At(light.position, `${at}/position`),
+      color: channels,
+      intensity,
+      radius: positiveAt(light.radius, `${at}/radius`),
+      hidden: light.hidden === true,
+    };
+  });
+  const visible = items.length === 0 ? [] : lights.filter((light) => !light.hidden);
+  if (visible.length > 0 && !requires.includes('pointLights')) throw invalid('/requires', 'a plan with visible lights must require `pointLights`');
+  return visible;
 };
 
 /**
@@ -418,6 +479,108 @@ const planeGeometry = (width, height) => {
   return geometry;
 };
 
+// ---- point lights (F060) -----------------------------------------------------------------------
+//
+// What a light does to an image plane, in one place. The renderer has colour management off and
+// the pictures are sRGB bytes drawn as they are, so the light is applied in LINEAR space: decode
+// the plane's colour, multiply it by `1 + L`, encode it back. `L` is the sum over the lights of
+// `colour * intensity * max(0, n . l) * falloff(d)^2`, with `falloff = 1 / (1 + (d / radius)^2)`
+// applied twice (so a light is a quarter as strong at its radius) and `n` the plane's normal facing
+// the camera (a double-sided plane is lit on the side it is seen from). Without a light the
+// factor is exactly 1: the branch is skipped, the picture is the unlit one bit for bit.
+// The reference the tests compare with is written independently in `directed-scene-light.test.mjs`.
+
+const LIGHT_VERTEX_DECLARATIONS = `
+varying vec3 vTesselWorld;
+varying vec3 vTesselNormal;
+`;
+
+const LIGHT_VERTEX_BODY = `
+  vTesselWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;
+  vTesselNormal = transpose(inverse(mat3(modelMatrix))) * normal;
+`;
+
+const LIGHT_FRAGMENT_DECLARATIONS = `
+varying vec3 vTesselWorld;
+varying vec3 vTesselNormal;
+uniform int uTesselLightCount;
+uniform vec3 uTesselLightPosition[${MAX_POINT_LIGHTS}];
+uniform vec3 uTesselLightColor[${MAX_POINT_LIGHTS}];
+uniform float uTesselLightRadius[${MAX_POINT_LIGHTS}];
+vec3 tesselDecode(vec3 c) {
+  return mix(pow((c + 0.055) / 1.055, vec3(2.4)), c / 12.92, vec3(lessThanEqual(c, vec3(0.04045))));
+}
+vec3 tesselEncode(vec3 c) {
+  return mix(1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, c * 12.92, vec3(lessThanEqual(c, vec3(0.0031308))));
+}
+`;
+
+const LIGHT_FRAGMENT_BODY = `
+  if (uTesselLightCount > 0) {
+    vec3 tesselNormal = normalize(vTesselNormal);
+    if (dot(tesselNormal, cameraPosition - vTesselWorld) < 0.0) tesselNormal = -tesselNormal;
+    vec3 tesselLit = vec3(0.0);
+    for (int i = 0; i < ${MAX_POINT_LIGHTS}; i++) {
+      if (i >= uTesselLightCount) break;
+      vec3 toLight = uTesselLightPosition[i] - vTesselWorld;
+      float distanceToLight = length(toLight);
+      if (distanceToLight < 1e-9) continue;
+      float once = 1.0 / (1.0 + (distanceToLight * distanceToLight) / (uTesselLightRadius[i] * uTesselLightRadius[i]));
+      float facing = max(0.0, dot(tesselNormal, toLight / distanceToLight));
+      tesselLit += uTesselLightColor[i] * (facing * once * once);
+    }
+    outgoingLight = tesselEncode(clamp(tesselDecode(outgoingLight) * (vec3(1.0) + tesselLit), 0.0, 1.0));
+  }
+`;
+
+/** The uniforms a lit material shares with its compiled program: updated per frame, never recompiled. */
+const lightUniforms = () => ({
+  uTesselLightCount: { value: 0 },
+  uTesselLightPosition: { value: Array.from({ length: MAX_POINT_LIGHTS }, () => new THREE.Vector3()) },
+  uTesselLightColor: { value: Array.from({ length: MAX_POINT_LIGHTS }, () => new THREE.Vector3()) },
+  uTesselLightRadius: { value: new Array(MAX_POINT_LIGHTS).fill(1) },
+});
+
+const LIGHT_CACHE_KEY = 'tessel-point-lights-v1';
+
+/** Makes a layer material light-aware: one program, with the lights as uniforms (count 0 is the unlit picture). */
+const makeLightAware = (material) => {
+  const uniforms = lightUniforms();
+  material.userData.tesselLights = uniforms;
+  material.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, uniforms);
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `#include <common>\n${LIGHT_VERTEX_DECLARATIONS}`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>\n${LIGHT_VERTEX_BODY}`);
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>\n${LIGHT_FRAGMENT_DECLARATIONS}`)
+      .replace('#include <opaque_fragment>', `${LIGHT_FRAGMENT_BODY}\n#include <opaque_fragment>`);
+  };
+  material.customProgramCacheKey = () => LIGHT_CACHE_KEY;
+  return material;
+};
+
+/**
+ * Sets the lights a material draws this frame (the visible ones of `parseDirectedLayer`). A retained
+ * material is the same object across frames, so this runs for every plane of every frame; it only
+ * writes numbers.
+ */
+export const applyPointLights = (material, lights) => {
+  const uniforms = material.userData.tesselLights;
+  if (!uniforms) return;
+  uniforms.uTesselLightCount.value = lights.length;
+  lights.forEach((light, index) => {
+    uniforms.uTesselLightPosition.value[index].set(...light.position);
+    // The intensity multiplies the colour here, so the shader needs one vector per light.
+    uniforms.uTesselLightColor.value[index].set(
+      light.color[0] * light.intensity,
+      light.color[1] * light.intensity,
+      light.color[2] * light.intensity,
+    );
+    uniforms.uTesselLightRadius.value[index] = light.radius;
+  });
+};
+
 /**
  * The material of one layer slot. All layers are `transparent` on purpose: three.js draws opaque
  * objects before transparent ones, which would break the painter's order the plan fixed.
@@ -435,8 +598,8 @@ export const createSceneMaterial = (alpha, map) => {
     depthWrite: false,
     premultipliedAlpha: false,
   };
-  if (alpha === 'straight') return new THREE.MeshBasicMaterial({ ...common, blending: THREE.NormalBlending });
-  return new THREE.MeshBasicMaterial({
+  if (alpha === 'straight') return makeLightAware(new THREE.MeshBasicMaterial({ ...common, blending: THREE.NormalBlending }));
+  return makeLightAware(new THREE.MeshBasicMaterial({
     ...common,
     blending: THREE.CustomBlending,
     blendEquation: THREE.AddEquation,
@@ -445,7 +608,7 @@ export const createSceneMaterial = (alpha, map) => {
     blendEquationAlpha: THREE.AddEquation,
     blendSrcAlpha: THREE.ZeroFactor,
     blendDstAlpha: THREE.OneFactor,
-  });
+  }));
 };
 
 /**
@@ -456,7 +619,10 @@ export const createSceneMaterial = (alpha, map) => {
 export const buildDirectedScene = (spec, { textureOf, materialOf, keep }) => {
   const scene = new THREE.Scene();
   spec.planes.forEach((plane, index) => {
-    const mesh = new THREE.Mesh(keep(planeGeometry(plane.width, plane.height)), materialOf(plane.alpha, index, textureOf(plane.assetId)));
+    const material = materialOf(plane.alpha, index, textureOf(plane.assetId));
+    // The lights of this frame (F060). A retained material carries the previous frame's: always set.
+    applyPointLights(material, spec.lights);
+    const mesh = new THREE.Mesh(keep(planeGeometry(plane.width, plane.height)), material);
     // The world matrix is the core's: ancestors, sockets and performance channels already applied.
     mesh.matrixAutoUpdate = false;
     mesh.matrix.fromArray(plane.world);

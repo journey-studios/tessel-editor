@@ -51,13 +51,13 @@ pub use batch::{
 };
 pub use camera_keys::MovementConversion;
 pub use catalog::{
-    Applicability, CameraProperty, ComponentOf, Limit, NodeProperty, NumberRange, OriginRelation,
-    PropertyId, PropertySpec, Unit, catalog,
+    Applicability, CameraProperty, ComponentOf, LightProperty, Limit, NodeProperty, NumberRange,
+    OriginRelation, PropertyId, PropertySpec, Unit, catalog,
 };
 pub use error::{
-    CAMERA_CONVERSION_FAILED, CANDIDATE_REJECTED, DOCUMENT_MISMATCH, EditError, INVALID_OP,
-    LocalizedIssue, NO_DEFAULT, NOT_APPLICABLE, UNKNOWN_CLIP, UNKNOWN_NODE, UNKNOWN_PATH,
-    UNKNOWN_SCENE,
+    ANIMATED_PROPERTY, CAMERA_CONVERSION_FAILED, CANDIDATE_REJECTED, DOCUMENT_MISMATCH, EditError,
+    INVALID_OP, LocalizedIssue, NO_DEFAULT, NOT_APPLICABLE, UNKNOWN_CLIP, UNKNOWN_LIGHT,
+    UNKNOWN_NODE, UNKNOWN_PATH, UNKNOWN_SCENE,
 };
 pub use fx::{
     AddClip, ClipField, FxChange, FxOp, FxOutcome, FxSummary, MAX_FX_BATCH_OPS, apply_fx,

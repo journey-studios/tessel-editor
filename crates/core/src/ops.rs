@@ -820,6 +820,17 @@ fn scene_command(op: &str, request: &Value) -> Result<SceneCommand, CommandError
                 .ok_or_else(|| invalid("Field `factor` must be a number"))?,
             space: gizmo_space(request)?,
         }),
+        // F060: the range knob of a point light. `delta` is the answer of a knob drag, so the same
+        // number replays it.
+        "scene.range" => SceneCommand::Gizmo(GizmoCommand::Range {
+            scene: scene()?,
+            entity: string(request, "entity")?.to_string(),
+            at: frame_at(request)?,
+            delta: request
+                .get("delta")
+                .and_then(Value::as_f64)
+                .ok_or_else(|| invalid("Field `delta` must be a number"))?,
+        }),
         "scene.gizmo.tool" => SceneCommand::Gizmo(GizmoCommand::Tool {
             tool: gizmo_tool(request)?,
             space: gizmo_space(request)?,

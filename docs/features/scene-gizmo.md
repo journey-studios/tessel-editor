@@ -1143,3 +1143,13 @@ A interação FX × gizmo continua exercitada em core por `scene_gizmo_fx` (5/5 
 eixo corre sobre um eixo do nó, recusas e limites preservados, a fronteira exata do semiplano `uniform`. **Não provado** neste head:
 nenhum gate de workspace, runtime, binário, janela nativa ou prova de processo (BLOQUEADOS por disco), o ponteiro físico (BL015.2/BL043/BL044),
 custo (BL015.18, sem medição, sem lock), splat no corpus de processo, liquidação atômica do slider (BL015.19) e a revisão independente.
+
+## Luz pontual (G2.1, F060)
+
+A luz pontual reusa este gizmo sem duplicar matemática: o marcador seleciona, as setas `x/y/z` e o centro são as da translação
+(`scene.translate`), e o puxador novo `range` (handle `kind: "range"`, na direita da luz como a câmera a vê) edita o alcance
+pela **mesma** função pura que o comando numérico `scene.range`. Mesmo ciclo begin/update/commit/cancel, um undo por gesto,
+sem histórico sem mudança, candidato inválido preserva o último legal e as guardas de revisão/quadro/seleção/época. Posição com
+chaves recusa como `animated_position` (como `animated_scale`); rotação e escala dizem por quê (`light_has_no_rotation`,
+`light_has_no_scale`). Overlay v1 aditivo: `sphere`, `light_markers`, `metrics.marker_radius`. Contrato e provas em
+[scene-light.md](scene-light.md).

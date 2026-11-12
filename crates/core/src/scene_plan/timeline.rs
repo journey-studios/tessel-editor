@@ -171,7 +171,8 @@ impl<'a> PlanTimeline<'a> {
             .get_or_init(|| layout.prepared.assemble(self.scene, &frame))
             .as_ref()
             .map_err(Clone::clone)?;
-        template.at_frame(&frame, &self.scene.bundle().fx)
+        let plan = template.at_frame(&frame, &self.scene.bundle().fx)?;
+        Ok(plan.relit(layout.prepared.lights_at(&frame)))
     }
 
     fn node_timeline(
