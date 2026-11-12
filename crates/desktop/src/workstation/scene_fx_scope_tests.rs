@@ -536,6 +536,55 @@ fn a_pick_of_a_clip_that_is_gone_writes_nothing_and_says_nothing(cx: &mut TestAp
     assert_eq!(notice_code(&view, cx), None);
 }
 
+/// The core gives a new clip the smallest id that is free: a removed `fx-1` is the next clip's
+/// `fx-1`. A pick made on the selector of the first one must not edit the second, which the user has
+/// not seen; the selector painted for the second is live.
+#[gpui_kit::test]
+fn a_pick_of_a_clip_recreated_with_the_same_id_writes_nothing(cx: &mut TestAppContext) {
+    let (view, cx) = mounted(cx);
+    invoke(&view, cx, SECTION, "add_in_shot:vignette").unwrap();
+    let (select, _) = view
+        .read_with(cx, |view, _| view.scope_select_of("street", "fx-1"))
+        .expect("the panel paints a selector for the clip");
+    let depth = undo_depth(&view, cx);
+
+    // Removed and added again in the same update (no paint in between drops the selector), then the
+    // pick of the old selector arrives.
+    view.update(cx, |view, cx| {
+        view.scene_invoke(FIRST, Some("remove"), cx)
+            .expect("a scene node")
+            .unwrap();
+        view.scene_invoke(SECTION, Some("add_in_shot:vignette"), cx)
+            .expect("a scene node")
+            .unwrap();
+        select.update(cx, |_, cx| {
+            cx.emit(SelectEvent::Confirm(Some("output".to_string())))
+        });
+    });
+    cx.run_until_parked();
+    assert_eq!(clips(&view, cx), 1);
+    assert_eq!(
+        scope_of(&view, cx, "fx-1"),
+        FxScope::Shot("shot-1".into()),
+        "the new clip was not the one picked on"
+    );
+    assert_eq!(undo_depth(&view, cx), depth + 2, "the removal and the add");
+    assert_eq!(notice_code(&view, cx), None);
+
+    // The selector the panel paints for the new clip is the live one.
+    view.update(cx, |_, cx| cx.notify());
+    cx.run_until_parked();
+    let (select, _) = view
+        .read_with(cx, |view, _| view.scope_select_of("street", "fx-1"))
+        .expect("the panel paints a selector for the clip");
+    select.update(cx, |_, cx| {
+        cx.emit(SelectEvent::Confirm(Some("output".to_string())))
+    });
+    cx.run_until_parked();
+    assert_eq!(scope_of(&view, cx, "fx-1"), FxScope::Output);
+    assert_eq!(undo_depth(&view, cx), depth + 3);
+}
+
 #[gpui_kit::test]
 fn an_unknown_action_lists_what_the_section_node_lists(cx: &mut TestAppContext) {
     let (view, cx) = mounted(cx);

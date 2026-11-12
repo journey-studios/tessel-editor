@@ -236,10 +236,13 @@ impl SelectItem for ScopeItem {
 /// The Kit state of one scope `Select`.
 type ScopeSelect = Entity<SelectState<SearchableVec<ScopeItem>>>;
 
-/// A Kit `Select` with the options it was last given.
+/// A Kit `Select` with the options it was last given, and the revision of the project it was last
+/// painted at: the clip it shows is the one of THAT document (an id is not an identity: the core
+/// gives a new clip the smallest id that is free, so a removed `fx-1` is the next clip's `fx-1`).
 pub(super) struct ScopePick {
     select: ScopeSelect,
     items: Vec<ScopeItem>,
+    revision: u64,
 }
 
 /// The selectors of the section, by clip.
@@ -405,7 +408,17 @@ impl Workstation {
         // of the same id. The same option again is not an edit either. A refusal is already the
         // panel's notice (shown by the command, or by `fx_set_scope_in` for a text that never
         // reached one); the selector goes back to the scope the document holds on the next paint.
-        if let Ok(view) = self.fx_view_of(&key.scene)
+        // Nor does it edit a clip that took the id of the one it was made on: a pick that reaches
+        // a document other than the one the selector was painted for (an edit, an undo, a removed
+        // clip and a new one, in between) is the selector of a clip the user no longer sees.
+        let painted = self
+            .scene_ui
+            .fx
+            .scopes
+            .get(key)
+            .is_some_and(|pick| pick.revision == self.state.project.revision);
+        if painted
+            && let Ok(view) = self.fx_view_of(&key.scene)
             && let Some(entry) = view.clip(&key.clip)
             && entry.clip.scope.to_text() != value
         {
@@ -448,6 +461,7 @@ impl Workstation {
             scene: view.scene.clone(),
             clip: clip.id.clone(),
         };
+        let revision = self.state.project.revision;
         let pick = self
             .scene_ui
             .fx
@@ -469,8 +483,10 @@ impl Workstation {
                 ScopePick {
                     select,
                     items: items.clone(),
+                    revision,
                 }
             });
+        pick.revision = revision;
         let select = pick.select.clone();
         if pick.items != items {
             pick.items = items.clone();
