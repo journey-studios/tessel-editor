@@ -50,7 +50,7 @@ Duas operações novas (`SceneCommand::FxSelect` / `FxHandles`, `crates/core/src
   `fx_has_no_handles`; clipe inexistente, `unknown_element`.
 - `scene.fx.handles {scene, clip?, frame|time, probe?{handle, point{u,v}}}` — leitura. Responde `selected`, `visible`,
   `reason` (`clip_not_in_frame`, `degenerate_output`), `handles[{id,param,kind,at}]`, `disabled_handles[{id,reason,at?}]`,
-  `ellipses[{id,center,rx,ry}]`, `values`, `active`, `metrics{hit_radius,unit}`. Com `probe` faz um *dry run* do mesmo
+  `ellipses[{id,center,rx,ry}]`, `values`, `active` (o handle do arrasto aberto **desse** clipe; outro clipe da cena responde `null`), `metrics{hit_radius,unit}`. Com `probe` faz um *dry run* do mesmo
   `set_param` que o arrasto enviaria (`probe.ok/value/would_change`).
 
 O arrasto **reaproveita** `scene.fx.gesture.*`: o press num handle abre o gesto (`fx_gesture_begin`), cada `move` é UM
@@ -90,8 +90,9 @@ Regras:
   `{kind:"fx_handle", clip, handle, param}`, e `refused:"animated_param"` quando o handle está apagado. Uma consulta não
   escreve nada, não exige câmera e mantém o alvo.
 - **Parâmetro com chaves** (`animated_param`): o handle fica desabilitado, aparece apagado e o press nele é respondido
-  `refused: "animated_param"` sem abrir gesto nem escrever nada; não grava chaves nem usa `FX_STATIC_UNDER_KEYS`. Os outros
-  handles continuam.
+  `refused: "animated_param"` sem abrir gesto nem escrever nada; não grava chaves nem usa `FX_STATIC_UNDER_KEYS`. Como todo
+  press, o recusado primeiro abandona o arrasto ainda aberto (`abandoned.reason: replaced_by_press`): a liberação perdida
+  não deixa um arrasto vivo que o próximo `move` ou `up` continuaria editando. Os outros handles continuam.
 - **Fora do quadro** (`handle_off_picture`): não é desenhado, não captura o ponteiro e é listado em `disabled_handles`.
   Um press precisa cair no quadro (`u`, `v` em 0..1), então um press além da borda é `invalid_value` do ponteiro.
 - **Gesto obsoleto**: cena trocada/desanexada, projeto substituído, undo, revisão nova, clipe removido ou o quadro fora do
@@ -138,12 +139,12 @@ Regras:
 
 | Superfície | Prova | Resultado |
 |---|---|---|
-| Biblioteca | `crates/core/tests/scene_fx_handles.rs` + `scene_fx_target.rs` (alvo, obsolescência e consulta = clique; ajudantes em `scene_fx_handles_support/`) + testes de unidade de `handles.rs`: posição dos handles contra `vignette_shade` (0 em `radius`, 1 em `radius+softness`) em 16:9, 1:1 e 9:16 com `roundness` 0/0,6/1; linhas de nível das elipses; ida e volta; arrasto ≡ `scene.fx.edit` bit a bit (radius, softness, centro); uma entrada, no-op, undo/redo, cancel; clamp; chaves; fora do quadro; clipe fora do intervalo; só vinheta; troca de alvo nos dois sentidos sem arrasto-fantasma; undo sob arrasto; clipe removido/cena desanexada; leitura/probe; overlay/carimbo/resumo; capacidades | passam (15 + 7 testes de integração, 9 unidades) |
+| Biblioteca | `crates/core/tests/scene_fx_handles.rs` + `scene_fx_target.rs` (alvo, obsolescência e consulta = clique; ajudantes em `scene_fx_handles_support/`) + testes de unidade de `handles.rs`: posição dos handles contra `vignette_shade` (0 em `radius`, 1 em `radius+softness`) em 16:9, 1:1 e 9:16 com `roundness` 0/0,6/1; linhas de nível das elipses; ida e volta; arrasto ≡ `scene.fx.edit` bit a bit (radius, softness, centro); uma entrada, no-op, undo/redo, cancel; clamp; chaves; fora do quadro; clipe fora do intervalo; só vinheta; troca de alvo nos dois sentidos sem arrasto-fantasma; undo sob arrasto; clipe removido/cena desanexada; leitura/probe; overlay/carimbo/resumo; capacidades | passam (15 + 9 testes de integração, 10 unidades: 9 de `handles.rs` e a de equivalência do predicado de alças em `scene_interaction/fx_handles.rs`) |
 | Headless real | o mesmo arquivo (processo `tessel-headless` real) e `scripts/scene-fx-handles-proof.py --surfaces headless` | passam (18 verificações, oráculo escrito no script; `final_evidence: true` em árvore limpa) |
 | Janela | GPUI `crates/desktop/src/workstation/scene_fx_handles_tests.rs` (7); `scripts/scene-fx-handles-proof.py --surfaces native` (26 verificações): ação do painel = `scene.fx.select`, `monitor.gizmo target: fx`, página desenhou handles e elipses (pixels do canvas), handle ativo, imagem do monitor segue o candidato e volta com o undo, diálogo cancela o arrasto | passam |
 | Página/JS | `runtime/test/fx-handles-overlay.test.mjs` (9, Chrome real, mouse real): parse, desenho, hit, prioridade, arrasto, Escape (do press da página e do arrasto do host em `fx.active`), captura perdida, resize, handle apagado | passam |
 | Imagem/export | `crates/render/tests/scene_fx_handles.rs` (2, runtime e FFmpeg reais): perfil de escurecimento lido nos pontos dos handles que o core informa, contra `apply_pass_to_srgb`; export com o clipe alvo, o overlay descrito e um arrasto aberto = export do documento (hashes), só o release muda o export | passam |
-| Mutações | `docs/migration/g41-handles/mutate.py` (35 mutantes: 25 Rust, 10 JS), relatório `mutation-report.json` | todos mortos, arquivos restaurados com hash conferido |
+| Mutações | `docs/migration/g41-handles/mutate.py` (36 mutantes: 26 Rust, 10 JS), relatório `mutation-report.json`; o executor reconstrói e confere o `dist` do runtime (`restored: false` e saída 2 se falha; também numa interrupção) | todos mortos, arquivos restaurados com hash conferido |
 
 Gates, hashes e mutações do head final estão no PR e em `docs/backlog.md` (BL082.35 e filhas).
 
