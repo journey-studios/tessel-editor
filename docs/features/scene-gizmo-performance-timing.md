@@ -44,8 +44,8 @@ si mesmos em mais de 1,5×.
 
 ## Contrato de cada runner
 
-Em todos: uma execução por `--out` e, nas fases que constroem, uma por checkout (ver "Posse e trava"); identidade do git que não
-responde é `REFUSED`, `--allow-dirty` incluído; árvore suja é recusada (com `--allow-dirty` a corrida roda e nunca é um sucesso para o HEAD, exit 1: `DIRTY_RUN_NOT_A_PASS_FOR_HEAD`
+Em todos: uma execução por `--out` (resolvido uma vez para caminho absoluto: o filho começa no checkout, não onde o comando foi
+digitado) e, nas fases que constroem, uma por checkout (ver "Posse e trava"); identidade do git que não responde é `REFUSED`, `--allow-dirty` incluído; árvore suja é recusada (com `--allow-dirty` a corrida roda e nunca é um sucesso para o HEAD, exit 1: `DIRTY_RUN_NOT_A_PASS_FOR_HEAD`
 no `run.py`, `DIRTY_RUN_NOT_FOR_HEAD` no `ab.py` e no `native.py`; o `mutate.py` não tem a flag); filhos com
 prazo finito e grupo de processo próprio; nenhum `TESSEL_GIZMO_PERF_*` herdado chega a um filho (`harness.child_env`). Saídas:
 `0` ok, `1` falha, regressão ou recusa, `2` argumento inválido, `3` `BLOCKED`/`INVALID_GUARD_AFTER_RUN`, `4` `INCONCLUSIVE`.
@@ -74,14 +74,15 @@ prazo finito e grupo de processo próprio; nenhum `TESSEL_GIZMO_PERF_*` herdado 
   se só diferem arquivos de outros crates (o desktop, o render) é `DIFFERENCE_OUTSIDE_THE_MEASUREMENT` (exit 4). **O A/B não vê o
   host, o renderer, a WebView nem `scene_monitor_host.rs`.**
 - As fases: `build` (os dois builds em sequência, o executável do candidato copiado **antes** do build da baseline, recusa com
-  `CARGO_TARGET_DIR`/`TESSEL_CARGO_LANE` definidos, recusa executáveis iguais) e `measure` (guarda, lock, uma corrida de
+  `CARGO_TARGET_DIR`/`TESSEL_CARGO_LANE` definidos, recusa executáveis iguais; recusa ou falha não deixa a fonte da baseline em `--out`, e o
+  limite de 500 MB vale para executáveis e fonte somados) e `measure` (guarda, lock, uma corrida de
   aquecimento por lado, descartada e declarada, depois `--rounds` rodadas alternando a ordem; padrão 4). Uma tentativa anterior em `--out` é movida
   para `attempts/` antes de escrever.
 - Regras declaradas antes de ler um número: um tipo **regride** quando a mediana agrupada do candidato passa de 1,10× a da baseline
   **e** o candidato é mais lento na maioria dos pares de rodadas **das medianas**; **ou** quando o p95 agrupado passa de 1,25× **e** o
   candidato tem p95 maior na maioria dos pares de rodadas **do p95 de cada rodada**; ou quando perde amostras ou tem tick longo
   (> 16,6 ms) a mais. p99 e máximo são registrados, não julgam. Baseline cuja mediana varia mais de 15% entre rodadas, ou corpus cujos
-  blocos de referência instáveis passam de `reference.max_unstable_blocks`, é `INCONCLUSIVE`. Só vale para este cenário, esta
+  blocos de referência instáveis passam de `reference.max_unstable_blocks`, é `INCONCLUSIVE` (no segundo caso o motivo nomeia cada lado com as frações que mediu). Só vale para este cenário, esta
   configuração, esta máquina e este backend (não para a janela nativa).
 - Veredito: `REGRESSED` (exit 1), `INCONCLUSIVE`/A/A/fora da medição (exit 4), `NO_REGRESSION_IN_SCENARIO` (exit 0), guarda ruim
   depois da corrida `INVALID_GUARD_AFTER_RUN` (exit 3; nada é julgado). Uma corrida de árvore suja (`--allow-dirty`) que seria
@@ -106,7 +107,7 @@ prazo finito e grupo de processo próprio; nenhum `TESSEL_GIZMO_PERF_*` herdado 
   e os executáveis ficam para repetir.
 - `--phase prepare` constrói, `--phase time` mede (um só lock, sem esperar). `time` recusa um `prepare` de outro HEAD, sujo ou
   inacabado, e só mede o executável cujo hash o `prepare` registrou. Uma execução em que algum mutante ficou sem resposta mantém todos
-  os executáveis para repetir; `--only NOME...` restringe os mutantes.
+  os executáveis para repetir; `--only NOME...` restringe os mutantes (nome que não existe é argumento inválido, exit 2).
 - **Limite:** o `mutate.py` edita o **produto no checkout** e restaura os bytes (lock por checkout, recusa de árvore suja,
   restauração em `finally`). Um `kill -9` no meio deixaria o produto mutado em disco. Rodar os mutantes numa cópia (como o `ab.py` faz
   com `git archive`) é BL015.33.
@@ -129,8 +130,8 @@ prazo finito e grupo de processo próprio; nenhum `TESSEL_GIZMO_PERF_*` herdado 
 
 ### `audit.py` e `budgets.py`
 
-- `audit.py` lê `budgets.json` e relatórios retidos e diz, por tipo, quantos "planos" o orçamento deixaria passar. Um plano extra soma 1
-  à razão. 1 ms **soma-se a cada chamada** (`samples_ns`) **e divide-se pela referência da janela dela** (`reference_ns`), como o detector
+- `audit.py` lê `budgets.json` e relatórios retidos e diz, por tipo, quantos "planos" o orçamento deixaria passar (corpus ou tipo que o
+  arquivo não nomeia vai para `no_budget`, sem julgamento). Um plano extra soma 1 à razão. 1 ms **soma-se a cada chamada** (`samples_ns`) **e divide-se pela referência da janela dela** (`reference_ns`), como o detector
   faz, e p50 e p95 (posto mais próximo) são recalculados; sem os pares (ou com listas que não casam) vale o tempo de plano do corpus
   (`reference.p50_ns`), só correto se toda janela tivesse essa referência, e `delay_1ms_basis` diz qual base cada relatório usou. Razão de
   um relatório nunca se soma ao plano de outro; diz em quantos relatórios a detecção vale e lista os tipos vistos só em alguns. É propriedade
@@ -174,7 +175,7 @@ O `budgets.py` só deriva (não mede): as calibrações vêm de `run.py --calibr
 Sem janela, sem benchmark e sem o lock real (só dublês e compilação):
 
 ```
-python3 scripts/gizmo-perf/gizmo-perf.spec.py     # os runners (288 testes)
+python3 scripts/gizmo-perf/gizmo-perf.spec.py     # os runners (317 testes)
 python3 scripts/gizmo-perf/harness.spec.py        # o que os runners gravam: sem caminho, sem processos
 python3 scripts/gizmo-perf/ab.spec.py             # o veredito do A/B por gate
 python3 scripts/gizmo-perf/corpus.py --check      # o corpus é o que o gerador faz
@@ -210,7 +211,7 @@ num arquivo versionado e não versione captura (BL015.37).
 | ID | Limitação |
 |---|---|
 | BL015.23 | lacunas gerais: sem caso com splat; sem baseline × candidato do host, do renderer e da janela (o A/B não os vê); `PlanTimeline` sem detector estrutural; o contador mede chamadas de layout, não o custo de cada uma, e um planejador mais lento passa nos orçamentos permanentes (a razão cai) e pode passar no A/B; nenhum detector de trabalho dentro do laço de nós |
-| BL015.24 | `gizmo-perf.spec.py` (cerca de 5 040 linhas, o nome com hífen obriga a carregar os runners por `importlib`) e `native.py` (1 362, que mistura proveniência do runtime, helpers puros de pixel e reconhecimento, o cliente da janela e a orquestração) passam de 1000 linhas; a divisão por módulo não foi feita (os novos `harness.spec.py` e `ab.spec.py` já seguem o padrão por módulo). O revisor automático também não lê a spec por inteiro (limite de tamanho por arquivo): o que muda nela só passa pelo OpenQodex e pelas portas locais |
+| BL015.24 | `gizmo-perf.spec.py` (cerca de 5 150 linhas, o nome com hífen obriga a carregar os runners por `importlib`) e `native.py` (1 362, que mistura proveniência do runtime, helpers puros de pixel e reconhecimento, o cliente da janela e a orquestração) passam de 1000 linhas; a divisão por módulo não foi feita (os novos `harness.spec.py` e `ab.spec.py` já seguem o padrão por módulo). O revisor automático também não lê a spec por inteiro (limite de tamanho por arquivo): o que muda nela só passa pelo OpenQodex e pelas portas locais |
 | BL015.25 | esta página (menos de 250 linhas) e o README dos scripts (27) são a versão enxuta do contrato de tempo; falta o ponteiro para esta página na linha F055 do índice de features |
 | BL015.26 | o percentil tem duas semânticas: `ab.py` usa o índice por piso (`ordered[int(q·n)]`), `native.py` e o teste Rust o posto mais próximo (para n = 100 e q = 0,95: índices 95 e 94), então o p95 do veredito do A/B não é o p95 do `report.json` das mesmas amostras; e a decisão "guarda depois da corrida ruim ⇒ `INVALID_GUARD_AFTER_RUN`" e o corpo de `run_phase` estão escritos quatro vezes (um por runner) |
 | BL015.27 | o lock de `harness.Lock` é um `flock` não bloqueante e `with-gpu-lock.py` (a convenção do repositório, usada por ~12 scripts) segura o mesmo lock de forma bloqueante: um runner chamado dentro do wrapper recebe `BLOCKED` contra o próprio pai. **Não envolva os runners no wrapper**; um `--gpu-lock-held` não existe |
@@ -218,7 +219,7 @@ num arquivo versionado e não versione captura (BL015.37).
 | BL015.29 | a `BASELINE` fixa (`cbe9e1b…`) envelhece a cada merge na `main`: contra a `main` de agora o A/B exige `--baseline <SHA> --allow-other-baseline` nas duas fases e essa rota **não tem teste**; um head que contém a `main` atual é recusado com a baseline fixa (ver "`ab.py`"). O ensaio de merge local passou a spec (285) e `corpus.py --check`, mas não rodou nenhum A/B |
 | BL015.33 | `mutate.py` edita o produto no checkout (restauração por `finally`; `kill -9` deixa o produto mutado) |
 | BL015.34 | os orçamentos nascem do máximo de três calibrações com margens frias ampliadas depois de um `FAIL` e apontam rótulos que não estão no repositório; os testes `#[ignore]` podem ser chamados por `cargo test --release -- --ignored` fora do `run.py`, sem lock nem guardas |
-| BL015.37 | resíduos da redação (R1) e do veredito (R2): o `stdout` dos runners (`print(json.dumps({status, reason}))` e `GIZMO_PERF_SUMMARY`) não passa pelo redator e um `reason` pode nomear um caminho; as capturas PNG da janela não são varridas nem redigíveis; o redator não reconhece `file:///caminho` nem um nome de usuário solto; em `ab.py`, uma rodada sem amostras de um tipo dá `pct` `None` e `judge` compara `None` com número |
+| BL015.37 | resíduos da redação (R1) e do veredito (R2): o `stdout` dos runners (`print(json.dumps({status, reason}))` e `GIZMO_PERF_SUMMARY`) não passa pelo redator e um `reason` pode nomear um caminho; as capturas PNG da janela não são varridas nem redigíveis; o redator não reconhece `file:///caminho` nem um nome de usuário solto; em `ab.py`, uma rodada sem amostras de um tipo dá `pct` `None` e `judge` compara `None` com número; um build recusado ou falho deixa em `--out/exes` o que já copiou, até o próximo build |
 
 Há ainda um mutante **equivalente** conhecido em `native.py` (`settle_commit`): zerar `acked_at` junto com `first_at` quando o
 quadro deixa de convergir é defensivo e nenhuma sequência de leituras o distingue de `first_at = None` sozinho, então nenhum teste o
