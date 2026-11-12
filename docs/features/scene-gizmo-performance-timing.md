@@ -129,10 +129,12 @@ prazo finito e grupo de processo próprio; nenhum `TESSEL_GIZMO_PERF_*` herdado 
 
 ### `audit.py` e `budgets.py`
 
-- `audit.py` lê `budgets.json` e relatórios retidos e diz, por tipo, quantos "planos" o orçamento deixaria passar (um plano extra e
-  1 ms convertido com o tempo de plano **do mesmo relatório**: razão de um relatório nunca se soma ao plano de outro; diz em quantos
-  relatórios a detecção vale e lista os tipos vistos só em alguns). É propriedade do orçamento, não defeito: onde a folga é larga o
-  tempo é só um teto grosso, e é o detector estrutural que cobre o plano extra.
+- `audit.py` lê `budgets.json` e relatórios retidos e diz, por tipo, quantos "planos" o orçamento deixaria passar. Um plano extra soma 1
+  à razão. 1 ms **soma-se a cada chamada** (`samples_ns`) **e divide-se pela referência da janela dela** (`reference_ns`), como o detector
+  faz, e p50 e p95 (posto mais próximo) são recalculados; sem os pares (ou com listas que não casam) vale o tempo de plano do corpus
+  (`reference.p50_ns`), só correto se toda janela tivesse essa referência, e `delay_1ms_basis` diz qual base cada relatório usou. Razão de
+  um relatório nunca se soma ao plano de outro; diz em quantos relatórios a detecção vale e lista os tipos vistos só em alguns. É propriedade
+  do orçamento, não defeito: onde a folga é larga o tempo é só um teto grosso, e é o detector estrutural que cobre o plano extra.
 - `budgets.py` deriva `budgets.json`: `p50 = teto_0,05(máx. das calibrações × 1,15)` (piso 0,25), `p95 = teto_0,05(máx. × 1,25)`
   (piso 0,5), tipos `cold.*` com margens 1,25 e 2,0. **Recusa**, sem gravar nada: nenhum relatório, `--out` igual a um relatório, perfil
   que não é release e calibração cujos blocos de referência instáveis passam de 25% (ou que não diz) — o máximo afrouxaria o orçamento.
@@ -208,7 +210,7 @@ num arquivo versionado e não versione captura (BL015.37).
 | ID | Limitação |
 |---|---|
 | BL015.23 | lacunas gerais: sem caso com splat; sem baseline × candidato do host, do renderer e da janela (o A/B não os vê); `PlanTimeline` sem detector estrutural; o contador mede chamadas de layout, não o custo de cada uma, e um planejador mais lento passa nos orçamentos permanentes (a razão cai) e pode passar no A/B; nenhum detector de trabalho dentro do laço de nós |
-| BL015.24 | `gizmo-perf.spec.py` (cerca de 4 950 linhas, o nome com hífen obriga a carregar os runners por `importlib`) e `native.py` (1 362, que mistura proveniência do runtime, helpers puros de pixel e reconhecimento, o cliente da janela e a orquestração) passam de 1000 linhas; a divisão por módulo não foi feita (os novos `harness.spec.py` e `ab.spec.py` já seguem o padrão por módulo). O revisor automático também não lê a spec por inteiro (limite de tamanho por arquivo): o que muda nela só passa pelo OpenQodex e pelas portas locais |
+| BL015.24 | `gizmo-perf.spec.py` (cerca de 5 040 linhas, o nome com hífen obriga a carregar os runners por `importlib`) e `native.py` (1 362, que mistura proveniência do runtime, helpers puros de pixel e reconhecimento, o cliente da janela e a orquestração) passam de 1000 linhas; a divisão por módulo não foi feita (os novos `harness.spec.py` e `ab.spec.py` já seguem o padrão por módulo). O revisor automático também não lê a spec por inteiro (limite de tamanho por arquivo): o que muda nela só passa pelo OpenQodex e pelas portas locais |
 | BL015.25 | esta página (menos de 250 linhas) e o README dos scripts (27) são a versão enxuta do contrato de tempo; falta o ponteiro para esta página na linha F055 do índice de features |
 | BL015.26 | o percentil tem duas semânticas: `ab.py` usa o índice por piso (`ordered[int(q·n)]`), `native.py` e o teste Rust o posto mais próximo (para n = 100 e q = 0,95: índices 95 e 94), então o p95 do veredito do A/B não é o p95 do `report.json` das mesmas amostras; e a decisão "guarda depois da corrida ruim ⇒ `INVALID_GUARD_AFTER_RUN`" e o corpo de `run_phase` estão escritos quatro vezes (um por runner) |
 | BL015.27 | o lock de `harness.Lock` é um `flock` não bloqueante e `with-gpu-lock.py` (a convenção do repositório, usada por ~12 scripts) segura o mesmo lock de forma bloqueante: um runner chamado dentro do wrapper recebe `BLOCKED` contra o próprio pai. **Não envolva os runners no wrapper**; um `--gpu-lock-held` não existe |
