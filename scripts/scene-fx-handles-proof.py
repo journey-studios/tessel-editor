@@ -373,6 +373,15 @@ def picture_hash(surface):
     return S8.picture_hash(surface)
 
 
+def wait_until(what, predicate, seconds=30):
+    """`S8.wait_for` that says what never came: the proof stops there instead of capturing with a state it did not
+    confirm (a wait that only timed out would let two captures be taken with the same overlay and still compare them)."""
+    value = S8.wait_for(predicate, seconds)
+    if not value:
+        raise S8.ProofFailure(f'timed out waiting for: {what}')
+    return value
+
+
 def drawn_fx(surface):
     drawn = (surface.viewport().get('overlay') or {}).get('drawn') or {}
     return drawn if drawn.get('target') == 'fx' else None
@@ -415,7 +424,7 @@ def native_window(surface, check, scratch, record):
     check('the page announced `overlay.gizmo` and drew the vignette\'s handles and ellipses',
           overlay.get('supported') is True and drawn is not None
           and sorted(drawn['fx']['handles']) == ['center', 'radius', 'softness'] and drawn['fx']['ellipses'] == 2, overlay)
-    probes = {probe['id']: probe['rgba'] for probe in drawn['probes']}
+    probes = {probe['id']: probe['rgba'] for probe in (drawn or {}).get('probes', [])}
     check('the page painted each handle on the canvas (alpha > 200)',
           set(probes) == {'center', 'radius', 'softness'} and all(p[3] > 200 for p in probes.values()), probes)
     record['drawn_probes'] = probes
@@ -484,12 +493,13 @@ def native_window(surface, check, scratch, record):
         return destination
 
     ok({'op': 'scene.fx.select', 'scene': SCENE, 'clip': CLIP})
-    S8.wait_for(lambda: (drawn_fx(surface) or {}).get('fx', {}).get('visible') is True)
+    wait_until('the page to draw the vignette handles of the selected clip',
+               lambda: (drawn_fx(surface) or {}).get('fx', {}).get('visible') is True)
     S8.settle_converged(surface)
     with_handles = render()
     exported_with = export('with-handles')
     ok({'op': 'scene.fx.select', 'scene': SCENE, 'clip': None})
-    S8.wait_for(lambda: drawn_fx(surface) is None)
+    wait_until('the page to take the vignette handles off the canvas', lambda: drawn_fx(surface) is None)
     S8.settle_converged(surface)
     without = render()
     exported_without = export('without-handles')
