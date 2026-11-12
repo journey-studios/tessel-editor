@@ -83,7 +83,7 @@ janela **não** é headless.
   (a janela rodou só o padrão `sync`, sem variável de diagnóstico, e reproduziu 6 s sem *underruns*), nem desempenho: os refactors não foram medidos contra a base.
 - Segunda onda da revisão automática (Rust; só testes, mais o `round3` do `tick`): (1) os testes de `asset_io` esperam o evento que o worker grava **depois** de responder (`events_after`: até 20 s, falhando com o que o traço tinha;
   o `recv_timeout` que havia não ordenava nada); as leituras que são da própria thread de quem lê seguem diretas e dizem por quê; (2) o auxiliar do timer de `playback_tests.rs` aceita a menor espera que um tick atrasado diz
-  (`LANDING_GUARD`, 1 ms) e um teste força essa espera em toda execução; (3) a recusa de **pool fechado** ganhou teste no `Reader` e no `ViewportHost` (`AssetPool::closed()`, atrás da feature `test-support` de `tessel-editor-render`,
+  (`LANDING_GUARD`, 1 ms) e um teste força essa espera em toda execução; (3) a recusa de **pool fechado** ganhou teste no `Reader` e no `ProtocolHandle` (o tratador `tessel://` do host); o teste usa `AssetPool::closed()`, atrás da feature `test-support` de `tessel-editor-render`,
   ligada só pelas `dev-dependencies` do desktop: o build de produção não a leva); a fila cheia já estava coberta; (4) `late_ms` e `next_ms` do `tick` saem a 3 casas (`due_ms` e `ran_ms` são instantes e seguem sem arredondar, BL157.28).
   Prova: com mutantes de comportamento (worker que grava o evento 100 ou 400 ms depois, leitura do relógio que envelhece 10 ou 50 ms, `round3` removido de cada campo) os testes de antes falham como os revisores descreveram e os novos passam
   (200 de 200 execuções falham sem o `round3`); estresse de 9 testes × 200 execuções em duas rodadas, com a carga da máquina (24–80) e com carga extra (44–101): **0 falhas em 3.600**. Os mutantes eram variáveis de ambiente só na cópia de
@@ -196,7 +196,7 @@ ciência (braços, regras, relatório). Regras comuns:
   e o relatório do bundle diz HUNG **e** FAILED juntos. `core_validity` publica os erros do registro como `{code, kind}`. `play` segue esperando enquanto o estado é `preparing` (sob o mesmo prazo) e trata a parada sem `ticks` como jogada
   que nunca rodou; `window_validity` confere a conta da página de **cada** quadro dos segmentos de play.
 - **Recusas antes de medir**: `--pairs` e `--iterations` são inteiros ≥ 1 (`positive_int`; saída 2 antes de qualquer pré-requisito, trava ou pasta); `finish` nunca devolve 0 para um lote sem sessão; um `--out` que já guarda um lote do
-  experimento (`manifest.json` ou `session-*`) é recusado antes do gate, do disco e das travas, sem escrever nada. A cópia de trabalho do projeto grava os caminhos de mídia **relativos** como absolutos (relativos à pasta do documento, como
+  experimento (`manifest.json` ou um registro bruto do experimento: `session-*`, `run-*`, `iteration-*` ou `pair-*`) é recusado antes do gate, do disco e das travas, sem escrever nada. A cópia de trabalho do projeto grava os caminhos de mídia **relativos** como absolutos (relativos à pasta do documento, como
   o editor os decodifica; `..` ou caminho vazio é recusado e conta como ausente), para que a sessão leia a mesma mídia que o documento aponta.
 - **Erros publicados são `{code, kind}`**: `kind` ∈ `timeout`, `ended_early`, `host_refused`, `exception`, `other`; `code` é o código de erro do host (`[a-z_]{1,32}`) ou um nome de classe `…Error`/`…Exception` de até 40 letras, tirados por
   padrão, nunca um pedaço do texto. A mensagem crua e o fim do log do editor ficam só no `session-*.json` local. O `code` é um padrão, não uma lista: um nome de arquivo que casasse `<Nome>Error` apareceria (BL157.17).
@@ -483,7 +483,7 @@ Registrado, não filtrado: a sessão 11 deixou 2 helpers de GPU vivos depois do 
   máquina quieta (`first-use-ab.py full --factor warm_draw --pairs N`) e uma decisão deliberada: não feito aqui.
 - Continuam pendentes: a prova de pixels nativa do `warm_draw` com o veredito de ativação (`first-use-ab.py pixels --factor warm_draw`) e a correlação dos fetches expandidos de `frame_sequence`.
 - Nada foi feito em Rust naquela rodada. **Histórico (antes da revisão thermo):** os gates Rust foram reexecutados no head de então (fmt, check, `clippy -D warnings` e build com saída 0; `test --workspace` 2.239 passaram, 0 falharam, 13 ignorados;
-  runtime com Chrome real 336 de 336, ver o relatório §16.6), o que fechou a pendência de "gates Rust da árvore final" do §15. Os gates do head atual estão em [BL157](../backlog.md) e no relatório §16.7.
+  runtime com Chrome real 336 de 336, ver o relatório §16.6), o que fechou a pendência de "gates Rust da árvore final" do §15. Os gates do head atual estão em [BL157](../backlog.md) e no [relatório §16.8](../viewport-real-latency-ab-report.md#168-revisão-automática-da-pr-41-e-gates-do-head-final).
 - A cadência do relógio de reprodução (BL157.6, abaixo): **leitor** entregue, **agendamento opt-in** (`TESSEL_PLAYBACK_POLL=deadline`) implementado com o padrão em `fixed`; o A/B nativo que decide o padrão **não foi rodado**.
 
 ### Reprodução de BL157.4
@@ -603,6 +603,6 @@ Reprodução (sem janela, GPU nem dispositivo):
 python3 scripts/playback-cadence.spec.py                      # 79 testes puros do leitor
 python3 scripts/playback-poll-ab.spec.py                      # 93 testes puros do runner do A/B
 python3 scripts/playback-poll-rule.spec.py                    # 10 testes puros da regra fixada
-./scripts/cargo test -p tessel-editor --locked playback       # a conta pura (34) e o laço (10) de `playback.rs`
+./scripts/cargo test -p tessel-editor --locked playback       # a conta pura (30) e o laço (11) de `playback.rs`
 python3 scripts/playback-cadence.py <dir> --group auto --markdown cadence.md   # lê o traço do host de cada sessão (só lê)
 ```
