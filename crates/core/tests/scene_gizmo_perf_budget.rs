@@ -1,6 +1,8 @@
 //! F055 / BL015.21: the TIME half of the gizmo performance suite. Opt-in and controlled: every test
-//! here is `#[ignore]` on purpose (a wall-clock budget must not make the functional `cargo test`
-//! depend on the load of the machine) and an ignored test is NOT a green result of this suite:
+//! that measures is `#[ignore]` on purpose (a wall-clock budget must not make the functional
+//! `cargo test` depend on the load of the machine; the four tests at the end only judge reports
+//! written by hand, with no clock, and run in the plain `cargo test`) and an ignored test is NOT a
+//! green result of this suite:
 //! only `scripts/gizmo-perf/run.py` counts, because it takes the performance lock without waiting,
 //! builds in release, runs these tests with `--ignored`, checks that every expected test RAN and
 //! passed, and writes the report with all the samples.
@@ -480,6 +482,21 @@ fn within(report: &Value, budgets: &Value, failures: &mut Vec<String>) -> Option
             }
         }
     }
+    // The other direction of "measured but has no budget": a budget no sample reached judges nothing, so a handler that
+    // stopped being measured would leave the run green. Only a corpus that was judged gets here (an unsteady one has
+    // already returned its note, and adds no failure of its own).
+    if let Some(kinds) = budgets["ratios"][corpus].as_object() {
+        for kind in kinds.keys() {
+            if !["cold", "hot"]
+                .iter()
+                .any(|phase| report[*phase].get(kind).is_some())
+            {
+                failures.push(format!(
+                    "{corpus}/{kind}: has a budget but was not measured"
+                ));
+            }
+        }
+    }
     None
 }
 
@@ -613,4 +630,83 @@ fn the_budget_detector_rejects_a_millisecond_of_delay_per_handler_call() {
             "a 1 ms delay per call was not caught for {kind}: {failures:#?}"
         );
     }
+}
+
+// What `within` judges, on reports written by hand: no clock and no editor, so these four run in the plain
+// `cargo test` (the three tests above are the ones that measure, and stay `#[ignore]`).
+
+fn hand_report(corpus: &str, unstable: f64, cold: &[&str], hot: &[&str]) -> Value {
+    let summary = json!({"ratio_p50": 1.0, "ratio_p95": 1.0, "long_ticks": 0});
+    let phase = |kinds: &[&str]| -> Value {
+        Value::Object(
+            kinds
+                .iter()
+                .map(|kind| (kind.to_string(), summary.clone()))
+                .collect(),
+        )
+    };
+    json!({
+        "corpus": corpus,
+        "reference": {"unstable_fraction": unstable},
+        "cold": phase(cold),
+        "hot": phase(hot),
+    })
+}
+
+fn hand_budgets(corpus: &str, kinds: &[&str]) -> Value {
+    let limit = json!({"p50_ratio": 2.0, "p95_ratio": 3.0});
+    let ratios: serde_json::Map<String, Value> = kinds
+        .iter()
+        .map(|kind| (kind.to_string(), limit.clone()))
+        .collect();
+    let mut by_corpus = serde_json::Map::new();
+    by_corpus.insert(corpus.to_string(), Value::Object(ratios));
+    let mut long_ticks = serde_json::Map::new();
+    long_ticks.insert(corpus.to_string(), json!(0));
+    json!({
+        "reference": {"max_unstable_blocks": 0.25},
+        "long_ticks_max": long_ticks,
+        "ratios": by_corpus,
+    })
+}
+
+#[test]
+fn a_budget_no_sample_reached_fails_the_run_instead_of_judging_nothing() {
+    let budgets = hand_budgets("small", &["cold.state", "move.translate", "read.refused"]);
+    // `read.refused` stopped being recorded: its budget would have judged nothing and the run stayed green.
+    let report = hand_report("small", 0.0, &["cold.state"], &["move.translate"]);
+    let mut failures = Vec::new();
+    assert_eq!(within(&report, &budgets, &mut failures), None);
+    assert_eq!(
+        failures,
+        ["small/read.refused: has a budget but was not measured"]
+    );
+}
+
+#[test]
+fn a_kind_measured_in_either_phase_satisfies_its_budget() {
+    let budgets = hand_budgets("small", &["cold.state", "move.translate"]);
+    let report = hand_report("small", 0.0, &["cold.state"], &["move.translate"]);
+    let mut failures = Vec::new();
+    assert_eq!(within(&report, &budgets, &mut failures), None);
+    assert!(failures.is_empty(), "{failures:?}");
+}
+
+#[test]
+fn a_measured_kind_without_a_budget_still_fails() {
+    let budgets = hand_budgets("small", &["move.translate"]);
+    let report = hand_report("small", 0.0, &[], &["move.translate", "move.rotate"]);
+    let mut failures = Vec::new();
+    assert_eq!(within(&report, &budgets, &mut failures), None);
+    assert_eq!(failures, ["small/move.rotate: measured but has no budget"]);
+}
+
+#[test]
+fn an_unsteady_corpus_is_not_judged_and_adds_no_failure_of_its_own() {
+    let budgets = hand_budgets("small", &["move.translate", "read.refused"]);
+    let report = hand_report("small", 0.5, &[], &["move.translate"]);
+    let mut failures = Vec::new();
+    let note = within(&report, &budgets, &mut failures).expect("an unsteady corpus is not judged");
+    assert!(note.starts_with("INCONCLUSIVE:"), "{note}");
+    assert!(failures.is_empty(), "{failures:?}");
 }

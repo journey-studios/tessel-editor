@@ -7,11 +7,14 @@ budget would let through.
 
 Why it exists. A budget is a multiple of the scene's own plan time, so (a) it carries the speed of no machine and (b) its
 slack is measurable in "plans": a kind whose p95 budget is 22 plans while the run observed 7 lets 15 extra plans through.
-Per kind it reports, from the WORST observation over the reports given:
+Per kind it reports, from the WORST observation over the reports given (slack, headroom) and per report (the two
+detections, which need the ratios AND the plan time of the SAME report):
   * `slack_plans_p50/p95`: budget minus observed, in plans;
-  * `extra_plan_seen_by_time`: whether ONE extra plan per call would exceed the p50 or p95 budget;
-  * `delay_1ms_seen_by_time`: whether a delay of 1 ms per call would, using the corpus' own plan time for the conversion
-    (`reference.p50_ns`);
+  * `extra_plan_seen_by_time`: whether ONE extra plan per call would exceed the p50 or p95 budget in some report;
+  * `delay_1ms_seen_by_time`: whether a delay of 1 ms per call would in some report, converting it with the plan time of that
+    report (`reference.p50_ns`, one `delay_1ms_in_plans` per report);
+  * `extra_plan_seen_in_reports`, `delay_1ms_seen_in_reports`, `reports`: in how many of the reports the detection holds,
+    and the summary lists the kinds seen in only some of them: a ratio of one report is never added to the plan time of another;
   * `p95_headroom_x`: budget over observed.
 The structural detector (`scene_gizmo_perf_structure.rs`: layouts per request, exact) and the time detector are
 ORTHOGONAL: the first counts work and cannot see a delay, the second sees time and cannot always see one plan. This
@@ -34,52 +37,68 @@ HEADROOM_VERY_WIDE = 3.0
 
 
 def observed(reports):
-    """{(corpus, kind): {'p50': worst ratio, 'p95': worst ratio, 'plan_ns': largest reference p50}} over `reports`."""
+    """{(corpus, kind): [{'p50', 'p95', 'plan_ns'}, ...]}: ONE observation per report, in the order the reports were given.
+    The ratios and the plan time of an observation come from the same report: the worst ratio of one report and the
+    plan time of another is a run that never happened."""
     out = {}
     for report in reports:
         for corpus in report['corpora']:
             plan_ns = corpus['reference']['p50_ns']
             for phase in ('cold', 'hot'):
                 for kind, stats in corpus[phase].items():
-                    slot = out.setdefault((corpus['corpus'], kind), {'p50': 0.0, 'p95': 0.0, 'plan_ns': 0.0})
-                    slot['p50'] = max(slot['p50'], stats['ratio_p50'])
-                    slot['p95'] = max(slot['p95'], stats['ratio_p95'])
-                    slot['plan_ns'] = max(slot['plan_ns'], plan_ns)
+                    out.setdefault((corpus['corpus'], kind), []).append(
+                        {'p50': stats['ratio_p50'], 'p95': stats['ratio_p95'], 'plan_ns': plan_ns})
     return out
 
 
 def audit(budgets, reports):
     seen = observed(reports)
     kinds = {}
-    for (corpus, kind), obs in sorted(seen.items()):
+    for (corpus, kind), observations in sorted(seen.items()):
         limit = budgets['ratios'][corpus].get(kind)
         if limit is None:
             kinds[f'{corpus}/{kind}'] = {'status': 'NO_BUDGET'}
             continue
         b50, b95 = limit['p50_ratio'], limit['p95_ratio']
-        one_ms_in_plans = 1e6 / obs['plan_ns']
+        worst_p50 = max(o['p50'] for o in observations)
+        worst_p95 = max(o['p95'] for o in observations)
+
+        def exceeds(o, extra_plans):
+            return o['p50'] + extra_plans > b50 or o['p95'] + extra_plans > b95
+
+        one_ms_in_plans = [1e6 / o['plan_ns'] for o in observations]
+        extra_plan_seen = [exceeds(o, 1) for o in observations]
+        delay_seen = [exceeds(o, plans) for o, plans in zip(observations, one_ms_in_plans)]
         kinds[f'{corpus}/{kind}'] = {
-            'budget_p50': b50, 'budget_p95': b95, 'observed_p50': round(obs['p50'], 4),
-            'observed_p95': round(obs['p95'], 4), 'plan_ns': obs['plan_ns'],
-            'slack_plans_p50': round(b50 - obs['p50'], 3), 'slack_plans_p95': round(b95 - obs['p95'], 3),
-            'extra_plan_seen_by_time': obs['p50'] + 1 > b50 or obs['p95'] + 1 > b95,
-            'delay_1ms_in_plans': round(one_ms_in_plans, 3),
-            'delay_1ms_seen_by_time': obs['p50'] + one_ms_in_plans > b50 or obs['p95'] + one_ms_in_plans > b95,
-            'p95_headroom_x': round(b95 / obs['p95'], 3) if obs['p95'] else None,
+            'budget_p50': b50, 'budget_p95': b95, 'observed_p50': round(worst_p50, 4),
+            'observed_p95': round(worst_p95, 4), 'plan_ns': max(o['plan_ns'] for o in observations),
+            'slack_plans_p50': round(b50 - worst_p50, 3), 'slack_plans_p95': round(b95 - worst_p95, 3),
+            'reports': len(observations),
+            'extra_plan_seen_by_time': any(extra_plan_seen), 'extra_plan_seen_in_reports': sum(extra_plan_seen),
+            'delay_1ms_in_plans': [round(plans, 3) for plans in one_ms_in_plans],
+            'delay_1ms_seen_by_time': any(delay_seen), 'delay_1ms_seen_in_reports': sum(delay_seen),
+            'p95_headroom_x': round(b95 / worst_p95, 3) if worst_p95 else None,
         }
     judged = {k: v for k, v in kinds.items() if v.get('status') != 'NO_BUDGET'}
+
+    def partly(seen_key):
+        """The kinds some reports see and others do not: neither answer may stand for all of them."""
+        return sorted(k for k, v in judged.items() if 0 < v[seen_key] < v['reports'])
+
     summary = {
         'kinds': len(judged),
         'one_extra_plan_passes_in_time': sorted(k for k, v in judged.items() if not v['extra_plan_seen_by_time']),
+        'one_extra_plan_seen_in_some_reports_only': partly('extra_plan_seen_in_reports'),
         'delay_1ms_passes_in_time': sorted(k for k, v in judged.items() if not v['delay_1ms_seen_by_time']),
+        'delay_1ms_seen_in_some_reports_only': partly('delay_1ms_seen_in_reports'),
         'p95_headroom_at_least_2x': sorted(k for k, v in judged.items()
                                            if v['p95_headroom_x'] and v['p95_headroom_x'] >= HEADROOM_WIDE),
         'p95_headroom_at_least_3x': sorted(k for k, v in judged.items()
                                            if v['p95_headroom_x'] and v['p95_headroom_x'] >= HEADROOM_VERY_WIDE),
         'no_budget': sorted(k for k, v in kinds.items() if v.get('status') == 'NO_BUDGET'),
     }
-    for key in ('one_extra_plan_passes_in_time', 'delay_1ms_passes_in_time', 'p95_headroom_at_least_2x',
-                'p95_headroom_at_least_3x'):
+    for key in ('one_extra_plan_passes_in_time', 'one_extra_plan_seen_in_some_reports_only', 'delay_1ms_passes_in_time',
+                'delay_1ms_seen_in_some_reports_only', 'p95_headroom_at_least_2x', 'p95_headroom_at_least_3x'):
         summary[key + '_count'] = len(summary[key])
     return {'summary': summary, 'kinds': kinds}
 

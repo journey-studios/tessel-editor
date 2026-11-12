@@ -19,7 +19,9 @@ restores the file and checks its hash:
 WHAT "KILLED" MEANS. A mutant is killed by a detector only when the run (a) exited non-zero, (b) lists the NAMED test
 of that detector as failed, (c) shows that test's own failure message (the layout budget, the memo hit, the time
 budget lines...) and (d) for the time detector, the machine guards read AFTER the run were clean and the run was not
-INCONCLUSIVE. Everything else is NOT a kill and is recorded with its own outcome: a compile error, a timeout, a
+INCONCLUSIVE (a run that prints `over budget:` for a corpus it could judge is not: the note of another, unsteady
+corpus beside it does not take that failure back, the order `run.py` reads the output in). Everything else is NOT a
+kill and is recorded with its own outcome: a compile error, a timeout, a
 missing executable or command (exit 127), a full disk, zero tests, no test result, a panic of some other test, a
 failure of the right test with another message, a busy lock, a failed guard. A detector that must NOT see a mutant
 (`delay_1ms_per_handler` structurally) must run its named tests and see them pass (`SURVIVED`). The accepted messages
@@ -274,7 +276,9 @@ def classify(done, expect=None, must_pass=(), guard_after=None):
             # it is not an answer, so the executables are kept for a retry instead of an `UNEXPECTED` verdict.
             return 'INVALID_GUARD_AFTER_RUN', guard_after
         return 'SURVIVED', 'the named tests ran and passed'
-    if 'INCONCLUSIVE:' in text:
+    if 'INCONCLUSIVE:' in text and 'over budget:' not in text:
+        # `over budget:` is printed only for failures of corpora the reference let be judged (an unsteady corpus adds no
+        # failure of its own), so a proven failure is classified below by the named test and its own lines.
         return 'INCONCLUSIVE', 'the plan reference moved: neither killed nor survived'
     if guard_after is not None:
         return 'INVALID_GUARD_AFTER_RUN', guard_after

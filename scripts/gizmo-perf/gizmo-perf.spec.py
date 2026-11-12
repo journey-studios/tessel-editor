@@ -37,7 +37,7 @@ def load(name):
     return module
 
 
-harness, ab, mutate, native, audit = (load(n) for n in ('harness', 'ab', 'mutate', 'native', 'audit'))
+harness, ab, mutate, native, audit, budgets = (load(n) for n in ('harness', 'ab', 'mutate', 'native', 'audit', 'budgets'))
 runner = load('run')
 
 # The per-CHECKOUT build lock of the runners lives under /tmp, one file per checkout. A spec run must neither wait for a
@@ -978,6 +978,17 @@ class Verdicts(unittest.TestCase):
         killed = run_text([TIME], extra=f'over budget:\n{BUDGET_LINES}')
         self.assertEqual(self.classify(done(killed, 101), guard_after='load average 9'), 'INVALID_GUARD_AFTER_RUN')
 
+    def test_a_proven_budget_failure_is_a_kill_even_when_another_corpus_was_inconclusive(self):
+        # `scene_gizmo_perf_budget.rs` prints the failures of the corpora it could judge, then the note of an unsteady one: the
+        # failure of the steady corpus is proven and the note does not take it back (`run.py` reads `over budget:` first too).
+        both = run_text([TIME], extra=f'over budget:\n{BUDGET_LINES}\nINCONCLUSIVE: the reference moved')
+        self.assertEqual(self.classify(done(both, 101)), 'KILLED')
+        self.assertEqual(self.classify(done(both, 101), guard_after='load average 9'), 'INVALID_GUARD_AFTER_RUN')
+        # the order is the only thing that changed: beside the note, the named test must still fail with its OWN lines
+        other = run_text(['some_other_test'], extra='over budget:\nx: p95 is 9x the plan\nINCONCLUSIVE: the reference moved')
+        self.assertEqual(self.classify(done(other, 101)), 'UNEXPECTED_FAILURE')
+        self.assertEqual(self.classify(done(both, 101), detector='structural'), 'UNEXPECTED_FAILURE')
+
     def test_a_pass_under_a_failed_guard_is_no_more_an_answer_than_a_kill_is(self):
         passed = run_text(ok=[TIME], results='ok. 1 passed; 0 failed')
         self.assertEqual(self.classify(done(passed, 0)), 'SURVIVED')  # the control: the same pass, the guard clean
@@ -1113,6 +1124,117 @@ class Audit(unittest.TestCase):
         out = audit.audit(self.budgets(3.0, 5.0), [self.report(1.0, 2.0), self.report(1.0, 4.5)])
         self.assertEqual(out['kinds']['dense/move']['observed_p95'], 4.5)
         self.assertEqual(out['summary']['p95_headroom_at_least_2x'], [])
+
+    def test_a_delay_is_converted_with_the_plan_time_of_the_report_it_is_added_to(self):
+        # Budget of 2.5 plans. Report A: 2.495 plans, plan of 1 ms, so 1 ms is a whole plan and A sees it. Report B: 1.0 plan,
+        # plan of 100 ms, so 1 ms is 0.01 plan and B does not. The worst ratio of A plus the conversion of B (0.01 plan) is one
+        # observation that never happened: neither report may be folded into the other.
+        a, b = self.report(2.495, 2.495, 1_000_000), self.report(1.0, 1.0, 100_000_000)
+        out = audit.audit(self.budgets(2.5, 2.5), [a, b])
+        kind = out['kinds']['dense/move']
+        self.assertEqual((kind['reports'], kind['delay_1ms_seen_in_reports']), (2, 1))
+        self.assertEqual(kind['delay_1ms_in_plans'], [1.0, 0.01])  # one conversion per report, in the order given
+        self.assertEqual(out['summary']['delay_1ms_seen_in_some_reports_only'], ['dense/move'])
+        self.assertEqual(out['summary']['delay_1ms_seen_in_some_reports_only_count'], 1)
+
+    def test_a_report_that_sees_a_delay_is_not_hidden_by_the_slower_plan_of_another(self):
+        # A: 2.4 plans at a plan of 100 ms (1 ms is 0.01 plan: 2.41 < 2.5, not seen). B: 1.0 plan at 0.1 ms (1 ms is 10 plans:
+        # seen). The worst ratio with the slowest plan reads 2.41 < 2.5: "passes in time", which B contradicts.
+        slow, fast = self.report(2.4, 2.4, 100_000_000), self.report(1.0, 1.0, 100_000)
+        out = audit.audit(self.budgets(2.5, 2.5), [slow, fast])
+        self.assertEqual(out['summary']['delay_1ms_passes_in_time'], [])
+        self.assertEqual(out['kinds']['dense/move']['delay_1ms_seen_in_reports'], 1)
+
+    def test_a_delay_no_report_sees_passes_in_time_and_a_delay_every_report_sees_is_not_partial(self):
+        blind = audit.audit(self.budgets(7.0, 7.0), [self.report(1.0, 1.0, 500_000), self.report(1.0, 1.0, 400_000)])
+        self.assertEqual(blind['summary']['delay_1ms_passes_in_time'], ['dense/move'])
+        self.assertEqual(blind['kinds']['dense/move']['delay_1ms_seen_in_reports'], 0)
+        every = audit.audit(self.budgets(2.0, 2.0), [self.report(1.0, 1.0, 500_000), self.report(1.0, 1.0, 400_000)])
+        self.assertEqual(every['summary']['delay_1ms_passes_in_time'], [])
+        self.assertEqual(every['summary']['delay_1ms_seen_in_some_reports_only'], [])
+        self.assertEqual(every['kinds']['dense/move']['delay_1ms_seen_in_reports'], 2)
+
+    def test_one_extra_plan_says_in_how_many_reports_it_is_seen(self):
+        # Budget 3.0 / 6.5. A (p50 2.0, p95 2.0): 2 + 1 > 3 and 2 + 1 > 6.5 are both false, A does not see the extra plan.
+        # B (p50 1.0, p95 6.0): 6 + 1 > 6.5, B does. The answer is "seen", and the audit says it is seen in 1 of 2.
+        out = audit.audit(self.budgets(3.0, 6.5), [self.report(2.0, 2.0), self.report(1.0, 6.0)])
+        kind = out['kinds']['dense/move']
+        self.assertEqual((kind['extra_plan_seen_by_time'], kind['extra_plan_seen_in_reports']), (True, 1))
+        self.assertEqual(out['summary']['one_extra_plan_seen_in_some_reports_only'], ['dense/move'])
+
+
+class Budgets(unittest.TestCase):
+    """`budgets.py`: what it derives and what it refuses to derive from (BL015.34). No benchmark: reports are written here."""
+
+    @staticmethod
+    def report(unstable=0.0, profile='release', p50=1.0, p95=2.0):
+        stats = {'ratio_p50': p50, 'ratio_p95': p95}
+        return {'profile': profile, 'corpora': [{'corpus': 'small', 'reference': {'unstable_fraction': unstable},
+                                                 'cold': {}, 'hot': {'move': stats}}]}
+
+    def derive(self, root, reports, *flags, out='budgets.json'):
+        """`budgets.py` over `reports` written under `root`; the named output is whatever the script left there (or None)."""
+        paths = []
+        for number, report in enumerate(reports):
+            path = Path(root) / f'calibration{number}.json'
+            path.write_text(json.dumps(report))
+            paths.append(str(path))
+        target = Path(root) / out
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            budgets.main([*paths, '--out', str(target), *flags])
+        return json.loads(target.read_text())
+
+    def refused(self, root, reports, *flags):
+        target = Path(root) / 'budgets.json'
+        target.write_text('previous budgets\n')
+        with self.assertRaises(SystemExit) as refusal:
+            self.derive(root, reports, *flags)
+        self.assertEqual(target.read_text(), 'previous budgets\n')  # a refusal leaves what was there exactly as it was
+        return refusal.exception
+
+    def test_the_documented_rule_derives_the_budgets_and_records_the_reports_it_came_from(self):
+        with tempfile.TemporaryDirectory() as root:
+            derived = self.derive(root, [self.report(p50=1.0, p95=2.0)])
+            self.assertEqual(derived['ratios']['small']['move'], {'p50_ratio': 1.15, 'p95_ratio': 2.5})
+            self.assertEqual(derived['reference']['max_unstable_blocks'], 0.25)
+            digest = hashlib.sha256((Path(root) / 'calibration0.json').read_bytes()).hexdigest()
+            self.assertEqual([c['sha256'] for c in derived['calibrations']], [digest])
+
+    def test_no_report_at_all_is_refused_and_the_existing_budgets_are_not_replaced(self):
+        with tempfile.TemporaryDirectory() as root:
+            target = Path(root) / 'budgets.json'
+            target.write_text('previous budgets\n')
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as refusal:
+                budgets.main(['--out', str(target)])
+            self.assertNotEqual(refusal.exception.code, 0)
+            self.assertEqual(target.read_text(), 'previous budgets\n')
+
+    def test_a_calibration_whose_reference_blocks_moved_is_refused_before_anything_is_written(self):
+        with tempfile.TemporaryDirectory() as root:
+            refusal = self.refused(root, [self.report(0.0), self.report(0.26)])  # the SECOND report is the unsteady one
+            self.assertIn('26%', str(refusal))
+            self.assertIn('small', str(refusal))
+
+    def test_the_limit_is_the_declared_fraction_inclusive_and_a_missing_one_is_not_a_steady_report(self):
+        with tempfile.TemporaryDirectory() as root:
+            self.assertEqual(self.derive(root, [self.report(0.25)])['reference']['max_unstable_blocks'], 0.25)
+        with tempfile.TemporaryDirectory() as root:
+            silent = self.report()
+            del silent['corpora'][0]['reference']['unstable_fraction']
+            self.assertIn('does not say', str(self.refused(root, [silent])))
+
+    def test_only_release_reports_are_calibrations(self):
+        with tempfile.TemporaryDirectory() as root:
+            self.assertIn('release', str(self.refused(root, [self.report(profile='debug')])))
+
+    def test_the_output_is_never_written_over_a_report(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / 'calibration.json'
+            path.write_text(json.dumps(self.report()))
+            before = path.read_bytes()
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                budgets.main([str(path), '--out', str(path)])
+            self.assertEqual(path.read_bytes(), before)
 
 
 class FakeNative:
@@ -2656,6 +2778,75 @@ class ChildEnvironment(unittest.TestCase):
         self.absent('TESSEL_GIZMO_PERF_CALIBRATE', seen)
         self.assertEqual(seen.get('TESSEL_VIEWPORT_OVERLAY_ACK'), '1')  # what the runner means to set is there
         self.assertEqual(self.changed(after, before), [])  # and nothing it set stays in the process
+
+
+class GivenExecutable(unittest.TestCase):
+    """`run.py --phase measure --exe PATH`: an executable the `build` phase never recorded. Nothing ties it to this HEAD (no
+    head, tree, cleanliness or hash to compare), so its numbers are not the numbers of HEAD, and the path that is checked and
+    hashed must be the one the child starts (it runs with the repository root as its directory, not the caller's)."""
+
+    CLEAN = {'head': 'h' * 40, 'tree': 't' * 40, 'branch': 'b', 'dirty': ''}
+
+    def measure(self, exe_of, stdout=ChildEnvironment.PASSING, *flags, code=0, cwd=None):
+        """`run.py --phase measure --exe <exe_of(tmp)>` end to end, on the same dublês as `ChildEnvironment.measure`; the
+        benchmark notes the command it was started with. `cwd` is the directory the caller is in while the runner starts."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / 'bin').mkdir()
+            (tmp / 'bin' / 'budget-exe').write_bytes(b'binary')
+            out = tmp / 'out'
+            out.mkdir()
+            seen = {}
+
+            def benchmark(command, cwd=None, env=None, timeout=None):
+                seen.update(command=command, cwd=cwd)
+                Path(env['TESSEL_GIZMO_PERF_OUT']).write_text('{}')
+                return done(stdout, code)
+
+            quiet = ({'free_gib': 100, 'loadavg': (0.0, 0.0, 0.0)}, None)
+            here = os.getcwd()
+            try:
+                os.chdir(tmp if cwd is None else tmp / cwd)
+                with patch.object(runner.harness, 'git_identity', return_value=self.CLEAN), \
+                        patch.object(runner.harness, 'toolchain', return_value={}), \
+                        patch.object(runner.harness, 'guards', return_value=quiet), \
+                        patch.object(runner.harness, 'claims', return_value=[]), \
+                        patch.object(runner.harness, 'Lock', FakeLock), \
+                        patch.object(runner.harness, 'judge_after', side_effect=lambda manifest: None), \
+                        patch.object(runner.harness, 'run_bounded', side_effect=benchmark):
+                    result = run_main(runner, ['--phase', 'measure', '--out', str(out), '--exe', exe_of(tmp), *flags])
+            finally:
+                os.chdir(here)
+            return result, json.loads((out / 'manifest.json').read_text()), seen, tmp
+
+    def test_a_run_of_a_given_executable_that_would_pass_is_not_a_pass_for_head(self):
+        code, manifest, seen, tmp = self.measure(lambda tmp: str(tmp / 'bin' / 'budget-exe'))
+        self.assertEqual((code, manifest['status']), (1, 'EXE_GIVEN_NOT_A_PASS_FOR_HEAD'))
+        self.assertIn('--exe', manifest['reason'])
+        self.assertEqual(manifest['tests_passed'], runner.EXPECTED_TESTS)  # it ran and passed: the numbers are kept
+
+    def test_what_is_not_a_pass_keeps_its_own_status_and_a_calibration_is_still_a_calibration(self):
+        failing = libtest({MAIN_TEST: NOT_CAUGHT}, passed=[PLAN_CONTROL, DELAY_CONTROL]).stdout
+        code, manifest, seen, tmp = self.measure(lambda tmp: str(tmp / 'bin' / 'budget-exe'), failing, code=101)
+        self.assertEqual((code, manifest['status']), (1, 'FAIL'))
+        code, manifest, seen, tmp = self.measure(lambda tmp: str(tmp / 'bin' / 'budget-exe'),
+                                                 ChildEnvironment.PASSING, '--calibrate')
+        self.assertEqual((code, manifest['status']), (0, 'CALIBRATION_ONLY'))
+
+    def test_a_relative_path_is_resolved_once_so_the_file_that_is_checked_is_the_file_that_starts(self):
+        code, manifest, seen, tmp = self.measure(lambda tmp: 'budget-exe', cwd='bin')  # relative to the CALLER's directory
+        started = Path(seen['command'][0])
+        self.assertTrue(started.is_absolute(), seen['command'])
+        self.assertEqual(manifest['binary_sha256'], hashlib.sha256(b'binary').hexdigest())  # the file that was found
+        self.assertEqual(manifest['run']['command'][0], harness.redact(str(started)))
+        self.assertEqual(code, 1)  # and it still is not a pass for HEAD
+
+    def test_a_path_that_is_not_there_is_refused_and_no_child_is_started(self):
+        code, manifest, seen, tmp = self.measure(lambda tmp: str(tmp / 'bin' / 'nope'))
+        self.assertEqual((code, manifest['status']), (1, 'REFUSED'))
+        self.assertIn('does not exist', manifest['reason'])
+        self.assertEqual(seen, {})
+        # the control is `ChildEnvironment`: the same run through the `build` record is a PASS, only `--exe` loses it
 
 
 class Guarded(unittest.TestCase):

@@ -24,7 +24,10 @@ records HEAD, tree, whether the tree was dirty (`--allow-dirty`) and the executa
 
 `measure`: refuses a dirty tree and an executable that is not the one `build` recorded for this HEAD/tree, or that
 `build` built from a dirty tree (its record says `dirty`, or does not say it was clean); or it takes `--exe`, the
-baseline of an A/B. It removes any report of an earlier run in `--out`, checks the machine
+baseline of an A/B: nothing ties that executable to this HEAD (no head, tree, cleanliness or hash to compare), so its
+run is never a PASS (`EXE_GIVEN_NOT_A_PASS_FOR_HEAD`, exit 1; a FAIL, INCONCLUSIVE or calibration keeps its status) and
+its path is resolved once, because the child starts from the repository root, not from the caller's directory. It
+removes any report of an earlier run in `--out`, checks the machine
 (`harness.guards`: load 1/5 min, thermal, free disk) and takes the performance lock ONCE, without waiting. A busy lock or a
 failed guard is a recorded BLOCKED (exit 3), never a pass and never a retry. The executable runs with
 `--ignored --test-threads=1` under a finite timeout (its group is terminated on expiry): the runner fails unless exactly
@@ -237,8 +240,11 @@ def run_phase(args, out):
         return 0
     # --- measure
     if args.exe:
-        exe = args.exe
+        # Resolved here, once: the path that is checked, hashed and recorded is the path `run_bounded` starts, and that
+        # runs with `cwd=ROOT`, so a relative one would name another file there.
+        exe = str(Path(args.exe).resolve())
         manifest['build'] = {'exe_given': exe}
+        manifest['exe_unverified'] = True
     else:
         build_json = out / 'build.json'
         if not build_json.exists():
@@ -305,7 +311,12 @@ def run_phase(args, out):
     status, why, code = verdict(done, args.calibrate, report_path.exists(), after_reason)
     if report_path.exists():
         manifest['report_sha256'] = harness.sha256(report_path)
-    if manifest['dirty_run'] and status == 'PASS':
+    if manifest.get('exe_unverified') and status == 'PASS':
+        # The manifest names this HEAD, but the executable of `--exe` was never tied to it: not a pass for HEAD, and not an
+        # exit 0 either (the same reason as the dirty run below).
+        status, why, code = ('EXE_GIVEN_NOT_A_PASS_FOR_HEAD',
+                             'the executable came from --exe, not from the build phase of this HEAD', 1)
+    elif manifest['dirty_run'] and status == 'PASS':
         # Not a success either: exit 0 would read as a pass to whatever checks only the exit code (`native.py` and
         # `ab.py` exit 1 for the same reason).
         status, why, code = 'DIRTY_RUN_NOT_A_PASS_FOR_HEAD', 'the tree was dirty (--allow-dirty)', 1
