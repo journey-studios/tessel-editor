@@ -258,23 +258,27 @@ impl NoHandles {
         }
     }
 
-    /// The words of the disabled action and button, in `locale`.
-    pub const fn text(self, locale: super::Locale) -> &'static str {
-        use super::Locale::{En, Es, PtBr};
-        match (self, locale) {
-            (Self::NotVignette, PtBr) => "Só a vinheta tem alças no monitor",
-            (Self::NotVignette, En) => "Only the vignette has handles on the monitor",
-            (Self::NotVignette, Es) => "Solo la viñeta tiene asas en el monitor",
-            (Self::ScopeNotSupported, PtBr) => {
-                "As alças só existem para efeitos na saída; este efeito está num shot"
-            }
-            (Self::ScopeNotSupported, En) => {
-                "Handles exist only for effects on the output; this effect is laid on a shot"
-            }
-            (Self::ScopeNotSupported, Es) => {
-                "Las asas solo existen para efectos en la salida; este efecto está en un shot"
-            }
+    /// The words of the disabled action and button in the three languages. The scope is named as
+    /// the window names it (`Plano`/`Shot`/`Plano`, the inspector's `SHOT_LABEL`), so the button
+    /// and the selector of the clip never call it two different things.
+    pub const fn labels(self) -> super::Labels {
+        match self {
+            Self::NotVignette => super::Labels::new(
+                "Só a vinheta tem alças no monitor",
+                "Only the vignette has handles on the monitor",
+                "Solo la viñeta tiene asas en el monitor",
+            ),
+            Self::ScopeNotSupported => super::Labels::new(
+                "As alças só existem para efeitos na saída; este efeito está num plano",
+                "Handles exist only for effects on the output; this effect is laid on a shot",
+                "Las asas solo existen para efectos en la salida; este efecto está en un plano",
+            ),
         }
+    }
+
+    /// The words of the disabled action and button, in `locale`.
+    pub fn text(self, locale: super::Locale) -> &'static str {
+        self.labels().get(locale)
     }
 }
 
@@ -607,6 +611,7 @@ mod tests {
     #[test]
     fn only_a_vignette_on_the_output_has_handles_and_every_refusal_has_its_words() {
         use super::super::{FADE, FILM_GRAIN};
+        use crate::scene_edit::{OUTPUT_LABEL, SHOT_LABEL};
         let shot = || FxScope::Shot("shot-1".into());
         let cases = [
             (&VIGNETTE, FxScope::Output, None),
@@ -633,6 +638,17 @@ mod tests {
             let (first, second) = (not_vignette.text(locale), scope.text(locale));
             assert!(!first.is_empty() && !second.is_empty(), "{locale:?}");
             assert_ne!(first, second, "{locale:?}");
+            // The refusal of a shot clip calls the scopes what the selector of the clip calls
+            // them, in each language (`Saída`/`Output`/`Salida`, `Plano`/`Shot`/`Plano`).
+            for label in [OUTPUT_LABEL, SHOT_LABEL] {
+                assert!(
+                    second
+                        .to_lowercase()
+                        .contains(&label.get(locale).to_lowercase()),
+                    "{locale:?}: `{second}` does not say `{}`",
+                    label.get(locale)
+                );
+            }
         }
     }
 }

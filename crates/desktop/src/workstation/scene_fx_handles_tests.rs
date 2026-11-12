@@ -200,7 +200,7 @@ fn the_handles_action_is_the_shared_select_and_the_tree_says_what_is_targeted(
 /// that turns into a shot clip while it is the target leaves the target at the edit, with no read.
 #[gpui_kit::test]
 fn a_vignette_on_a_shot_has_no_handles_and_the_target_leaves_it(cx: &mut TestAppContext) {
-    const REASON: &str = "As alças só existem para efeitos na saída; este efeito está num shot";
+    const REASON: &str = "As alças só existem para efeitos na saída; este efeito está num plano";
     let (view, cx) = mounted(cx);
     let handles_action = |view: &Entity<Workstation>, cx: &mut VisualTestContext| {
         node(view, cx, CLIP)["actions"]
