@@ -398,7 +398,7 @@ constrói quando é o ponto de entrada (`realpathSync(process.argv[1])`), então
 |---|---|---|
 | Node puro | `runtime/test/spark-release-lock.test.mjs` | só a chamada do worker some e a de `readStream` fica; Spark com 0 ou 2 chamadas faz o build falhar; o Spark instalado tem exatamente 1; o padrão deixa o Spark intacto e `TESSEL_RUNTIME_SPARK_RELEASE_LOCK_PATCH=1` o remove (a checagem do `dist` exige `TESSEL_REQUIRE_RUNTIME=1`; sem ela, pulada) |
 | Mutação (script fora do repositório) | — | 6 de 6 mutantes mortos: patch que não faz nada; patch que também solta o leitor da thread principal; sem checagem de contagem; "pelo menos uma"; patch que apaga a linha seguinte; `dist` sem a correção |
-| Suíte do runtime com Chrome real | `TESSEL_REQUIRE_RUNTIME=1 pnpm test` | passa inteira com o bundle padrão (sem o remendo) e com ele (`TESSEL_RUNTIME_SPARK_RELEASE_LOCK_PATCH=1`); a contagem do head final está nos gates do BL157 (a de 336 era a da rodada em que o remendo era o padrão do build) |
+| Suíte do runtime com Chrome real | `TESSEL_REQUIRE_RUNTIME=1 pnpm test` | passa inteira com o bundle padrão (sem o remendo) e com ele (`TESSEL_RUNTIME_SPARK_RELEASE_LOCK_PATCH=1`): **373 de 373 nas duas**, uma execução da suíte inteira com cada `dist` no head final ([relatório §16.8](../viewport-real-latency-ab-report.md#168-revisão-automática-da-pr-41-e-gates-do-head-final)); a de 336 era a da rodada em que o remendo era o padrão do build |
 | Laboratório (WKWebView real, sem editor) | `runtime/scripts/perf`, caso `real-load` | Intercalado: **4 de 193 runs presos sem a correção, 0 de 193 com ela** (p exato unilateral 0,0615). **Réplica pré-registrada (300 por braço): 0 e 0 → NÃO REPRODUZIDO.** Total intercalado: **4 de 493 contra 0 de 493** (p 0,062: sugestivo, não conclusivo). Mais 8 de 120 em lote sem pareamento e sob carga ≈ 35, fora da conta |
 | Janela real, mesma build | `scripts/runtime-bundle-ab.py` | 36 pares: **1 sessão presa sem a correção, 0 com ela → NÃO REPRODUZIDO** (p 0,5). A sessão presa tem a cadeia do deadlock em 2 amostras: o defeito existe no editor real, mas **a rodada não tem poder para julgar a correção** |
 
@@ -489,7 +489,7 @@ Registrado, não filtrado: a sessão 11 deixou 2 helpers de GPU vivos depois do 
 ### Reprodução de BL157.4
 
 ```sh
-cd runtime && pnpm test                                      # 364 testes; TESSEL_REQUIRE_RUNTIME=1 inclui o bundle e o Chrome real
+cd runtime && pnpm test                                      # 373 testes; TESSEL_REQUIRE_RUNTIME=1 inclui o bundle e o Chrome real
 python3 scripts/runtime-bundle-ab.spec.py                    # 65 testes puros do runner nativo
 python3 scripts/playback-cadence.spec.py                     # 79 testes puros do leitor de cadência (BL157.6)
 # laboratório (precisa de macOS com WKWebView; as nuvens são caminhos locais seus):
