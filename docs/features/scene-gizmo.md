@@ -432,7 +432,7 @@ não prova o da escala).
 - **Moves** são coalescidos por frame de animação na página; o release carrega a posição final.
 - **Árvore** (`ui tree`): `monitor.gizmo` (só com cena anexada; estado `selection`, `dragging`,
   `handle`, `gesture`, e com BL015.1 `tool` e `space`, mais os campos `tool`/`space`) e
-  `monitor.viewport.state.overlay` (suportado, ligado, contadores, último layout e último `drawn`). O gizmo em si
+  `monitor.viewport.state.overlay` (suportado, ligado, contadores, último layout e último `drawn`, este só com `TESSEL_VIEWPORT_OVERLAY_ACK=1`). O gizmo em si
   não tem botão (é um canvas); a escolha da ferramenta tem (BL015.1) e o equivalente semântico do arrasto é
   `./scripts/ui op '{"op":"scene.pointer.down",…}'`. O resumo (`summary.scene_interaction.drag`)
   mostra o arrasto aberto.
