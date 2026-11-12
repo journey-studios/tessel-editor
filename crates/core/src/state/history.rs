@@ -169,6 +169,8 @@ impl EditorState {
         self.inspector.restore_overrides(snapshot.overrides);
         self.scenes = snapshot.scenes;
         let dropped = self.scene_interaction.selection.prune(&self.scenes);
+        // F061: `undo()`/`redo()` and a rolled-back transaction do not pass through `apply`.
+        self.prune_fx_target();
         self.library.selected_folder = self
             .library
             .selected_folder

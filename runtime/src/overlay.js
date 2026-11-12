@@ -40,6 +40,8 @@ export const PALETTE = {
   shadow: 'rgba(0, 0, 0, 0.55)',
   // F060: a point light's range knob and sphere, and its marker.
   range: '#ffb224',
+  // F061: the handles of a vignette clip. A handle whose parameter has keys is drawn dimmed.
+  fxDisabled: 'rgba(245, 245, 245, 0.45)',
 };
 
 const isObject = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -123,7 +125,38 @@ export const parseOverlay = (raw) => {
     if (!isObject(marker) || typeof marker.entity !== 'string') throw new Error(`light_markers[${index}] needs an entity`);
     return { entity: marker.entity, at: point(marker.at, `light_markers[${index}].at`), hidden: marker.hidden === true, selected: marker.selected === true };
   });
+  // F061, additive: the handles and the two ellipses of the vignette clip the session targets. When
+  // present the node gizmo is hidden (`reason: fx_target`) and this is what is drawn and hit.
+  const parseFx = (value) => {
+    if (!isObject(value)) throw new Error('fx must be an object');
+    const fxMetrics = isObject(value.metrics) ? value.metrics : {};
+    if (!finite(fxMetrics.hit_radius) || fxMetrics.hit_radius <= 0) throw new Error('fx.metrics.hit_radius must be a positive number');
+    return {
+      clip: String(value.clip ?? ''),
+      visible: value.visible === true,
+      reason: typeof value.reason === 'string' ? value.reason : null,
+      handles: (Array.isArray(value.handles) ? value.handles : []).map((handle, index) => {
+        if (!isObject(handle) || typeof handle.id !== 'string') throw new Error(`fx.handles[${index}] needs an id`);
+        return { id: handle.id, kind: handle.kind === 'center' ? 'center' : 'edge', at: point(handle.at, `fx.handles[${index}].at`) };
+      }),
+      // Off with their typed reason. Only `animated_param` ones are drawn (dimmed); one off the
+      // picture is neither drawn nor hit.
+      disabled: (Array.isArray(value.disabled_handles) ? value.disabled_handles : [])
+        .filter((entry) => isObject(entry) && typeof entry.id === 'string')
+        .map((entry) => ({ id: entry.id, reason: String(entry.reason ?? ''), at: isObject(entry.at) ? point(entry.at, `fx.disabled_handles[${entry.id}].at`) : null })),
+      ellipses: (Array.isArray(value.ellipses) ? value.ellipses : []).map((ellipse, index) => {
+        if (!isObject(ellipse) || typeof ellipse.id !== 'string' || !finite(ellipse.rx) || !finite(ellipse.ry) || ellipse.rx < 0 || ellipse.ry < 0) {
+          throw new Error(`fx.ellipses[${index}] needs an id and non-negative rx, ry`);
+        }
+        return { id: ellipse.id, center: point(ellipse.center, `fx.ellipses[${index}].center`), rx: ellipse.rx, ry: ellipse.ry };
+      }),
+      active: typeof value.active === 'string' ? value.active : null,
+      hitRadius: fxMetrics.hit_radius,
+    };
+  };
+  const fx = raw.fx === undefined || raw.fx === null ? null : parseFx(raw.fx);
   return {
+    fx,
     // `translate` (arrows and a centre), `rotate` (one ring per axis) or `scale` (axis handles
     // ending in a box, and the uniform box); an overlay of the first slice, which has no `tool`,
     // is the translate one.
@@ -166,11 +199,31 @@ const distanceToRing = (p, points, aspect) => {
 };
 
 /**
+ * The vignette handle under `point`: the nearest within the hit radius (picture heights), a tie to
+ * the first of the list: the core lists the handles in priority order (the outer ones first), so
+ * the page holds no rule of its own. Only the handles the core offers; a dimmed or off-picture one
+ * is not under the pointer. Presentation: the press is the core's.
+ */
+const hoverFx = (overlay, point) => {
+  const { fx } = overlay;
+  if (!fx.visible) return null;
+  const here = { x: point.u * overlay.aspect, y: point.v };
+  let best = null;
+  for (const handle of fx.handles) {
+    const distance = Math.hypot(here.x - handle.at.u * overlay.aspect, here.y - handle.at.v);
+    if (distance > fx.hitRadius) continue;
+    if (best === null || distance < best.distance - 1e-12) best = { distance, id: handle.id };
+  }
+  return best?.id ?? null;
+};
+
+/**
  * The handle under `point` for the cursor and the highlight: the same rule the core applies
  * (translate: the centre first, then the nearest axis; rotate: the nearest ring, there is no
  * centre handle), in picture heights. The press itself is the core's.
  */
 export const hoverHandle = (overlay, point) => {
+  if (overlay?.fx) return hoverFx(overlay, point);
   if (!overlay?.visible || !overlay.origin) return null;
   const toHeights = (p) => ({ x: p.u * overlay.aspect, y: p.v });
   const here = toHeights(point);
@@ -413,9 +466,80 @@ const drawMarker = (context, at, radius, { hidden, selected }) => {
   context.setLineDash([]);
 };
 
+/** A vignette handle: a disc with a halo, and a dot at the middle of the centre handle (the one that has a ring). */
+const drawFxHandle = (context, at, radius, color, centre) => {
+  context.setLineDash([]);
+  context.fillStyle = PALETTE.shadow;
+  context.beginPath();
+  context.arc(at.x, at.y, radius + 2, 0, Math.PI * 2);
+  context.fill();
+  context.fillStyle = color;
+  context.strokeStyle = color;
+  if (centre) {
+    context.lineWidth = 2;
+    context.beginPath();
+    context.arc(at.x, at.y, radius, 0, Math.PI * 2);
+    context.stroke();
+    context.beginPath();
+    context.arc(at.x, at.y, Math.max(2, radius * 0.35), 0, Math.PI * 2);
+    context.fill();
+    return;
+  }
+  context.beginPath();
+  context.arc(at.x, at.y, radius, 0, Math.PI * 2);
+  context.fill();
+};
+
+/**
+ * The two ellipses of a vignette (where the falloff starts: solid; where it ends: dashed), clipped to
+ * the picture, then its handles on top. A handle with keys is drawn dimmed; one off the picture is not.
+ */
+const drawFx = (context, rect, overlay, hover) => {
+  const { fx } = overlay;
+  if (!fx.visible) return;
+  context.save();
+  context.beginPath();
+  context.rect(rect.x, rect.y, rect.width, rect.height);
+  context.clip();
+  for (const ellipse of fx.ellipses) {
+    const at = toPane(rect, ellipse.center);
+    const radii = { x: ellipse.rx * rect.width, y: ellipse.ry * rect.height };
+    if (!(radii.x > 0 && radii.y > 0)) continue;
+    const trace = () => {
+      context.beginPath();
+      context.ellipse(at.x, at.y, radii.x, radii.y, 0, 0, Math.PI * 2);
+      context.stroke();
+    };
+    context.setLineDash([]);
+    context.strokeStyle = PALETTE.shadow;
+    context.lineWidth = 3;
+    trace();
+    context.strokeStyle = PALETTE.outline;
+    context.lineWidth = 1.5;
+    context.setLineDash(ellipse.id === 'softness' ? [6, 4] : []);
+    trace();
+  }
+  context.restore();
+  context.setLineDash([]);
+  const size = (handle) => (handle.kind === 'center' ? overlay.centerRadius * rect.height : 6);
+  for (const entry of fx.disabled) {
+    if (entry.reason !== 'animated_param' || !entry.at || !insidePicture(entry.at)) continue;
+    drawFxHandle(context, toPane(rect, entry.at), entry.id === 'center' ? overlay.centerRadius * rect.height : 6, PALETTE.fxDisabled, entry.id === 'center');
+  }
+  for (const handle of fx.handles) {
+    const lit = fx.active === handle.id || hover === handle.id;
+    drawFxHandle(context, toPane(rect, handle.at), size(handle), lit ? PALETTE.active : PALETTE.screen, handle.kind === 'center');
+  }
+};
+
 /** Draws `overlay` into `context` over `rect` (the picture, in CSS px). `hover` is a handle id. */
 export const drawOverlay = (context, rect, overlay, hover = null) => {
   if (!overlay || !rect) return;
+  // F061: an overlay of a vignette clip draws that clip's handles and nothing of the node gizmo.
+  if (overlay.fx) {
+    drawFx(context, rect, overlay, hover);
+    return;
+  }
   // Every light of the frame has a marker, selected or not: it is where a press selects it.
   for (const marker of overlay.lightMarkers) {
     drawMarker(context, toPane(rect, marker.at), overlay.markerRadius * rect.height * 0.5, marker);
@@ -564,8 +688,18 @@ export const attachOverlay = ({ canvas, post, win = window, doc = document }) =>
   const acknowledge = () => {
     const picture = rect();
     const ratio = win.devicePixelRatio || 1;
+    const fxProbes =
+      overlay?.fx?.visible && picture
+        ? overlay.fx.handles.map((handle) => {
+            const at = toPane(picture, handle.at);
+            const pixel = context.getImageData(Math.round(at.x * ratio), Math.round(at.y * ratio), 1, 1).data;
+            return { id: handle.id, rgba: [...pixel] };
+          })
+        : [];
     const probes =
-      overlay?.visible && picture
+      overlay?.fx
+        ? fxProbes
+        : overlay?.visible && picture
         ? overlay.handles.map((handle) => {
             // A ring is probed on one of its own vertices (the middle of a chord is not on the
             // stroke); an arrow at the middle of its shaft; the centre at its centre; the box of
@@ -603,7 +737,11 @@ export const attachOverlay = ({ canvas, post, win = window, doc = document }) =>
       entity: overlay?.entity ?? null,
       active: overlay?.active?.handle ?? null,
       outlines: overlay?.outlines.length ?? 0,
-      disabled: overlay?.disabledHandles ?? [],
+      disabled: overlay?.fx ? overlay.fx.disabled.map(({ id, reason }) => ({ id, reason })) : overlay?.disabledHandles ?? [],
+      // F061: absent unless the overlay is a vignette clip's.
+      ...(overlay?.fx
+        ? { target: 'fx', fx: { clip: overlay.fx.clip, visible: overlay.fx.visible, reason: overlay.fx.reason, handles: overlay.fx.handles.map((handle) => handle.id), ellipses: overlay.fx.ellipses.length, active: overlay.fx.active } }
+        : {}),
       probes,
       markers: markerProbes,
     });
@@ -735,8 +873,9 @@ export const attachOverlay = ({ canvas, post, win = window, doc = document }) =>
     if (event.key !== 'Escape') return;
     if (session.pressed) {
       cancel('escape');
-    } else if (overlay?.active) {
-      // A drag the host holds without a press here (begun by a script): Escape still ends it.
+    } else if (overlay?.active || overlay?.fx?.active) {
+      // A drag the host holds without a press here (begun by a script): Escape still ends it. The
+      // drag of a vignette handle is named by `fx.active`; the node gizmo's, by `active`.
       session.emit('cancel', { reason: 'escape' });
     }
   });

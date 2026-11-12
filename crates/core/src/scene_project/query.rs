@@ -237,6 +237,8 @@ pub(super) fn run(book: &SceneBook, command: SceneCommand) -> Result<Value, Comm
                 "scene.fx.inspect", "scene.fx.seek",
                 "scene.fx.gesture.begin", "scene.fx.gesture.update", "scene.fx.gesture.commit",
                 "scene.fx.gesture.cancel", "scene.fx.gesture.status",
+                // F061: the vignette's 2D handles on the monitor, additive.
+                "scene.fx.select", "scene.fx.handles",
             ],
             "max_scenes": MAX_SCENES,
             // Additive contract of the property catalog (docs/features/scene-edit.md): a caller
@@ -331,6 +333,8 @@ pub(super) fn run(book: &SceneBook, command: SceneCommand) -> Result<Value, Comm
         | SceneCommand::Gizmo(_)
         | SceneCommand::FxGesture(_)
         | SceneCommand::FxSeek { .. }
+        | SceneCommand::FxSelect { .. }
+        | SceneCommand::FxHandles { .. }
         | SceneCommand::FxEdit { .. } => Err(CommandError::new(
             "internal",
             "a scene command reached the read path that does not serve it",
