@@ -1386,7 +1386,7 @@ A raiz antiga e seus planos não foram alterados nesta integração.
 |---|---|---|---|---|---|---|
 | BL167 | Coordenação / Computador | Preparar o editor no Windows para assumir trabalho quando o Mac estiver carregado | Parcial — setup e prova inicial concluídos em ead9ca2; bloqueios abertos | BL167.1–.5, BL078/BL111/BL094.3 | Coordenador; execução Cursor Sonnet 5.5 na [thread Computador](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:2c1fabecc408329d1c30f7686282f05c253925eb98e16349c0fabc12c4e0bf82), concluída | Preparação inicial recebida pelo transcript da thread indicada: fmt/check/build debug exit0, desktop502/502, runtime384/384, export11/11 e flow2/2, janela/GPU D3D11/relógio WASAPI por comandos semânticos. Core1407 passam/2 falham; media27 falham; render2 falham no levantamento inicial. Compilação de workspace/clippyalltargets corrigida e validada em Windows/Mac na entrega BL167.1; Python/release não provados. Logs originais no Computador; sem commit/PR/push e sem reexecução pelo coordenador. Usável para tarefas compatíveis, sem promover prontidão completa |
 | BL167.1 | Windows B1 | Portar compilação dos testes media e import específico de Unix | Concluído localmente — 2026-11-13; integração/publicação pendentes | BL167 | Coordenador; implementação Cursor Sonnet 5.5 na [thread isolada](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:bfdb8ea7c5701b4cac09ace241a44b8d1a24dc9d86f05f45996409a2972dca4c) | Commit local a31beb0 (base ead9ca2), [relatório](migration/windows-media-tests-report.md). Windows e Mac: fmt/check/clippy all-targets -D warnings/test workspace no-run exit0. Windows job_commit_state1/async_host8/directed_resources14/package_atomic7 passam; transport13/3falhas em BL167.7. Mac mídia58/58, held_read7/7 e build desktop exit0, spec backlog19/19. Imports/helper só-Unix preservados e executados no Mac; nenhum teste portátil escondido. Workspace Windows não verde por falhas de execução, inclusive BL167.6; sem aceite físico/perf, push/PR/merge |
-| BL167.2 | Windows B2 | Descobrir ferramentas externas sem depender de caminhos explícitos | Pendente | BL167 | — | Resolver exe/PATHEXT e Chrome/Node/FFmpeg/FFprobe no Windows; preservar overrides existentes; runtime384 sem ignorados por descoberta e export real; atualizar media-setup. Até lá usar TESSEL_FFMPEG/FFPROBE/NODE/CHROME |
+| BL167.2 | Windows B2 | Descobrir ferramentas externas sem depender de caminhos explícitos | Implementado e validado Windows/Mac — Linux em BL167.2.3 | BL167.1 | Cursor Sonnet 5.5, [thread Windows](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:b2ea4671e725a37a671d5f8b8b6f4c5281a22ac7594856ec2d2e777ad7111737); coordenador integra e valida Mac | Fonte publicada05289a5 (B2 sem B1); integração local0aa9daf após a31beb0/8adb987. Windows runtime403/403, preflight/frame/export CLI reais; Mac gates exit0, render/export e CLI reais sem overrides. Contratos F019/F021/F029 e [relatório](migration/windows-tool-discovery-report.md) atualizados. Sem PR/merge; workspace Windows completo não verde |
 | BL167.3 | Windows B4/B5 | Remover dependência de shasum dos testes e diagnosticar dois testes de gizmo divergentes | Pendente | BL167 | — | Hash portátil nos dois testes render; reproduzir diferenças de rotação/escala em Windows e Mac e conferir invariantes geométricas antes de qualquer tolerância. Hipótese de libm não confirmada; não aprovar só relaxando asserções |
 | BL167.4 | Windows / mbx | Cache de ações sem hits e volumes C:/W: sem hard link; wrapper depende de Git Bash | Pendente | BL167 | — | Diagnosticar mbx explain/not-looked-up, cache_dir e ferramentas de arquivo; provar reutilização real sem target-dir customizado, limpeza global ou perda de target/cache. Decidir adapter Windows para wrapper; não assumir benefício do cache só por mbx executar |
 | BL167.5 | Windows / prova | Instalar Python e completar build release e provas semânticas vivas | Pendente | BL167.1–.4 conforme prova; BL078/BL111 para claims | — | Python disponível, scripts de prova compatíveis executados em binários identificados por SHA, release construído e prova de fluxo registrada. GPU da janela não fecha export em GPU, paridade Mac, ponteiro físico ou áudio ouvido; medir performance em rodada própria |
@@ -1413,3 +1413,106 @@ permanece em BL167.6. Os três erros de representação de caminhos estão em BL
 Não há runtime/render, performance ou prova física adicional. Publicação, PR e
 merge não foram feitos; seguem fora da autorização deste item. Os registros antigos
 na raiz de origem e os planos locais foram preservados.
+
+
+### BL167.2 — início autorizado (2026-11-13)
+
+Subagente Cursor Sonnet 5.5 em worktree T3 local de `8adb987` (inclui BL167.1),
+sem opções customizadas (herança limpa). T3 remoto recusou `existing_worktree`
+com `worktreePath must be one of the project's git worktrees`, inclusive com
+path normalizado igual ao listado por `t3_worktree_list`; nenhuma thread nova
+remota foi criada. A implementação foi atribuída ao subagente local, com prova
+real Windows posterior obrigatória. Não concluir Windows por simulação no Mac.
+
+Ownership: `crates/media/src/tools.rs` e helper focado em `src/tools/`;
+`crates/render/src/runtime.rs` e testes de busca associados;
+`runtime/worker/chrome.mjs`, `runtime/test/chrome-discovery.test.mjs`;
+`docs/media-setup.md`, contratos F019/F021/F029 e suas linhas da matriz;
+relatório `docs/migration/windows-tool-discovery-report.md`.
+Backlog exclusivo do coordenador, sem edição paralela pelo implementador.
+Contrato: preservar precedência/semântica dos overrides, resolver extensões e
+PATH/candidatos Windows sem hardcode de usuário/versão, manter Mac/Linux e erros
+explícitos. Prova exige ferramentas/runtime preparados e execução sem os quatro
+overrides TESSEL, sem considerar auto-ignore como aceite. Sem commit/push/PR/merge
+pelo implementador; os demais BL167.3–.7 não foram atribuídos.
+
+
+BL167.2 — execução movida ao Computador por orientação do usuário (2026-11-13).
+A falha do T3 era específica de `existing_worktree`, não indisponibilidade do Windows.
+Cancelamento do subagente Mac solicitado via task_cancel; seu worktree e diff parcial
+ficaram preservados, sem integração nem descarte. Thread principal Windows criada
+com sucesso usando workspaceStrategy worktree e base origin/main, branch
+`fix/windows-tool-discovery-bl167-2`, Cursor Sonnet 5.5 sem opções customizadas.
+A nova thread aplica o patch BL167.1 já validado como dependência (hash FC02E703…,
+11462 bytes) e entrega diff somente B2; não modifica o worktree Windows anterior.
+Ownership/aceite mantidos; implementação e prova real passam a ocorrer no Windows,
+com revisão e conferência Mac posteriores. Nenhuma feature B2 entregue ainda.
+
+
+BL167.2 — correção da infraestrutura e execução Windows confirmadas (2026-11-13).
+A primeira criação de worktree também falhou antes de iniciar o modelo:
+`Failed to resolve the VCS driver` na raiz cadastrada `W:\www\tessel-editor`.
+`t3_worktree_list` do Windows mostrou a raiz Git real em `E:\www\tessel-editor`;
+o coordenador corrigiu workspaceRoot do projeto T3 para esse caminho, sem mover
+arquivos ou alterar o repositório. A tentativa falha continua só como histórico.
+A thread indicada na linha BL167.2 agora está running em
+`C:\Users\wally\.t3\worktrees\tessel-editor\fix-windows-tool-discovery-bl167-2`,
+com Cursor Sonnet 5.5 e opções vazias. Subagente Mac confirmado interrupted,
+sem run ativo; seu diff parcial foi preservado em t3/windows-tool-discovery,
+sem integração, commit ou descarte. Implementação principal e prova ficam no Windows.
+
+
+### BL167.2 — entrega Windows e revisão recebidas
+
+Base ead9ca2 + B1 preservado. Patch B2 de 10 paths recebido por gzip/base64,
+SHA-256 `cf9956c569fb4bc65e9662569bb045f17902faa372d3eff8f72ea4c146cd1e26`,
+65768 bytes; relatório original `2f5af9e9038b6d9c501a2e68a0e86e4bb4431fef98f0b7bbf8836469fb30f458`,
+15320 bytes. Hashes conferidos e patch aplicado sobre 8adb987 no Mac. Windows
+reportou runtime397/397 sem skips, preflight/frame/export CLI reais e gates de
+compilação, sem os quatro overrides de ferramentas. Provas e limites no
+[relatório](migration/windows-tool-discovery-report.md).
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL167.2.1 | Windows / thumbnails | Duas asserções usam barras POSIX em caminhos da cache e sessão | Corrigido e validado Windows/Mac | BL167.2 | Implementação Windows; coordenador valida Mac | slashed normaliza somente representação de teste; thumbnails24/24 em ambos, antes Windows22/24. Fonte05289a5; [relatório](migration/windows-tool-discovery-report.md#bl16721--thumbnailsrs-no-windows) |
+| BL167.2.2 | Windows / testes | workflow_tests, runtime/test/video e scripts/perf/assets chamam ffmpeg por nome | Parcial — testes funcionais corrigidos; script de desempenho pendente | BL167.2 | Implementação Windows; coordenador valida Mac; desempenho não atribuído | workflow12/12 e vídeoJS7/7 Windows/Mac usam descoberta; Windows sem FFmpeg no PATH, controle antigo0/7. scripts/perf/assets.mjs ainda exige PATH de processo; adaptar ou documentar em rodada de desempenho própria com lock, sem atribuição implícita |
+| BL167.2.3 | Portabilidade / descoberta | Validar regressão Mac/Linux após entrega Windows | Parcial — Mac validado; Linux nativo não executado | BL167.2 | Coordenador (Mac); Linux não atribuído | Mac fmt/check/clippy/no-run/build exit0; descoberta, thumbnails24, workflow12, JSvídeo7, render15 e CLI com FFmpeg fora do PATH passam. Linux exige execução nativa separada; testes Other/injetados não são essa prova |
+| BL167.2.4 | Revisão / Chrome | Busca PATHEXT escolhia chrome.cmd antes de chrome.exe, mas launcher Node não usa shell | Corrigido e validado Windows/Mac | BL167.2 | Coordenador | Busca automática aceita exe/com, preserva overrides. Chrome13/13 e runtime403/403 Windows após patch b17ba3da; Mac Chrome13 + frames reais. Três fontes conferidas por SHA-256 com commit05289a5 |
+| BL167.2.5 | Revisão / Unix | Unificação da busca descartava entradas vazias de PATH e alterava comportamento quando PATH está ausente | Corrigido e validado Windows/Mac | BL167.2 | Coordenador | Entradas vazias Unix representam diretório atual; PATH ausente mantém diferenças históricas FFmpeg/Node. Novo teste discriminante passou em ambos; Windows continua ignorando entradas vazias. Fonte05289a5 |
+| BL167.2.6 | Revisão / harness JS | Helper FFmpeg do seguimento aceitava batch sem shell e perdia override inválido ao retornar nome simples | Corrigido localmente; testes injetáveis e Mac reais validados | BL167.2.2 | Coordenador | Busca automática JS só exe/com; override inválido inclusive vazio falha antes do spawn; PATH Unix preservado. Descoberta22/22, controle anterior5/9 e vídeo real7/7 no Mac. Windows403 anterior ao ajuste deste helper; novos casos Windows provados por injeção, sem alegar nova execução nativa |
+
+
+BL167.2 — regressão Mac concluída sem overrides: fmt/check/clippy/no-run/build
+exit0; testes de busca25+5Rust e13JS, render real15 e media real22 passaram,
+sem skips de runtime (1 diagnóstico Rust ignorado). CLI preflight sem blockers e
+frame PNG real passaram. Logs e manifesto em /Volumes/Extreme Pro/tessel-bl1672-validation/mac/.
+Naquele ponto, novo delegado Cursor Sonnet5.5 iniciou rechecagem Windows após patch de revisão:
+[rechecagem](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:22bedc638f39d13f3917b5533b99ace12da49abdeed55049d48874d9f4d8d9f9).
+Patch b17ba3da… (4614bytes) aplicado somente a locate.rs/chrome.mjs/chrome-discovery.test.mjs.
+Estado daquela atualização: aguardava provas Windows, sem polling. O fechamento abaixo substitui esse estado; Linux e UI continuam sem nova prova nativa pela coordenação.
+
+
+### Fechamento da revisão BL167.2 — 2026-11-13
+
+Código, contratos e relatório integrados no commit local `0aa9daf`, após B1
+`a31beb0` + registro `8adb987`. A fonte publicada `05289a5` foi preservada;
+os quatro arquivos de produção B2 são byte a byte iguais a ela. Os oito paths
+B1 continuam idênticos ao manifesto da validação. Ajuste adicional restrito ao
+helper de testes JS (.2.6), com controle anterior5/9, corrigido22/22 e vídeo7/7
+Mac; os403/403 Windows são anteriores a esse ajuste do harness.
+
+Rechecagem Windows concluída: fmt/clippy/no-run exit0, tools25+runtime5 Rust,
+Chrome13 e runtime completo403/403 sem skips. Mac: fmt/check/clippy/no-run/build
+exit0; seguimento80 testes focados (thumbnails24, workflow12, descoberta22,
+vídeoJS7, render15), zero skips, além da regressão inicial80 e smoke CLI real
+com FFmpeg/FFprobe fora do PATH. Não somar as duas rodadas como testes distintos.
+Spec do backlog19/19. Comandos, hashes, manifestos e limites no
+[relatório](migration/windows-tool-discovery-report.md) e em
+`/Volumes/Extreme Pro/tessel-bl1672-validation/mac-followup/`.
+
+BL167.2 funcional Windows/Mac concluído; .2.2 mantém só o script de desempenho,
+.2.3 mantém Linux nativo. BL167.3–.7 continuam sem implementação nesta entrega.
+Workspace Windows inteiro não foi promovido a verde; hang de claims e outras
+falhas de execução permanecem separados. O coordenador não fez push, PR ou merge;
+a branch Windows já publicada não foi reescrita. Raiz antiga, planos e worktrees
+paralelos foram preservados.

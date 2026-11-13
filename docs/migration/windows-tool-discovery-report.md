@@ -349,3 +349,11 @@ BL167.3–.7; não foram atribuídos automaticamente. Não há aceite físico ad
 nem promoção dos testes de workflow a interação manual da janela. Os403 Windows
 continuam prova do código publicado; o helper JS corrigido depois tem provas
 injetáveis e execução de vídeo no Mac, sem nova rodada nativa Windows.
+
+## Identidade da integração local
+
+Commit `0aa9daf2ce6e4a5231dbb00a1b9b98829fff62af` (`fix(media)`), parent `8adb987`; ordem de integração:
+B1 `a31beb0` → registro `8adb987` → B2 `0aa9daf`. A publicação Windows original
+continua em `05289a5`, sem B1 no commit; não integrar B2 isoladamente no Windows
+sem a dependência de portabilidade. O coordenador não fez push, PR ou merge.
+O snapshot de revisão e os artefatos originais continuam preservados no SSD.
