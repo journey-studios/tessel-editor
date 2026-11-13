@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
+import { ffToolPath } from './ffmpeg-locate.mjs';
 import {
   holdSeek,
   imageLayer,
@@ -35,7 +36,7 @@ const FRAMES = 48;
 const RATE = { num: 24, den: 1, fps: 24 };
 const CELL = WIDTH / 20;
 
-const ffmpeg = (args) => spawnSync('ffmpeg', ['-nostdin', '-v', 'error', '-y', ...args], { encoding: 'utf8' });
+const ffmpeg = (args) => spawnSync(ffToolPath('ffmpeg'), ['-nostdin', '-v', 'error', '-y', ...args], { encoding: 'utf8' });
 
 const barcodeFilter = () => {
   const boxes = [`drawbox=x=0:y=0:w=${CELL * 10}:h=${CELL}:color=black:t=fill`];
