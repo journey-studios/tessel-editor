@@ -17,9 +17,7 @@ use serde_json::json;
 use tessel_editor_core::directed_scene::DirectedScene;
 use tessel_editor_core::jobs::CancelToken;
 use tessel_editor_core::scene_resources::{ResourceKey, ResourceStatus};
-use tessel_editor_media::directed_resources::{
-    Options, PreflightReport, ProblemKind, SymlinkPolicy, preflight,
-};
+use tessel_editor_media::directed_resources::{Options, PreflightReport, ProblemKind, preflight};
 
 fn run(
     manifest: &tessel_editor_core::scene_resources::ResourceManifest,
@@ -398,9 +396,15 @@ fn an_unusable_source_root_is_an_error_not_a_report() {
     assert_eq!(error.code, "root_not_directory");
 }
 
+// Unix only, for a stated reason: creating a symlink on Windows needs a privilege (Developer Mode
+// or an elevated token) that a plain test run does not have, so the link policy is not exercised
+// there (BL167.1 records this as a coverage limit). `SymlinkPolicy` is imported here, not above,
+// because nothing outside this module uses it and `-D warnings` rejects an unused import.
 #[cfg(unix)]
 mod symlinks {
     use std::os::unix::fs::symlink;
+
+    use tessel_editor_media::directed_resources::SymlinkPolicy;
 
     use super::*;
 

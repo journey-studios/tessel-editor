@@ -20,7 +20,6 @@ use serde_json::{Value, json};
 use tessel_editor_core::fixtures::{StandardSet, proof_requests, write_standard_set};
 use tessel_editor_core::jobs::{JobError, JobKind, JobRegistry};
 use tessel_editor_core::{EditorState, headless, persist};
-use tessel_editor_media::host::MediaHost;
 use tessel_editor_media::package::{
     self, PackageFormat, PackageInputs, PackageOptions, PublishFs, StdFs,
 };
@@ -519,6 +518,10 @@ fn a_cancelled_replace_keeps_the_previous_package() {
 mod permissions {
     use std::os::unix::fs::PermissionsExt;
     use std::sync::atomic::{AtomicU64, Ordering};
+
+    // Imported here, not at the top: only this Unix-only module uses it, and `-D warnings`
+    // rejects an unused import on the targets that do not compile the module (BL167.1).
+    use tessel_editor_media::host::MediaHost;
 
     use super::*;
 
