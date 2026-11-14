@@ -179,7 +179,13 @@ def _run_bounded_windows(command, cwd, env, timeout, grace, started):
     descendant out of the tree's reach that holds the pipes only keeps its own thread (it ends with that descendant),
     never the runner. The text is decoded as `text=True` would (UTF-8 mode, universal newlines), a bad byte replaced."""
     try:
-        process = subprocess.Popen(command, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        # `portable.program`: a repository `sh` script (`./scripts/cargo`) runs under Git's `sh`, a path finds its `.exe`.
+        first = str(command[0])
+        if os.path.dirname(first):  # a path is relative to the child's `cwd`, not to the runner's own directory
+            started_as = portable.program(os.path.join(str(cwd or '.'), first), *command[1:])
+        else:
+            started_as = list(command)
+        process = subprocess.Popen(started_as, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     except OSError as error:
         return Done(command, 127, '', '', error=f'cannot start {command[0]}: {error}')
     chunks = ([], [])
