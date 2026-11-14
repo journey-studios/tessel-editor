@@ -452,6 +452,12 @@ outros); corrigido em `reset_ops` e coberto por teste de unidade e de GPUI.
   **dois** quadros de origem (precisa que o plano e o runtime desenhem dois shots no mesmo quadro: capacidade nova
   `transitionBlend`), e o ripple/roll de shots será um comando de edição estrutural do core sobre `shots[]` que
   mantém o join/temporal gates; nenhum dos dois tem nó, comando nem botão ainda.
+  **Rascunho superado (P4b-S0, 2026-11-14):** os nomes `type`/`fromShot`/`toShot` e a capacidade `transitionBlend`
+  acima **não** valem. O contrato é [F064](fx-transitions.md): campos do piloto (`id`, `effect`, `fromShotId`,
+  `toShotId`, `durationFrames`, `alignment`, `handles`, `easing`), capacidade `fxTransition` e o portão
+  `FX_TRANSITION_NOT_YET`, que **continua valendo** até a ativação (S2A). **Divergência de veredito (alpha):** o piloto
+  recusa `alphaMode ≠ opaque` com `fx` ou dissolve legado (`UNSUPPORTED_ALPHA`); o Tessel aceita e desenha opaco, hoje
+  já para os três looks. É divergência declarada, **não** paridade; vale para as transições e está em F064.
 - A prévia ao vivo, o teclado do adaptador e a inserção no quadro exibido existem (seção "Gesto de efeito").
   **Lacuna:** o gizmo de cena (F055) ainda usa o número do playhead como quadro do bundle; só o monitor e a
   inserção de efeito convertem o tempo (registrado em BL082.6).

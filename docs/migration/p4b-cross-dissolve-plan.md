@@ -212,8 +212,7 @@ deck; o runtime desenha **uma** cena por camada dirigida; `check_fx` amarra os p
       "handles": "hold",
       "easing": "easeInOutCubic",
       "params": { "curve": "smooth", "intensity": 1 },
-      "seed": 0,
-      "hidden": false
+      "seed": 0
     }]
 } }
 ```
@@ -493,7 +492,14 @@ transição (digests de planos sem transição ficam idênticos; teste de ouro s
   Isso **não** serve para hold misto (instância presa, câmera correndo) nem para o relógio da luz em f: podem
   não corresponder a nenhum quadro puro. Para esses casos, S0 fixa estados temporais esperados e sondas
   analíticas independentes de cenas simples (marcadores/cores/luz conhecidos), quantizados a 8 bits; S2 compara
-  a projeção/cor dessas sondas e o plano a X. Sem esse oráculo, o caso continua A validar e bloqueia seu aceite;
+  as cores nas posições de pixel prescritas e os estados temporais do plano a X. `centre_px` e `rect_px`
+  são coordenadas diagnósticas, sem portão numérico próprio de aceitação; erros de posição devem ser
+  discriminados pelas sondas de cor, não por uma tolerância de coordenadas inventada após medir.
+  A referência atual isola erros do relógio da luz **só no vizinho** nas janelas `start`/`end`;
+  os casos `center` não demonstram sozinhos essa discriminação (peso baixo do vizinho). A comparação
+  dos estados de cada deck permanece obrigatória; S2 não deve atribuir isolamento de pixel a esses casos.
+  As lâmpadas sintéticas respeitam intensidade `[0,20]`, cor/flicker `[0,1]`, raio positivo e até quatro luzes.
+  Sem esse oráculo, o caso continua A validar e bloqueia seu aceite;
   não fabricar um quadro puro equivalente nem obter ambos os lados pelo mesmo avaliador de transição. O teste Rust
   `crates/core/tests/pilot_dissolve_corpus.rs` **só lê o JSON** (roda no Windows sem Python), como `pilot_fx_corpus.rs`.
 - **Nenhum `Domain` novo.** `PlanError::Unsupported` só aceita `Domain::ALL` (13 valores: `weather` … `relief`) e a
@@ -1028,3 +1034,7 @@ grandes restantes entram na regra de módulos/delta; Git Bash é identificado ex
 As células T04/T10/T18/T32 e os aceites das fases foram reconciliados. Isso é verificação de
 contrato e documento, não execução de Rust/runtime/export. BL082.4.11 rastreia esta correção
 no backlog do coordenador; não é fase de produto adicional e não renumera .1–.10.
+
+Decisão após a revisão S0: no documento de transição hidden aceita true ou ausência, igual ao
+schema do piloto; false explícito é recusa estrutural tipada na S1a. Tornar visível por operação
+remove a chave, em vez de gravar false. Não muda o contrato de hidden dos looks existentes.

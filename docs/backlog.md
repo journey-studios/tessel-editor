@@ -1877,7 +1877,7 @@ concreto da S0, sem link para arquivo inexistente nem validação de lib/CLI/UI 
 
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
-| BL082.4.1 | P4b/S0 | Contrato F064 e corpus independente dissolve, fonte pinada e diferenças alfa/quantização explícitas | A validar — entregue PR61 em173f5f4, relato Windows161/161 normal e -O | BL082.4; setupPythonBL167.5 parcial | Cursor Sonnet5.5 / S0 abaixo | Corpus/scripts e specs normal/-O/verify/originblob verificável, vetoresdiscriminantes, sem alterar Rust/runtime/fixtureslegadas nem marcarfeature lib/JSONL/UIpronta |
+| BL082.4.1 | P4b/S0 | Contrato F064 e corpus independente dissolve, fonte e X analítico | Concluído — somente S0 oráculo/contrato | BL082.4; setupPythonBL167.5 parcial | Coordenador / Cursor Sonnet5.5 | R3 independente aprova e4078ff no Windows; corpus167/analítico39 normal e-O, reprodução byte a byte e Mac equivalente. Produto lib/JSONL/UI permanece P; detalhes no relatório S0 §12. |
 | BL082.4.2 | P4b/S1a | Documento/janela/validação tipada e ativação pública failclosed | Pendente | BL082.4.1/.11 | Não atribuído | Contrato corrigido B3; nenhumhardcutfallback/exportfalhandonomeio, erro existente/tipado |
 | BL082.4.3 | P4b/S1b | Avaliação dos dois decks e plano, recursosporassetId/used_bysemambiguidade | Pendente | BL082.4.2 | Não atribuído | Recurso próprio por deck euniãoderivadaestável, clock/handlessemunderflow, parserprofundidadelimitada |
 | BL082.4.4 | P4b/S2 | Runtime/renderer/mistura e lifecycle/cache | Pendente | BL082.4.3; S2A também BL082.4.5/S3a | Não atribuído | Cor8bits/alpha declarados, capability, dois splats/leases/contextloss/dispose e pixelsindependentes |
@@ -1901,3 +1901,45 @@ Tarefas efetivamente iniciadas e ownership: S0 (F064, effects.md, scripts/corpus
 correção do plano (somente os dois docs, concluída) [Windows plano](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:808129a7106c4db6a7447b5544292280094e3adbdac731d46c9dd3a30ebc40f4).
 Arquivos comuns de backlog/matriz/índice são reconciliados só pelo coordenador. S1+ permanecem sem
 atribuição até a S0 e o contrato aplicável serem revisados; W1/W2 têm PR59/60 próprias ainda não integradas.
+
+Revisão S0/PR61 em173f5f4 **não aprova BL082.4.1**: P2-1verificadorstrictpin e P2-2sondasanalíticas
+X faltantes; P2-3matrizagora F064com todasas superfíciesPendente. Coordenador corrigiuaCLIstrictpin
+paraexigirorigem+commit, com regressãogitreal; digestsusage e guardStorecorrigidos; exemplo hiddenfalse
+removido, escolhatrueouausentenastransições. A parteanalíticaaindapendente, S1nãoiniciada, semmergePR61.
+
+
+### PR61 R2: representabilidade das lâmpadas e contrato do X — 2026-11-14
+
+A revisão independente de9399642 não aprova aS0: seis cenas usam lâmpadas24 acima do limite20
+em core/runtime (P2-A). P2-1 e P2-3 fecham; a parteposição/hold deP2-2 é representável.
+O coordenador corrige intensidade para20 sem alterar limiares, lê os limites20/4 dosdois
+consumidores e acrescenta teste de contrato de todasaslâmpadas. Mantém BL082.4.1 A validar.
+
+P3-1/P3-2: coordenadas centre_px/rect_px são diagnósticas, aceite deS2 é pelos estados e
+cores nospixels prescritos. Isolamento da luz sódo vizinho é discriminante emstart/end;
+center não prova sozinho. Teste dedicado aplica erro apenas no vizinho. Plano7.3/F064 e
+matriz reconciliados. Texturas sónaS2, nenhuma superfícieproduto ou motor implementada.
+
+P3-3/nits: vetor dequadro40 e câmera com segmentos previousEnd/initial; o allegedovershoot
+singleclip não ocorre porque ease limita a[0,1], mas o novo teste detecta o mutante noreset
+para poseinitial. shot_numbers morto removido, nome dosdecoys esclarecido, initialFovDeg50
+esaída640×360 explícitos. Diferença float/racional1e-14 documentada; módulo1022linhas precisa
+ser dividido se crescer naS2. Esses ajustes reutilizam BL082.4.1, sem outra fila de execução.
+
+
+### Fechamento S0 após R3 — 2026-11-14
+
+R3 independente aprovou e4078ff no Windows, somente oráculo/contrato: corpus167/analítico39
+normal e-O, generate--check/verify, strictpinnegativos4 e digestsusage2, backlog19/higiene13.
+P2-A fechado; hashes de artefatos iguais ao Mac. Código/corpus não mudaram depois da revisão;
+este fechamento só atualiza prosa e status, sem reatribuir prova de engine/JSONL/UI.
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL082.4.12 | S0/R3, manutenção não bloqueante | Guard de limites também no gerador, nome end_pose e módulos analíticos menores se crescer | Pendente | BL082.4.1 | Não atribuído | Preservar corpus e limiares, provas negativas da spec e independência; não bloqueia S1a. |
+
+S1a/BL082.4.2 é a próxima fase; não habilita produto ou transições públicas. S1b/S2 devem
+comparar estados por deck e cores, com isolamento só-vizinho restrito aos casosstart/end.
+A S2 traduz arrays compactos para os objetos do destino. R3 não é aprovação formal noGitHub;
+CodeRabbit ainda estava em andamento na consulta do revisor e terminou SUCCESS em e4078ff
+na consulta posterior do coordenador. Nenhuma reviewhumana foi alegada.
