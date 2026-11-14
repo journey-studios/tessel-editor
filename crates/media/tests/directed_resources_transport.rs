@@ -29,6 +29,45 @@ fn run(manifest: &ResourceManifest, sandbox: &Sandbox) -> Result<MaterializeRepo
 }
 
 #[test]
+fn the_tree_helper_lists_nested_entries_with_slashes_in_the_order_unix_gives() {
+    // BL167.7. A nested folder, an empty folder, and a sibling ("a0") that sorts between
+    // "a/b" and "a\b": the order of the normalized text is the Unix one on every platform.
+    let sandbox = Sandbox::new("tree");
+    let root = &sandbox.dst;
+    fs::create_dir_all(root.join("a/deep/er")).unwrap();
+    fs::write(root.join("a/b"), b"1").unwrap();
+    fs::write(root.join("a/deep/er/leaf.txt"), b"2").unwrap();
+    fs::write(root.join("a-b"), b"3").unwrap();
+    fs::write(root.join("a0"), b"4").unwrap();
+    fs::create_dir(root.join("empty")).unwrap();
+    assert_eq!(
+        tree(root),
+        [
+            "a",
+            "a-b",
+            "a/b",
+            "a/deep",
+            "a/deep/er",
+            "a/deep/er/leaf.txt",
+            "a0",
+            "empty"
+        ]
+    );
+    // Nothing is tolerated by the helper: an entry that appears or disappears changes the list.
+    let held = tree(root);
+    fs::write(root.join("a/extra"), b"5").unwrap();
+    assert_ne!(tree(root), held, "an extra file shows");
+    fs::remove_file(root.join("a/extra")).unwrap();
+    fs::remove_file(root.join("a/b")).unwrap();
+    assert_ne!(tree(root), held, "a missing file shows");
+    assert!(
+        tree(root).iter().all(|entry| !entry.contains('\\')),
+        "{:?}",
+        tree(root)
+    );
+}
+
+#[test]
 fn files_land_at_their_declared_paths_and_the_source_is_untouched() {
     let sandbox = Sandbox::new("copy");
     let manifest = manifest(standard_bundle(&sandbox));

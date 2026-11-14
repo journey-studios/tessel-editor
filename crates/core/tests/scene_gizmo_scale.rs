@@ -795,6 +795,93 @@ fn assert_matrix_by_rows(actual: &M3, expected: &M3, what: &str) {
     }
 }
 
+fn abs_of(m: &M3) -> M3 {
+    m.map(|row| row.map(f64::abs))
+}
+
+/// The entrywise error a world matrix may carry against `chain_m`, from its own algebra and not
+/// from a number tuned to pass (BL167.3).
+///
+/// The plan does not compose a node's rotation as stored: it takes the Three.js detour
+/// quaternion -> XYZ Euler degrees -> quaternion (`Quat::to_euler_xyz_degrees` and
+/// `from_euler_xyz_degrees`: `asin`, `atan2`, `sin`, `cos`), as the origin does. That returns the
+/// quaternion within a unit or two of the last place of its components, and which unit depends on
+/// the platform's libm (`(0, 0, s, c)` of a quarter turn comes back with `z` one ulp up and `w`
+/// two ulp down on Windows). Each rotation entry therefore carries an absolute error of a few
+/// `EPSILON`, whatever the entry's value (a zero is `1e-17`, not `0`).
+///
+/// A product of `n` factors `A_i = R_i·S_i` with every `R_i` off by `δ` entrywise is off by, to
+/// first order, `Σ_i |A_1|..|A_(i-1)| · (δ·J·|S_i|) · |A_(i+1)|..|A_n|` (`J` all ones), plus the
+/// rounding of the products themselves, `~n·EPSILON·Π|A_i|`. With parents of `(0.01, 100, 100)`
+/// the entries of one row differ by 16 orders, so the first term is as large as `1e-8` on a
+/// matrix entry that is `0` on paper: a bound relative to the row's largest entry (`1e-9·1e-4`)
+/// asks for the bit-identical noise of one libm and is not a statement about the matrix.
+fn chain_error_bound(links: &[Link], figure_rotation: Option<[f64; 4]>) -> M3 {
+    /// Four ulp per rotation entry (a quaternion component moves by up to two, and an entry is
+    /// built from two products of them), times a margin of four for the composition.
+    const SLACK: f64 = 16.0 * f64::EPSILON;
+    let mut factors: Vec<(M3, M3)> = links
+        .iter()
+        .map(|(rotation, scale)| {
+            let rotation = rotation.map_or(IDENTITY, matrix_of);
+            (abs_of(&matmul(&rotation, &diag(*scale))), diag(*scale))
+        })
+        .collect();
+    factors.push((
+        abs_of(&figure_rotation.map_or(IDENTITY, matrix_of)),
+        IDENTITY,
+    ));
+    let ones = [[1.0; 3]; 3];
+    let mut bound = [[0.0; 3]; 3];
+    let mut product = IDENTITY;
+    for (index, (magnitude, scale)) in factors.iter().enumerate() {
+        let mut term = IDENTITY;
+        for (before, (other, _)) in factors.iter().enumerate() {
+            if before < index {
+                term = matmul(&term, other);
+            }
+        }
+        term = matmul(&term, &matmul(&ones, &abs_of(scale)));
+        for (other, _) in &factors[index + 1..] {
+            term = matmul(&term, other);
+        }
+        for r in 0..3 {
+            for c in 0..3 {
+                bound[r][c] += term[r][c];
+            }
+        }
+        product = matmul(&product, magnitude);
+    }
+    for r in 0..3 {
+        for c in 0..3 {
+            bound[r][c] = SLACK * (bound[r][c] + product[r][c]);
+        }
+    }
+    bound
+}
+
+/// Every entry within `chain_error_bound` of the oracle chain.
+fn assert_matrix_within_chain_error(
+    actual: &M3,
+    links: &[Link],
+    figure_rotation: Option<[f64; 4]>,
+    what: &str,
+) {
+    let expected = chain_m(links, figure_rotation);
+    let bound = chain_error_bound(links, figure_rotation);
+    for r in 0..3 {
+        for c in 0..3 {
+            assert!(
+                near(actual[r][c], expected[r][c], bound[r][c]),
+                "{what}: [{r}][{c}] {} vs {} (allowed {:e})\nactual {actual:?}\nexpected {expected:?}",
+                actual[r][c],
+                expected[r][c],
+                bound[r][c]
+            );
+        }
+    }
+}
+
 /// Four parents of `(0.01, 100, 100)`: nothing extreme is written, the world scale is
 /// `(1e-8, 1e8, 1e8)` and the figure's axes are as tiny and as huge as the product says.
 fn four_parents(rotations: [Option<[f64; 4]>; 4]) -> Vec<Link> {
@@ -960,11 +1047,10 @@ fn four_parents_of_anisotropic_scale_with_a_rotation_between_them_refuse_the_wor
         assert_eq!(reason(&error), "world_axis_shear", "{axis}");
     }
     assert_eq!(observable(&state), before);
-    let m = chain_m(&links, None);
     for (index, axis) in ["x", "y", "z"].into_iter().enumerate() {
         let mut local = chained(&links, None);
         let (w, origin) = world(&mut local, "figure", 0);
-        assert_matrix_by_rows(&w, &m, "the plan agrees with the oracle chain");
+        assert_matrix_within_chain_error(&w, &links, None, "the plan agrees with the oracle chain");
         ok(&mut local, scale_request(FIGURE, axis, 2.0, "local"));
         let mut d = [1.0; 3];
         d[index] = 2.0;
@@ -972,6 +1058,55 @@ fn four_parents_of_anisotropic_scale_with_a_rotation_between_them_refuse_the_wor
         assert_matrix_by_rows(&after, &matmul(&w, &diag(d)), axis);
         assert_vec(after_origin, origin, "the pivot does not move");
     }
+}
+
+#[test]
+fn the_chain_error_bound_admits_last_place_noise_and_refuses_any_real_difference() {
+    // BL167.3. The bound is only a judge if it says no to a wrong matrix. The plan's own matrix is
+    // inside it; the same chain with the second parent's quarter turn off by a billionth of a
+    // radian (millions of times the noise the Euler detour adds, far below anything an edit
+    // writes), a swapped link, a mirrored one or a scale off by 1e-12 are outside it.
+    let links = four_parents([None, Some(quat_about([0.0, 0.0, 1.0], 90.0)), None, None]);
+    let mut state = chained(&links, None);
+    let (w, _) = world(&mut state, "figure", 0);
+    let bound = chain_error_bound(&links, None);
+    let outside =
+        |other: &M3| (0..3).any(|r| (0..3).any(|c| !near(w[r][c], other[r][c], bound[r][c])));
+    assert!(!outside(&chain_m(&links, None)), "{w:?}");
+    // One ulp of every quaternion component of the quarter turn, both ways: still admitted.
+    let q = quat_about([0.0, 0.0, 1.0], 90.0);
+    for (dz, dw) in [(1.0, -2.0), (-1.0, 2.0), (2.0, 1.0)] {
+        let mut moved = links.clone();
+        moved[1].0 = Some([
+            q[0],
+            q[1],
+            q[2] + dz * f64::EPSILON / 2.0,
+            q[3] + dw * f64::EPSILON / 2.0,
+        ]);
+        assert!(!outside(&chain_m(&moved, None)), "{dz} {dw}");
+    }
+    // A real difference: refused.
+    let mut off = links.clone();
+    off[1].0 = Some(quat_about([0.0, 0.0, 1.0], 90.0 + 1e-9_f64.to_degrees()));
+    assert!(outside(&chain_m(&off, None)), "a billionth of a radian");
+    let mut swapped = links.clone();
+    swapped.swap(0, 1);
+    assert!(
+        outside(&chain_m(&swapped, None)),
+        "the first two links swapped"
+    );
+    let mut mirrored = links.clone();
+    mirrored[1].0 = Some(quat_about([0.0, 0.0, 1.0], -90.0));
+    assert!(
+        outside(&chain_m(&mirrored, None)),
+        "the opposite quarter turn"
+    );
+    let mut wrong_scale = links.clone();
+    wrong_scale[2].1 = [0.01, 100.0, 100.0 * (1.0 + 1e-12)];
+    assert!(
+        outside(&chain_m(&wrong_scale, None)),
+        "a scale off by 1e-12"
+    );
 }
 
 #[test]

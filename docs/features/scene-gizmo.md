@@ -267,7 +267,7 @@ ferramenta. **Não entram** escala, snapping, seleção múltipla, grupos, luzes
 | Composição com o pai | `W = P·R·S`. Uma rotação de mundo `G` vira `W' = G·W`, isto é, `R' = Pₙᵀ·G·Pₙ·R`; num eixo local, `R' = R·Rot(eᵢ, θ)`. Só existe quando `P` é uma similaridade (rotação vezes **uma** escala); senão a recusa é tipada (abaixo). |
 | Ângulo de um arrasto | Ângulo entre o press e o ponteiro, ambos projetados no plano do anel, em `(-180°, 180°]`, recalculado **a partir do press** a cada move (não acumula). Uma volta completa é um comando numérico ou vários arrastos. |
 | Volta completa | O ângulo é reduzido módulo 360°; o que reduz a (quase) zero devolve o quaternion autorado sem mudança: **no-op, sem entrada de histórico**. |
-| Anéis | Raio `RING_RADIUS = 0.10` altura de imagem (como as setas, comprimento na tela e não no mundo), polígono de `RING_SEGMENTS = 64` segmentos (65 pontos, o último repete o primeiro; `null` onde o anel passa atrás da câmera). Um anel visto de **borda** (o raio do olho quase perpendicular ao eixo: |cos| entre o raio e o eixo abaixo de 0,05) não determina ângulo: o press é recusado (`refused: degenerate_axis`) antes de abrir gesto. |
+| Anéis | Raio `RING_RADIUS = 0.10` altura de imagem (como as setas, comprimento na tela e não no mundo), polígono de `RING_SEGMENTS = 64` segmentos (65 pontos, o último **é** o primeiro, bit a bit, por construção: o ângulo do último ponto é `0`, não `TAU`, ver [Portabilidade Windows](#portabilidade-windows-bl1673-w1); `null` onde o anel passa atrás da câmera). Um anel visto de **borda** (o raio do olho quase perpendicular ao eixo: |cos| entre o raio e o eixo abaixo de 0,05) não determina ângulo: o press é recusado (`refused: degenerate_axis`) antes de abrir gesto. |
 | Handle central | Não existe na ferramenta `rotate` (o centro é do `screen` da translação). |
 
 ### Comandos (também ops JSON)
@@ -1147,6 +1147,25 @@ A interação FX × gizmo continua exercitada em core por `scene_gizmo_fx` (5/5 
 eixo corre sobre um eixo do nó, recusas e limites preservados, a fronteira exata do semiplano `uniform`. **Não provado** neste head:
 nenhum gate de workspace, runtime, binário, janela nativa ou prova de processo (BLOQUEADOS por disco), o ponteiro físico (BL015.2/BL043/BL044),
 custo (BL015.18, sem medição, sem lock), splat no corpus de processo, liquidação atômica do slider (BL015.19) e a revisão independente.
+
+## Portabilidade Windows (BL167.3, W1)
+
+Duas falhas dos gates de G1/G1.2 no Windows (`scene_gizmo_rotation` 1, `scene_gizmo_scale` 1), reproduzidas em
+`2b54ac1` e explicadas por causa demonstrada, não por libm presumida. Relatório e comandos em
+[windows-w1-portability-report.md](../migration/windows-w1-portability-report.md).
+
+| Falha | Causa | Correção |
+|---|---|---|
+| `the_rotate_overlay_has_three_closed_rings…`: primeiro e último ponto do anel diferem em 1 ulp (`v` `0.6491406061697664` × `…665`) | O último ponto usava o ângulo `TAU`. `TAU` é o `f64` mais próximo de 2π, não 2π: `sin(TAU) = -2,449e-16` (`0xbcb1a62633145c07`), não `0`. Se esse resíduo sobrevive ao arredondamento de `origin + offset·raio` e da projeção depende da vista e da libm; o polígono só fechava por sorte. É defeito de produto (o contrato é o anel fechado), não do teste | `Layout::rings_at` (`gizmo/rotation.rs`) usa o ângulo `0` no último ponto: o fecho é construção, não coincidência. A posição do último ponto muda de no máximo `2,5e-16` (o resíduo eliminado); os demais pontos são os mesmos |
+| `four_parents_of_anisotropic_scale_with_a_rotation_between_them…`: `[1][1]` do plano `-4,44e-8` × oráculo `-2,22e-8` | **Não é erro de geometria do gizmo.** O plano não compõe o quaternion armazenado: faz o desvio do Three.js, quaternion → Euler XYZ em graus → quaternion (`Quat::to_euler_xyz_degrees` / `from_euler_xyz_degrees`: `asin`, `atan2`, `sin`, `cos`). Para `(0, 0, s, c)` de um quarto de volta o desvio devolve `z` 1 ulp acima e `w` 2 ulp abaixo (`-2,2e-16`); com pais de `(0,01; 100; 100)` os 16 ordens de grandeza entre linhas amplificam isso para `~1e-8` numa entrada que vale `0` no papel. A referência independente do teste (cadeia `Π(Rᵢ·Sᵢ)` escrita no arquivo) com o quaternion devolvido pelo desvio iguala **o plano bit a bit** (diagnóstico descartável, registrado no relatório); com o quaternion armazenado, difere de 1–2 ulp. A asserção antiga (`1e-9` relativo à maior entrada da linha, `1e-13` aqui) exigia o mesmo ruído bit a bit | Sem mudar produto. A asserção `the plan agrees with the oracle chain` passa a usar `chain_error_bound`: o erro entrada a entrada de um produto de `n` fatores com cada rotação errada de `δ` (`16·EPSILON`), a **primeira ordem** `Σᵢ |A₁|…(δ·J·|Sᵢ|)…|Aₙ|` mais o arredondamento do produto. Um teste próprio prova que o limite recusa o que importa: um quarto de volta errado em `1e-9 rad`, dois elos trocados, o giro oposto e uma escala errada em `1e-12`, e aceita 1–2 ulp por componente |
+
+Invariantes e limites. O fecho exato vale para os três anéis em quatro vistas, dois espaços e quatro poses
+(`every_ring_closes_on_its_first_point_bit_for_bit_in_any_view_space_and_pose`, 96 anéis, falhava no código anterior). O
+mesmo padrão `TAU * step / SEGMENTS` existe no anel da luz pontual (`gizmo/light.rs`), **não alterado** nesta entrega (fora do
+ownership): o fecho do anel de luz continua dependente da plataforma e não tem teste de fecho bit a bit. Nenhum arquivo de
+expectativa foi alterado e nenhuma tolerância das demais asserções foi tocada. Não há mudança de comando, nó de árvore, parser
+nem UI; a matriz de capacidades não muda. Mac pendente: os dois casos precisam ser repetidos lá (esperado: passam, o desvio de
+Euler é então exato ou dentro do limite).
 
 ## Luz pontual (G2.1, F060)
 

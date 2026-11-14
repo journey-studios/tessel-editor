@@ -209,11 +209,23 @@ pub fn manifest(document: Value) -> ResourceManifest {
 }
 
 /// Every file and folder under `dir`, relative and sorted: what a transport root holds.
+///
+/// The entries are written with `/` between their components on every platform, so a list is
+/// the same text on Windows and on Unix (BL167.7: `Path::display` writes `\` on Windows and the
+/// expectations of the tests are the declared relative paths of a bundle, which use `/`).
+/// Only this representation is normalized: nothing is added, hidden or tolerated, and the sort
+/// runs on the normalized text, so the order is the one Unix gives.
 pub fn tree(dir: &Path) -> Vec<String> {
     fn walk(base: &Path, dir: &Path, out: &mut Vec<String>) {
         for entry in fs::read_dir(dir).unwrap() {
             let path = entry.unwrap().path();
-            let relative = path.strip_prefix(base).unwrap().display().to_string();
+            let relative = path
+                .strip_prefix(base)
+                .unwrap()
+                .components()
+                .map(|part| part.as_os_str().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join("/");
             out.push(relative);
             if path.is_dir() && !path.is_symlink() {
                 walk(base, &path, out);
