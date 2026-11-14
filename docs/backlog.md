@@ -1390,7 +1390,7 @@ A raiz antiga e seus planos não foram alterados nesta integração.
 | BL167.3 | Windows B4/B5 | Remover dependência de shasum dos testes e diagnosticar dois testes de gizmo divergentes | Pendente | BL167 | — | Hash portátil nos dois testes render; reproduzir diferenças de rotação/escala em Windows e Mac e conferir invariantes geométricas antes de qualquer tolerância. Hipótese de libm não confirmada; não aprovar só relaxando asserções |
 | BL167.4 | Windows / mbx | Cache de ações sem hits e volumes C:/W: sem hard link; wrapper depende de Git Bash | Pendente | BL167 | — | Diagnosticar mbx explain/not-looked-up, cache_dir e ferramentas de arquivo; provar reutilização real sem target-dir customizado, limpeza global ou perda de target/cache. Decidir adapter Windows para wrapper; não assumir benefício do cache só por mbx executar |
 | BL167.5 | Windows / prova | Instalar Python e completar build release e provas semânticas vivas | Pendente | BL167.1–.4 conforme prova; BL078/BL111 para claims | — | Python disponível, scripts de prova compatíveis executados em binários identificados por SHA, release construído e prova de fluxo registrada. GPU da janela não fecha export em GPU, paridade Mac, ponteiro físico ou áudio ouvido; medir performance em rodada própria |
-| BL167.6 | Windows B3 / claims | Ledger de claims e orçamento do tick no Windows | A validar — R3 aprova código Windows; integração/main e Mac pendentes | BL111, BL078; BL167.6.1–.6 | Coordenador / revisão Windows | R3 em f0544b0/código2522290:54claims, integrações14/13/11/6/13, race320/excl40 e gates Windows. Conflito documental resolvido preservando main/S1a; código ledger intocado. Sem prova causal NTFS, Unix/Mac append_accept a executar. |
+| BL167.6 | Windows B3 / claims | Ledger de claims e orçamento do tick no Windows | A validar — patch posterior de espera quente precisa de gates próprios | BL111, BL078; dívidas BL167.6.3–.8 | Coordenador / revisão Windows | R3 código2522290; integração89a8401 Windows54claims e gates/focos/GPUI80; Mac51claims, seis integrações65 e core1528/0/7, fmt/check/clippy/build. Não declara workspace global, performance, ReFS/rede ou causa NTFS. |
 | BL167.7 | Windows / fixture media | Helper tree() de directed_resources_common compara separador Windows com expectativas POSIX: três falhas de directed_resources_transport | Pendente | BL078 | — | Normalizar representação do helper de teste sem mudar caminhos de produto ou tolerar arquivos ausentes; executar os casos files_land, splats_and_audio e destination_conflict em Windows/Mac. Relato e pares de listas no transcript BL167.1; não alterado na entrega |
 
 BL167.1: bytes do patch recebidos no Mac e conferidos (SHA-256
@@ -1918,10 +1918,10 @@ IDs atribuídos pelo coordenador; reaproveitar BL079/BL078 como dependências, s
 | ID | Área | Pendência | Status | Dependências | Responsável | Aceite e evidência |
 |---|---|---|---|---|---|---|
 | BL167.6.1 | Claims / tick | Retentativa PermissionDenied respeita deadline do chamador | Fechado no Windows (R2/R3) | BL167.6 | Coordenador / revisão Windows | Em f0544b0:ZERO0.02–0.16ms, tick/accept~20.5ms, recusa real/controle injetado e mutantes discriminantes. Orçamento lógico preservado; não é limite duro de agendamento do SO. |
-| BL167.6.2 | Claims / concorrência | Retentar create_dir negado no Windows dentro do orçamento original | A validar — código aprovado R3; integração pendente | BL167.6, BL167.6.1 | Coordenador / revisão Windows | f0544b0/código2522290:claims54/54, denied6/6, processos14/journal13/integrity11/jsonl6/discard13, fmt/check/clippy, race320/320 e exclusividade40/40. Injeção/ACL real e mutantes provam controle, base8cad também0/320 não prova causa NTFS. Sem Unix/Mac/workspace completo. |
+| BL167.6.2 | Claims / concorrência | Retentar create_dir negado no Windows dentro do orçamento original | Validado Windows; integração e Unix/Mac conferidos em89a8401 | BL167.6, BL167.6.1 | Coordenador / revisão Windows | Windows54claims/denied6, integrações14/13/11/6/13 e gates; Mac51claims e journal13/processos16/integrity11/jsonl6/failure6/discard13. Stress320/excl40/mutantes pertencem R3f054, fontes idênticas. Sem prova causal NTFS; workspace completo não executado. |
 | BL167.6.3 | RootLease Windows | path.exists não prova identidade do lock; diagnóstico PID sob lock obrigatório | Pendente | BL079, BL078 | Não atribuído | Usar identidade de arquivo fail-closed no lease, reproduzir unlink/recriação e dois titulares reais; tratar legibilidade do PID sem usar PID para vivacidade. Fora do ownership da PR60. |
 | BL167.6.4 | Journal / robustez | Rollback de append parcial e falha de truncate/disco cheio sem prova | Pendente | BL111, BL167.6 | Não atribuído | Injeção determinística da falha de escrita/rollback e estado recuperável, sem alegar teste de disco cheio real. |
-| BL167.6.5 | Claims / robustez | same_file com falha persistente pode girar quente até o prazo | Pendente | BL167.6 | Não atribuído | Confirmar com probe; evitar CPU ocupada e mensagem enganosa preservando fail-closed e orçamento. Achado por leitura, sem reprodução. |
+| BL167.6.5 | Claims / espera | Falha persistente de identidade ou NotFound em workspace removido pode girar quente até o prazo | Em andamento — correção pequena pelo coordenador | BL167.6 | Coordenador | R3integração89 reproduz giro quente. Pausa500us limitada pelo restante nos caminhos rápidos, ZERO sem sleep e handle obsoleto liberado antes da pausa; mensagem de orçamento exaurido. Regressões de controle com sono injetado e caso real sem pai, execução/mutantes pendentes. |
 
 O coordenador iniciou as correções pequenas .6.1/.6.2 no checkout Mac isolado da PR60,
 sem alterar RootLease, origem ou arquivos da S0 em implementação no Windows.
@@ -2069,7 +2069,7 @@ antes de decisão de merge; nada desta seção herda gates Windows para outro SH
 
 | ID | Área | Pendência | Status | Dependências | Responsável | Aceite e evidência |
 |---|---|---|---|---|---|---|
-| BL167.6.6 | Validação Mac / mbx | Target legado aponta para diretório ausente após mudança da raiz do cache | A validar em checkout limpo | BL167.6 | Coordenador | doctor aponta cache/targets no SSD e zero falhas; adopt --dry-run preserva link legado quebrado. Validar pelo wrapper/target padrão em clone limpo, sem override/clean/gc; link antigo continua sem reparo. |
+| BL167.6.6 | Validação Mac / mbx | Target legado aponta para diretório ausente após mudança da raiz do cache | Validação Mac desbloqueada; link legado continua pendente | BL167.6 | Coordenador | Clone limpo usa target padrão gerenciado no SSD, sem override/clean/gc. Em89a8401:claims51, seis integrações65, core1528/0/7, check/clippy/build passam. doctor/adopt não reparam link antigo; não foi alterado manualmente. |
 | BL167.6.7 | Testes Windows / ACL | Drop de NoNewFolders pode causar segundo panic se icacls falhar durante unwind | Pendente — baixo, não bloqueia correção de produto | BL167.6.2 | Não atribuído | Limpeza de ACL da pasta própria reporta falha sem duplo panic durante unwind; controle negativo não deve mascarar o erro original. Achado R3 por leitura. |
 | BL167.6.8 | Testes / descarte | job_discard_claims deixa pastas vazias de processo filho no TEMP | Pendente — preexistente | BL094, BL112 | Não atribuído | Guard de teste limpa apenas pastas próprias identificadas, inclusive processos filhos encerrados; R3 observou cinco pastas e removeu só as de sua sessão. |
 
@@ -2077,3 +2077,38 @@ S1b (BL082.4.3) está iniciada no Windows após PR62:
 [P4b S1b Windows: avaliação dos dois decks e ScenePlan](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:25cda26b8ee65eb48cd00bd3e47b4c4aaa1d79c47c9d9bf80cb6ecd5ff8a0db5).
 Basee3c20cb, projeto mcp:05781dcc-5e69-4aff-8ab2-3fa8ed29c699, ownership core/plano
 e testes/contrato, sem runtime/host/UI/opsS3 nem edição de comuns. ProdutoF064P.
+
+### PR60: integração Windows aceita e prova Unix/Mac concluída — 2026-11-14
+
+Windows aceito em89a840119a0ce3f0d728d76a63129fdaa12656dc: fmt/check/clippy,
+workspace no-run/build, claims54 (denied6), processos14/journal13/integrity11/
+jsonl6/discard13, corefx25/transition61 eGPUI80. Hashes ledger/deniedtest iguais
+a R3f054; não se repetiu stress/mutantes por ritual, continuam atribuídos à R3.
+
+Coordenador executou no MESMOhead em Mac nativo e checkout limpo:fmt/check/
+clippyworkspacealltargets/build passam; claims51/51; seis integrações com65
+passados (discard13/failure6/integrity11/journal13/jsonl6/processos16); core
+completo1528ok/0falhas/7ignorados,62resultados. Treecore semgpui/wry.
+Escrita+seek Unix do journal agora tem prova; não afirma Linux, ReFS/rede,
+janela/GPU/áudio, performance ouworkspaceinteiro. mbx/targetpadrão no SSD, sem
+override/clean/gc. Link legado quebrado não foi consertado.
+
+Revisão de integração reproduziu NotFound em workspace removido: giro quente
+atédeadline, semviolação de orçamento; reaproveitado BL167.6.5 (P3, não bloqueante).
+Docs de fechamento são posteriores à execução de89; código/testes/lock devem
+ficar idênticos a89, sem herdar provas para mudança de comportamento.
+
+### PR60: corrigir o comentário de espera quente antes do merge
+
+O coordenador decidiu fechar BL167.6.5 na própria PR, por ser ampliação de custo
+introduzida pelo novo piso de tentativas. Patch posterior a89: helper de pausa
+500us limitado pelo prazo original, sem dormir quando esgotado (inclusiveZERO).
+Aplicado aos retries rápidos de create/open NotFound, InvalidInput e identidade
+de lock trocada; o handle obsoleto é solto antes de esperar. Mensagem final não
+atribui o erro a criação/remoção quando pode ser workspace ausente.
+
+Quatro regressões novas: create ausente transitório, open ausente transitório,
+ZERO nos dois caminhos e workspace realmente ausente sem criar pais. Sono
+injetado por thread prova controle sem limiar de relógio; não mede CPU/FPS.
+Produção e testes mudaram depois de89: suas provas NÃO validam esse patch.
+Mac e Windows precisam de novos gates proporcionais antes do merge.

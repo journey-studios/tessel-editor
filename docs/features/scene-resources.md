@@ -195,3 +195,32 @@ rename. Uma regressão que falhava com o fallback confirma esse fechamento segur
 precisa controlar as raízes com exclusividade durante a operação; os testes de symlink não
 provam proteção contra troca hostil concorrente de diretórios-pais. PNG é verificação de
 cabeçalho, não decode de pixels/alpha. Pacote/intercâmbio continuam com as guardas atuais.
+
+**Fechamento da integração PR60, head `89a8401`.** A revisão Windows aceitou a
+integração com main:claims54 (denied6), processos14, journal13, integrity11,
+jsonl6, discard13, corefx25/transições61 eGPUI80; fmt/check/clippy/no-run/build
+passaram. Stress320/exclusividade40 e mutantes são da R3 em f054, com fontes
+do ledger/testes idênticas; não foram apresentados como execução nova.
+
+No Mac nativo, no mesmo89a8401, passaram claims51 e seis integrações65 no total
+(discard13/failure6/integrity11/journal13/jsonl6/processos16). O caminho Unix de
+append_accept(write+seek) foi executado. Core completo1528/0/7ignorados e
+fmt/check/clippyworkspace/build passaram; treecore semgpui/wry. Nenhuma prova
+de workspace completo, Linux, janela, GPU, áudio ou desempenho decorre disso.
+
+A revisão reproduziu espera quente por NotFound em workspace removido:
+64/478/32358 tentativas em ZERO/20ms/1.5s, respeitando o prazo. Continua P3
+registrado em BL167.6.5, junto à hipótese similar de same_file. Não altera
+a aprovação funcional nem significa que a espera seja eficiente.
+
+**Patch posterior a89, BL167.6.5 (a validar).** Os retries rápidos por NotFound,
+InvalidInput ou troca de identidade do lock passam a pedir pausa de500us,
+limitada ao prazo original; ZERO não dorme e o handle obsoleto é liberado antes
+da pausa. O piso de tentativas, LOCK_WAIT, TICK_WAIT, exclusão e identidade
+failclosed são preservados. A recusa passa a dizer que esgotou o orçamento de
+retentativas, sem atribuir indevidamente causa ao diretório.
+
+Regressões com sono substituído e criação controlada discriminam create/open
+transitórios e ZERO; outra usa workspace realmente inexistente e prova recusa
+sem criar pais. São provas de controle, não medição de CPU ou desempenho. Os
+resultados de89 acima não são evidência da execução deste patch posterior.

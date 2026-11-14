@@ -268,3 +268,61 @@ Sem prova de ReFS/rede, mecanismoNTFS, GPU, janela ou performance.
 Dívidas baixas da R3 foram registradas no backlog: BL167.6.7 (segundo panic se
 Drop da ACL falhar durante unwind) e BL167.6.8 (pastas vazias de teste de descarte
 filho). Nenhuma muda o contrato do produto desta correção.
+
+## Fechamento no head integrado89a8401
+
+A nova revisão independente aceitou a integração Windows no head exato
+89a840119a0ce3f0d728d76a63129fdaa12656dc. Parents f0544b0 e e3c20cb; diff
+media versusf054 e core/desktop versuse3c20cb vazios. Só o backlog tinha
+conflito; nenhum código de merge inventado. Verificou ausência dos dois bytes
+de controle nos259Markdown com controle negativo.
+
+Windows: fmt/check/clippy, workspace no-run/build e treecore passam. Claims54,
+denied6, processos14, journal13, integrity11, jsonl6, discard13, corefx25,
+transições61 eGPUI80 passaram. Os320/40 e mutantes continuam sendo da R3f054,
+fontes do ledger/deniedtest idênticas; não houve repetição por ritual.
+
+Coordenador no Mac nativo aarch64 executou sobre89a8401 limpo, usando checkout
+novo e targetpadrão gerenciado pelo mbx no SSD (sem target-dir/lanes/clean/gc):
+
+| Verificação | Resultado |
+|---|---|
+| fmt, checkworkspace, clippyworkspacealltargets-Dwarnings | exit0 em todos |
+| build-p tessel-editor | exit0 |
+| claimsunit | 51/51 |
+| discard/failure/integrity/journal/jsonl/processos | 13/6/11/13/6/16, todos exit0 |
+| Core completo | 1528ok,0falhas,7ignorados;62resultados,exit0 |
+| Treecore | semgpui/wry |
+
+Isso cobre o write+seek Unix do journal, não apenas o Windows. Logs e manifesto
+com hashes ficaram fora do Git; o binário desktop tem hash registrado no
+manifesto local, mas não houve janela real. O link legado do outro checkout
+permanece quebrado; doctor/adopt não o corrigiram e não foi alterado à mão.
+
+P3 confirmado pela revisão Windows em89: create_dir sobre pai inexistente
+retenta64/478/32358vezes paraZERO/20ms/1.5s. Orçamento respeitado e failclosed,
+mas CPU quente e mensagem imprecisa. Registrado no mesmo BL167.6.5; correção
+de pausa limitada ao prazo fica pendente. same_file persistente continua
+hipótese por leitura. Nenhum P0/P1/P2 de código nesta revisão.
+
+Workspace inteiro, performance/claims_budget, Linux, ReFS/rede, mecanismo
+NTFS causal, janela/GPU e áudio continuam sem prova. O fechamento posterior
+altera só documentação; não atribuir os gates de89 a mudanças de código.
+
+## Correção posterior a89: pausa nos retries rápidos (BL167.6.5)
+
+Para fechar o comentário automático antes do merge, o coordenador implementou
+a correção pequena: helper de pausa500us paga do deadline original, sem sleep
+quando restantezero; todos os retries rápidos de create/open NotFound,
+InvalidInput e identidade divergente o usam. No último, drop do handle precede
+a pausa. Mensagem final: retry budget exhausted, sem presumir a causa.
+
+O helper fica em módulo próprio, com substituição do sleep somente cfg(test)
+e por thread. Quatro regressões novas de controle (create/open transitório,
+ZERO nosdois e workspace real ausente) não dependem de tempo de agendamento.
+Nada de benchmark de CPU/FPS ou redução medida é alegado.
+
+Esta mudança altera o código depois de89: as tabelas anteriores continuam
+históricas. Execução nativa, mutantes e rechecagem Windows do novo head são
+necessários antes de integrar. Retentativas PermissionDenied50 e prazos
+LOCK_WAIT/TICK_WAIT permanecem inalterados.

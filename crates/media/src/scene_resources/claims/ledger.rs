@@ -983,7 +983,7 @@ impl DiskLock {
             attempt += 1;
             if attempt > ATTEMPTS && Instant::now() >= deadline {
                 return Err(format!(
-                    "`{}` is being created and removed too quickly to be locked",
+                    "retry budget exhausted while locking `{}`",
                     dir.display()
                 ));
             }
@@ -994,7 +994,7 @@ impl DiskLock {
                     // A folder another process is removing right now can answer "not found" to
                     // a create; a workspace that is really gone answers it every time.
                     Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                        std::thread::yield_now();
+                        super::retry_wait::pause(deadline);
                         continue;
                     }
                     // Windows was seen answering "access denied" to this create while the folder was
@@ -1024,11 +1024,14 @@ impl DiskLock {
                     }
                 }
                 // The folder was removed between creating it and opening the lock: again.
-                Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                    super::retry_wait::pause(deadline);
+                    continue;
+                }
                 // macOS answers EINVAL to an open that races with the unlink of the same lock
                 // file by the process that emptied the ledger: the same case, retried.
                 Err(error) if error.kind() == io::ErrorKind::InvalidInput => {
-                    std::thread::sleep(std::time::Duration::from_millis(1));
+                    super::retry_wait::pause(deadline);
                     continue;
                 }
                 // Windows answers "access denied" to an open of a file that is being unlinked
@@ -1056,7 +1059,7 @@ impl DiskLock {
                 // A lock file that was unlinked and is being reclaimed can refuse (EINVAL on
                 // macOS): it is the same case as one that turned out to be unlinked.
                 Err(error) if error.kind() == io::ErrorKind::InvalidInput => {
-                    std::thread::yield_now();
+                    super::retry_wait::pause(deadline);
                     continue;
                 }
                 Err(error) => return Err(format!("lock `{}`: {error}", path.display())),
@@ -1066,6 +1069,8 @@ impl DiskLock {
             }
             // The file we locked is not the one at the path any more: its holder emptied the
             // ledger and unlinked it while we waited. Start again on the one there is now.
+            drop(file);
+            super::retry_wait::pause(deadline);
         }
     }
 }
