@@ -87,12 +87,22 @@ O que `scripts/portable.py` e `scripts/proof_surface.py` resolvem para as provas
   desconhecido.
 - **Provas que esperam um editor aberto** (`seek-scrub-proof.py`, `live-proof.py`): abra o editor com `TESSEL_UI_SOCKET`
   e passe o mesmo caminho (`--socket` ou a variável) à prova.
+- **Programas e processos sem sinais Unix.**
+  - `portable.program(path, …)` inicia um binário, com `.exe` resolvido. Um substituto com `#!` roda sob o intérprete do
+    shebang, porque o Windows só inicia executáveis.
+  - `portable.suspend`/`resume` fazem o papel de `SIGSTOP`/`SIGCONT` (`NtSuspendProcess`).
+  - `portable.alive`/`process_tree` dispensam `kill(pid, 0)`: no Windows esse `kill` mandaria CTRL+C.
+  - O lock de `portable.lock_file` trava um byte além do fim do arquivo, porque no Windows o lock é obrigatório e
+    travaria a leitura.
+- **Pilha do editor.** No Windows a thread principal do editor (GPUI) tem a pilha que o executável reserva. Com o padrão
+  de 1 MiB, o build de debug estourava na janela; `crates/desktop/build.rs` reserva 8 MiB, como no macOS (BL168.9).
 
 Executadas no Windows 11 (janela real, build debug, GPU AMD): `live-flow-proof.py` 116/116, `accented-titles-proof.py`
 14/14 + 28/28, `grading-proof.py` 4/4 + 20/20, `video-live-proof.py` 25/25, `viewport-lifecycle-proof.py` 151/151,
 `scene-lifecycle-proof.py` 221/221, `seek-scrub-proof.py`, `point-light-ui-proof.py` 28/28, `scene-edit-proof.py`,
 `proxy-live-proof.py` 32/32, `live-proof.py` 57/57, `directed-scene-proof/proof.py` (todas as fases executáveis) e
-`directed-scene-export-proof/proof.py` (22 de 23 fases; a da janela espera a recusa antiga de `audio=yes`, ver
-[scene-export-audio](features/scene-export-audio.md)). As de
+`directed-scene-export-proof/proof.py` (as 23 fases; a `ui_export_flow` aceita o mix desde BL168.8, ver
+[scene-export-audio](features/scene-export-audio.md)), `job-discard-proof.py` 43, `scene-gizmo-proof.py` (headless e
+janela), `header-thumbnails-proof.py` 167 na janela e `scene-fx-ui-proof.py` 153/153. Os 41 `*.spec.py` passam. As de
 desempenho (`perf-meter`, `scene-warm`, `preview-quality`, `measure-render`) rodam, mas sem o lock de GPU nenhum número
-delas é aceito; `gizmo-perf/native.py` e `viewport-validation/run-live.py` foram portadas e não executadas (ver BL168.8).
+delas é aceito. `viewport-validation/run-live.py` é a bancada de desempenho do macOS e não roda no Windows (ver BL168.8).

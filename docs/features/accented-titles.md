@@ -39,7 +39,7 @@ título cresce para cima, perto do topo para baixo, centrado para os dois lados 
 o bloco também fica; se ela foi posta além, o bloco mantém essa borda e cresce para o outro lado. A posição horizontal não é
 ajustada, e a rotação não entra na conta.
 
-Limites que continuam: o alinhamento é sempre centralizado (esquerda/direita não existem); a área segura é fixa; o campo de
+Limites que continuam: o alinhamento é sempre centralizado (esquerda/direita não existem; o dono decidiu em 2026-11-14 que não entram agora); a área segura é fixa; o campo de
 texto da janela é de uma linha (Enter confirma a edição), então a quebra **explícita** chega pela CLI, pela lib ou por
 `./scripts/ui set clip_text:<id> content` (a quebra **automática** vale em qualquer superfície). Minúsculas continuam desenhadas
 como maiúsculas. Aspas tipográficas e travessões reusam os glifos retos (a célula de 5 colunas não os distingue; BL141.2).
