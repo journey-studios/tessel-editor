@@ -89,7 +89,9 @@ fn a_rejected_text_leaves_the_project_and_its_history_untouched() {
     for (bad, code) in [
         ("preço €5", "unsupported_text"),
         ("日本", "unsupported_text"),
-        ("duas\nlinhas", "unsupported_text"),
+        // A line break is a title of two lines (BL141.1); a tab or a carriage return is not text.
+        ("duas\tcolunas", "unsupported_text"),
+        ("duas\r\nlinhas", "unsupported_text"),
         ("a\u{0307}", "unsupported_text"),
         ("\u{0301}", "unsupported_text"),
         ("", "invalid_value"),

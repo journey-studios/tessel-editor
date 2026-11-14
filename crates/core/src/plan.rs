@@ -13,6 +13,7 @@ use serde_json::{Value, json};
 
 use crate::assets::{Asset, AudioStream, MediaKind, Source};
 use crate::audio::{AudioPlan, AudioSegment, resolve_fades};
+use crate::audio_clock;
 use crate::content::{Camera, TextSpec};
 use crate::id::Id;
 use crate::state::inspector::{self, Value as PropertyValue};
@@ -165,10 +166,36 @@ pub struct Layer {
     pub transform: Transform,
     pub opacity: f64,
     pub blend: String,
+    /// Colour correction of the layer's own pixels (inspector tab "Correção de cor").
+    pub grading: Grading,
     /// A layer above this one provably covers the whole canvas with opaque pixels, so nothing of
     /// this layer can reach the picture: a renderer may skip preparing and drawing it. It is a
     /// hint for speed only; ignoring it gives the same pixels. See [`mark_occluded`].
     pub occluded: bool,
+}
+
+/// Colour correction of one layer, in the inspector's units: each value is `-100..=100` and `0`
+/// leaves the picture untouched. The renderer applies it to the layer's own pixels, before its
+/// opacity and blend, on the encoded (display) values the compositor works in, in this order:
+///
+/// 1. brightness adds `brightness / 200` to every channel (`±100` shifts half the range);
+/// 2. contrast scales the distance from mid grey by `1 + contrast / 100` (`-100` is flat grey);
+/// 3. saturation scales the distance from the Rec. 709 luma by `1 + saturation / 100`
+///    (`-100` is greyscale, `+100` doubles it);
+///
+/// then clamps to `0..=1`. Alpha is never touched, so a graded layer covers what it covered.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct Grading {
+    pub brightness: f64,
+    pub contrast: f64,
+    pub saturation: f64,
+}
+
+impl Grading {
+    /// Whether drawing with this grading gives the ungraded pixels (all three at `0`).
+    pub fn is_identity(&self) -> bool {
+        self.brightness == 0.0 && self.contrast == 0.0 && self.saturation == 0.0
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -204,7 +231,7 @@ impl RenderPlan {
             "frame": self.frame,
             "time": self.time.to_json(),
             "rate": self.rate.to_json(),
-            "layers": self.layers.iter().map(layer_json).collect::<Vec<_>>(),
+            "layers": self.layers.iter().map(|layer| layer_json(layer, self.width, self.height)).collect::<Vec<_>>(),
             "requires": self.requires.iter().map(|id| id.as_str()).collect::<Vec<_>>(),
             "warnings": self.warnings.iter().map(|warning| json!({
                 "code": warning.code, "message": warning.message, "clip": warning.clip,
@@ -213,7 +240,8 @@ impl RenderPlan {
     }
 }
 
-fn layer_json(layer: &Layer) -> Value {
+/// One layer of the plan; `width` and `height` are the canvas a title is laid out in.
+fn layer_json(layer: &Layer, width: u32, height: u32) -> Value {
     let transform = &layer.transform;
     let mut value = json!({
         "id": layer.id,
@@ -227,6 +255,16 @@ fn layer_json(layer: &Layer) -> Value {
             "rotation": transform.rotation, "crop": transform.crop,
         },
     });
+    if !layer.grading.is_identity() {
+        // Additive and only present when it changes the picture, like `occluded`: a plan
+        // without colour correction is byte-for-byte the one it was before grading existed.
+        let grading = layer.grading;
+        value["grading"] = json!({
+            "brightness": grading.brightness,
+            "contrast": grading.contrast,
+            "saturation": grading.saturation,
+        });
+    }
     if layer.occluded {
         // Additive and only present when true, so a plan without a hidden layer is byte-for-byte
         // the one an older runtime understands.
@@ -241,7 +279,17 @@ fn layer_json(layer: &Layer) -> Value {
             value["source_time"] = source_time.to_json();
             value["source_frame"] = json!(source_frame);
         }
-        Content::Text(text) => value["text"] = text.to_json(),
+        Content::Text(text) => {
+            value["text"] = text.to_json();
+            // BL141.1: the lines and the size a title is drawn at, laid out by the core. Only
+            // present when they differ from one line at full size, so a title that already fit
+            // keeps the plan (and the picture) it had.
+            let layout = crate::text::layout(&text.content, text.size, width, height);
+            if !layout.is_single_line_of(&text.content) {
+                value["text"]["lines"] = json!(layout.lines);
+                value["text"]["scale"] = json!(layout.scale);
+            }
+        }
         Content::Scene {
             camera,
             time,
@@ -338,16 +386,21 @@ impl Resolver<'_> {
         Ratio::new(percent.max(1), 100).unwrap_or(Ratio::from_int(1))
     }
 
-    fn speed(&self, clip: &Clip) -> f64 {
-        self.speed_ratio(clip).to_f64()
-    }
-
     fn source_time(&self, clip: &Clip, frame: i64) -> Ratio {
         let timeline = &self.state.timeline;
         let elapsed = timeline.rate.frame_to_time(frame - clip.start);
         let speed = self.speed_ratio(clip);
         let scaled = elapsed.mul(speed).unwrap_or(elapsed);
         clip.source_start.add(scaled).unwrap_or(clip.source_start)
+    }
+
+    /// The clip's colour correction (the `grading` section of the inspector).
+    fn grading(&self, clip: &Clip) -> Grading {
+        Grading {
+            brightness: self.number(clip, "brightness"),
+            contrast: self.number(clip, "contrast"),
+            saturation: self.number(clip, "saturation"),
+        }
     }
 
     /// Fade ramps apply to opacity, evaluated at the frame being drawn.
@@ -465,6 +518,7 @@ impl Resolver<'_> {
             transform: Transform::default(),
             opacity: 1.0,
             blend: "normal".to_string(),
+            grading: Grading::default(),
             occluded: false,
         })
     }
@@ -679,6 +733,7 @@ impl EditorState {
                     transform: Transform::default(),
                     opacity: 1.0,
                     blend: "normal".to_string(),
+                    grading: Grading::default(),
                     occluded: false,
                 }
             }
@@ -717,8 +772,22 @@ impl EditorState {
         };
         let still = matches!(layer.content, Content::Image);
         layer.transform = resolver.transform(clip, frame, still);
+        if let Content::Text(text) = &layer.content {
+            // BL141.1: a title of several lines grows away from the nearest edge (text::anchor_offset).
+            let (width, height) = (self.timeline.width, self.timeline.height);
+            let layout = crate::text::layout(&text.content, text.size, width, height);
+            layer.transform.y += crate::text::anchor_offset(
+                &layout,
+                &text.content,
+                text.size,
+                height,
+                layer.transform.y,
+                layer.transform.scale,
+            );
+        }
         layer.opacity = resolver.opacity(clip, frame);
         layer.blend = resolver.choice(clip, "blend");
+        layer.grading = resolver.grading(clip);
         Ok(Some(layer))
     }
 
@@ -823,6 +892,7 @@ impl EditorState {
                 transform: Transform::default(),
                 opacity: 1.0,
                 blend: "normal".to_string(),
+                grading: Grading::default(),
                 occluded: false,
             }
         } else {
@@ -964,15 +1034,23 @@ impl EditorState {
             warnings: Vec::new(),
         };
         let rate = timeline.rate;
-        // Output sample index of a sequence frame boundary. Rational, so frames never drift.
-        let sample_at = |frame: i64| -> u64 {
-            let seconds = rate.frame_to_time(frame - from);
-            seconds
-                .mul_int(i64::from(MIX_SAMPLE_RATE))
-                .map_or(0, Ratio::round)
-                .max(0) as u64
+        // BL081.5: the output clock is absolute (`audio_clock`), so a chunk is a difference of
+        // two frame boundaries and chunks laid end to end are the whole mix. Overflow is an
+        // error, never a silent zero.
+        let overflow = || {
+            invalid_time(
+                "The audio sample clock overflows".to_string(),
+                json!({ "from": from, "frames": frames, "length": timeline.length }),
+            )
         };
-        let total = sample_at(from + frames);
+        let absolute = |frame: i64| -> Result<i64, CommandError> {
+            audio_clock::sample_at(rate, frame).ok_or_else(overflow)
+        };
+        let origin = absolute(from)?;
+        let sample_at = |frame: i64| -> Result<u64, CommandError> {
+            Ok(u64::try_from(absolute(frame)? - origin).unwrap_or(0))
+        };
+        let total = sample_at(from + frames)?;
         let mut segments = Vec::new();
         for audible in self.audible_clips(from, from + frames, &resolver)? {
             let AudibleClip {
@@ -1011,33 +1089,56 @@ impl EditorState {
                     .target(item.id.as_str()));
                 }
             };
-            // Where the first output sample reads: the clip's source position (trim and speed
-            // already applied) on the asset's clock, minus where the stream starts on it.
-            let source_time = resolver
-                .source_time(clip, start)
-                .sub(stream.offset)
-                .unwrap_or(Ratio::ZERO);
-            let source_start = source_time
-                .mul_int(i64::from(stream.sample_rate))
-                .map_or(0, Ratio::round);
-            let output_start = sample_at(start);
-            let output_end = sample_at(end);
-            let samples_of = |frames: i64| -> u64 {
-                rate.frame_to_time(frames)
-                    .mul_int(i64::from(MIX_SAMPLE_RATE))
-                    .map_or(0, Ratio::round)
-                    .max(0) as u64
-            };
+            let first_sample = absolute(start)?;
+            let output_start = sample_at(start)?;
+            let output_end = sample_at(end)?;
+            // Where the first output sample reads: the exact source time of that output sample
+            // (`audio_clock::source_position`), so the phase is carried, never rounded away at
+            // the segment's start. A cut clip, a moved one and a chunk of the sequence all
+            // evaluate the same formula for the same absolute sample.
+            let speed = resolver.speed_ratio(clip);
+            let position = audio_clock::source_position(
+                rate,
+                clip.start,
+                clip.source_start,
+                speed,
+                stream.offset,
+                stream.sample_rate,
+                first_sample,
+            )
+            .ok_or_else(overflow)?;
+            let source_start = position.floor();
+            let source_phase = position
+                .sub(Ratio::from_int(source_start))
+                .ok_or_else(overflow)?;
             // The fades of an audio clip are relative to the clip (its current start and end,
-            // so a trim or a move changes where they sit), not to the requested range. The
-            // fades of a video clip are visual (opacity): its sound does not follow them.
-            let clip_frames = samples_of(clip.end() - clip.start);
+            // so a trim or a move changes where they sit), not to the requested range. They are
+            // measured on the same absolute clock as the segments, so the ramp of a half is
+            // the ramp of the whole clip. The fades of a video clip are visual (opacity): its
+            // sound does not follow them.
+            let clip_first = absolute(clip.start)?;
+            let clip_end = clip.start.checked_add(clip.duration).ok_or_else(overflow)?;
+            let clip_last = absolute(clip_end)?;
+            let clip_frames = u64::try_from(clip_last - clip_first).unwrap_or(0);
             let (fade_in, fade_out) = if embedded {
                 (0, 0)
             } else {
+                let ramp = |property: &str| -> Result<i64, CommandError> {
+                    Ok((resolver.number(clip, property).round() as i64).max(0))
+                };
+                let fade_in = absolute(
+                    clip.start
+                        .checked_add(ramp("fade_in")?)
+                        .ok_or_else(overflow)?,
+                )?;
+                let fade_out = absolute(
+                    clip_end
+                        .checked_sub(ramp("fade_out")?)
+                        .ok_or_else(overflow)?,
+                )?;
                 resolve_fades(
-                    samples_of(resolver.number(clip, "fade_in").round() as i64),
-                    samples_of(resolver.number(clip, "fade_out").round() as i64),
+                    u64::try_from(fade_in - clip_first).unwrap_or(0),
+                    u64::try_from(clip_last - fade_out).unwrap_or(0),
                     clip_frames,
                 )
             };
@@ -1048,8 +1149,9 @@ impl EditorState {
                 output_start,
                 frames: output_end - output_start,
                 source_start,
+                source_phase,
                 source_rate: stream.sample_rate,
-                speed: resolver.speed(clip),
+                speed,
                 gain: 10f32.powf(resolver.number(clip, "volume") as f32 / 20.0),
                 pan: (resolver.number(clip, "pan") / 100.0) as f32,
                 fade_in,
@@ -1057,7 +1159,7 @@ impl EditorState {
                 clip_offset: if embedded {
                     0
                 } else {
-                    samples_of(start - clip.start)
+                    u64::try_from(first_sample - clip_first).unwrap_or(0)
                 },
                 clip_frames: if embedded { 0 } else { clip_frames },
             });

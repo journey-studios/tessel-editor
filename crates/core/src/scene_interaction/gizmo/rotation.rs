@@ -336,7 +336,11 @@ impl Layout {
             let (u, v) = ring_basis(axis);
             let ring: Vec<Option<Point>> = (0..=RING_SEGMENTS)
                 .map(|step| {
-                    let angle = std::f64::consts::TAU * step as f64 / RING_SEGMENTS as f64;
+                    // The last step is the first one again (`step % RING_SEGMENTS`), not the angle at
+                    // TAU: the closing point must equal the opening one exactly, and `sin`/`cos` of TAU
+                    // are not exactly 0/1 on every libm (Windows differs from macOS in the last bit).
+                    let angle = std::f64::consts::TAU * (step % RING_SEGMENTS) as f64
+                        / RING_SEGMENTS as f64;
                     let offset = add(scale(u, angle.cos()), scale(v, angle.sin()));
                     view.project(add(world_origin, scale(offset, radius)))
                 })

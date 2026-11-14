@@ -275,6 +275,11 @@ favor deles. Resultados medidos no relatório [viewport-performance-splat-projec
   retângulo (fit "contain" × escala, corte e deslocamento) contendo o canvas. O runtime não prepara nem desenha camada
   `occluded` (`frame.done.source.occluded_layers`); os pixels são os de desenhá-la (teste
   `runtime/test/occlusion-browser.test.mjs`). `requires` não muda (o asset continua carregado).
+- **Correção de cor (BL168.1).** `layers[].grading = {brightness, contrast, saturation}` (aditivo, só quando algum valor ≠ 0)
+  é aplicada pelo runtime no texel da camada, antes de opacidade e mistura (`runtime/src/grading.js`; fórmula em
+  [F005](properties.md)). Não muda o alfa, então não muda `occluded`.
+- **Layout de título (BL141.1).** `layers[].text.lines` e `text.scale` (aditivos, só quando o título não é uma linha em tamanho
+  cheio) vêm do core (`text::layout`); o runtime desenha as linhas centradas sem decidir quebra nem tamanho ([F050](accented-titles.md)).
 - **Proxy pendente (BL149).** `PreviewPolicy::coverage(state)` conta, uma vez por asset, os vídeos da sequência com proxy
   pronto, pendente (ausente ou velho) e sem frames decodificados ainda. Enquanto houver pendente, o cabeçalho do monitor
   acrescenta ` · gerando proxy (N)` (sem proxy, 4 vídeos 720p custam 105 ms por quadro contra 31 ms com proxy);
@@ -408,6 +413,11 @@ Headless = sem janela do editor, **com** runtime real: Node + Chrome do sistema 
 Saída observada (resumida): `render.frame` → `{"ok":true,"result":{"action":"render.frame",
 "frame":{"hash":"…","png":"…/f00.png","probes":[[149,165,82,255]],"render_ms":…},"plan":{…}}}`;
 `render.audio` → `"kind":"processed","note":"offline mix; not played through an output device"`.
+
+Descoberta do Node e do Chrome (BL167.2): `TESSEL_NODE`/`TESSEL_CHROME` válido vence; inválido é ignorado e a busca segue
+(`PATH`, depois os lugares usuais; no Windows `node.exe`/`chrome.exe` com `PATHEXT`, Program Files, `LOCALAPPDATA`, WinGet; um
+diretório nunca é aceito). Regras e limites em [media-setup](../media-setup.md#descoberta-dos-executáveis); macOS/Linux
+mantêm os candidatos e a ordem anteriores. Edge não é procurado.
 
 Variáveis: `TESSEL_CHROME`, `TESSEL_NODE`, `TESSEL_RUNTIME_DIR`, `TESSEL_GL`
 (`swiftshader` padrão e determinístico, ou `gpu`; `--gl` na CLI), `TESSEL_REQUIRE_RUNTIME=1`

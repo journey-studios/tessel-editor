@@ -88,6 +88,12 @@ export const GLYPH_ROWS = 7;
 const ADVANCE = GLYPH_COLUMNS + 1;
 /** Rows a diacritic mark takes above, and the cedilla below, the 7-row body. */
 export const MARK_ROWS = 2;
+/**
+ * BL141.1: rows from the top of one line's body to the next one's in a title of several lines
+ * (`LINE_PITCH_ROWS` in crates/core/src/text.rs, which lays the lines out; keep them equal): room
+ * for a mark above and below and one blank row, with or without accents.
+ */
+export const LINE_PITCH_ROWS = GLYPH_ROWS + 2 * MARK_ROWS + 1;
 
 // Punctuation outside ASCII. Typographic quotes and dashes share the straight glyphs: the cell is
 // 5 wide, too narrow to tell them apart.

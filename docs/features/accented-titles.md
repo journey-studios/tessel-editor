@@ -15,11 +15,35 @@ grave, circunflexo, til e trema em 2 linhas acima; cedilha em 2 linhas abaixo). 
 sem depender da fonte instalada; igualdade visual entre máquinas, escalas e Chrome/WKWebView não foi demonstrada. Não há fonte de terceiros a atribuir ([THIRD_PARTY_NOTICES](../../THIRD_PARTY_NOTICES.md)
 registra isso); uma fonte vetorial real, com métricas e minúsculas, continua [BL053](../backlog.md).
 
-Limites que **não mudaram** (layout preservado): um título é **uma linha**, centrada no quadro, com `size` = altura do corpo da
-letra em % da altura do quadro; **não há quebra de linha nem alinhamento**: texto mais largo que o quadro é cortado nas
-bordas, como antes (quebra e multilinha: BL141.1). Minúsculas continuam desenhadas como maiúsculas. Aspas tipográficas e
-travessões reusam os glifos retos (a célula de 5 colunas não os distingue; BL141.2). Fora da cobertura (`€`, `ß`, CJK, emoji,
-`ÿ`) o texto é **recusado** antes de qualquer quadro (nunca desenhado como caixa).
+**Quebra de linha e ajuste ao quadro (BL141.1, 2026-11-14).** `size` continua sendo a altura do corpo da letra em % da
+altura do quadro, mas um título não sai mais cortado pelas bordas. O **core** faz o layout (`text::layout`), na proporção da
+sequência:
+
+- `\n` no texto sempre começa uma linha (linha vazia é mantida). É o único caractere de controle aceito;
+- uma linha mais larga que a **área segura** (`SAFE_AREA` = 90 % da largura) quebra no último espaço que cabe (o espaço sai),
+  de forma gulosa; uma palavra nunca é cortada;
+- se uma palavra sozinha não cabe em 90 % da largura, ou se as linhas passam de 90 % da altura, o título inteiro **encolhe**
+  (`scale < 1`) até caber e é quebrado de novo nesse tamanho. Nunca cresce;
+- as linhas ficam **centradas** uma na outra e o bloco no quadro; a distância entre os corpos de duas linhas é fixa
+  (`LINE_PITCH_ROWS` = 12 linhas de célula: espaço para acento em cima, cedilha embaixo e uma linha vazia), com ou sem acento.
+
+O plano leva o resultado em `text.lines` e `text.scale` **só quando** ele não é a única linha em tamanho cheio de antes: um
+título que já cabia continua com o mesmo plano e os mesmos pixels. O runtime só desenha o que o core decidiu
+(`runtime/src/compositor.js`, `drawText`); monitor, `render.frame` e export usam o mesmo plano.
+
+**Posição (decisão de 2026-11-14): o bloco cresce para longe da borda mais próxima.** Uma linha fica onde a posição do clipe
+a põe, como sempre. A altura das outras linhas cresce para o espaço livre que essa linha deixa acima e abaixo dela dentro da
+área segura, na proporção desse espaço (`text::anchor_offset`, somado ao `transform.y` da camada no plano): no terço inferior o
+título cresce para cima, perto do topo para baixo, centrado para os dois lados igualmente, e a mudança é contínua com a posição
+(um título animado nunca salta). O bloco nunca passa da borda que a linha única já tinha: se ela estava dentro da área segura,
+o bloco também fica; se ela foi posta além, o bloco mantém essa borda e cresce para o outro lado. A posição horizontal não é
+ajustada, e a rotação não entra na conta.
+
+Limites que continuam: o alinhamento é sempre centralizado (esquerda/direita não existem); a área segura é fixa; o campo de
+texto da janela é de uma linha (Enter confirma a edição), então a quebra **explícita** chega pela CLI, pela lib ou por
+`./scripts/ui set clip_text:<id> content` (a quebra **automática** vale em qualquer superfície). Minúsculas continuam desenhadas
+como maiúsculas. Aspas tipográficas e travessões reusam os glifos retos (a célula de 5 colunas não os distingue; BL141.2).
+Fora da cobertura (`€`, `ß`, CJK, emoji, `ÿ`) o texto é **recusado** antes de qualquer quadro (nunca desenhado como caixa).
 
 **Layout dos acentos.** O corpo da letra mantém o tamanho e o lugar do texto sem acento: quando algum caractere do título tem
 marca, a caixa do texto cresce 2 linhas **em cima e embaixo** (simétrico), então o centro e o `size` não mudam e "AÇÃO" fica
@@ -33,8 +57,12 @@ no mesmo lugar que "ACAO" (testado em pixels).
   leitura de documento, `set clip_text:`) compõe `letra + marca` na letra precomposta da cobertura e guarda sempre a forma
   composta: plano, documento salvo, desfazer e export recebem uma única grafia. `TextSpec::validate` recusa um texto fora de NFC.
 - **Recusas** (`unsupported_text`, com `text` e `code_points` nos detalhes; estado, revisão e histórico intactos): caractere fora
-  da cobertura, controle/nova linha/tabulação, marca solta ou que não compõe (`a` + U+0307, `ã` + U+0301, duas marcas na mesma
-  letra). Vazio e mais de 256 caracteres (depois de compor): `invalid_value`.
+  da cobertura, controle (tabulação, `\r`, inclusive em `\r\n`; o `\n` é a quebra de linha aceita, BL141.1), marca solta ou que
+  não compõe (`a` + U+0307, `ã` + U+0301, duas marcas na mesma letra). Vazio e mais de 256 caracteres (depois de compor, `\n`
+  incluído): `invalid_value`.
+- **Layout** (BL141.1): `text::layout(content, size, width, height) -> TextLayout { lines, scale }`, constantes `GLYPH_ADVANCE`,
+  `GLYPH_ROWS`, `MARK_ROWS`, `LINE_PITCH_ROWS` e `SAFE_AREA` (as do runtime em `runtime/src/font.js` têm de ser iguais);
+  `TextLayout::is_single_line_of` diz quando o plano omite `lines`/`scale`.
 - `Command::SetClipTextField { clip, field: content|size|color, value }` troca um campo mantendo os demais, valida o texto
   inteiro e passa pela mesma regra de `SetClipText`. Texto igual ao atual não é edição (`changed: false`, sem undo, sem revisão).
 - Desfazer/refazer: uma edição de texto = uma entrada ("Edit text").
@@ -74,8 +102,16 @@ resultado pelo mesmo plano.
 | UI | `crates/desktop/src/workstation/title_text_tests.rs` (4 testes GPUI: seção/nó só para título, Enter = uma edição composta com undo, recusa restaura o campo e reporta, `set` externo chega ao campo; mutação sem `sync_title_text` derruba os 4) e `scripts/accented-titles-proof.py` na janela real própria (21 checks por `ui op/get/set/invoke`, `render.frame` PNG lido no script e captura nativa [`assets/bl141-accented-title-window.png`](assets/bl141-accented-title-window.png)) | V (sem digitar com teclado físico) |
 
 Limites: não houve digitação física no campo nem clique de coordenada (o teste GPUI aciona a entidade `Input`; o script usa `set`);
-a captura nativa mostra a janela, não substitui os testes de pixel; quebra de linha/alinhamento/multilinha não existem
-(BL141.1); só a cobertura listada (BL141.2: ampliar com fonte real = BL053).
+a captura nativa mostra a janela, não substitui os testes de pixel; só a cobertura listada (BL141.2: ampliar com fonte real = BL053).
+
+### BL141.1 — quebra e ajuste (2026-11-14, Windows 11, Chrome headless/SwiftShader)
+
+| Superfície | Evidência | Estado |
+|---|---|---|
+| Lib | `crates/core/src/text.rs`: 5 testes novos de `layout` (cabe = uma linha; quebra em espaço dentro de 90 %; `\n` e linha vazia; palavra maior que o quadro encolhe até exatamente 90 %; muitas linhas encolhem até caber na altura) e a recusa de controle trocada (`\n` aceito, `\t`/`\r` recusados); `content.rs` e `tests/accented_titles.rs` ajustados ao novo contrato | V (executado) |
+| CLI headless | `crates/core/tests/title_layout.rs` (4): plano sem `lines`/`scale` quando cabe; título longo em 1920×1080, 1080×1920 e 1080×1080 dentro de 90 % nas duas direções e sem palavra perdida; `\n` e tamanho 100 % com palavra gigante; processo `tessel-headless` real: plano com linhas, `set clip_text:` curto remove o layout, `history.undo` o devolve | V (executado) |
+| Monitor / quadro / export (pixels) | `crates/render/tests/title_layout.rs` (3, Chrome + FFmpeg): título longo em 320×180 e 180×320 com ≥ 2 faixas de linha, tudo dentro da área segura, bloco e cada linha centrados (tolerância de uma célula de glifo na horizontal e do acolchoamento dos acentos na vertical); `\n` desenha 2 linhas e o mesmo texto com espaço volta a 1; export H.264 vertical com a mesma caixa (±2 px) e o mesmo número de linhas do `render.frame`. `accented_titles.rs` 3/3 sem mudança (título de uma linha igual). Conferência visual pela CLI (`render.frame` 1920×1080 e 1080×1920) | V (executado) |
+| UI | sem teste novo: o monitor usa o mesmo plano e o mesmo runtime; a quebra automática vale para o texto digitado no campo, a explícita só por `set`/`op` | Parcial (não verificado na janela) |
 
 Revisão B e R2 (histórico): a comparação histórica do export aceitava divergências em 1 % do quadro incluindo o fundo; o teste
 passou a comparar foreground e linhas dos acentos, com controle negativo de til→agudo. Eventos tardios de input são descartados quando

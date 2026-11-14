@@ -51,8 +51,9 @@ fn interner() -> &'static Mutex<HashSet<&'static str>> {
 }
 
 impl Id {
-    /// Validates and interns `raw`.
-    pub fn new(raw: &str) -> Result<Self, IdError> {
+    /// Checks `raw` against the alphabet and length rules without interning it, so a request
+    /// that is going to be refused never grows the interner (F017 validates before it commits).
+    pub fn validate(raw: &str) -> Result<(), IdError> {
         if raw.is_empty() {
             return Err(IdError::Empty);
         }
@@ -65,6 +66,12 @@ impl Id {
         {
             return Err(IdError::InvalidChar(ch));
         }
+        Ok(())
+    }
+
+    /// Validates and interns `raw`.
+    pub fn new(raw: &str) -> Result<Self, IdError> {
+        Self::validate(raw)?;
         let mut set = interner()
             .lock()
             .unwrap_or_else(|poison| poison.into_inner());
@@ -179,6 +186,22 @@ mod tests {
             Id::new(&"x".repeat(65)),
             Err(IdError::TooLong(65))
         ));
+    }
+
+    #[test]
+    fn validate_answers_like_new_without_interning() {
+        for raw in ["", "a:b", "a b", &"x".repeat(65), "ok-1.a_b"] {
+            assert_eq!(Id::validate(raw), Id::new(raw).map(|_| ()), "{raw:?}");
+        }
+        // Validating alone never reaches the interner.
+        let raw = "never-interned-by-validate-only";
+        assert!(Id::validate(raw).is_ok());
+        assert!(
+            !interner()
+                .lock()
+                .unwrap_or_else(|poison| poison.into_inner())
+                .contains(raw)
+        );
     }
 
     #[test]

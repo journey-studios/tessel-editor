@@ -3,7 +3,7 @@ import { test } from 'node:test';
 
 import { readFileSync } from 'node:fs';
 
-import { forEachLitCell, hasGlyph, measureText, normalizeText } from '../src/font.js';
+import { forEachLitCell, GLYPH_ROWS, hasGlyph, LINE_PITCH_ROWS, MARK_ROWS, measureText, normalizeText } from '../src/font.js';
 import { fnv1a64, meanColor } from '../src/hash.js';
 import { expandPattern } from '../src/protocol.js';
 import { layerScene, splatLayerScene } from '../src/scene.js';
@@ -62,6 +62,23 @@ const cells = (text) => {
 
 // The list the core accepts (`crates/core/src/text_coverage.txt`): one source for both sides.
 const COVERAGE = [...readFileSync(new URL('../../crates/core/src/text_coverage.txt', import.meta.url), 'utf8').trim()];
+
+test('the core lays titles out with the metrics this font draws them with (BL141.1)', () => {
+  // The core decides the lines and the scale (crates/core/src/text.rs, `layout`); the runtime only
+  // draws them. The two sets of constants must agree, or a wrapped line would not fit where the
+  // core measured it.
+  const core = readFileSync(new URL('../../crates/core/src/text.rs', import.meta.url), 'utf8');
+  const constant = (name) => {
+    const match = new RegExp(`pub const ${name}: usize = ([^;]+);`).exec(core);
+    assert.ok(match, `${name} in text.rs`);
+    return match[1].trim();
+  };
+  assert.equal(Number(constant('GLYPH_ROWS')), GLYPH_ROWS);
+  assert.equal(Number(constant('MARK_ROWS')), MARK_ROWS);
+  assert.equal(Number(constant('GLYPH_ADVANCE')), measureText('AB').columns - measureText('A').columns);
+  assert.equal(constant('LINE_PITCH_ROWS'), 'GLYPH_ROWS + 2 * MARK_ROWS + 1');
+  assert.equal(LINE_PITCH_ROWS, GLYPH_ROWS + 2 * MARK_ROWS + 1);
+});
 
 test('every character the core accepts has a glyph that is not the unknown box', () => {
   const box = cells('€');

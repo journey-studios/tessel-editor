@@ -16,12 +16,13 @@
 //! headless CLI and `ui op` share it), the versioned `scenes` block of `.tessel.json`, and the
 //! declaration of what a scene does *not* do yet ([`scope_json`]).
 //!
-//! Scope, deliberately narrow (see `docs/features/scene-project.md`):
+//! Scope of this module (see `docs/features/scene-project.md`):
 //!
-//! * A scene is **interchange data kept in the project**. Nothing renders, plays, exports or runs
-//!   it; it is never a `tessel-scene@1` asset (F030) and never reaches the viewport runtime.
-//! * Resources the bundle names by relative path are not resolved, copied or packaged (BB05/BB06).
-//!   Package and project-import therefore refuse to pretend otherwise (`crates/media` guards).
+//! * A scene is **interchange data kept in the project**: it is never a `tessel-scene@1` asset
+//!   (F030). Rendering and export are other modules' (`scene.render` F041, `scene.export` F042),
+//!   which read the scene from here; nothing in this module draws it.
+//! * Resources the bundle names by relative path are resolved, adopted and packaged by
+//!   `scene.resources.*` (F040, `crates/media`), not here.
 //! * `scene.camera` answers the camera only; `scene.evaluate` (F039) answers the whole frame,
 //!   nodes included, and says what the scene declares and nothing evaluates.
 //! * Selection, the entity tree and the begin/update/commit/cancel gesture cycle (F039) live in

@@ -780,19 +780,66 @@ fn chain_m(links: &[Link], figure_rotation: Option<[f64; 4]>) -> M3 {
 /// Every entry within a relative `1e-9` of its row (the rows of a world matrix under anisotropic
 /// parents differ by sixteen orders of magnitude: one absolute tolerance judges nothing).
 fn assert_matrix_by_rows(actual: &M3, expected: &M3, what: &str) {
+    assert_matrix_by_rows_with_noise(actual, expected, &[[0.0; 3]; 3], what);
+}
+
+/// [`assert_matrix_by_rows`], plus the rounding `noise` that each entry may carry (see
+/// [`chain_noise`]): an entry that is 0 in exact arithmetic is pure noise, and no relative
+/// tolerance can judge it.
+fn assert_matrix_by_rows_with_noise(actual: &M3, expected: &M3, noise: &M3, what: &str) {
     for r in 0..3 {
         let row = expected[r]
             .iter()
             .fold(0.0_f64, |most, v| most.max(v.abs()));
         for c in 0..3 {
             assert!(
-                near(actual[r][c], expected[r][c], 1e-9 * row),
+                near(actual[r][c], expected[r][c], 1e-9 * row + noise[r][c]),
                 "{what}: [{r}][{c}] {} vs {}\nactual {actual:?}\nexpected {expected:?}",
                 actual[r][c],
                 expected[r][c]
             );
         }
     }
+}
+
+/// First-order bound of what rounding alone can put in each entry of [`chain_m`]. A rotation
+/// matrix made from a unit quaternion is right to a few ulp of 1 in every entry, so an entry that
+/// should be 0 (a quarter turn has `cos = 0`) is that noise instead, and its size depends on the
+/// platform's `sin`/`cos` of the half angle: Windows and macOS differ in the last bit, which made
+/// the oracle and the plan disagree only on such an entry (B5). Carried through the chain:
+/// `Σₖ |A₍<k₎| · (8·ε·J) · |A₍>k₎|` over the rotation factors `k` (`J` all ones).
+fn chain_noise(links: &[Link], figure_rotation: Option<[f64; 4]>) -> M3 {
+    const ULPS: f64 = 8.0;
+    let mut factors: Vec<(M3, bool)> = Vec::new();
+    for (rotation, scale) in links {
+        factors.push((rotation.map_or(IDENTITY, matrix_of), rotation.is_some()));
+        factors.push((diag(*scale), false));
+    }
+    if let Some(q) = figure_rotation {
+        factors.push((matrix_of(q), true));
+    }
+    let magnitude = |part: &[(M3, bool)]| {
+        part.iter().fold(IDENTITY, |acc, (m, _)| {
+            matmul(&acc, &m.map(|row| row.map(f64::abs)))
+        })
+    };
+    let ulps = [[ULPS * f64::EPSILON; 3]; 3];
+    let mut bound = [[0.0; 3]; 3];
+    for (k, (_, rotated)) in factors.iter().enumerate() {
+        if !rotated {
+            continue;
+        }
+        let term = matmul(
+            &matmul(&magnitude(&factors[..k]), &ulps),
+            &magnitude(&factors[k + 1..]),
+        );
+        for r in 0..3 {
+            for c in 0..3 {
+                bound[r][c] += term[r][c];
+            }
+        }
+    }
+    bound
 }
 
 /// Four parents of `(0.01, 100, 100)`: nothing extreme is written, the world scale is
@@ -961,10 +1008,14 @@ fn four_parents_of_anisotropic_scale_with_a_rotation_between_them_refuse_the_wor
     }
     assert_eq!(observable(&state), before);
     let m = chain_m(&links, None);
+    // [1][1] is 0 in exact arithmetic (cos of the quarter turn) and ~1e-8 of noise after the
+    // parents' spread: the comparison allows that noise, and only there.
+    let noise = chain_noise(&links, None);
+    assert!(noise[1][1] < 1e-6 && noise[1][0] < 1e-15, "{noise:?}");
     for (index, axis) in ["x", "y", "z"].into_iter().enumerate() {
         let mut local = chained(&links, None);
         let (w, origin) = world(&mut local, "figure", 0);
-        assert_matrix_by_rows(&w, &m, "the plan agrees with the oracle chain");
+        assert_matrix_by_rows_with_noise(&w, &m, &noise, "the plan agrees with the oracle chain");
         ok(&mut local, scale_request(FIGURE, axis, 2.0, "local"));
         let mut d = [1.0; 3];
         d[index] = 2.0;

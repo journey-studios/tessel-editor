@@ -88,7 +88,8 @@ revisão/cancelamento/resposta velha). O crate `crates/render` fornece o transpo
 worker Node + Chrome headless (CLI/lib, `./scripts/render`) e o servidor de assets da WebView
 (`host.rs`). O desktop usa o mesmo plano e a mesma sessão com a WebView persistente do monitor.
 Three.js roda em `runtime/` (JS, bundle local); o core não depende de GPUI, Wry nem DOM.
-Áudio: `plan_audio` + `OfflineMixer` produzem o mix processado (clipes de tracks de áudio **e** o som embutido dos
+Áudio: `plan_audio` + `OfflineMixer` produzem o mix processado (relógio de saída **absoluto** e posição de fonte **racional**, com fase
+por segmento: `crates/core/src/audio_clock.rs`, BL081.5 — um clipe cortado em qualquer grade soa igual ao inteiro) (clipes de tracks de áudio **e** o som embutido dos
 clipes de vídeo, por `audio_muted`/`audio_stream`); o export grava esse mix e o desktop o entrega ao `crates/audio`
 (`tessel-editor-audio`, `cpal`/CoreAudio), cujo **relógio de amostras** conduz o playhead ([F018](features/playback.md)).
 `crates/audio` é o único crate com dependência de dispositivo e o core não o conhece. Áudio *ouvido* não é provado.
