@@ -276,7 +276,7 @@ impl Workstation {
                         .text_size(px(10.))
                         .text_color(t.faint)
                         .child(
-                            "Enter confirma. ASCII e acentos do português (á é ã ç…); uma linha.",
+                            "Enter confirma. ASCII e acentos do português (á é ã ç…); um texto longo quebra em linhas sozinho.",
                         ),
                 );
         }
