@@ -330,7 +330,7 @@ fn deck_matches(
     let source = scene.bundle().shot(shot).unwrap();
     if skip_instance_clocks
         && source.start_frame <= frame as u64
-        && (frame as u64) < source.end_frame
+        && (frame as u64) < source.end_frame_exclusive
     {
         // The legacy primary evaluator keeps the raw camera counter even past a short clip.
         // Its pose still holds; the offset evaluator reports the clamped counter. Do not call
