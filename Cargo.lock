@@ -8061,6 +8061,7 @@ name = "tessel-editor-core"
 version = "0.1.0"
 dependencies = [
  "flate2",
+ "proc-macro2",
  "serde",
  "serde_json",
 ]

@@ -1390,7 +1390,7 @@ A raiz antiga e seus planos não foram alterados nesta integração.
 | BL167.3 | Windows B4/B5 | Remover dependência de shasum dos testes e diagnosticar dois testes de gizmo divergentes | Pendente | BL167 | — | Hash portátil nos dois testes render; reproduzir diferenças de rotação/escala em Windows e Mac e conferir invariantes geométricas antes de qualquer tolerância. Hipótese de libm não confirmada; não aprovar só relaxando asserções |
 | BL167.4 | Windows / mbx | Cache de ações sem hits e volumes C:/W: sem hard link; wrapper depende de Git Bash | Pendente | BL167 | — | Diagnosticar mbx explain/not-looked-up, cache_dir e ferramentas de arquivo; provar reutilização real sem target-dir customizado, limpeza global ou perda de target/cache. Decidir adapter Windows para wrapper; não assumir benefício do cache só por mbx executar |
 | BL167.5 | Windows / prova | Instalar Python e completar build release e provas semânticas vivas | Pendente | BL167.1–.4 conforme prova; BL078/BL111 para claims | — | Python disponível, scripts de prova compatíveis executados em binários identificados por SHA, release construído e prova de fluxo registrada. GPU da janela não fecha export em GPU, paridade Mac, ponteiro físico ou áudio ouvido; medir performance em rodada própria |
-| BL167.6 | Windows B3 / claims | Ledger de claims e orçamento do tick no Windows | A validar; PR60 bloqueada pela revisão P1 | BL111, BL078; BL167.6.1–.2 | Coordenador / revisão Windows | PR60 0cea8d6 corrige identidade do lock, mas retenta acesso negado por ~120 ms com orçamento de 20 ms. Correção pequena e regressões novas aguardam Windows; Mac ainda pendente. Workspace completo falha fora do ledger. |
+| BL167.6 | Windows B3 / claims | Ledger de claims e orçamento do tick no Windows | A validar — R3 aprova código Windows; integração/main e Mac pendentes | BL111, BL078; BL167.6.1–.6 | Coordenador / revisão Windows | R3 em f0544b0/código2522290:54claims, integrações14/13/11/6/13, race320/excl40 e gates Windows. Conflito documental resolvido preservando main/S1a; código ledger intocado. Sem prova causal NTFS, Unix/Mac append_accept a executar. |
 | BL167.7 | Windows / fixture media | Helper tree() de directed_resources_common compara separador Windows com expectativas POSIX: três falhas de directed_resources_transport | Pendente | BL078 | — | Normalizar representação do helper de teste sem mudar caminhos de produto ou tolerar arquivos ausentes; executar os casos files_land, splats_and_audio e destination_conflict em Windows/Mac. Relato e pares de listas no transcript BL167.1; não alterado na entrega |
 
 BL167.1: bytes do patch recebidos no Mac e conferidos (SHA-256
@@ -1877,9 +1877,9 @@ concreto da S0, sem link para arquivo inexistente nem validação de lib/CLI/UI 
 
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
-| BL082.4.1 | P4b/S0 | Contrato F064 e corpus independente dissolve, fonte pinada e diferenças alfa/quantização explícitas | A validar — entregue PR61 em173f5f4, relato Windows161/161 normal e -O | BL082.4; setupPythonBL167.5 parcial | Cursor Sonnet5.5 / S0 abaixo | Corpus/scripts e specs normal/-O/verify/originblob verificável, vetoresdiscriminantes, sem alterar Rust/runtime/fixtureslegadas nem marcarfeature lib/JSONL/UIpronta |
-| BL082.4.2 | P4b/S1a | Documento/janela/validação tipada e ativação pública failclosed | Pendente | BL082.4.1/.11 | Não atribuído | Contrato corrigido B3; nenhumhardcutfallback/exportfalhandonomeio, erro existente/tipado |
-| BL082.4.3 | P4b/S1b | Avaliação dos dois decks e plano, recursosporassetId/used_bysemambiguidade | Pendente | BL082.4.2 | Não atribuído | Recurso próprio por deck euniãoderivadaestável, clock/handlessemunderflow, parserprofundidadelimitada |
+| BL082.4.1 | P4b/S0 | Contrato F064 e corpus independente dissolve, fonte e X analítico | Concluído — somente S0 oráculo/contrato | BL082.4; setupPythonBL167.5 parcial | Coordenador / Cursor Sonnet5.5 | R3 independente aprova e4078ff no Windows; corpus167/analítico39 normal e-O, reprodução byte a byte e Mac equivalente. Produto lib/JSONL/UI permanece P; detalhes no relatório S0 §12. |
+| BL082.4.2 | P4b/S1a | Documento/janela/validação tipada e política de admissão fechada | Concluído no escopo interno; R2 aprova a752f0a | BL082.4.1/.11 concluídos | Coordenador / revisão Windows | R2:61transition/25scene_fx/80GPUI, processo headless real, perfis serde e mutantes dinâmicos/scanner/domínio. fmt/check/clippy/no-run/build passam. Core1525ok/2gizmosbase, workspaceexecutado/Mac pendentes. Produto P; IDgerado fica BL082.4.15/S3. |
+| BL082.4.3 | P4b/S1b | Avaliação dos dois decks e plano, recursosporassetId/used_bysemambiguidade | Em andamento no Windows | BL082.4.2 | Cursor Sonnet5.5 / coordenador | Recurso próprio por deck euniãoderivadaestável, clock/handlessemunderflow, parserprofundidadelimitada |
 | BL082.4.4 | P4b/S2 | Runtime/renderer/mistura e lifecycle/cache | Pendente | BL082.4.3; S2A também BL082.4.5/S3a | Não atribuído | Cor8bits/alpha declarados, capability, dois splats/leases/contextloss/dispose e pixelsindependentes |
 | BL082.4.5 | P4b/S3 | Ops/gestos/inspector/persistência ecoreparser/nós | Pendente | BL082.4.3 | Não atribuído | Atomicidade/revisão/undo, módulossemcrescerarquivosproibidos; dividirS3aseS3bseútil |
 | BL082.4.6 | P4b/S4 | UIKit/provaautomação/guardasoverlaycore | Pendente | BL082.4.4/.5; W1integrada | Não atribuído | Controlesreais, predicadocoreúnico, gestoqueentranajanela/hitpress, célulastestadasporfase |
@@ -1917,8 +1917,8 @@ IDs atribuídos pelo coordenador; reaproveitar BL079/BL078 como dependências, s
 
 | ID | Área | Pendência | Status | Dependências | Responsável | Aceite e evidência |
 |---|---|---|---|---|---|---|
-| BL167.6.1 | Claims / tick | Retentativa PermissionDenied respeita deadline do chamador | Em andamento | BL167.6 | Coordenador | Corrigir PR60, regressão Windows com diretório e arquivo somente-leitura como lock; ZERO não dorme, tick/accept recusam abaixo do teto de 100 ms sem perder claims; revisão no novo head. |
-| BL167.6.2 | Claims / teste | Separar estresse de exclusão do orçamento produtivo, remover BOM | Em andamento | BL167.6 | Coordenador | Corrida com prazo de teste explícito e limitado, sem mudar LOCK_WAIT/TICK_WAIT; repetição Windows, falha de escritor continua encerrando leitor. |
+| BL167.6.1 | Claims / tick | Retentativa PermissionDenied respeita deadline do chamador | Fechado no Windows (R2/R3) | BL167.6 | Coordenador / revisão Windows | Em f0544b0:ZERO0.02–0.16ms, tick/accept~20.5ms, recusa real/controle injetado e mutantes discriminantes. Orçamento lógico preservado; não é limite duro de agendamento do SO. |
+| BL167.6.2 | Claims / concorrência | Retentar create_dir negado no Windows dentro do orçamento original | A validar — código aprovado R3; integração pendente | BL167.6, BL167.6.1 | Coordenador / revisão Windows | f0544b0/código2522290:claims54/54, denied6/6, processos14/journal13/integrity11/jsonl6/discard13, fmt/check/clippy, race320/320 e exclusividade40/40. Injeção/ACL real e mutantes provam controle, base8cad também0/320 não prova causa NTFS. Sem Unix/Mac/workspace completo. |
 | BL167.6.3 | RootLease Windows | path.exists não prova identidade do lock; diagnóstico PID sob lock obrigatório | Pendente | BL079, BL078 | Não atribuído | Usar identidade de arquivo fail-closed no lease, reproduzir unlink/recriação e dois titulares reais; tratar legibilidade do PID sem usar PID para vivacidade. Fora do ownership da PR60. |
 | BL167.6.4 | Journal / robustez | Rollback de append parcial e falha de truncate/disco cheio sem prova | Pendente | BL111, BL167.6 | Não atribuído | Injeção determinística da falha de escrita/rollback e estado recuperável, sem alegar teste de disco cheio real. |
 | BL167.6.5 | Claims / robustez | same_file com falha persistente pode girar quente até o prazo | Pendente | BL167.6 | Não atribuído | Confirmar com probe; evitar CPU ocupada e mensagem enganosa preservando fail-closed e orçamento. Achado por leitura, sem reprodução. |
@@ -1926,3 +1926,154 @@ IDs atribuídos pelo coordenador; reaproveitar BL079/BL078 como dependências, s
 O coordenador iniciou as correções pequenas .6.1/.6.2 no checkout Mac isolado da PR60,
 sem alterar RootLease, origem ou arquivos da S0 em implementação no Windows.
 NTFS tem prova; ReFS e rede continuam sem validação. Unix append+seek ainda exige rechecagem.
+
+Revisão S0/PR61 em173f5f4 **não aprova BL082.4.1**: P2-1verificadorstrictpin e P2-2sondasanalíticas
+X faltantes; P2-3matrizagora F064com todasas superfíciesPendente. Coordenador corrigiuaCLIstrictpin
+paraexigirorigem+commit, com regressãogitreal; digestsusage e guardStorecorrigidos; exemplo hiddenfalse
+removido, escolhatrueouausentenastransições. A parteanalíticaaindapendente, S1nãoiniciada, semmergePR61.
+
+
+### PR61 R2: representabilidade das lâmpadas e contrato do X — 2026-11-14
+
+A revisão independente de9399642 não aprova aS0: seis cenas usam lâmpadas24 acima do limite20
+em core/runtime (P2-A). P2-1 e P2-3 fecham; a parteposição/hold deP2-2 é representável.
+O coordenador corrige intensidade para20 sem alterar limiares, lê os limites20/4 dosdois
+consumidores e acrescenta teste de contrato de todasaslâmpadas. Mantém BL082.4.1 A validar.
+
+P3-1/P3-2: coordenadas centre_px/rect_px são diagnósticas, aceite deS2 é pelos estados e
+cores nospixels prescritos. Isolamento da luz sódo vizinho é discriminante emstart/end;
+center não prova sozinho. Teste dedicado aplica erro apenas no vizinho. Plano7.3/F064 e
+matriz reconciliados. Texturas sónaS2, nenhuma superfícieproduto ou motor implementada.
+
+P3-3/nits: vetor dequadro40 e câmera com segmentos previousEnd/initial; o allegedovershoot
+singleclip não ocorre porque ease limita a[0,1], mas o novo teste detecta o mutante noreset
+para poseinitial. shot_numbers morto removido, nome dosdecoys esclarecido, initialFovDeg50
+esaída640×360 explícitos. Diferença float/racional1e-14 documentada; módulo1022linhas precisa
+ser dividido se crescer naS2. Esses ajustes reutilizam BL082.4.1, sem outra fila de execução.
+
+
+### Fechamento S0 após R3 — 2026-11-14
+
+R3 independente aprovou e4078ff no Windows, somente oráculo/contrato: corpus167/analítico39
+normal e-O, generate--check/verify, strictpinnegativos4 e digestsusage2, backlog19/higiene13.
+P2-A fechado; hashes de artefatos iguais ao Mac. Código/corpus não mudaram depois da revisão;
+este fechamento só atualiza prosa e status, sem reatribuir prova de engine/JSONL/UI.
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL082.4.12 | S0/R3, manutenção não bloqueante | Guard de limites também no gerador, nome end_pose e módulos analíticos menores se crescer | Pendente | BL082.4.1 | Não atribuído | Preservar corpus e limiares, provas negativas da spec e independência; não bloqueia S1a. |
+
+S1a/BL082.4.2 é a próxima fase; não habilita produto ou transições públicas. S1b/S2 devem
+comparar estados por deck e cores, com isolamento só-vizinho restrito aos casosstart/end.
+A S2 traduz arrays compactos para os objetos do destino. R3 não é aprovação formal noGitHub;
+CodeRabbit ainda estava em andamento na consulta do revisor e terminou SUCCESS em e4078ff
+na consulta posterior do coordenador. Nenhuma reviewhumana foi alegada.
+
+
+### S1a entregue na PR62; reconciliação antes da revisão — 2026-11-14
+
+PR62 headoriginalbb43b16 (código5e21e0, basebb309a7): modelo/leitura/validação/janela e
+TransitionAdmissionRefuse padrão. Accept sóentrada doc(hidden) deensaios, não segurança;
+reimport herda política eboundaryvarreprodução/inventáriode5pontos. Autorreportou46integração,
+2testescore,2GPUI,11mutantes, processoheadlessrealexit1; fmt/check/clippy/build/tree/norunpassam.
+Corecompleto nãoverde por2gizmos tambémbaseW1; workspaceexecutado/Mac/runtime nãoexecutados.
+Nenhum efeito público novo, caps/versões/catálogo 3looks inalterados; produtoF064 continuaP.
+
+O coordenador completa linhas comuns não entregues, corrige nome do arquivo no relatório e
+move o teste de catálogo/runtime de core/tests/scene_fx.rs para módulo próprio, sem tocar produção.
+A auditoria identificou o teste como arquivo que cresceu acima de1000, não a UI. Correção aguarda revisão/compilação Windows.
+Trailersdeassistente nos2commitspublicados serão omitidos da mensagem do squash, semforce.
+Divergências deoráculo/legacy/IDs/corpus declaradas no relatório são objeto da revisão, não
+aceitas por padrão. BL082.4.2 permaneceAvalidar; S1b nãoiniciada ePR62semmerge.
+
+
+### PR62: revisão não aprova72c9fe2 — 2026-11-14
+
+E0583 introduzido pelo coordenador ao mover teste: mod procura arquivo na raiztests, faltava
+path explícito. Correção de uma linha feita; com patch temporário o revisor viu25scene_fx,
+clippy e coreexceto2gizmos. Noheadliteral46transition/2incrate/80GPUI passaram. Fonteprodução
+foi aprovada porleitura/probes, sembypass,12.474 combinaçõesi128 e testesdinâmicos extras.
+
+Coordenador também fixa ordem dos diagnósticos de params de transições por chave lexical,
+sem globalpreserve_order/sem mudar looks/documentos; teste em trêsordens eValue/texto escrito,
+ainda não compilado. Permanecem BL082.4.2: scanner com nome-test/brace-string blindspots,
+regressões permanentes reload/open/attach-file, TOO_LONGassimétrico e transiçõesforadeordem.
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL082.4.13 | Revisão PR62 / looks | Diagnósticos de parâmetros dos looks variam com serde_json/preserve_order | Pendente | BL082 | Não atribuído | Definir ordenação estável e provar coreisolado/workspace sem reordenar documento ou alterar vereditos. Transições corrigidas nesta S1a. |
+| BL082.4.14 | Oráculo S0 / variante camera-short | Pré-condição de duração instância+offset não satisfeita na projeção para bundle | Pendente | BL082.4.1 | Não atribuído | Reconciliar inst-b60+offset10 vs duração60 sem mudar a expectativa semântica nem forçar o importador; manter proveniência e divergência explícitas. Rustusa70justificadamente. |
+
+Erro estrutural em transição posterior ocultaearlyissuesanteriores: veredito igual, lista diferente,
+divergência agora explícita. Nãoherdar gates compatchtemporário para novaárvore. Semmerge/S1b.
+
+
+### PR62: reforço de517946a entregue, revisão final pendente — 2026-11-14
+
+Fonte de produção inalterada desde449054a; alterações desta rodada são testes, proc-macro2
+somente dev-dependency (+uma aresta no lock) e dois docs. Código517946ae4dd4ff28e5713c70d82c9a44dc2d3cf2,
+docs1f4883a5c747e10a83458b370bd56b11d5c9a951 (diff só F064/relatório). Semforce, commitsnovoslimpos;
+trailers antigos mantidos na branch, squash limpo previsto apenas se aprovado.
+
+Autor Windows:60transição,25scene_fx,80GPUI,dois testes admissão(+um perf_history no filtro),
+headlessreal,fmt/check/clippy/norun/build/tree passam. Corecompleto1524passam/2gizmosbasefalham;
+workspaceinteiro nãoexecutado porclaimsBL167.6. Cachembx no clippy declarado, não é falha.
+Ordemparams testada coreisolado, preserve_order explícito eworkspace. Mutante nosort sobrevive
+noisolado por mapa jáordenado; morre nosperfis discriminantes. EXPECT impede alegar perfilerrado.
+
+Portas reload/open/attach-file agora têm testes dinâmicos permanentes; mutantes Accept emstore/run
+falham semscanner. Lexerreal de testes substitui bracecounter, nome de arquivo nãoexclui código,
+cfgtresvalores descarta sóprovadamentefalso, segue módulos/path e falha fechada nolexer.
+Limites declarados: macros/include/cfg_attr ealgumascombinaçõesnãoanalisadas, não barreira.
+RegressõesassimétricasTOO_LONG/ordemcronológicainversa/sobreposição detectam mutantesanteriores.
+
+Essasprovas são do implementador, não aprovação independente. Nova revisão deve conferir
+source/dev-dep, mutantes e gates nohead final, sempromovercore/workspacea verde ou produtoF064.
+
+### PR62: correção pequena do scanner durante R2 — 2026-11-14
+
+BL082.4.2 continua A validar. Novo comentário sobre `const {}` sem ponto e vírgula
+confirmado por leitura: `item_end` podia remover a expressão de produção seguinte
+a um bloco sob `cfg(test)`. Coordenador distingue bloco de declaração e adiciona
+regressão discriminante com controles. Produção inalterada; fmt e diff-check no
+Mac passam, execução Rust e mutação inversa ficam com a revisão R2 em andamento.
+Os 60 testes de517946a não são prova deste ajuste posterior.
+
+### PR62: S1a aprovada pela revisão final — 2026-11-14
+
+R2 aprovoua752f0a no Windows:61transition/25scene_fx/80GPUI, fmt/check/clippy/no-run/build,
+processoheadless, três perfis serde e mutantes. Core1525ok/2gizmosbase, exit101;
+workspace completo nãoexecutado. Const-bloco comprovado com mutação inversa.
+Correção documental desta integração não muda crates, lock ou testes do head aprovado.
+Alias/macros não são cobertos de forma geral pelo scanner; path não tratado é o
+atributo no próprio módulo em linha, não a declaração externa dentro dele.
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL082.4.15 | PR62 R2 / S3 | IDs automáticos de looks e trilhas ignoram IDs de transições | Pendente — incorporar à S3 | BL082.4.5 | Não atribuído | Incluir transitions no namespace de every_id; provar transições fx-1/fx-track-1, IDs automáticos distintos, recusa explícita atômica, undo/redo. Hoje apenas Accept: recusa segura, não corrupção, sem acesso público. Não bloqueia S1a. |
+
+### PR60 R3 aprova Windows; integração e validação Unix pendentes — 2026-11-14
+
+R3 independente aprova o código2522290 no head f0544b09d1b0f4d344f329c0bac83ec855edb584,
+sem P0/P1/P2 de código. Unit54/54 e denied6/6; processos14, journal13, integrity11,
+jsonl6 e discard13; fmt/check/clippy passam. Corrida320/320 e exclusividade40/40
+independentes e sequenciais, semtimeout; quatro variantes de mutantes detectadas.
+Não é prova causal do mecanismo NTFS: a base também passou0/320 no host do autor.
+
+Conflito com main e3c20cb era exclusivamente no backlog (dois históricos anexados
+no mesmo ponto); os dois foram preservados. Código/media da correção não alterado.
+Dois caracteres de controle no contrato foram corrigidos e F040/status comuns
+atualizados. Mac/Unix append_accept write+seek ainda pendente, sem declarar
+workspaceverde, builddesktop/janela/GPU/performance. Rechecagem no head integrado
+antes de decisão de merge; nada desta seção herda gates Windows para outro SHA.
+
+| ID | Área | Pendência | Status | Dependências | Responsável | Aceite e evidência |
+|---|---|---|---|---|---|---|
+| BL167.6.6 | Validação Mac / mbx | Target legado aponta para diretório ausente após mudança da raiz do cache | A validar em checkout limpo | BL167.6 | Coordenador | doctor aponta cache/targets no SSD e zero falhas; adopt --dry-run preserva link legado quebrado. Validar pelo wrapper/target padrão em clone limpo, sem override/clean/gc; link antigo continua sem reparo. |
+| BL167.6.7 | Testes Windows / ACL | Drop de NoNewFolders pode causar segundo panic se icacls falhar durante unwind | Pendente — baixo, não bloqueia correção de produto | BL167.6.2 | Não atribuído | Limpeza de ACL da pasta própria reporta falha sem duplo panic durante unwind; controle negativo não deve mascarar o erro original. Achado R3 por leitura. |
+| BL167.6.8 | Testes / descarte | job_discard_claims deixa pastas vazias de processo filho no TEMP | Pendente — preexistente | BL094, BL112 | Não atribuído | Guard de teste limpa apenas pastas próprias identificadas, inclusive processos filhos encerrados; R3 observou cinco pastas e removeu só as de sua sessão. |
+
+S1b (BL082.4.3) está iniciada no Windows após PR62:
+[P4b S1b Windows: avaliação dos dois decks e ScenePlan](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:25cda26b8ee65eb48cd00bd3e47b4c4aaa1d79c47c9d9bf80cb6ecd5ff8a0db5).
+Basee3c20cb, projeto mcp:05781dcc-5e69-4aff-8ab2-3fa8ed29c699, ownership core/plano
+e testes/contrato, sem runtime/host/UI/opsS3 nem edição de comuns. ProdutoF064P.

@@ -168,7 +168,7 @@ A identidade por volume/índice foi exercitada em NTFS; ReFS e filesystems de re
 sem prova. O defeito equivalente de identidade do RootLease pertence a BL079/BL167.6.3.
 
 **BL167.6.2 (R2, 2522290).** Na R2 a corrida falhou 5/320 com PermissionDenied em
-s::create_dir(.tessel-claims), antes do open. O create e o open do lock passam a usar a mesma
+`fs::create_dir`(.tessel-claims), antes do open. O create e o open do lock passam a usar a mesma
 política estreita (denial_is_transient): só PermissionDenied no Windows, até 50 tentativas
 **somadas**, só enquanto o prazo do chamador dura (ZERO nunca espera; a pausa nunca excede o
 restante; o prazo e o contador não são renovados). LOCK_WAIT (1,5 s), TICK_WAIT (20 ms) e a
@@ -181,7 +181,7 @@ recusa transitória. Um teste ACL transitório anterior (commit local não publi
 no gate e foi substituído por esses dois, não relaxado. Em 2522290: claims 54/54, processos 14,
 journal 13, integrity 11, jsonl 6, job_discard_claims 13, fmt/check/clippy -D warnings exit 0, corrida
 320/320 e exclusividade 40/40 (binário compilado do head), mutantes mortos; workspace inteiro não
-declarado verde. Mac/Unix não validados (ppend_accept com escrita + seek ainda precisa de Mac).
+declarado verde. Mac/Unix não validados (`append_accept` com escrita + seek ainda precisa de Mac).
 BL167.6.2 permanece **A validar** até revisão independente.
 
 ## Integração pelo coordenador

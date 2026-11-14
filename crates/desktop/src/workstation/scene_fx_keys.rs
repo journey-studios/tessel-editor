@@ -677,6 +677,7 @@ pub(super) fn value_text(value: FxValue) -> String {
     match value {
         FxValue::Number(number) => super::scene_model::format_number(number),
         FxValue::Bool(on) => if on { "sim" } else { "não" }.to_string(),
+        FxValue::Choice(name) => name.to_string(),
         FxValue::Color { r, g, b } => format!(
             "({}, {}, {})",
             super::scene_model::format_number(r),

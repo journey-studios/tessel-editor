@@ -22,11 +22,15 @@
 //! * the **scope** of a clip (see [`scope`]): the output, or one shot of the edit, whose clips are
 //!   drawn first, on the shot's own picture;
 //! * **refused for now**: scope `node` (`FX_SCOPE_NOT_YET`) and any `transitions` entry
-//!   (`FX_TRANSITION_NOT_YET`).
+//!   (`FX_TRANSITION_NOT_YET`) at every public entry. The document model of a transition is
+//!   typed (see [`transition`]) and validated by the core, but it is read only under the hidden
+//!   [`TransitionAdmission::Accept`] policy (tests of the core; F064, P4b S1a): nothing in the
+//!   editor can enter it, plan it or draw it yet.
 //!
 //! Evaluation is a pure function of the document and an integer edit frame
 //! ([`Fx::resolve`]); the plan (`scene_plan`) carries the result to a runtime, which only draws.
 
+mod admission;
 mod catalog;
 mod control;
 mod handles;
@@ -35,8 +39,27 @@ mod keys;
 mod read;
 mod reference;
 mod scope;
+mod transition;
+mod transition_catalog;
+mod transition_explain;
+mod transition_read;
+mod window;
 
 use serde_json::{Value, json};
+
+pub use admission::TransitionAdmission;
+pub use transition::{Alignment, FxTransition, Handles};
+pub use transition_catalog::{
+    CROSS_DISSOLVE, CROSS_DISSOLVE_CURVE, CROSS_DISSOLVE_CURVES, CROSS_DISSOLVE_INTENSITY,
+    transition_catalog, transition_effect,
+};
+pub(super) use transition_explain::transition_issues;
+pub use transition_explain::transition_warnings;
+pub(super) use transition_read::TransitionDraft;
+pub use window::{
+    TransitionWindow, WindowError, available_frames, check_duration, default_transition_duration,
+    max_transition_frames, transition_window,
+};
 
 pub use catalog::{
     EffectSpec, FADE, FADE_AMOUNT, FADE_COLOR, FADE_INTENSITY, FILM_GRAIN, FILM_GRAIN_AMOUNT,
@@ -113,6 +136,27 @@ pub const UNKNOWN_KEYFRAME_EASING: &str = "UNKNOWN_KEYFRAME_EASING";
 /// An edit named a key frame (or a keyed parameter) the clip does not have (`UNKNOWN_KEYFRAME`).
 pub const UNKNOWN_KEYFRAME: &str = "UNKNOWN_KEYFRAME";
 pub const FX_TRANSITION_NOT_YET: &str = "FX_TRANSITION_NOT_YET";
+/// `keys` on a transition: entered nowhere yet, even as `{}` (F064). Looks keep their keys.
+pub const FX_TRANSITION_KEYS_NOT_YET: &str = "FX_TRANSITION_KEYS_NOT_YET";
+/// A look named where a transition goes, or a transition named as a clip (not `UNKNOWN_EFFECT`:
+/// the effect exists, in the other family).
+pub const WRONG_FAMILY: &str = "WRONG_FAMILY";
+/// A transition whose two shots are not neighbours in the edit.
+pub const TRANSITION_NOT_AT_CUT: &str = "TRANSITION_NOT_AT_CUT";
+/// Two transitions on the same cut.
+pub const TRANSITION_DUPLICATE: &str = "TRANSITION_DUPLICATE";
+/// A duration below 1, above the edit, or a window that leaves the edit (or overflows).
+pub const TRANSITION_OUT_OF_RANGE: &str = "TRANSITION_OUT_OF_RANGE";
+/// A window longer than the two shots can hold for their alignment.
+pub const TRANSITION_TOO_LONG: &str = "TRANSITION_TOO_LONG";
+/// A window that needs frames the instance or the camera do not have (`handles` use/refuse).
+pub const TRANSITION_NO_HANDLES: &str = "TRANSITION_NO_HANDLES";
+/// Two transition windows that share a frame.
+pub const TRANSITION_OVERLAP: &str = "TRANSITION_OVERLAP";
+/// Warning: a transition on a cut whose destination is a continuous junction.
+pub const TRANSITION_ON_CONTINUOUS: &str = "TRANSITION_ON_CONTINUOUS";
+/// Warning: a transition between two shots that both draw a splat scene.
+pub const TRANSITION_SPLAT_COST: &str = "TRANSITION_SPLAT_COST";
 /// A limit of the layer (tracks in a bundle, clips on a track). Reported as an importer issue
 /// with this code; the command code of the rejected edit stays `invalid_bundle`.
 pub const FX_LIMIT: &str = "FX_LIMIT";
@@ -134,8 +178,17 @@ pub const FX_PASS_BUDGET: usize = 8;
 pub enum FxValue {
     Number(f64),
     Bool(bool),
-    Color { r: f64, g: f64, b: f64 },
-    Point { x: f64, y: f64 },
+    Color {
+        r: f64,
+        g: f64,
+        b: f64,
+    },
+    Point {
+        x: f64,
+        y: f64,
+    },
+    /// One of the names of a [`ParamKind::Choice`] (a transition's `curve`).
+    Choice(&'static str),
 }
 
 impl FxValue {
@@ -145,6 +198,14 @@ impl FxValue {
             Self::Bool(value) => json!(value),
             Self::Color { r, g, b } => json!({ "r": r, "g": g, "b": b }),
             Self::Point { x, y } => json!({ "x": x, "y": y }),
+            Self::Choice(name) => json!(name),
+        }
+    }
+
+    pub fn as_choice(self) -> Option<&'static str> {
+        match self {
+            Self::Choice(name) => Some(name),
+            _ => None,
         }
     }
 
@@ -272,6 +333,10 @@ pub struct FxTrack {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Fx {
     pub tracks: Vec<FxTrack>,
+    /// The transitions between shots (F064), in document order. Always empty unless the scene
+    /// was read under [`TransitionAdmission::Accept`]; [`Self::to_json`] never reports them, so
+    /// every public answer stays what it was.
+    pub transitions: Vec<FxTransition>,
 }
 
 /// One pass of one frame, resolved: what a runtime draws. `amount` is `intensity × weight`

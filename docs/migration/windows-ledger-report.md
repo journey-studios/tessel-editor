@@ -240,3 +240,31 @@ prova de `2522290` e foram repetidos (`g3-*`, `final2-*`).
   um antivírus mantendo a pasta por mais de ~100 ms), o teto de 50 retentativas ainda a reportaria.
 - BL167.6.2 permanece **A validar** até a revisão independente do head publicado. Fechar BL167.6.1 no
   Windows não equivale a PR aprovada.
+
+## Revisão independente R3 e integração com main
+
+R3 aprovou o código Windows no head f0544b09d1b0f4d344f329c0bac83ec855edb584,
+sem achado P0/P1/P2 de código. O ledger é2522290 (SHA9A57B83B…434774).
+O revisor executou:claims54/54, denied6/6, processos14, journal13, integrity11,
+jsonl6, discard13, fmt/check/clippyall-targets e treecore semGPUI/wry.
+Corrida320/320 e exclusividade40/40 independentes/sequenciais, semtimeout.
+Quatro variantes de mutantes foram detectadas (retrycreate, deadline, deadline
+mais minpause e teto), com fonte restaurada por SHA. A base0/320 do autor continua
+impedindo alegar eficácia causal via stress; o seam e a ACL provam o controle.
+
+O conflito com main e3c20cb estava apenas no backlog: históricos W2 e S0/S1a
+anexados no mesmo ponto. A resolução preserva os dois; não altera ledger nem
+testes/media revisados. Cargo.lock combina as arestas same-file Windows da W2
+e proc-macro2 somente dev do core/S1a. Dois bytes de controle foram removidos
+de scene-resources.md e a matriz/backlog receberam o estado R3. Estas mudanças
+e a integração ainda precisam dos gates do seu próprio head.
+
+Unix/Mac append_accept(write+seek), builddesktop e workspace completo não foram
+executados na R3. O target legado do checkout Mac aponta para a raiz antiga do
+cache; doctor vê a raiz atual no SSD, mas adopt não repara links. A prova Unix
+será feita em checkout limpo pelo wrapper e target padrão, sem override/clean/gc.
+Sem prova de ReFS/rede, mecanismoNTFS, GPU, janela ou performance.
+
+Dívidas baixas da R3 foram registradas no backlog: BL167.6.7 (segundo panic se
+Drop da ACL falhar durante unwind) e BL167.6.8 (pastas vazias de teste de descarte
+filho). Nenhuma muda o contrato do produto desta correção.

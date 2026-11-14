@@ -774,8 +774,8 @@ fn run_batch(
                 .map(|(track, slot)| (*index, format!("/fx/tracks/{track}/clips/{slot}")))
         })
         .collect();
-    let candidate = DirectedScene::import_value_with(work, limits)
-        .map_err(|error| rejected(error, &pointers))?;
+    let reread = scene.reimport(work, limits);
+    let candidate = reread.map_err(|error| rejected(error, &pointers))?;
     let mut issues = candidate.edit_join_issues();
     issues.extend(candidate.temporal_issues());
     if !issues.is_empty() {

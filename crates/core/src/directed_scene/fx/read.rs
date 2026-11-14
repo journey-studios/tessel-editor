@@ -12,13 +12,14 @@ use crate::directed_scene::issue::{INVALID_TYPE, INVALID_VALUE, MISSING_FIELD};
 use crate::directed_scene::read::{Bound, Obj, Sink, at, child, kind_of};
 
 use super::catalog::{EffectSpec, ParamKind, ParamSpec, effect};
+use super::transition_read::{TransitionDraft, read_transitions};
 use super::{
     CATALOG_TOO_NEW, DUPLICATE_ID, ENVELOPE_TOO_LONG, FX_CATALOG_VERSION, FX_CLIP_EMPTY,
     FX_CLIP_OUT_OF_RANGE, FX_CLIP_OVERLAP, FX_LIMIT, FX_SCOPE_NOT_YET, FX_TRANSITION_NOT_YET, Fx,
     FxClip, FxEasing, FxKey, FxScope, FxTrack, FxValue, KEY_OUT_OF_CLIP, KEYFRAME_ORDER,
     MAX_FX_CLIPS_PER_TRACK, MAX_FX_KEYS_PER_CLIP, MAX_FX_KEYS_PER_CURVE, MAX_FX_KEYS_PER_LAYER,
-    MAX_FX_TRACKS, PARAM_OUT_OF_RANGE, PARAM_TYPE, ParamKeys, UNKNOWN_EFFECT,
-    UNKNOWN_KEYFRAME_EASING, UNKNOWN_PARAM, id_problem,
+    MAX_FX_TRACKS, PARAM_OUT_OF_RANGE, PARAM_TYPE, ParamKeys, TransitionAdmission, UNKNOWN_EFFECT,
+    UNKNOWN_KEYFRAME_EASING, UNKNOWN_PARAM, WRONG_FAMILY, id_problem, transition_effect,
 };
 
 /// Why a parameter value is refused: a code and a message naming what was expected.
@@ -88,6 +89,32 @@ pub fn parse_param(spec: &ParamSpec, value: &Value) -> Result<FxValue, ParamProb
                 b: channel("b")?,
             })
         }
+        ParamKind::Choice { options, .. } => match value {
+            Value::String(name) => options
+                .iter()
+                .copied()
+                .find(|option| option == name)
+                .map(FxValue::Choice)
+                .ok_or_else(|| {
+                    (
+                        PARAM_OUT_OF_RANGE,
+                        format!(
+                            "`{}` is \"{name}\", outside {}",
+                            spec.id,
+                            options.join(" | ")
+                        ),
+                    )
+                }),
+            other => Err((
+                PARAM_TYPE,
+                format!(
+                    "`{}` must be one of {}, got {}",
+                    spec.id,
+                    options.join(" | "),
+                    kind_of(other)
+                ),
+            )),
+        },
         ParamKind::Bool { .. } => match value {
             Value::Bool(flag) => Ok(FxValue::Bool(*flag)),
             other => Err((
@@ -430,7 +457,7 @@ fn read_curve(
     clean.then_some(keys)
 }
 
-fn read_clip(obj: &Obj<'_>, sink: &Sink) -> Option<FxClip> {
+fn read_clip(obj: &Obj<'_>, admission: TransitionAdmission, sink: &Sink) -> Option<FxClip> {
     let id = obj.id("id");
     if let Some(id) = id
         && let Some((code, message)) = id_problem(id)
@@ -440,7 +467,15 @@ fn read_clip(obj: &Obj<'_>, sink: &Sink) -> Option<FxClip> {
     let name = obj.id("effect");
     let spec = name.and_then(|name| {
         let found = effect(name);
-        if found.is_none() {
+        // A transition named as a clip is the wrong family, but only where transitions exist at
+        // all: under `Refuse` the public answer stays `UNKNOWN_EFFECT`, as before F064.
+        if found.is_none() && admission.admits() && transition_effect(name).is_some() {
+            sink.issue(
+                WRONG_FAMILY,
+                &obj.field_path("effect"),
+                format!("`{name}` is a transition effect, not a look; it goes in `fx.transitions`"),
+            );
+        } else if found.is_none() {
             sink.issue(
                 UNKNOWN_EFFECT,
                 &obj.field_path("effect"),
@@ -504,7 +539,7 @@ fn read_clip(obj: &Obj<'_>, sink: &Sink) -> Option<FxClip> {
     })
 }
 
-fn read_track(obj: &Obj<'_>, sink: &Sink) -> Option<FxTrack> {
+fn read_track(obj: &Obj<'_>, admission: TransitionAdmission, sink: &Sink) -> Option<FxTrack> {
     let id = obj.id("id");
     if let Some(id) = id
         && let Some((code, message)) = id_problem(id)
@@ -527,7 +562,7 @@ fn read_track(obj: &Obj<'_>, sink: &Sink) -> Option<FxTrack> {
             format!("a track holds at most {MAX_FX_CLIPS_PER_TRACK} clips"),
         );
     }
-    let clips = clips.and_then(|array| array.objects(|_, clip| read_clip(clip, sink)));
+    let clips = clips.and_then(|array| array.objects(|_, clip| read_clip(clip, admission, sink)));
     let hidden = obj.opt_true("hidden");
     let (id, label, clips, hidden) = (id?, label?, clips?, hidden?);
     if id_problem(id).is_some() || label.is_empty() || label.chars().count() > 80 {
@@ -542,7 +577,13 @@ fn read_track(obj: &Obj<'_>, sink: &Sink) -> Option<FxTrack> {
 }
 
 /// The rules that need clips next to each other or the length of the edit.
-fn check_layer(fx: &Fx, path: &str, edit_duration: Option<u64>, sink: &Sink) -> bool {
+fn check_layer(
+    fx: &Fx,
+    transitions: &[TransitionDraft],
+    path: &str,
+    edit_duration: Option<u64>,
+    sink: &Sink,
+) -> bool {
     let before = sink_len(sink);
     let mut seen: HashSet<&str> = HashSet::new();
     let layer_keys: usize = fx
@@ -661,6 +702,17 @@ fn check_layer(fx: &Fx, path: &str, edit_duration: Option<u64>, sink: &Sink) -> 
             }
         }
     }
+    // Tracks, clips and transitions share one ID space (the pilot's `fx-ids`), in document order.
+    let transitions_path = child(path, "transitions");
+    for transition in transitions {
+        if !seen.insert(transition.id.as_str()) {
+            sink.issue(
+                DUPLICATE_ID,
+                &child(&at(&transitions_path, transition.index), "id"),
+                format!("Duplicate fx id {}", transition.id),
+            );
+        }
+    }
     sink_len(sink) == before
 }
 
@@ -669,11 +721,18 @@ fn sink_len(sink: &Sink) -> usize {
 }
 
 /// Reads the `fx` object of a bundle. `None` when something was reported.
+///
+/// `admission` is the one gate of `fx.transitions` (see [`TransitionAdmission`]): under `Refuse` a
+/// non-empty list is `FX_TRANSITION_NOT_YET` and nothing in it is read; under `Accept` it is read
+/// by `transition_read`. `shot_count` is the edit's shots when they could be read (it bounds the
+/// transitions to one per cut).
 pub(in crate::directed_scene) fn read_fx(
     obj: &Obj<'_>,
     edit_duration: Option<u64>,
+    shot_count: Option<usize>,
+    admission: TransitionAdmission,
     sink: &Sink,
-) -> Option<Fx> {
+) -> Option<(Fx, Vec<TransitionDraft>)> {
     let version = obj.int("catalogVersion", Bound::Positive);
     if let Some(version) = version
         && version > i64::from(FX_CATALOG_VERSION)
@@ -696,24 +755,33 @@ pub(in crate::directed_scene) fn read_fx(
             format!("a bundle holds at most {MAX_FX_TRACKS} fx tracks"),
         );
     }
-    let tracks = tracks.and_then(|array| array.objects(|_, track| read_track(track, sink)));
-    let transitions = obj.array("transitions", 0);
-    if let Some(transitions) = &transitions
-        && transitions.len() > 0
-    {
-        sink.issue(
-            FX_TRANSITION_NOT_YET,
-            &obj.field_path("transitions"),
-            "transitions between shots are not implemented yet; leave `transitions` empty",
-        );
-    }
+    let tracks =
+        tracks.and_then(|array| array.objects(|_, track| read_track(track, admission, sink)));
+    let transitions = obj.array("transitions", 0).and_then(|array| {
+        if array.len() == 0 {
+            return Some(Vec::new());
+        }
+        if !admission.admits() {
+            sink.issue(
+                FX_TRANSITION_NOT_YET,
+                &obj.field_path("transitions"),
+                "transitions between shots are not implemented yet; leave `transitions` empty",
+            );
+            return None;
+        }
+        read_transitions(&array, &obj.field_path("transitions"), shot_count, sink)
+    });
     let (version, tracks, transitions) = (version?, tracks?, transitions?);
-    if version > i64::from(FX_CATALOG_VERSION) || transitions.len() > 0 {
+    if version > i64::from(FX_CATALOG_VERSION) {
         return None;
     }
     if tracks.len() > MAX_FX_TRACKS {
         return None;
     }
-    let fx = Fx { tracks };
-    check_layer(&fx, obj.path(), edit_duration, sink).then_some(fx)
+    // The typed transitions are filled in by the explain stage, once the bundle exists.
+    let fx = Fx {
+        tracks,
+        transitions: Vec::new(),
+    };
+    check_layer(&fx, &transitions, obj.path(), edit_duration, sink).then_some((fx, transitions))
 }

@@ -43,6 +43,9 @@ pub(super) struct Draft {
     pub passes: Vec<CompositionPass>,
     pub audio: Option<AudioMix>,
     pub fx: super::fx::Fx,
+    /// The transitions of `fx`, structurally read and waiting for the bundle to be judged against
+    /// (F064). Empty unless the read was admitting transitions.
+    pub transitions: Vec<super::fx::TransitionDraft>,
     /// `metadata.pilotFrameAudit` is present (the origin refuses it: `LEGACY_FRAME_AUDIT`).
     pub legacy_frame_audit: bool,
 }
@@ -749,7 +752,11 @@ fn audio(parent: &Obj<'_>) -> Option<Option<AudioMix>> {
 }
 
 /// Reads a whole bundle. `None` means at least one issue was recorded in `sink`.
-pub(super) fn read_bundle(root: &Value, sink: &Sink) -> Option<Draft> {
+pub(super) fn read_bundle(
+    root: &Value,
+    admission: super::fx::TransitionAdmission,
+    sink: &Sink,
+) -> Option<Draft> {
     let obj = Obj::open(root, String::new(), sink)?;
     // Version gate: a different version has a different shape, so reading on would only bury
     // the one issue that matters under a pile of shape errors.
@@ -784,8 +791,14 @@ pub(super) fn read_bundle(root: &Value, sink: &Sink) -> Option<Draft> {
         .and_then(|a| a.objects(|_, o| composition_pass(o)));
     let audio = audio(&obj);
     let fx = match obj.opt_object("fx") {
-        Some(Some(fx_obj)) => super::fx::read_fx(&fx_obj, duration, sink),
-        Some(None) => Some(super::fx::Fx::default()),
+        Some(Some(fx_obj)) => super::fx::read_fx(
+            &fx_obj,
+            duration,
+            shots.as_ref().map(Vec::len),
+            admission,
+            sink,
+        ),
+        Some(None) => Some((super::fx::Fx::default(), Vec::new())),
         None => None,
     };
     obj.deferred("narration");
@@ -802,6 +815,7 @@ pub(super) fn read_bundle(root: &Value, sink: &Sink) -> Option<Draft> {
         ),
     }
     let (profile, profile_fps) = profile?;
+    let (fx, transitions) = fx?;
     Some(Draft {
         bundle_id: bundle_id?.to_string(),
         revision_id: revision_id?.to_string(),
@@ -817,7 +831,8 @@ pub(super) fn read_bundle(root: &Value, sink: &Sink) -> Option<Draft> {
         shots: shots?,
         passes: passes?,
         audio: audio?,
-        fx: fx?,
+        fx,
+        transitions,
         legacy_frame_audit,
     })
 }
