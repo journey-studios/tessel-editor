@@ -14,9 +14,11 @@ o corpus independente da S0 (`scripts/pilot-dissolve-corpus.py`, `scripts/pilot_
 um portão de admissão**: toda entrada pública (importar, anexar, abrir projeto, restaurar pacote, candidato de edição)
 lê com a política `Refuse`, e um `transitions` não vazio continua `FX_TRANSITION_NOT_YET`, com a mesma mensagem. Só os
 testes e o corpus do core têm a política `Accept` (`#[doc(hidden)]`, **não** é barreira de segurança). Continuam sem
-existir: avaliação fora da janela e `ScenePlan.transition` (S1b), runtime/shader/export (S2), operações/gestos/inspetor
-(S3), UI (S4). O catálogo público, o seletor de clipe e os planos **não mudam** (3 looks, `catalogVersion` 1, 13
-capacidades, `PLAN_VERSION` 1). Plano de trabalho (versão 2):
+existir: runtime/shader/export (S2), operações/gestos/inspetor (S3), UI (S4). **S1b (BL082.4.3) adiciona, só no core e
+só interno:** a avaliação de dois decks, `ScenePlan.transition` e a capacidade `fxTransition` (ver «S1b» no fim e o
+[relatório](../migration/p4b-s1b-evaluation-report.md)); a admissão pública segue fechada. O catálogo público, o seletor
+de clipe e os planos **sem transição não mudam** (3 looks, `catalogVersion` 1, `PLAN_VERSION` 1; 14 capacidades no Rust,
+13 na lista do JS). Plano de trabalho (versão 2):
 [p4b-cross-dissolve-plan.md](../migration/p4b-cross-dissolve-plan.md), lido no head `2395719`.
 
 Fica fora (cada item é BL próprio): as outras transições do piloto, `keys` em transições (D10,
@@ -429,3 +431,25 @@ A coleta de IDs automáticos de looks ainda não inclui IDs das transições. So
 adicionar um look sem ID: recusa segura e hoje inalcançável pela entrada pública.
 A correção e seus testes ficam na S3, registrada em BL082.4.15. Esta pendência
 não bloqueou o parecer S1a. F064 permanece P e o portão público fechado até S2A.
+
+## S1b (BL082.4.3): avaliação de dois decks e `ScenePlan.transition` — interna, a validar review
+
+**Concluída parcial interna, a validar review.** Só o core; a admissão pública continua `Refuse` e o `tessel-headless`
+real continua recusando `transitions` com exit 1. S2 e S3a não começaram; BL082.4.15 segue Pendente para a S3.
+Detalhe, mutantes, divergências e comandos: [p4b-s1b-evaluation-report.md](../migration/p4b-s1b-evaluation-report.md).
+
+- **Relógios (D14/D15/D17).** `evaluate_shot_at_offset` (`temporal/shot_offset.rs`) avalia um shot nomeado num quadro
+  fora do seu intervalo: instância e câmera são presas **separadamente**, com `held` só quando o grampo mudou o quadro
+  (clipe sem quadros: sempre preso em 0); luz e cena usam o quadro **real** de edição à taxa racional. O clipe de plano do
+  vizinho usa `clamp(f, shot.start, shot.end−1)`; um clipe no meio do shot não entra. A semente de ruído do vizinho usa o
+  quadro real (exceção registrada).
+- **Estágios.** `Fx::resolve_frame` (`fx/frame.rs`): passes do topo, passes do vizinho (cada deck), mistura
+  (`progress` suavizado, `amount = clamp01(intensity)`) e saída, uma vez. Orçamento (`fx/budget.rs`): só aviso.
+- **Plano.** `scene_plan/transition{,_json,_validate}.rs`: ver [scene-plan.md](scene-plan.md). Recursos por deck, união
+  derivada com `used_by` qualificado, `requires` ganha `fxTransition`, tetos 4 MiB / 20 000 itens / profundidade 1.
+- **Prova (Windows, head de código desta entrega).** `scene_fx_transition` 106 testes e `pilot_dissolve_corpus` 10, nos
+  dois perfis de `serde_json` (com e sem `preserve_order`); core completo com 2 falhas de base (`scene_gizmo_rotation`,
+  `scene_gizmo_scale`, também na base sem alteração); GPUI `scene_fx` 80. 18 mutantes essenciais mortos.
+- **Não provado / A validar:** pixels reais, GPU, runtime e shader (S2), Mac, origem (`ORIGIN_NOT_EXECUTED`), comparação
+  com ouro (`GOLDEN_NOT_COMPARABLE`), aceite humano. A linha de pixels do corpus é um cálculo de referência
+  (decodificação sRGB, mistura, codificação, meio para cima), **não** saída de GPU.

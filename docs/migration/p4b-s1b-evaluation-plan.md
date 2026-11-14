@@ -48,6 +48,11 @@ Extensões mecânicas de ownership (registradas no relatório): `fx/transition_e
 tipo para `ShotReach`), `scene_project/fx.rs` (chave aditiva `transition` em `scene.fx.frame`),
 constante de capacidades em `tests/scene_fx_shot_scope/plan.rs`.
 
+## Estado
+
+M0–M5 executados; status **concluída parcial interna, a validar review**. Resultados, mutantes e divergências:
+[p4b-s1b-evaluation-report.md](p4b-s1b-evaluation-report.md).
+
 ## APIs/tipos propostos
 
 - `FrameEvaluator::evaluate_shot_at_offset(shot, edit_frame) -> OffsetEvaluation` (mesmo

@@ -90,6 +90,23 @@ Evidência de custo e tamanho (medida, não suposta): ver "BL064 — medição" 
 | `unsupported` | `UnsupportedDomain { domain, subject }` ordenados; vazio no plano completo |
 | `uninterpreted` | Campos do bundle que o importador preservou e o plano não interpreta (JSON Pointer + motivo), ordenados por ponteiro |
 
+### Chave `transition` (F064, S1b — interna, sem admissão pública)
+
+Um plano **pode** carregar uma chave opcional `transition` quando o quadro cai numa janela de `crossDissolve`
+(ver [fx-transitions.md](fx-transitions.md)). A chave é **aditiva e ausente** quando não há transição: um plano sem ela
+mantém bytes e digests (`PLAN_VERSION` 1), e nenhum teto novo se aplica a ele. Conteúdo: `id`, `effect`, `fromShotId`,
+`toShotId`, `frameInWindow`, `durationFrames`, `progress` (**já suavizado**, `ease((f − início + 0,5)/D)`), `amount`
+(`clamp01(intensity)`; o peso **não** é armazenado: é do runtime), `params` (**array ordenado** de pares) e `other`, o
+`ScenePlan` do vizinho no quadro **real** de edição, com a **sua** tabela de recursos. O topo é sempre o shot sob a
+agulha. `other` não aninha (profundidade 1): um vizinho com `transition` é recusado em `/transition/other/transition`
+antes de ser lido. A saída (`fx` de escopo `output`) age uma vez, no topo, e não é duplicada em `other`.
+
+`resource_union()` é **derivada, não serializada**: por `assetId`, com `used_by` qualificado por deck (`primary`,
+depois `other`); o mesmo `assetId` com conteúdo diferente é inválido em `/transition/other/resources/N`. `requires`
+ganha `fxTransition` (14ª `Capability`, **ausente** da lista `SCENE_CAPABILITIES` do JS até a S2) e a união das
+capacidades dos dois decks. Tetos de entrada hostil, medidos no texto antes de parsear: 4 194 304 bytes, 20 000 itens
+(contados pelos comprimentos dos arrays dos dois decks) e profundidade 1. Os planos reais do corpus têm ~6 KB.
+
 ### Políticas
 
 | Tema | Política |
@@ -174,6 +191,14 @@ Leitura honesta:
 - Descartado: um índice mais leve em `NodeFrame` (~10% do caminho quente, cirurgia em struct pública).
 
 Testes (R6): `crates/core/tests/scene_plan_performance.rs` (equivalência com o corpus 55+47 em 4 ordens × 2 modos, linha do tempo nova por frame, sintéticas, trocas de geração, instância quebrada, ordem de erro, threads, memória limitada), `scene_plan_performance_golden.rs` (saída do planejador fixada na main pristina por perfil `debug`/`release`: a main sem alteração já difere 1 ulp entre perfis), unit test em `scene_plan/timeline.rs`, e `scripts/scene-plan-performance/run.spec.py`.
+
+### F064 S1b — evidência do plano de transição
+
+`crates/core/tests/scene_fx_transition/{clocks,stages,plan,limits,compat}.rs` e `pilot_dissolve_corpus.rs`
+(106 + 10 testes) cobrem relógios, estágios, forma de fio, recursos, capacidade, tetos e o corpus `dissolve-cases.json`;
+`scene_plan_transition_baseline.rs` fixa, na base sem alteração, que planos sem transição mantêm os bytes. Status,
+mutantes e divergências: [p4b-s1b-evaluation-report.md](../migration/p4b-s1b-evaluation-report.md). Nada disso abre a
+admissão pública nem prova pixels reais.
 
 ## Adapter integrado de consulta
 
