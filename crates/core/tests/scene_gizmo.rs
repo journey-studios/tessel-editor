@@ -1993,3 +1993,41 @@ fn a_press_released_without_moving_is_not_an_edit() {
     assert_eq!(back["document_changed"], false);
     assert_eq!(observable(&state), before);
 }
+
+/// BL168.10: the overlay a release answers with is the overlay of the state the release left. Its stamp
+/// carries the project revision AFTER the commit, the one every later query (and the page's
+/// acknowledgement of the drawn overlay) reports; a stamp of the revision before the commit names a
+/// state that no longer exists, and an adapter waiting for that stamp waits for nothing.
+#[test]
+fn the_overlay_of_a_release_is_stamped_with_the_revision_the_commit_left() {
+    let mut state = street();
+    let camera = camera(&mut state);
+    select(&mut state, FIGURE);
+    let shown = overlay(&mut state);
+    let tip = handle(&shown, "x")["to"].clone();
+    let before = shown["stamp"]["revision"].as_u64().unwrap();
+    press(&mut state, at(&tip)).unwrap();
+    let (u, v) = camera.pointer_for(&tip, [0.5, 0.0, 0.0], [1.0, 0.0, 0.0], 1.0);
+    let moved = ok(
+        &mut state,
+        json!({"op":"scene.pointer.move","point":point(u, v)}),
+    );
+    assert_eq!(
+        moved["overlay"]["stamp"]["revision"].as_u64(),
+        Some(before),
+        "a candidate is not the document: the revision has not moved"
+    );
+    let up = ok(&mut state, json!({"op":"scene.pointer.up"}));
+    assert_eq!(up["document_changed"], true);
+    let after = overlay(&mut state)["stamp"]["revision"].as_u64().unwrap();
+    assert!(
+        after > before,
+        "the commit is a new revision: {before} -> {after}"
+    );
+    assert_eq!(
+        up["overlay"]["stamp"]["revision"].as_u64(),
+        Some(after),
+        "the release answers with the overlay of the committed state"
+    );
+    assert_eq!(up["overlay"]["stamp"], overlay(&mut state)["stamp"]);
+}

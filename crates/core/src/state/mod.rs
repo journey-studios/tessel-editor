@@ -594,11 +594,27 @@ impl EditorState {
             label
         };
         let before = self.snapshot();
-        let outcome = self.apply(command)?;
+        let mut outcome = self.apply(command)?;
         if outcome["changed"] != false {
             self.record_edit(label, before);
+            self.restamp_overlay(&mut outcome);
         }
         Ok(outcome)
+    }
+
+    /// An edit that answers with the gizmo overlay (the release of a drag) built it inside the
+    /// edit, before `record_edit` moved the project revision: its stamp named a state that no
+    /// longer exists, and an adapter waiting for the page to acknowledge that stamp waited for
+    /// nothing (BL168.10). The overlay itself is already the one of the committed document; only
+    /// the stamp is taken again, so it names the revision every later query reports (no second
+    /// layout: `scene_gizmo_perf_structure` counts them).
+    fn restamp_overlay(&self, outcome: &mut Value) {
+        let stamp = &outcome["overlay"]["stamp"];
+        let (Some(scene), Some(frame)) = (stamp["scene"].as_str(), stamp["frame"].as_i64()) else {
+            return;
+        };
+        let stamp = self.gizmo_stamp(scene, frame);
+        outcome["overlay"]["stamp"] = stamp;
     }
 
     /// A `scene.pointer.up` while no gizmo drag is open (a script, a release the page sends late)
