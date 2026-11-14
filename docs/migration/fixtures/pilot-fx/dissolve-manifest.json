@@ -1,0 +1,513 @@
+{
+  "assumptions": [
+    {
+      "detail": "Written first without reading camera/resolve-camera-clip.ts (the origin handle spec was consistent with it). For P2-2 the file WAS read at the tip: `cameraClipFrames` is the largest of the sum of the main segments' durations and each layer's sum, so for a clip WITHOUT layers (every clip this corpus uses) the assumption is now a read fact; a clip with layers is not modelled.",
+      "id": "CAMERA_FRAMES_IS_SUM_OF_SEGMENT_DURATIONS"
+    },
+    {
+      "detail": "fx-test-bundle.ts was not read; the three-shot edit is rebuilt from the numbers the origin specs show and only those are claimed.",
+      "id": "RECONSTRUCTED_SPEC_FIXTURE"
+    },
+    {
+      "detail": "The analytic probes (analytic_probes) are formulas evaluated here on synthetic scenes: no frame was rendered, no runtime, Rust or GPU ran, and the destination's own text was only READ to reconcile the formulas (painter's order, decode * (1 + L) * encode, vertical fov, lights on the plan's edit time). Textured frames become real in S2; until then the probes are an expectation, not a validated pixel.",
+      "id": "ANALYTIC_SCENES_NOT_RENDERED"
+    },
+    {
+      "detail": "The kits use axis-aligned image planes facing the camera with flat colours, a camera that trucks along its own right axis or holds, one lamp per deck with ambient 1 and a normal facing +z. Normal maps, splats, camera layers, rotations, shadows, weather and hidden lights are not modelled and no claim is made for them.",
+      "id": "ANALYTIC_FLAT_PLANES_ONLY"
+    },
+    {
+      "detail": "the shader writes alpha 1.0; the destination's output alpha is assumed opaque. Not measured.",
+      "id": "OUTPUT_ALPHA_255"
+    },
+    {
+      "detail": "decks and output are rounded half-up; GPU rounding is not modelled beyond the 1/255 + bias gate.",
+      "id": "ROUNDING_HALF_UP"
+    }
+  ],
+  "authoring": {
+    "final_plan_incorporation": {
+      "claim": "the text was incorporated into this corpus' analytic section and documents; this is a reading of a document, not a proof: nothing about the final plan was executed or validated here",
+      "plan_contained_in_the_branch_head": "58157abef1c0539889162182a0d36d886f57aaa5",
+      "plan_merged_in_main_by": "179610774b81984dce548154332c370d58ab24f4",
+      "plan_source_commit": "002fe9fc101c438aa8a6da95b25aa320f8cb582b",
+      "what_was_read": "docs/migration/p4b-cross-dissolve-plan.md at those commits (7.3 independent reference X, D14, D15, D17, D19, T06, T10, T16, section 17 and the hidden decision), for the P2-2 fix"
+    },
+    "interpreter": "recorded in the S0 report (version, prefix, executable digest), not here: the JSON must not depend on the host",
+    "plan": "docs/migration/p4b-cross-dissolve-plan.md, version 2",
+    "plan_head_note": "the head of the PR #58 branch whose plan this corpus was FIRST written against (history kept); a later plan head may change the contract and then this corpus is regenerated and re-reviewed, never edited",
+    "plan_head_read": "2395719046875a06c4986e4e8a949a448bfcb9d3"
+  },
+  "blockers": [
+    {
+      "consequence": "Pixel equivalence is `origin-formula`, never golden equivalence. Visual parity of the dissolve stays partial.",
+      "detail": "The origin golden (catalog/__golden__/crossDissolve.png) needs the origin's harness. Executing the origin is forbidden here. No golden was read or compared.",
+      "id": "ORIGIN_GOLDEN_NOT_COMPARABLE"
+    },
+    {
+      "consequence": "`origin-blob verified` is not `origin executed`.",
+      "detail": "Expectations are transcribed formulas, not the origin's outputs. Mitigation: the transcribed lines and constants are checked against the origin text at generation and by `verify --origin`.",
+      "id": "ORIGIN_NOT_EXECUTED"
+    },
+    {
+      "consequence": "`verify --origin --require-pin` exits 4 where the pin cannot be checked.",
+      "detail": "The pin commit is not in the author's clone of the origin; the pin blob ids are the coordinator's attestation.",
+      "id": "PIN_COMMIT_ABSENT_FOR_THE_WINDOWS_AUTHOR"
+    },
+    {
+      "consequence": "No pixel of any runtime was compared in S0; the public gate FX_TRANSITION_NOT_YET stays closed until S2A.",
+      "detail": "The textured reference of the plan (8-bit runtime bytes of PURE frames mixed in Python) cannot exist before S2: there is no runtime frame for a transition yet. The analytic probes cover the cases a pure frame cannot (mixed hold, the real light clock); the textured comparison stays A validar until S2.",
+      "id": "TEXTURED_FRAMES_NOT_REAL_BEFORE_S2"
+    },
+    {
+      "consequence": "No parity is claimed for the destination.",
+      "detail": "No Rust, JSONL, runtime or UI exists for transitions. A Python oracle is not the library, the headless CLI or the window (F064 Pending there).",
+      "id": "NOT_THE_FEATURE"
+    }
+  ],
+  "corpus": {
+    "check": "scripts/pilot-dissolve-corpus.py generate --check   (writes nothing; offline)",
+    "counts": {
+      "analytic_frames": 116,
+      "analytic_hypotheses": 9,
+      "analytic_probes": 451,
+      "analytic_scenarios": 12,
+      "explain": 32,
+      "handles": 12,
+      "pixel_cases": 15,
+      "pixel_grid_probes": 144,
+      "progress_tables": 18,
+      "window_rows": 30
+    },
+    "file": "dissolve-cases.json",
+    "generator": "scripts/pilot-dissolve-corpus.py",
+    "regenerate": "scripts/pilot-dissolve-corpus.py generate --origin <path to the origin repo>",
+    "repository_fixture_read": {
+      "path": "docs/migration/fixtures/bundles/valid-cut-instance-offsets.bundle.json",
+      "sha256": "43fd1a5568a63745c1043eab45cae028fa03a772eea11c9d0bac43e808718e2b"
+    },
+    "sha256": "e5f40f70ccdb069196224d45c8df09cbaec7539eedc06ea350e65de7966cd011"
+  },
+  "documented_differences": [
+    {
+      "detail": "The origin mixes half-float linear targets; the destination mixes 8-bit sRGB decks. The oracle models the destination's 8-bit decks and quantized output, so equivalence is by formula, not by the origin's pixels.",
+      "id": "DECKS_8_BIT"
+    },
+    {
+      "detail": "The origin refuses (UNSUPPORTED_ALPHA) any non-opaque profile that has a transition, a legacy dissolve or a clip; the destination accepts straight and renders opaque. A declared divergence of verdict (plan Q3), pending review; it already holds for the three looks.",
+      "id": "ALPHA_VERDICT"
+    },
+    {
+      "detail": "Keys on a transition are accepted by the origin and refused by the plan's destination (FX_TRANSITION_KEYS_NOT_YET).",
+      "id": "KEYS_REFUSED"
+    },
+    {
+      "detail": "At the tip, render-bundle.schema.ts imports editFrameToSeconds and calls explainNarration with the duration: the NARRATION behaviour differs from the pin (a behaviour difference, not a comment). The contract is valid WITHOUT narration (the editor has none: BL017/BL026); TRANSITION_OVER_SPEECH is N/A until narration exists. Every other rule used here is the same at the pin and at the tip.",
+      "id": "NARRATION_OUT_OF_SCOPE"
+    },
+    {
+      "detail": "The legacy corpus (invalid-dissolve-transition, DISSOLVE_UNSUPPORTED) is history of an older pin and is not edited; the legacy dissolve is a separate S6 track with its own oracle lane (plan D04, Q2). Nothing here changes a legacy byte.",
+      "id": "LEGACY_FIXTURES_UNTOUCHED"
+    },
+    {
+      "detail": "The coordinator chose true or absent for transition hidden, matching the origin (plan section 17: `hidden` accepts true or absence; making it visible removes the key). Explicit false is a FUTURE destination contract: a structural, typed refusal in S1a, independent of `explain`. Nothing in the Rust importer does it today and this corpus does not claim it does; look clip compatibility is unchanged.",
+      "id": "HIDDEN_FALSE"
+    },
+    {
+      "detail": "The oracle refuses floats, booleans, strings and integers beyond 2^53 - 1 for frame fields (ORACLE_* codes); the origin's schema only requires `int()`.",
+      "id": "STRICT_INTEGERS"
+    },
+    {
+      "detail": "D is compared with the edit before the window arithmetic (same code, TRANSITION_OUT_OF_RANGE, as the origin gives for any window that cannot fit).",
+      "id": "DURATION_CHECKED_FIRST"
+    }
+  ],
+  "exit_codes": {
+    "0": "verified",
+    "1": "finding",
+    "2": "usage",
+    "3": "ORIGIN_UNAVAILABLE",
+    "4": "PIN_UNVERIFIED (with --require-pin)"
+  },
+  "expectation_kinds": {
+    "destination-contract-candidate": "what the plan proposes for the destination where it differs from the origin; a candidate, not a result",
+    "destination-contract-declared": "the destination's declared contract (F064 draft); pending review",
+    "destination-hardening": "stricter input rules of the oracle; its codes start with ORACLE_ and are not product codes",
+    "origin-formula": "read from the origin text and evaluated by this script; the origin was not run",
+    "origin-spec-vector": "a number or message the origin's own spec pins (re-checked in the origin text at generation and by `--origin`)"
+  },
+  "origin": {
+    "access": "git rev-parse / cat-file of the blobs listed under `sources` (no fetch, no checkout, no execution)",
+    "observed_when_authoring": {
+      "host": "windows-x64 author clone",
+      "pin_commit_present": false
+    },
+    "origin_executed": false,
+    "pin_named_by_the_plan": "d40ac3f7c0",
+    "repository": "tesselapp (read only; never installed, built or executed)",
+    "tip_commit_read": "365579076782c1fc19c6464f3bc0199b30c0ab8f",
+    "what_the_coordinator_attested": "the Mac coordinator compared 21 files of the pin with the tip by git object ids: all identical except fx/fx-schema.ts (a comment only: CLIP_OVERLAP -> CLIP_PAST_END) and schema/render-bundle.schema.ts (a behaviour difference in the narration part, at the tip, not a comment; not used by any rule of this corpus except the alphaMode enum and the legacy dissolve shape, both re-checked at the tip). Not re-verified here: the pin commit is not in the clone of the Windows author.",
+    "what_the_windows_author_read": "the TIP blobs, whose ids and sha256 this script re-checks with `--origin`"
+  },
+  "purpose": "Provenance of the pilot crossDissolve corpus (dissolve-cases.json): where each expectation comes from. An oracle for P4b-S0; not the feature.",
+  "schema": 1,
+  "sources": [
+    {
+      "group": "attested-by-the-coordinator-and-read-at-the-tip",
+      "path": "packages/scene-engine/src/fx/fx-windows.ts",
+      "pin_blob_attested": "bcf38615372e8cf830ea21a87159e390f3a7674f",
+      "pin_equals_tip": true,
+      "role": "transitionWindow, maxTransitionFrames: the window arithmetic",
+      "tip_blob": "bcf38615372e8cf830ea21a87159e390f3a7674f",
+      "tip_blob_is_the_attested_one": true,
+      "tip_bytes": 2524,
+      "tip_sha256": "55db48362fc406695cc2ff08e29cf79cfa7563f851b2f88e39c0a726d70c4bd3"
+    },
+    {
+      "group": "attested-by-the-coordinator-and-read-at-the-tip",
+      "path": "packages/scene-engine/src/fx/fx-explain-transitions.ts",
+      "pin_blob_attested": "f075eec56b82012ad9facfacf68cad8ecdb36805",
+      "pin_equals_tip": true,
+      "role": "transitionIssues: codes, order, handle lacks, messages, overlap",
+      "tip_blob": "f075eec56b82012ad9facfacf68cad8ecdb36805",
+      "tip_blob_is_the_attested_one": true,
+      "tip_bytes": 16892,
+      "tip_sha256": "6aa0dd88253702b91a13cc5a57c4e977257d79f272c791a6c2f0e1123acfaabf"
+    },
+    {
+      "group": "attested-by-the-coordinator-and-read-at-the-tip",
+      "path": "packages/scene-engine/src/fx/fx-normalize-transitions.ts",
+      "pin_blob_attested": "8c20747634919afdcc793274816d8228d76921a7",
+      "pin_equals_tip": true,
+      "role": "legacy dissolve read as a crossDissolve (S6, not implemented here)",
+      "tip_blob": "8c20747634919afdcc793274816d8228d76921a7",
+      "tip_blob_is_the_attested_one": true,
+      "tip_bytes": 2252,
+      "tip_sha256": "a8e5a5763a4eee1075b5d360f10e341d86af859e12828a6b60049fe96c547767"
+    },
+    {
+      "group": "attested-by-the-coordinator-and-read-at-the-tip",
+      "path": "packages/scene-engine/src/fx/fx-frame-decks.ts",
+      "pin_blob_attested": "3adf58c6510c13442f47a950e493ed196ab3a428",
+      "pin_equals_tip": true,
+      "role": "shotClipFrame: the handle-edge rule of shot clips",
+      "tip_blob": "3adf58c6510c13442f47a950e493ed196ab3a428",
+      "tip_blob_is_the_attested_one": true,
+      "tip_bytes": 8796,
+      "tip_sha256": "dedc9994f62d500d123e4d6bb2ee31a3c15f0e93bebbdb2d1f29dc1e36db07a8"
+    },
+    {
+      "group": "attested-by-the-coordinator-and-read-at-the-tip",
+      "path": "packages/scene-engine/src/fx/fx-frame-derived.ts",
+      "pin_blob_attested": "db526541051b667e4fed421464224e0c91ad9982",
+      "pin_equals_tip": true,
+      "role": "which transitions draw (hidden skipped) and their windows",
+      "tip_blob": "db526541051b667e4fed421464224e0c91ad9982",
+      "tip_blob_is_the_attested_one": true,
+      "tip_bytes": 3193,
+      "tip_sha256": "d78b3fd817f8f216a10946cfa91189d590c04dea6e1e28ee8b90ec9db30d8b7d"
+    },
+    {
+      "group": "attested-by-the-coordinator-and-read-at-the-tip",
+      "path": "packages/scene-engine/src/fx/fx-explain-budget.ts",
+      "pin_blob_attested": "02aafbd677f311479f83a64ce6be76894d431347",
+      "pin_equals_tip": true,
+      "role": "FX_PASS_BUDGET and the transition's cost (read; not modelled in S0)",
+      "tip_blob": "02aafbd677f311479f83a64ce6be76894d431347",
+      "tip_blob_is_the_attested_one": true,
+      "tip_bytes": 7121,
+      "tip_sha256": "9ff1c564d2ac8f7caf59935d177f322f35ebe9fdfaa3ddb3f0d4d50a54eb190a"
+    },
+    {
+      "group": "attested-by-the-coordinator-and-read-at-the-tip",
+      "path": "packages/scene-engine/src/fx/fx-command-transitions.ts",
+      "pin_blob_attested": "bde079b7fe26b3c25fb0ef6fe931f2233a1a9b8e",
+      "pin_equals_tip": true,
+      "role": "setTransition: defaults of a NEW transition",
+      "tip_blob": "bde079b7fe26b3c25fb0ef6fe931f2233a1a9b8e",
+      "tip_blob_is_the_attested_one": true,
+      "tip_bytes": 7646,
+      "tip_sha256": "fb1006ff87527afb0696eff165d1055976a68d5416fd00d927eeeafdb354749b"
+    },
+    {
+      "group": "attested-by-the-coordinator-and-read-at-the-tip",
+      "path": "packages/scene-engine/src/fx/resolve-fx-frame.ts",
+      "pin_blob_attested": "44c4c11f8725450e9c05bf835a273c57bcca8e0c",
+      "pin_equals_tip": true,
+      "role": "buildTransition: progress = ease((frameInWindow + 0.5) / D)",
+      "tip_blob": "44c4c11f8725450e9c05bf835a273c57bcca8e0c",
+      "tip_blob_is_the_attested_one": true,
+      "tip_bytes": 4953,
+      "tip_sha256": "20fac1cb27ac7d2cb77e2f93f2163312525057ac2defb2ff1bf986c5d015ea18"
+    },
+    {
+      "group": "attested-by-the-coordinator-and-read-at-the-tip",
+      "path": "packages/scene-engine/src/fx/fx-schema.ts",
+      "pin_blob_attested": "5ce474989c62eb21c7c3ecff56c8a78d824dc038",
+      "pin_equals_tip": false,
+      "role": "FxTransition shape, FX_RESERVED_IDS, FX_MAX_SEED, FX_ERROR_CODES",
+      "tip_blob": "5c85ce56f21fe22bf7c53314386b0c2124e20361",
+      "tip_blob_is_the_attested_one": true,
+      "tip_bytes": 8329,
+      "tip_sha256": "4044611e48418de75cd05dd95ae27ae777568156fda92fc6cb6e6b53b8e2a21d"
+    },
+    {
+      "group": "attested-by-the-coordinator-and-read-at-the-tip",
+      "path": "packages/scene-engine/src/fx/catalog/crossDissolve.ts",
+      "pin_blob_attested": "f202c14a66b24429284fbf7f7eafa1d3c04cd1c7",
+      "pin_equals_tip": true,
+      "role": "crossDissolve: family transition, curve enum, typical 24",
+      "tip_blob": "f202c14a66b24429284fbf7f7eafa1d3c04cd1c7",
+      "tip_blob_is_the_attested_one": true,
+      "tip_bytes": 1287,
+      "tip_sha256": "80cbc7310badd8bffbef931d2d6edbb3917745b754a4531657a7a7b15a50d0c4"
+    },
+    {
+      "group": "attested-by-the-coordinator-and-read-at-the-tip",
+      "path": "packages/scene-engine/src/fx/catalog/fx-effect-meta.ts",
+      "pin_blob_attested": "999c2c67a77832349bcbb0209c62ac19d9d12cfe",
+      "pin_equals_tip": true,
+      "role": "the shared `intensity` 0..1 default 1 and checkParamValue",
+      "tip_blob": "999c2c67a77832349bcbb0209c62ac19d9d12cfe",
+      "tip_blob_is_the_attested_one": true,
+      "tip_bytes": 14960,
+      "tip_sha256": "3e5e7d9b63896a61df5009ddc117987227d39adedf9214efd5edd60fb1146a19"
+    },
+    {
+      "group": "attested-by-the-coordinator-and-read-at-the-tip",
+      "path": "packages/scene-engine/src/edit/resolve-shot-at-offset.ts",
+      "pin_blob_attested": "0851da51e1cc8c6a8961f4cd3dcc503382417cdb",
+      "pin_equals_tip": true,
+      "role": "resolveShotAtOffset: independent instance and camera clamps",
+      "tip_blob": "0851da51e1cc8c6a8961f4cd3dcc503382417cdb",
+      "tip_blob_is_the_attested_one": true,
+      "tip_bytes": 3275,
+      "tip_sha256": "18e82cc298a29e3386c5328364503f31e75a26864a990542c045697c290ab047"
+    },
+    {
+      "group": "attested-by-the-coordinator-and-read-at-the-tip",
+      "path": "packages/scene-engine/src/camera/easing.ts",
+      "pin_blob_attested": "6d660fc81a3bd6c3adf9fbd6df44735b8f78d56b",
+      "pin_equals_tip": true,
+      "role": "applyEasing and the three easings",
+      "tip_blob": "6d660fc81a3bd6c3adf9fbd6df44735b8f78d56b",
+      "tip_blob_is_the_attested_one": true,
+      "tip_bytes": 952,
+      "tip_sha256": "61acdcfbca0f7224696f370a1b77165210e7b36654c2f7ded3f7e82c71ed3abd"
+    },
+    {
+      "group": "attested-by-the-coordinator-and-read-at-the-tip",
+      "path": "packages/scene-engine/src/runtime/fx/fx-compositor.ts",
+      "pin_blob_attested": "17ab35a3d6c8c4624e6abd56dc06bd7f30fab037",
+      "pin_equals_tip": true,
+      "role": "amount = clampUnit(intensity) for a transition; progress is passed through",
+      "tip_blob": "17ab35a3d6c8c4624e6abd56dc06bd7f30fab037",
+      "tip_blob_is_the_attested_one": true,
+      "tip_bytes": 12148,
+      "tip_sha256": "ae9c446fbd02045b75723e75118e46bcb6b9b25815c216155575cba358753729"
+    },
+    {
+      "group": "attested-by-the-coordinator-and-read-at-the-tip",
+      "path": "packages/scene-engine/src/runtime/fx/shaders/crossDissolve.ts",
+      "pin_blob_attested": "43b5427bd296c1d267744b5669ca3056a95fbb1f",
+      "pin_equals_tip": true,
+      "role": "the mix: plain, curved, smooth, amount (GLSL)",
+      "tip_blob": "43b5427bd296c1d267744b5669ca3056a95fbb1f",
+      "tip_blob_is_the_attested_one": true,
+      "tip_bytes": 939,
+      "tip_sha256": "25cdcd1be3f4ccf209ce188dd030bbde3a534014457c11bd2bdc5d988449e62e"
+    },
+    {
+      "group": "attested-by-the-coordinator-and-read-at-the-tip",
+      "path": "packages/scene-engine/src/fx/fx-explain-handles.spec.ts",
+      "pin_blob_attested": "e49dba5b24788fa7333120da8d9d0b662489ad11",
+      "pin_equals_tip": true,
+      "role": "the origin's own handle-lack messages (origin-spec-vector)",
+      "tip_blob": "e49dba5b24788fa7333120da8d9d0b662489ad11",
+      "tip_blob_is_the_attested_one": true,
+      "tip_bytes": 7467,
+      "tip_sha256": "3b6c852858c1a1da4f29bfb4efe0b8327fc80a2084774352aa894557e1b10844"
+    },
+    {
+      "group": "attested-by-the-coordinator-and-read-at-the-tip",
+      "path": "packages/scene-engine/src/fx/resolve-fx-frame-transitions.spec.ts",
+      "pin_blob_attested": "adc745cb4db1c016fcb6440e65cc25fdbc3802b2",
+      "pin_equals_tip": true,
+      "role": "the origin's own window/progress/deck-frame vectors",
+      "tip_blob": "adc745cb4db1c016fcb6440e65cc25fdbc3802b2",
+      "tip_blob_is_the_attested_one": true,
+      "tip_bytes": 7612,
+      "tip_sha256": "10e9c31b5feb0260f04b26f62e9f9cbc7d5c2a021323d27513d69bca5962c240"
+    },
+    {
+      "group": "attested-by-the-coordinator-and-read-at-the-tip",
+      "path": "packages/scene-engine/src/validate/edit-joins.ts",
+      "pin_blob_attested": "98b08e5b311b38e42a1a31048d758e19b94e3b24",
+      "pin_equals_tip": true,
+      "role": "a dissolve join is not pose-checked (S6)",
+      "tip_blob": "98b08e5b311b38e42a1a31048d758e19b94e3b24",
+      "tip_blob_is_the_attested_one": true,
+      "tip_bytes": 7004,
+      "tip_sha256": "cfcc1449f42614e48da39f650cef799452c038bacc4cabeb6e6f534a41f64b82"
+    },
+    {
+      "group": "attested-by-the-coordinator-and-read-at-the-tip",
+      "path": "packages/scene-engine/src/schema/render-bundle.schema.ts",
+      "pin_blob_attested": "5bdbb4974995fb8797a4839a1bda19da2d22b3ac",
+      "pin_equals_tip": false,
+      "role": "alphaMode enum and the legacy dissolve shape (S6)",
+      "tip_blob": "11c3a49dc9963abaab5ed477fea54a299b835ec0",
+      "tip_blob_is_the_attested_one": true,
+      "tip_bytes": 22781,
+      "tip_sha256": "21386068a759a8d7ef3f913146e5a6e520adf004260b89f48bb2afa20123e59b"
+    },
+    {
+      "group": "attested-by-the-coordinator-and-read-at-the-tip",
+      "path": "packages/scene-engine/src/fx/fx-explain-legacy-dissolve.spec.ts",
+      "pin_blob_attested": "5dd03d895c0fb70f89b1b1ebdcaf742d2bec5063",
+      "pin_equals_tip": true,
+      "role": "UNSUPPORTED_ALPHA on a legacy dissolve (origin spec)",
+      "tip_blob": "5dd03d895c0fb70f89b1b1ebdcaf742d2bec5063",
+      "tip_blob_is_the_attested_one": true,
+      "tip_bytes": 7056,
+      "tip_sha256": "175ee0438271f93e2fcf5f16b97de6a81ce365612df36895b5faecfcc344dce7"
+    },
+    {
+      "group": "attested-by-the-coordinator-and-read-at-the-tip",
+      "path": "packages/scene-engine/src/fx/fx-explain.ts",
+      "pin_blob_attested": "547dd07a4f5fb05d5342e134262f8e205394be55",
+      "pin_equals_tip": true,
+      "role": "UNSUPPORTED_ALPHA: a non-opaque profile with any transition or clip",
+      "tip_blob": "547dd07a4f5fb05d5342e134262f8e205394be55",
+      "tip_blob_is_the_attested_one": true,
+      "tip_bytes": 6247,
+      "tip_sha256": "71e0285fd359d7094a4d5454415802ad7ce529551daa1466d7e8b9172c186f1c"
+    },
+    {
+      "group": "read-at-the-tip-only-not-compared-with-the-pin",
+      "path": "packages/scene-engine/src/fx/fx-explain-effects.ts",
+      "role": "effectIssues/paramIssues: UNKNOWN_EFFECT vs WRONG_FAMILY, param messages",
+      "tip_blob": "376f07862b508702ed1f979e33bc371406dab0d8",
+      "tip_bytes": 4475,
+      "tip_sha256": "fb0c12fd6f1eaffa67e2fc5cae4c1991752b492833a649b4e560609e7f9a948e"
+    },
+    {
+      "group": "read-at-the-tip-only-not-compared-with-the-pin",
+      "path": "packages/scene-engine/src/fx/fx-explain-context.ts",
+      "role": "shotLength; shots sorted by start frame",
+      "tip_blob": "0c4c1535647b6723e35c22a3338519679e45482b",
+      "tip_bytes": 3989,
+      "tip_sha256": "aae067fbe54239e4f62138b0440d3ca7e0b849965420e39a0068dd78f6f570be"
+    },
+    {
+      "group": "read-at-the-tip-only-not-compared-with-the-pin",
+      "path": "packages/scene-engine/src/fx/fx-ids.ts",
+      "role": "RESERVED_ID (lowercased compare) and DUPLICATE_ID",
+      "tip_blob": "cf86e011094d6718b6c545aac4bda1b0b4c2c3f7",
+      "tip_bytes": 2846,
+      "tip_sha256": "43853b3def88ae8d8b83406c17e2fe6634b8a493335ab9377d2ca915021231e1"
+    },
+    {
+      "group": "read-at-the-tip-only-not-compared-with-the-pin",
+      "path": "packages/scene-engine/src/narration/narration-schema.ts",
+      "role": "idSchema: ^[a-z0-9][a-z0-9_-]{0,63}$ (case-insensitive)",
+      "tip_blob": "b9aee27cb16ade8599276e71556843e379586357",
+      "tip_bytes": 4093,
+      "tip_sha256": "0af031103fcef0eacb761d14342cebebff976253556a783baeaa2123e6fec461"
+    },
+    {
+      "group": "read-at-the-tip-only-not-compared-with-the-pin",
+      "path": "packages/scene-engine/src/fx/catalog/vignette.ts",
+      "role": "vignette is family `look` (the WRONG_FAMILY case)",
+      "tip_blob": "95b137d2a386f6f75dc5bbdb1a89255ac6410684",
+      "tip_bytes": 1883,
+      "tip_sha256": "6bd55eb8c9c129e90ca0cd7a1e515090100cb5511dbabb12b401ca867a2255c8"
+    },
+    {
+      "group": "read-at-the-tip-only-not-compared-with-the-pin",
+      "path": "packages/scene-engine/src/lighting/scene-lighting.ts",
+      "role": "seedOf, noise, flickerLevel, lightAmount: the lamp's flicker and falloff (analytic X)",
+      "tip_blob": "a85e0edd3a83e565d518dbbc1b2839be369e1c01",
+      "tip_bytes": 5374,
+      "tip_sha256": "78ba61253095cb120003ad56837b6e93c35af4da7c1f1934b76d94814c6aa151"
+    },
+    {
+      "group": "read-at-the-tip-only-not-compared-with-the-pin",
+      "path": "packages/scene-engine/src/weather/weather-model.ts",
+      "role": "hash01: the 32-bit integer mix under the flicker noise (analytic X)",
+      "tip_blob": "f37233fb4786ce8eba99760bde494bf98d794704",
+      "tip_bytes": 10388,
+      "tip_sha256": "1596f8a8e3b48d9eefad4691fcc7a761bae64ade4d8615a57713fad63fcfbd87"
+    },
+    {
+      "group": "read-at-the-tip-only-not-compared-with-the-pin",
+      "path": "packages/scene-engine/src/camera/resolve-camera-clip.ts",
+      "role": "truck, dolly and hold poses, progressAt and the pose held past the clip (analytic X)",
+      "tip_blob": "04e5eaab05a2f9af1d83f28b300a34eb87f0a8a6",
+      "tip_bytes": 15085,
+      "tip_sha256": "0241aa815c0b5747872dc4b35e57a6e30846eb2729ba078678f9ef7127a0e1a4"
+    },
+    {
+      "group": "read-at-the-tip-only-not-compared-with-the-pin",
+      "path": "packages/scene-engine/src/performance/resolve-performance.ts",
+      "role": "the `event` channel that adds to a node's position (analytic X)",
+      "tip_blob": "a5212bda7f4c966852584f07e5d048cbc808ee24",
+      "tip_bytes": 3314,
+      "tip_sha256": "3e3f2f4f888a48eddf00bae6d712995035f1e7e74dd58f938a003e6fabeedcc7"
+    },
+    {
+      "group": "read-at-the-tip-only-not-compared-with-the-pin",
+      "path": "packages/scene-engine/src/types/fps.ts",
+      "role": "editFrameToSeconds: frame / (numerator / denominator) (analytic X)",
+      "tip_blob": "208245ee6d4aeb793cf455941994fcc4de10bf4a",
+      "tip_bytes": 660,
+      "tip_sha256": "dc36c3d16ec71953d7de1c857681cbb6c535e12dbf18f70faa924fc32e482e5b"
+    },
+    {
+      "group": "read-at-the-tip-only-not-compared-with-the-pin",
+      "path": "packages/scene-engine/src/runtime/plane-effects-material.ts",
+      "role": "ambient * base + base * light, the lamp falloff squared (analytic X)",
+      "tip_blob": "6a0ab8633507a5bea9a055fe4cc224d0c2d144cb",
+      "tip_bytes": 19570,
+      "tip_sha256": "0fab05d754a17af094325d31ba774738cb29c2a3446e111e87eb3695effe4ed6"
+    },
+    {
+      "group": "read-at-the-tip-only-not-compared-with-the-pin",
+      "path": "packages/scene-engine/src/runtime/three-scene-runtime.ts",
+      "role": "weather and lights on the edit clock; PerspectiveCamera, lookAt, renderOrder (analytic X)",
+      "tip_blob": "b4d5b2ee3fa566460aca595d80e7e55445d45818",
+      "tip_bytes": 64318,
+      "tip_sha256": "763ad75648abe75b0ff6812ee579826e8bbd197629fef09ad2bec2765babf6af"
+    }
+  ],
+  "tolerances_registered": {
+    "bias_limit": 0.25,
+    "export_h264_max_delta": 16,
+    "export_h264_source": "docs/features/effects.md (F016, Export), reconferred on 2026-11-14, and crates/render/tests/scene_fx_export.rs const CODEC_TOLERANCE (the limit F016/F062 export proofs already use)",
+    "in": "dissolve-cases.json / tolerances",
+    "monitor_and_render_max_delta": 1,
+    "not_validated_on_pixels": true,
+    "plan_ceilings": {
+      "MAX_TRANSITION_PLAN_BYTES": 4194304,
+      "MAX_TRANSITION_PLAN_ITEMS": 20000,
+      "TRANSITION_PLAN_MAX_DEPTH": 1
+    },
+    "plan_ceilings_status": "pre-registered by S0 as contract (plan 5.3), NOT measured; A validar: S1b reports the real plan sizes of the corpus and reopens a number only as a documented contract amendment",
+    "status": "pre-registered before any pixel was produced; design review pending (A validar); no pixel validated; no GPU measured"
+  },
+  "typed_codes_not_in_the_origin": [
+    "ORACLE_NOT_AN_INTEGER",
+    "ORACLE_INTEGER_OUT_OF_I64",
+    "ORACLE_INTEGER_NOT_SAFE",
+    "ORACLE_ARITHMETIC_OVERFLOW",
+    "ORACLE_BAD_SEED",
+    "ORACLE_UNKNOWN_ALIGNMENT",
+    "ORACLE_BAD_EDIT",
+    "ORACLE_PROGRESS_DURATION",
+    "ORACLE_FRAME_NOT_IN_WINDOW",
+    "ORACLE_BAD_COLOUR",
+    "ORACLE_TIE_MARGIN",
+    "ORACLE_KEYS_NOT_MODELLED",
+    "ORACLE_LOOK_PARAMS_NOT_MODELLED"
+  ]
+}

@@ -212,8 +212,7 @@ deck; o runtime desenha **uma** cena por camada dirigida; `check_fx` amarra os p
       "handles": "hold",
       "easing": "easeInOutCubic",
       "params": { "curve": "smooth", "intensity": 1 },
-      "seed": 0,
-      "hidden": false
+      "seed": 0
     }]
 } }
 ```
@@ -1028,3 +1027,7 @@ grandes restantes entram na regra de módulos/delta; Git Bash é identificado ex
 As células T04/T10/T18/T32 e os aceites das fases foram reconciliados. Isso é verificação de
 contrato e documento, não execução de Rust/runtime/export. BL082.4.11 rastreia esta correção
 no backlog do coordenador; não é fase de produto adicional e não renumera .1–.10.
+
+Decisão após a revisão S0: no documento de transição hidden aceita true ou ausência, igual ao
+schema do piloto; false explícito é recusa estrutural tipada na S1a. Tornar visível por operação
+remove a chave, em vez de gravar false. Não muda o contrato de hidden dos looks existentes.

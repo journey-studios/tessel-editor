@@ -1901,3 +1901,8 @@ Tarefas efetivamente iniciadas e ownership: S0 (F064, effects.md, scripts/corpus
 correção do plano (somente os dois docs, concluída) [Windows plano](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:808129a7106c4db6a7447b5544292280094e3adbdac731d46c9dd3a30ebc40f4).
 Arquivos comuns de backlog/matriz/índice são reconciliados só pelo coordenador. S1+ permanecem sem
 atribuição até a S0 e o contrato aplicável serem revisados; W1/W2 têm PR59/60 próprias ainda não integradas.
+
+Revisão S0/PR61 em173f5f4 **não aprova BL082.4.1**: P2-1verificadorstrictpin e P2-2sondasanalíticas
+X faltantes; P2-3matrizagora F064com todasas superfíciesPendente. Coordenador corrigiuaCLIstrictpin
+paraexigirorigem+commit, com regressãogitreal; digestsusage e guardStorecorrigidos; exemplo hiddenfalse
+removido, escolhatrueouausentenastransições. A parteanalíticaaindapendente, S1nãoiniciada, semmergePR61.
