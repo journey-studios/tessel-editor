@@ -1878,7 +1878,7 @@ concreto da S0, sem link para arquivo inexistente nem validação de lib/CLI/UI 
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
 | BL082.4.1 | P4b/S0 | Contrato F064 e corpus independente dissolve, fonte e X analítico | Concluído — somente S0 oráculo/contrato | BL082.4; setupPythonBL167.5 parcial | Coordenador / Cursor Sonnet5.5 | R3 independente aprova e4078ff no Windows; corpus167/analítico39 normal e-O, reprodução byte a byte e Mac equivalente. Produto lib/JSONL/UI permanece P; detalhes no relatório S0 §12. |
-| BL082.4.2 | P4b/S1a | Documento/janela/validação tipada e política de admissão fechada | A validar — revisão não aprova72c9fe2, correções em curso | BL082.4.1/.11 concluídos | Coordenador / Cursor Sonnet5.5 | Domínio e admissão conferidos, mas E0583 no teste movido; path corrigido. Ordem lexical de parâmetros e nova regressão ainda não compiladas; faltam provas dinâmicas permanentes e robustez do scanner. Produto continua P. |
+| BL082.4.2 | P4b/S1a | Documento/janela/validação tipada e política de admissão fechada | A validar — reforço concluído, revisão independente final pendente | BL082.4.1/.11 concluídos | Cursor Sonnet5.5 / coordenador | Código517946a e docs1f4883a:60transition/25scene_fx/80GPUI, processoheadlessreal, três perfis serde e mutantes dinâmicos/scanner/domínio. Core1524ok/2gizmosbase; workspaceexecutado/Mac pendentes. Produto P. |
 | BL082.4.3 | P4b/S1b | Avaliação dos dois decks e plano, recursosporassetId/used_bysemambiguidade | Pendente | BL082.4.2 | Não atribuído | Recurso próprio por deck euniãoderivadaestável, clock/handlessemunderflow, parserprofundidadelimitada |
 | BL082.4.4 | P4b/S2 | Runtime/renderer/mistura e lifecycle/cache | Pendente | BL082.4.3; S2A também BL082.4.5/S3a | Não atribuído | Cor8bits/alpha declarados, capability, dois splats/leases/contextloss/dispose e pixelsindependentes |
 | BL082.4.5 | P4b/S3 | Ops/gestos/inspector/persistência ecoreparser/nós | Pendente | BL082.4.3 | Não atribuído | Atomicidade/revisão/undo, módulossemcrescerarquivosproibidos; dividirS3aseS3bseútil |
@@ -1981,3 +1981,26 @@ regressões permanentes reload/open/attach-file, TOO_LONGassimétrico e transiç
 
 Erro estrutural em transição posterior ocultaearlyissuesanteriores: veredito igual, lista diferente,
 divergência agora explícita. Nãoherdar gates compatchtemporário para novaárvore. Semmerge/S1b.
+
+
+### PR62: reforço de517946a entregue, revisão final pendente — 2026-11-14
+
+Fonte de produção inalterada desde449054a; alterações desta rodada são testes, proc-macro2
+somente dev-dependency (+uma aresta no lock) e dois docs. Código517946ae4dd4ff28e5713c70d82c9a44dc2d3cf2,
+docs1f4883a5c747e10a83458b370bd56b11d5c9a951 (diff só F064/relatório). Semforce, commitsnovoslimpos;
+trailers antigos mantidos na branch, squash limpo previsto apenas se aprovado.
+
+Autor Windows:60transição,25scene_fx,80GPUI,dois testes admissão(+um perf_history no filtro),
+headlessreal,fmt/check/clippy/norun/build/tree passam. Corecompleto1524passam/2gizmosbasefalham;
+workspaceinteiro nãoexecutado porclaimsBL167.6. Cachembx no clippy declarado, não é falha.
+Ordemparams testada coreisolado, preserve_order explícito eworkspace. Mutante nosort sobrevive
+noisolado por mapa jáordenado; morre nosperfis discriminantes. EXPECT impede alegar perfilerrado.
+
+Portas reload/open/attach-file agora têm testes dinâmicos permanentes; mutantes Accept emstore/run
+falham semscanner. Lexerreal de testes substitui bracecounter, nome de arquivo nãoexclui código,
+cfgtresvalores descarta sóprovadamentefalso, segue módulos/path e falha fechada nolexer.
+Limites declarados: macros/include/cfg_attr ealgumascombinaçõesnãoanalisadas, não barreira.
+RegressõesassimétricasTOO_LONG/ordemcronológicainversa/sobreposição detectam mutantesanteriores.
+
+Essasprovas são do implementador, não aprovação independente. Nova revisão deve conferir
+source/dev-dep, mutantes e gates nohead final, sempromovercore/workspacea verde ou produtoF064.
