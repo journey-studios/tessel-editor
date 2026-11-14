@@ -1,7 +1,8 @@
 //! P4b S1b (BL082.4.3), M0: the plans of documents WITHOUT a transition, pinned before S1b.
 //!
 //! `scene_plan_transition_baseline/no-transition-plans.json` was produced by this file's generator
-//! run on the UNMODIFIED base (`origin/main` e3c20cb), before any S1b production change. It is not
+//! run on the UNMODIFIED base (`origin/main` e3c20cb). Windows profiles were pinned before S1b;
+//! Mac profiles were captured later on that same old source, never on the candidate. It is not
 //! two calls of the new planner compared to each other: it is bytes and digests of what the
 //! planner answered when it knew nothing of transitions. The same file then guards the planner
 //! with the transition code in place (an absent transition is an absent key: same bytes).
@@ -11,8 +12,8 @@
 //! exact) is recorded as `[bytes, fnv1a64]`. One set per build profile, like the BL064 golden: the
 //! trig-derived floats differ in the last bit between debug and release.
 //!
-//! The generator (an env-gated write branch of this same test) was removed after the one run on the
-//! unmodified base; this file only reads the pinned bytes. The file's `pinnedAt` names the commit.
+//! Temporary generators were removed after each capture on the unmodified base; this file only
+//! reads the pinned bytes. The file's `pinnedAt` names the commit.
 //!
 //! Scenes: the four valid bundles of the oracle corpus (they import through the PUBLIC door) and
 //! the two-shot minimal bundle with shot-scope and output effects but no transition.

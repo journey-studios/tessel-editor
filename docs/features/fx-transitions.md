@@ -453,3 +453,11 @@ Detalhe, mutantes, divergências e comandos: [p4b-s1b-evaluation-report.md](../m
 - **Não provado / A validar:** pixels reais, GPU, runtime e shader (S2), Mac, origem (`ORIGIN_NOT_EXECUTED`), comparação
   com ouro (`GOLDEN_NOT_COMPARABLE`), aceite humano. A linha de pixels do corpus é um cálculo de referência
   (decodificação sRGB, mistura, codificação, meio para cima), **não** saída de GPU.
+
+**Validação Mac da S1b (BL082.4.16).** No head73775c3 passaram106testes de
+transição e10do corpus; a baseline de compatibilidade falhou porque só tinha
+perfis Windows. Os perfis Macdebug/release foram capturados posteriormente
+sobre a basee3c20cb sem mudança de produção, preservando as referências
+Windows. Candidato+dados corrigidos passam106/10e baseline emdebug/release.
+Esta é prova de compatibilidade de plano/core, sem runtime oupixelsreais,
+e não resolve as divergências de kitsX (BL082.4.17) em revisão.

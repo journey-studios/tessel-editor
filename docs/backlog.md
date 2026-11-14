@@ -1879,7 +1879,7 @@ concreto da S0, sem link para arquivo inexistente nem validação de lib/CLI/UI 
 |---|---|---|---|---|---|---|
 | BL082.4.1 | P4b/S0 | Contrato F064 e corpus independente dissolve, fonte e X analítico | Concluído — somente S0 oráculo/contrato | BL082.4; setupPythonBL167.5 parcial | Coordenador / Cursor Sonnet5.5 | R3 independente aprova e4078ff no Windows; corpus167/analítico39 normal e-O, reprodução byte a byte e Mac equivalente. Produto lib/JSONL/UI permanece P; detalhes no relatório S0 §12. |
 | BL082.4.2 | P4b/S1a | Documento/janela/validação tipada e política de admissão fechada | Concluído no escopo interno; R2 aprova a752f0a | BL082.4.1/.11 concluídos | Coordenador / revisão Windows | R2:61transition/25scene_fx/80GPUI, processo headless real, perfis serde e mutantes dinâmicos/scanner/domínio. fmt/check/clippy/no-run/build passam. Core1525ok/2gizmosbase, workspaceexecutado/Mac pendentes. Produto P; IDgerado fica BL082.4.15/S3. |
-| BL082.4.3 | P4b/S1b | Avaliação dos dois decks e plano, recursosporassetId/used_bysemambiguidade | Pendente | BL082.4.2 | Não atribuído | Recurso próprio por deck euniãoderivadaestável, clock/handlessemunderflow, parserprofundidadelimitada |
+| BL082.4.3 | P4b/S1b | Avaliação dos dois decks e plano, recursos por assetId/used_by sem ambiguidade | A validar — PR63 em revisão independente | BL082.4.2 integrada | Coordenador / Cursor Sonnet5.5 | Head73775c3:106transições/10corpus/594lib/80GPUI e gates Windows relatados; produtoP. Mac106+10+baseline debug/release passam após correção de dados(.16), três kitsXparciais(.17) em revisão. SemS2/S3a iniciadas. |
 | BL082.4.4 | P4b/S2 | Runtime/renderer/mistura e lifecycle/cache | Pendente | BL082.4.3; S2A também BL082.4.5/S3a | Não atribuído | Cor8bits/alpha declarados, capability, dois splats/leases/contextloss/dispose e pixelsindependentes |
 | BL082.4.5 | P4b/S3 | Ops/gestos/inspector/persistência ecoreparser/nós | Pendente | BL082.4.3 | Não atribuído | Atomicidade/revisão/undo, módulossemcrescerarquivosproibidos; dividirS3aseS3bseútil |
 | BL082.4.6 | P4b/S4 | UIKit/provaautomação/guardasoverlaycore | Pendente | BL082.4.4/.5; W1integrada | Não atribuído | Controlesreais, predicadocoreúnico, gestoqueentranajanela/hitpress, célulastestadasporfase |
@@ -2026,3 +2026,38 @@ atributo no próprio módulo em linha, não a declaração externa dentro dele.
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
 | BL082.4.15 | PR62 R2 / S3 | IDs automáticos de looks e trilhas ignoram IDs de transições | Pendente — incorporar à S3 | BL082.4.5 | Não atribuído | Incluir transitions no namespace de every_id; provar transições fx-1/fx-track-1, IDs automáticos distintos, recusa explícita atômica, undo/redo. Hoje apenas Accept: recusa segura, não corrupção, sem acesso público. Não bloqueia S1a. |
+
+### PR63/S1b entregue; revisão independente e validação Mac — 2026-11-14
+
+Head73775c37d40c78f8507698d7cd2b7946aa9ce05f, basee3c20cb, fonte principald71be93.
+AutorWindows:106transição/10corpus em2perfisserde, lib594, GPUI80, fmt/check/
+clippy/no-run/build/treecore. Corecompleto só2gizmosbasefalham, workspace
+executado não rodou. Mutantes18 segundoautor, semruntime/pixels/GPU.
+S1b parcial interna Avalidar; F064produtoP, capRust14/JS13, RefuseatéS2A.
+
+Revisão independente no checkout WindowsS1b, sem commits/comuns:
+[PR63 S1b: revisão independente dos decks, parser e corpus no Windows](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:fea010fd225f789b189f7872b771b0a6bc61fff9a0d38045762ba18f070b23c8).
+Mac nativo737limpo:106transição e10corpuspassam, baselinefalha por perfildebug
+ausente (fixture sótem windows-debug/windows-release). Não é byte comparado
+contra referência Mac; é pré-condição ausente. Coordenador capturae3separado.
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL082.4.16 | PR63 / baseline Mac | Fixture de compatibilidade não inclui perfis debug/release Mac | Correção de dados validada no Mac | BL082.4.3 | Coordenador | Captura sobre e3c20cb sem mudar core/src/Cargo.lock, probe removido/status limpo; Windowsentries canônicas inalteradas. Candidato737+fixture:106transições/10corpus e baseline debug/release passam. Confirmar no head limpo antes de push; Linux não executado. |
+| BL082.4.17 | PR63 / referência X | Três lit-held não importam por instância menor que shot, comparações só parcialmente preservadas | A validar na revisão independente | BL082.4.1/.4.3 | Coordenador / revisão Windows | JulgarT06/T10/T16 e necessidade de fixtures representáveis sem enfraquecerimportador ouregravarorigem; não promover todosos estados/sondasporassociação. Autor declara reconstrução e limites. |
+
+### Baseline Mac capturado na base original, não no candidato
+
+BL082.4.16: o coordenador capturoudebug/release noMacARM sobree3c20cb emclone
+separado. Só havia probe temporário emtests; core/src/Cargo.lock semdiff,
+probe removido eárvore limpa depois. A captura Mac foi posterior no tempo,
+mas usa o código anterior àS1b; não se gerou referência comoplannerS1b.
+
+Foram adicionados apenas os perfisdebug/release ao JSON; windows-debug e
+windows-release/metadata existentes mantiveram os valores canônicos exatos.
+No candidato737+fixturecorrigido,106transições/10corpus/baseline debug passaram;
+baseline release também. Comentário do teste esclarece a cronologia e os
+generadores temporários removidos. Nenhuma mudança emcrates/core/src.
+Gates do head limpo ainda serão rodados antes de publicar o ajuste. F064
+produtoP, reviewWindows fonte737em andamento, divergênciaX(.17) nãoresolvida
+por este ajuste. Sem Linux ouruntime/pixels/aceitehumano.

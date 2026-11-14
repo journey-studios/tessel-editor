@@ -113,3 +113,26 @@ Não editei `docs/backlog.md`, `docs/features/README.md` nem `docs/README.md`.
 
 Nits para o coordenador: (a) `fxTransition` está no Rust (14) e ausente do `SCENE_CAPABILITIES` do JS até a S2 (há teste
 de compatibilidade que lê o JS como texto); (b) as 2 falhas de gizmo da base merecem BL próprio, se ainda não houver.
+
+## 5. Coordenador: correção da baseline Mac (BL082.4.16)
+
+A execução nativa Mac em73775c3 passou106transições e10corpus. A baseline
+falhou com "no baseline pinned for the debug profile": o JSON só continha
+windows-debug/windows-release, enquanto o teste seleciona debug/release
+fora do Windows. Nenhuma divergência de bytes Mac foi comparada nessa falha.
+
+O coordenador capturou os dois perfis MacARM num clone separado do commit
+e3c20cb7c8d3e32692719a9c71adb1b65eb3c392. O probe temporário só emtests
+reutilizou a função de registro; core/src eCargo.lock estavam inalterados
+antes/depois, e o probe foi removido (status final limpo). A captura Mac
+é posterior no tempo àimplementação, mas o código executado é o anterior.
+Não há expectativa obtida pelo planner S1b. Os perfis Windows e os metadados
+existentes foram preservados por comparação canônica ehash.
+
+Com a fixture enriquecida, no candidatoMac passaram106transições/10corpus
+e baseline debug; baseline release também passou. O comentário do teste
+foi corrigido para distinguir as capturasWindowsM0 eMac posterior sobre
+a mesmabase. Produção não mudou; o head limpo será validado antes do push.
+Linux não foi executado nem esses perfis constituem paridade multiplataforma
+com o motor de origem. O ajuste não fecha BL082.4.17: três kitslit-held e
+o clipe fora do shot continuam com limites de evidência declarados acima.
