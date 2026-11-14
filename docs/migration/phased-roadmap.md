@@ -1,9 +1,15 @@
 # Migração em etapas: base compartilhada e fases funcionais
 
-2026-11-05. Plano de arquitetura e execução futura, **não implementação iniciada**.
-Este documento é a entrada para decidir a ordem da migração; mantém a rastreabilidade
-com [inventário](source-feature-inventory.md), [matriz](feature-migration-matrix.md) e
-[fatias detalhadas S0–S16](migration-sequence.md).
+**Status em 2026-11-14.** A implementação **começou e está parcialmente entregue**; este arquivo continua sendo
+o mapa de dependências E0–E3 / BB01–BB10 / M1–M8, **não** uma fila: a fila única é [docs/backlog.md](../backlog.md).
+A reconciliação datada contra contratos, backlog e código da `main` `2b54ac1` (PR #57 integrada; PRs #39, #42, #48 e
+#51–#57) está na [seção 9](#9-reconciliação-em-2026-11-14). As seções 1–8 abaixo são o texto do plano de
+**2026-11-05**, preservado como histórico de decisão e arquitetura (a arquitetura não mudou); a frase original
+"não implementação iniciada" descrevia o dia 05/11 e deixou de valer.
+
+2026-11-05 (original). Plano de arquitetura e execução futura. Este documento é a entrada para decidir a ordem da
+migração; mantém a rastreabilidade com [inventário](source-feature-inventory.md), [matriz](feature-migration-matrix.md)
+e [fatias detalhadas S0–S16](migration-sequence.md).
 
 ## 1. Estratégia
 
@@ -41,6 +47,8 @@ O código está em evolução por OPT01–OPT10; reconferir este mapa antes de c
 
 ## 3. Building blocks que faltam ou precisam ser ampliados
 
+> Texto de 05/11. Estado de cada BB em 14/11/2026: [seção 9.2](#92-building-blocks-bb01bb10).
+
 | ID | Módulo e interface proposta | Lacuna e responsabilidade compartilhada | Consumidores | Saída verificável |
 |---|---|---|---|---|
 | BB01 | Compatibilidade e documento de cena | Ler/validar bundle v1.0, preservar desconhecidos conforme política, converter para documento próprio sem perder referências | Todas as migrações, save/package/interchange | Corpus válido/inválido com mesmos vereditos/códigos e round-trip definido |
@@ -77,6 +85,8 @@ toda a câmera para testar documento, nem todo o clima para provar o contrato de
 
 ## 4. Etapas da base — executar antes de ampliar famílias de features
 
+> Texto de 05/11. Estado de E0–E3 e do primeiro marco em 14/11/2026: [seção 9.1](#91-etapas-e0e3).
+
 | Etapa | Building blocks | Entrega concreta | Gate |
 |---|---|---|---|
 | E0 — Contrato e baseline | BB01/BB10 | Fixar snapshots, escolhas de formato/tipos, corpus mínimo e política de compatibilidade | Decisões aplicáveis registradas; validar bundles sem GPU; oráculo reproduzível |
@@ -92,6 +102,8 @@ E2/E3 já são fatias visíveis pequenas, não meses de estrutura invisível. S�
 building block com pelo menos um consumidor real e teste pela interface pública.
 
 ## 5. Fases funcionais de migração
+
+> Texto de 05/11. Estado de M1–M8 em 14/11/2026: [seção 9.3](#93-fases-m1m8).
 
 | Fase | O que o usuário passa a fazer | Reutiliza a base | Referência às fatias/MIGs existentes |
 |---|---|---|---|
@@ -154,3 +166,116 @@ Antes de implementar cada etapa, conferir contratos e relatório final das otimi
 Não reabrir a migração inteira do zero nem exigir concluir toda otimização de Spark para
 começar E0/E1. Ordem prática: **fechar contratos → base mínima com prova completa → câmera
 e cenas completas → famílias visuais/narração → rig e piloto escolhidos**.
+
+## 9. Reconciliação em 2026-11-14
+
+Base lida: `origin/main` `2b54ac1` (PR #57, "Add clip splitting with exact audio phase and Windows support", integrada em
+2026-11-14T12:30:55Z), os contratos de [docs/features/](../features/README.md), [docs/backlog.md](../backlog.md) e o
+código, com as PRs #39 (P2), #42 (P3/`filmGrain`), #48 (P4a, F062) e #51–#57 (reconciliação S1–S10, testes, higiene do
+backlog e PR #57). **Nada foi reexecutado para escrever esta seção**: cada afirmação cita o estado que o backlog ou o
+contrato registra, com o head que o próprio registro nomeia. BL163 registra o harness S10 **24/24** em
+`057b7db` e uma reconfirmação posterior de fmt/check/clippy/build, workspace (2559 passaram, 16 ignorados e
+uma falha de ambiente BL082.47) e runtime 384/384 em `bc0c3ea`, depois das PRs #52 e #53. Após `057b7db`
+entraram #51–#57; #52 e #57 alteram produção. A PR #57 muda áudio do core, export de mídia e descoberta do runtime;
+seus gates dirigidos não repetem S10. Isto **não** declara a `main` `2b54ac1` verde.
+
+### 9.0 As quatro colunas (não se misturam)
+
+| Coluna | Significa | Fonte |
+|---|---|---|
+| **Implementado** | Código presente na `main` `2b54ac1` com contrato em `docs/features/` | Matriz e backlog; leitura de código por amostragem |
+| **Provado** | Execução registrada **por superfície** (lib, JSONL em processo real, GPUI sintético, janela real semântica, pixels), no head que o registro cita. "A validar" no backlog continua **sem** fechamento | Linhas do backlog e relatórios |
+| **Aceite humano** | Alguém olhou/ouviu a saída e aceitou. **Nenhum registro encontrado nos documentos lidos** para E0–E3 nem M1–M8: BL058 (revisão visual/áudio dos exports finais) está "A validar"; BL043 (ponteiro físico), BL046 (áudio ouvido) e BL082.42 (ponteiro/teclado físicos e pintura sobre seletor de escopo e botões +; foco/popover em BL044) seguem abertos | BL058, BL043, BL046 |
+| **Paridade** | Comparação com a origem: **executada** na origem fixada (`d6adac15`, câmera/edição/vereditos do bundle) ou **por fórmula transcrita** por um script Python independente (piloto, sem golden). Nenhuma paridade com o golden da origem é afirmada: `ORIGIN_GOLDEN_NOT_COMPARABLE` | `docs/migration/fixtures/`, F016, F044 |
+
+A prova no Windows se limita ao que BL167 registra (desktop 502/502, runtime 384/384, export 11/11 e flow 2/2 em
+`ead9ca2`, com o workspace **não verde**); toda prova de efeitos e gizmos citada abaixo é de macOS/SwiftShader ou do
+Chrome do runtime, salvo onde a linha diz Windows.
+
+### 9.1 Etapas E0–E3
+
+| Etapa | Implementado | Provado | Aceite humano | Paridade | Lacunas (backlog) |
+|---|---|---|---|---|---|
+| E0 — Contrato e baseline (BB01/BB10) | Leitor/validador do bundle 1.0 (`directed_scene`), corpus de bundles válidos/inválidos, oráculo Node na origem fixada | Corpus ampliado: 47 casos estendidos + 55 base conferidos contra a origem; 49 testes Node e 15 Rust (BL018, F032) | N/A (não é visual) | **Executada** na origem fixada para vereditos do bundle 1.0. Exceção: `invalid-dissolve-transition` vem de um pin anterior ao piloto e **permanece** como histórico desse pin; a emenda do veredito é a faixa nova da S6, com divergência registrada (ver [p4b-cross-dissolve-plan.md](p4b-cross-dissolve-plan.md), D04 e S6) | BL001 `DEFERRED_RULES/FIELDS` (Parcial); pin do piloto `d40ac3f7c0` sem leitura direta no clone Windows da origem (relato de comparação do coordenador em 9.6) |
+| E1 — Domínio mínimo (BB02/BB03/BB04) | Grafo e entidades, avaliação temporal, câmera segmentada, `scene.edit` em lote atômico com dry-run/undo (F034), luz pontual (F060) | BL004/BL005/BL004a–d/BL005a–c **A validar** (31 casos do oráculo de edição, `oracle.mjs verify` saiu 0; lib e JSONL); sem ponteiro físico | Nenhum registro encontrado nos documentos lidos | **Executada** (pose/edição contra o oráculo fixo) | BL001–BL004 Parcial: keys/segmentos gerais, clima, rig, paths, bind/reveal |
+| E2 — Render e recursos (BB05/BB06) | Plano `ScenePlan` v1 (13 capacidades), renderer Three.js no monitor e headless, export de cena (BL008), manifesto/closure/pacote (BL009–BL011), mix offline de áudio (F042A) | BL006 e BL008 **Concluído** (PR #3/#4, 1080p/4K, CLI/socket/diálogo); S10 em `057b7db` (24 fases; não repetida após #57); reconfirmação de gates em `bc0c3ea` | Nenhum registro encontrado nos documentos lidos (BL058 A validar) | Oráculo **independente** do harness da S10 ([F044](../features/scene-acceptance.md)), não execução da origem | BL007 contexto/reload nativos dirigidos; BL009–BL011 mapas/fontes/formatos (BL077) Parcial |
+| E3 — Superfícies (BB07/BB08/BB09) | Seleção/gesto (F039), inspector ligado (BL014), gizmos de translação, rotação e escala (F055; PRs #40/#43), luz com alcance (PR #45), alças 2D da vinheta (PR #46) | BL014 **Concluído**; BL015 e F055/F060/F061 **A validar** (lib, JSONL, GPUI, janela real semântica); sem ponteiro físico (BL043) nem pintura física sobre seletor de escopo e botões + (BL082.42; foco/popover BL044) | Nenhum registro encontrado nos documentos lidos | Não aplicável por gizmo (comportamento do editor); sem golden | **BL016.1** transporte dirigido (play/seek/pause) Pendente; BL017 narração/takes Pendente |
+
+**Primeiro marco** (cena mínima → plano → monitor/headless → pacote sem origem → export curto): **atingido como fatia
+integrada** (BL006, BL008, BL163), com as lacunas acima; não é aceite humano nem prova no Windows.
+
+### 9.2 Building blocks BB01–BB10
+
+Para todas as linhas, **Aceite humano** (nenhum registro) e **Windows** (só BL167) valem como na seção 9.0 e não se repetem.
+
+| BB | Backlog (estado em 14/11) | Implementado | Provado | Paridade | Falta |
+|---|---|---|---|---|---|
+| BB01 documento | BL001 Parcial | Bundle 1.0 lossless, extensão `fx` do editor | Corpus e testes de ida e volta | Executada (origem fixada) | Regras deferidas por domínio; dissolve legado |
+| BB02 grafo | BL002 Parcial | Entidades, hierarquia, `EntityKind::Light` (G2.1) | Matrizes efetivas contra o oráculo; luz a validar | Executada | Rig, paths |
+| BB03 avaliação | BL003 Parcial | Tempo sequência→shot→instância, câmera, luz pontual por quadro | Frames de borda, seek aleatório e FPS racional no corpus | Executada | Clima, rig, paths, bind/reveal |
+| BB04 catálogo e edição | BL004 Parcial; BL004a–d, BL005, BL005a–c **A validar** | Catálogo (21 entradas em F034), componentes `X/Y/Z`, `renderOrder`, lote/dry-run/undo | Lib, JSONL, GPUI; 31 casos do oráculo | Executada | Keys/segmentos gerais e domínios novos |
+| BB05 plano e runtime | BL006 **Concluído**; BL007 Parcial; BL008 **Concluído** | `ScenePlan`, 13 capacidades, runtime só desenha, export pelo mesmo plano | PR #3/#4; BL163 | Oráculo independente (F044) | Contexto/reload nativos dirigidos (BL007/BL092) |
+| BB06 recursos e jobs | BL009/BL010/BL011 Parcial | Manifesto/closure/preflight, `MediaHost`, pacote Directory/Archive | F038/F040 (core 27 + media 39; restauração sem origem) | N/A | Mapas, fontes, narração; UI e formatos (BL077) |
+| BB07 interação | BL012/BL013 Parcial | Seleção por entidade, gestos preview/commit/cancel com histórico agrupado | Executável headless real (13 requests), GPUI e socket | N/A | Ponteiro físico e handles (BL043/BL015) |
+| BB08 inspector e overlays | BL014 **Concluído**; BL015 **A validar** | Inspector ligado ao catálogo, gizmos, alças da vinheta | Janela real semântica; mutantes mortos | N/A | WKWebView/ponteiro físico, desempenho dos gizmos |
+| BB09 transporte e áudio | BL016 **A validar**; BL016.1 **Pendente**; BL017 Pendente | Mix offline do WAV declarado (F042A), tempo racional frames/amostras | 270/270 de `audio_export` e harness S10 (áudio medido, **não ouvido**) | Regra da origem (`editStartSeconds`) decidida; divergência BL016.11 declarada | Transporte dirigido com relógio de amostras; narração/takes |
+| BB10 oráculo e gates | BL018/BL019 Parcial; BL163 **Concluído** (12/11) | Corpus, `pilot-fx` (Python independente), harness S10, higiene (BL164–BL166, PRs #54–#56) | BL163: S10 em `057b7db`, gates em `bc0c3ea`; spec das tabelas do backlog (BL165) | Ver 9.0 | Provas por domínio novo; desempenho; atestação reprodutível (BL019-F11) |
+
+### 9.3 Fases M1–M8
+
+| Fase | Backlog | Estado em 14/11 | Implementado / provado | Paridade | Próximo passo (sem criar fila) |
+|---|---|---|---|---|---|
+| M1 cenas e câmera | BL022 | Parcial | Câmera, shots e receitas editáveis em lib/CLI/UI (E1–E3); ripple/roll e `trimShot` ausentes (BL082.5/P5). A divisão de clipes da PR #57 é da timeline de vídeo (BL081.5), **não** de shots dirigidos | Executada (câmera) | P5 depois de P3/P4 |
+| M2 luzes | BL023 (+.1–.6) | Parcial — luz pontual (F060) **A validar** | Posição/alcance, gizmo, plano `lights` (G2.1); splats não iluminados | Por oráculo independente do renderer | BL023.1–.6: ambiente, sombras, mapas, splats, prova física, custo |
+| M3 clima e pós | BL024 | **Pendente** (clima, partículas, grade). Os três *looks* já entregues são rastreados em BL082 (M7), não aqui | — | — | Depende de iluminação aplicável |
+| M4 splat | BL025 | Parcial — subconjunto S7 validado (PR #13) | `spz` aprovado, matriz de semelhança, cor | Oráculo independente | Luz/clima em splats |
+| M5 narração e legendas | BL026, BL017 | **Pendente** | — | — | TTS só se autorizado (BL037) |
+| M6 rig, IK, paths | BL027 | **Pendente** | — | — | Solver decidido explicitamente |
+| M7 delta do piloto | BL028, BL082.* | Parcial — **3 de 59 efeitos** (`vignette`, `fade`, `filmGrain`), chaves/seed (F058/F059), alças da vinheta (F061), escopo `shot` (F062, PR #48): **A validar**, macOS/SwiftShader | P0–P4a em lib, JSONL real, GPUI e janela real semântica; sem Windows, ponteiro físico, GPU real nem desempenho (BL082.42/.43) | **Por fórmula** (`pilot-fx`, Python); golden da origem não comparado | **P4b** (BL082.4, [plano](p4b-cross-dissolve-plan.md)); escopo `node` (BL082.40); P5/P6 |
+| M8 complementos | BL029, BL030 | Parcial / Pendente — rótulos de efeitos em pt-br/en/es no core; acessibilidade, atalhos e demais telas pendentes | Teste sobre os IDs oferecidos | — | Fechamento: matriz MIG/F reconciliada (BL030) |
+
+Sobreposição a corrigir no desenho: M3 ("looks existentes") e M7 ("efeitos/transições do piloto") citam as mesmas famílias
+de efeito. O backlog resolveu rastreando **todos** os efeitos em BL082/BL028; esta tabela mantém M3 só para clima,
+partículas e grade.
+
+### 9.4 Rodada Windows de 14/11/2026
+
+| Item | Estado registrado | O que este documento afirma |
+|---|---|---|
+| BL167 (agregador) | Parcial — setup e prova inicial em `ead9ca2`; workspace Windows **não verde** | Nada além do backlog |
+| BL167.1 (compilação dos testes de mídia) e BL167.2 (descoberta de ferramentas) | **Integrados na `main` pela PR #57** (`2b54ac1`); as linhas do backlog ainda dizem "Concluído localmente… integração/publicação pendentes" e "Sem PR/merge" | **Linhas obsoletas**; patch proposto ao coordenador (abaixo). Windows continua com falhas de execução fora desses itens |
+| BL167.3 (hash portátil, dois gizmos divergentes) e BL167.7 (separador do helper `tree()`) | **Pendente** no backlog; **frente W1** entregou a PR [#59](https://github.com/journey-studios/tessel-editor/pull/59) (head `a174c9b`, aberta, `CLEAN`, **não mesclada**) | Relato do coordenador: revisão independente no Windows **sem bloqueador** (com nits); Mac e UI pendentes. Esta frente **não reexecutou** nem reviu a PR; sucesso de BL167.3/.7 **não** alegado. As guardas de overlay da P4b (S4a) só tocam os arquivos coincidentes depois que a base W1 estiver integrada e validada |
+| BL167.6 (teste do ledger que trava) | **Pendente**; **frente W2 iniciada** | **Nenhum resultado, commit ou PR foi recebido por esta frente.** Sucesso **não** alegado |
+| BL167.4 (mbx sem *hits*, volumes sem *hard link*, wrapper dependente de Git Bash) e BL167.5 (Python, release, provas vivas) | **Pendente**; BL167.5 **parcial** por decisão do coordenador | Hoje `python`/`python3` neste Windows são o atalho da Microsoft Store (**sem interpretador real**). A S0 da P4b começa em **outro clone Windows**, com Python real disponibilizado pelo usuário pelo canal oficial (sem mudar a descoberta de ferramentas de produção e sem falso verde); fica no escopo **só a preparação do interpretador antes do corpus**: *release* e provas vivas seguem como futuros. Scripts do repositório no Windows rodam como `bash ./scripts/cargo …`. O Mac **não** é host de execução da S0 nesta rodada |
+
+Patch proposto às linhas obsoletas (o coordenador integra; esta frente não edita `docs/backlog.md`):
+
+- **BL167.1** — Estado: `Integrado na main pela PR #57 (2b54ac1, 2026-11-14); validação Windows/Mac conforme o relatório; workspace Windows
+  ainda não verde (BL167.3/.6/.7)`; remover "integração/publicação pendentes".
+- **BL167.2** — Estado: `Integrado na main pela PR #57 (2b54ac1)`; trocar "Sem PR/merge" por "PR #57"; manter BL167.2.3 (Linux) e BL167.2.2
+  (script de desempenho) como pendências.
+
+### 9.5 Próximas fatias (a ordem é do coordenador; o backlog é a fila)
+
+1. **Confiabilidade Windows:** W1 (BL167.3/.7, PR #59 aberta) e W2 (BL167.6), em andamento; BL167.4 depois; BL167.5 só
+   na preparação do interpretador que a S0 da P4b exige (9.4).
+2. **Plano P4b** (este roadmap + [p4b-cross-dissolve-plan.md](p4b-cross-dissolve-plan.md), versão 2 depois da revisão
+   independente): integração **só com prova**; a ordem é S0 → S1a → S1b → {S2 ∥ S3a} → S2A (ativação) → S3b → S4a → S4b →
+   S5 → S6. A entrada pública do documento **continua recusando `transitions`** (`FX_TRANSITION_NOT_YET`) até a S2A, para que
+   nenhum export, monitor ou preflight consuma uma transição que ainda não desenha; S1a/S1b/S2/S3a são integráveis
+   isoladamente porque o comportamento público não muda. O dissolve legado (S6) é expansão de contrato com faixa de oráculo
+   nova e **não** edita o acervo antigo; `UNSUPPORTED_ALPHA` fica fora, como divergência de veredito declarada.
+3. **Escopo `node` (BL082.40), P5 (BL082.5) e P6** não bloqueiam a P4b por associação; P5 herda da P4b o contrato de recusar
+   o que invalida uma transição (BL082.44 para clipes `shot`).
+4. **BL016.1** (transporte dirigido) e demais famílias (M2–M6) seguem como estão no backlog; nenhuma é habilitada por este plano.
+
+### 9.6 Limites desta reconciliação
+
+Sem execução nova, sem prova de Windows, sem aceite humano e sem golden da origem. **Pin `d40ac3f7c0`:** a autora (Windows)
+leu a ponta `3655790` e **não leu o pin** (ausente no clone Windows da origem). O coordenador (Mac) comparou depois, por
+objetos Git de leitura, 21 blobs do pin com a ponta: 19 idênticos e 2 diferentes, `fx/fx-schema.ts` só com um comentário
+trocado (`CLIP_OVERLAP` → `CLIP_PAST_END`) e `schema/render-bundle.schema.ts` com mudança de comportamento da **narração**
+(fora do escopo da P4b). É relato do coordenador, **não reconferido** por esta frente, e a origem **não foi executada**;
+o manifesto da S0 fixa os blobs de referência. As decisões D1–D11 do
+inventário continuam **sem** aprovação implícita (seção 6). Qualquer divergência entre esta tabela e `docs/backlog.md` se
+resolve a favor do backlog.
