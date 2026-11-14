@@ -175,8 +175,8 @@ código, com as PRs #39 (P2), #42 (P3/`filmGrain`), #48 (P4a, F062) e #51–#57 
 backlog e PR #57). **Nada foi reexecutado para escrever esta seção**: cada afirmação cita o estado que o backlog ou o
 contrato registra, com o head que o próprio registro nomeia. BL163 registra o harness S10 **24/24** em
 `057b7db` e uma reconfirmação posterior de fmt/check/clippy/build, workspace (2559 passaram, 16 ignorados e
-uma falha de ambiente BL082.47) e runtime384/384 em `bc0c3ea`, depois das PRs #52 e #53. Após `057b7db`
-entraram #51–#57; #52 e #57 alteram produção. A PR57 muda áudio do core, export de mídia e descoberta do runtime;
+uma falha de ambiente BL082.47) e runtime 384/384 em `bc0c3ea`, depois das PRs #52 e #53. Após `057b7db`
+entraram #51–#57; #52 e #57 alteram produção. A PR #57 muda áudio do core, export de mídia e descoberta do runtime;
 seus gates dirigidos não repetem S10. Isto **não** declara a `main` `2b54ac1` verde.
 
 ### 9.0 As quatro colunas (não se misturam)
@@ -196,7 +196,7 @@ Chrome do runtime, salvo onde a linha diz Windows.
 
 | Etapa | Implementado | Provado | Aceite humano | Paridade | Lacunas (backlog) |
 |---|---|---|---|---|---|
-| E0 — Contrato e baseline (BB01/BB10) | Leitor/validador do bundle 1.0 (`directed_scene`), corpus de bundles válidos/inválidos, oráculo Node na origem fixada | Corpus ampliado: 47 casos estendidos + 55 base conferidos contra a origem; 49 testes Node e 15 Rust (BL018, F032) | N/A (não é visual) | **Executada** na origem fixada para vereditos do bundle 1.0. Exceção: `invalid-dissolve-transition` vem de um pin anterior ao piloto (ver [p4b-cross-dissolve-plan.md](p4b-cross-dissolve-plan.md), D04) | BL001 `DEFERRED_RULES/FIELDS` (Parcial); pin do piloto `d40ac3f7c0` ausente no clone Windows da origem |
+| E0 — Contrato e baseline (BB01/BB10) | Leitor/validador do bundle 1.0 (`directed_scene`), corpus de bundles válidos/inválidos, oráculo Node na origem fixada | Corpus ampliado: 47 casos estendidos + 55 base conferidos contra a origem; 49 testes Node e 15 Rust (BL018, F032) | N/A (não é visual) | **Executada** na origem fixada para vereditos do bundle 1.0. Exceção: `invalid-dissolve-transition` vem de um pin anterior ao piloto e **permanece** como histórico desse pin; a emenda do veredito é a faixa nova da S6, com divergência registrada (ver [p4b-cross-dissolve-plan.md](p4b-cross-dissolve-plan.md), D04 e S6) | BL001 `DEFERRED_RULES/FIELDS` (Parcial); pin do piloto `d40ac3f7c0` sem leitura direta no clone Windows da origem (relato de comparação do coordenador em 9.6) |
 | E1 — Domínio mínimo (BB02/BB03/BB04) | Grafo e entidades, avaliação temporal, câmera segmentada, `scene.edit` em lote atômico com dry-run/undo (F034), luz pontual (F060) | BL004/BL005/BL004a–d/BL005a–c **A validar** (31 casos do oráculo de edição, `oracle.mjs verify` saiu 0; lib e JSONL); sem ponteiro físico | Nenhum registro encontrado nos documentos lidos | **Executada** (pose/edição contra o oráculo fixo) | BL001–BL004 Parcial: keys/segmentos gerais, clima, rig, paths, bind/reveal |
 | E2 — Render e recursos (BB05/BB06) | Plano `ScenePlan` v1 (13 capacidades), renderer Three.js no monitor e headless, export de cena (BL008), manifesto/closure/pacote (BL009–BL011), mix offline de áudio (F042A) | BL006 e BL008 **Concluído** (PR #3/#4, 1080p/4K, CLI/socket/diálogo); S10 em `057b7db` (24 fases; não repetida após #57); reconfirmação de gates em `bc0c3ea` | Nenhum registro encontrado nos documentos lidos (BL058 A validar) | Oráculo **independente** do harness da S10 ([F044](../features/scene-acceptance.md)), não execução da origem | BL007 contexto/reload nativos dirigidos; BL009–BL011 mapas/fontes/formatos (BL077) Parcial |
 | E3 — Superfícies (BB07/BB08/BB09) | Seleção/gesto (F039), inspector ligado (BL014), gizmos de translação, rotação e escala (F055; PRs #40/#43), luz com alcance (PR #45), alças 2D da vinheta (PR #46) | BL014 **Concluído**; BL015 e F055/F060/F061 **A validar** (lib, JSONL, GPUI, janela real semântica); sem ponteiro físico (BL043) nem a prova correspondente de WebView/alças (BL082.42; foco/popover BL044) | Nenhum registro encontrado nos documentos lidos | Não aplicável por gizmo (comportamento do editor); sem golden | **BL016.1** transporte dirigido (play/seek/pause) Pendente; BL017 narração/takes Pendente |
@@ -244,9 +244,9 @@ partículas e grade.
 |---|---|---|
 | BL167 (agregador) | Parcial — setup e prova inicial em `ead9ca2`; workspace Windows **não verde** | Nada além do backlog |
 | BL167.1 (compilação dos testes de mídia) e BL167.2 (descoberta de ferramentas) | **Integrados na `main` pela PR #57** (`2b54ac1`); as linhas do backlog ainda dizem "Concluído localmente… integração/publicação pendentes" e "Sem PR/merge" | **Linhas obsoletas**; patch proposto ao coordenador (abaixo). Windows continua com falhas de execução fora desses itens |
-| BL167.3 (hash portátil, dois gizmos divergentes) e BL167.7 (separador do helper `tree()`) | **Pendente** no backlog; **frente W1 iniciada** pelo coordenador nesta rodada | **Nenhum resultado, commit ou PR foi recebido por esta frente.** Sucesso **não** alegado |
-| BL167.6 (teste do ledger que trava) | **Pendente**; **frente W2 iniciada** | Idem |
-| BL167.4 (mbx sem *hits*, volumes sem *hard link*, wrapper dependente de Git Bash) e BL167.5 (Python, release, provas vivas) | **Pendente** | Ordem do coordenador: depois de W1/W2 e da P4b |
+| BL167.3 (hash portátil, dois gizmos divergentes) e BL167.7 (separador do helper `tree()`) | **Pendente** no backlog; **frente W1** entregou a PR [#59](https://github.com/journey-studios/tessel-editor/pull/59) (head `a174c9b`, aberta, `CLEAN`, **não mesclada**) | Relato do coordenador: revisão independente no Windows **sem bloqueador** (com nits); Mac e UI pendentes. Esta frente **não reexecutou** nem reviu a PR; sucesso de BL167.3/.7 **não** alegado. As guardas de overlay da P4b (S4a) só tocam os arquivos coincidentes depois que a base W1 estiver integrada e validada |
+| BL167.6 (teste do ledger que trava) | **Pendente**; **frente W2 iniciada** | **Nenhum resultado, commit ou PR foi recebido por esta frente.** Sucesso **não** alegado |
+| BL167.4 (mbx sem *hits*, volumes sem *hard link*, wrapper dependente de Git Bash) e BL167.5 (Python, release, provas vivas) | **Pendente**; BL167.5 **parcial** por decisão do coordenador | Hoje `python`/`python3` neste Windows são o atalho da Microsoft Store (**sem interpretador real**). A S0 da P4b começa em **outro clone Windows**, com Python real disponibilizado pelo usuário pelo canal oficial (sem mudar a descoberta de ferramentas de produção e sem falso verde); fica no escopo **só a preparação do interpretador antes do corpus**: *release* e provas vivas seguem como futuros. Scripts do repositório no Windows rodam como `bash ./scripts/cargo …`. O Mac **não** é host de execução da S0 nesta rodada |
 
 Patch proposto às linhas obsoletas (o coordenador integra; esta frente não edita `docs/backlog.md`):
 
@@ -257,16 +257,25 @@ Patch proposto às linhas obsoletas (o coordenador integra; esta frente não edi
 
 ### 9.5 Próximas fatias (a ordem é do coordenador; o backlog é a fila)
 
-1. **Confiabilidade Windows:** W1 (BL167.3/.7) e W2 (BL167.6), em andamento; BL167.4/.5 depois.
-2. **Plano P4b** (este roadmap + [p4b-cross-dissolve-plan.md](p4b-cross-dissolve-plan.md)): revisão independente, depois
-   integração **só com prova**; a implementação começa S0 → S1a → S1b → {S2 ∥ S3} → S4 → S5 → S6.
+1. **Confiabilidade Windows:** W1 (BL167.3/.7, PR #59 aberta) e W2 (BL167.6), em andamento; BL167.4 depois; BL167.5 só
+   na preparação do interpretador que a S0 da P4b exige (9.4).
+2. **Plano P4b** (este roadmap + [p4b-cross-dissolve-plan.md](p4b-cross-dissolve-plan.md), versão 2 depois da revisão
+   independente): integração **só com prova**; a ordem é S0 → S1a → S1b → {S2 ∥ S3a} → S2A (ativação) → S3b → S4a → S4b →
+   S5 → S6. A entrada pública do documento **continua recusando `transitions`** (`FX_TRANSITION_NOT_YET`) até a S2A, para que
+   nenhum export, monitor ou preflight consuma uma transição que ainda não desenha; S1a/S1b/S2/S3a são integráveis
+   isoladamente porque o comportamento público não muda. O dissolve legado (S6) é expansão de contrato com faixa de oráculo
+   nova e **não** edita o acervo antigo; `UNSUPPORTED_ALPHA` fica fora, como divergência de veredito declarada.
 3. **Escopo `node` (BL082.40), P5 (BL082.5) e P6** não bloqueiam a P4b por associação; P5 herda da P4b o contrato de recusar
    o que invalida uma transição (BL082.44 para clipes `shot`).
 4. **BL016.1** (transporte dirigido) e demais famílias (M2–M6) seguem como estão no backlog; nenhuma é habilitada por este plano.
 
 ### 9.6 Limites desta reconciliação
 
-Sem execução nova, sem prova de Windows, sem aceite humano, sem golden da origem e sem leitura do pin `d40ac3f7c0`
-(ausente no clone Windows da origem; as leituras de P4b vêm da ponta `3655790`, somente leitura). As decisões D1–D11 do
+Sem execução nova, sem prova de Windows, sem aceite humano e sem golden da origem. **Pin `d40ac3f7c0`:** a autora (Windows)
+leu a ponta `3655790` e **não leu o pin** (ausente no clone Windows da origem). O coordenador (Mac) comparou depois, por
+objetos Git de leitura, 21 blobs do pin com a ponta: 19 idênticos e 2 diferentes, `fx/fx-schema.ts` só com um comentário
+trocado (`CLIP_OVERLAP` → `CLIP_PAST_END`) e `schema/render-bundle.schema.ts` com mudança de comportamento da **narração**
+(fora do escopo da P4b). É relato do coordenador, **não reconferido** por esta frente, e a origem **não foi executada**;
+o manifesto da S0 fixa os blobs de referência. As decisões D1–D11 do
 inventário continuam **sem** aprovação implícita (seção 6). Qualquer divergência entre esta tabela e `docs/backlog.md` se
 resolve a favor do backlog.
