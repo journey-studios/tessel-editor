@@ -21,7 +21,8 @@
 //! folder, and a bystander adoption keeps the ledger non-empty so the write really happens. The
 //! "queued" discard is held deterministically by occupying the registry's running slots, never by
 //! a delay. Not proven here: a native window tick (`scripts/job-discard-proof.py` and
-//! `scripts/scene-claims-proof.py` drive it), Windows, network filesystems, a hostile writer.
+//! `scripts/scene-claims-proof.py` drive it), Windows other than 11 on NTFS (BL168.6.3), network
+//! filesystems, a hostile writer.
 
 mod directed_resources_common;
 
@@ -209,9 +210,19 @@ fn claims_of(workspace: &Path, scene: &str) -> Vec<Value> {
         .filter(|entry| {
             entry["path"]
                 .as_str()
-                .is_some_and(|path| path.contains(&format!("/scenes/{scene}/")))
+                .is_some_and(|path| below_scene(Path::new(path), scene))
         })
         .collect()
+}
+
+/// Whether `path` lies below `scenes/<scene>/`. Compared by components: the ledger writes
+/// canonical paths, `\\?\C:\…\scenes\street\…` on Windows, where a text search for
+/// `/scenes/street/` finds nothing.
+fn below_scene(path: &Path, scene: &str) -> bool {
+    let parts: Vec<_> = path.components().map(|part| part.as_os_str()).collect();
+    parts
+        .windows(3)
+        .any(|run| run[0] == "scenes" && run[1] == scene)
 }
 
 // ------------------------------------------------------------------------- the second process --
@@ -308,6 +319,8 @@ fn child_role() {
                 blockers.take().unwrap().release();
                 say(json!({"released": true}));
             }
+            // Answers at once: whether the process runs at all (BL168.6.4).
+            "ping" => say(json!({"pong": true})),
             "quit" => {
                 say(json!({"bye": true}));
                 return;
@@ -755,6 +768,7 @@ fn a_refused_result_whose_process_is_killed_is_an_orphan_the_ledger_can_recover_
     drop(bystander);
 }
 
+#[cfg(unix)]
 fn signal(name: &str, pid: u32) {
     let status = Command::new("kill")
         .arg(format!("-{name}"))
@@ -762,6 +776,98 @@ fn signal(name: &str, pid: u32) {
         .status()
         .unwrap();
     assert!(status.success(), "kill -{name} {pid}");
+}
+
+/// How the peer that holds the ledger lock is kept from letting go of it.
+#[cfg(any(unix, windows))]
+#[derive(Clone, Copy)]
+enum Frozen {
+    /// `SIGSTOP`: the process stops while it holds the lock (Unix only).
+    #[cfg(unix)]
+    Stopped,
+    /// The process holds the lock and waits for a next command that does not come (Windows).
+    #[cfg(windows)]
+    Idle,
+    /// Every thread of the process is suspended while it holds the lock (Windows, BL168.6.4): a
+    /// helper attaches to it as its debugger and never continues the debug events, which is what a
+    /// debugger paused on it does (see `suspension`).
+    #[cfg(windows)]
+    Suspended,
+}
+
+/// Suspending a whole process on Windows with documented calls, without `unsafe` in this crate
+/// (the workspace forbids it): a PowerShell helper attaches to it as its debugger
+/// (`DebugActiveProcess`, kernel32) and never continues the debug events, so every thread of the
+/// target stays stopped; a line on the helper's stdin makes it detach (`DebugActiveProcessStop`,
+/// from the same thread, with `DebugSetProcessKillOnExit(false)` so that nothing kills the target).
+#[cfg(windows)]
+mod suspension {
+    use std::io::{BufRead, BufReader, Write};
+    use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+
+    const SCRIPT: &str = r#"
+$ErrorActionPreference = 'Stop'
+Add-Type @"
+using System.Runtime.InteropServices;
+public static class TesselSuspend {
+  [DllImport("kernel32.dll", SetLastError = true)] public static extern bool DebugActiveProcess(uint pid);
+  [DllImport("kernel32.dll", SetLastError = true)] public static extern bool DebugActiveProcessStop(uint pid);
+  [DllImport("kernel32.dll", SetLastError = true)] public static extern bool DebugSetProcessKillOnExit(bool kill);
+}
+"@
+$target = [uint32]$env:TESSEL_SUSPEND_PID
+if (-not [TesselSuspend]::DebugActiveProcess($target)) { "error $([Runtime.InteropServices.Marshal]::GetLastWin32Error())"; exit 1 }
+[void][TesselSuspend]::DebugSetProcessKillOnExit($false)
+[Console]::Out.WriteLine('suspended'); [Console]::Out.Flush()
+[void][Console]::In.ReadLine()
+if (-not [TesselSuspend]::DebugActiveProcessStop($target)) { "error $([Runtime.InteropServices.Marshal]::GetLastWin32Error())"; exit 1 }
+[Console]::Out.WriteLine('resumed'); [Console]::Out.Flush()
+"#;
+
+    /// The helper holding `pid` suspended until [`Suspended::resume`].
+    pub struct Suspended {
+        helper: Child,
+        stdin: ChildStdin,
+        stdout: BufReader<ChildStdout>,
+    }
+
+    fn line(stdout: &mut BufReader<ChildStdout>) -> String {
+        let mut text = String::new();
+        stdout.read_line(&mut text).unwrap();
+        text.trim().to_string()
+    }
+
+    /// Suspends every thread of `pid`; returns once they are stopped.
+    pub fn suspend(pid: u32) -> Suspended {
+        let mut helper = Command::new("powershell.exe")
+            .args(["-NoProfile", "-NonInteractive", "-Command", SCRIPT])
+            .env("TESSEL_SUSPEND_PID", pid.to_string())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .expect("powershell.exe runs the suspension helper");
+        let stdin = helper.stdin.take().unwrap();
+        let mut stdout = BufReader::new(helper.stdout.take().unwrap());
+        let said = line(&mut stdout);
+        assert_eq!(said, "suspended", "DebugActiveProcess({pid})");
+        Suspended {
+            helper,
+            stdin,
+            stdout,
+        }
+    }
+
+    impl Suspended {
+        /// Resumes the process; the helper detaches and ends.
+        pub fn resume(mut self) {
+            writeln!(self.stdin, "resume").unwrap();
+            self.stdin.flush().unwrap();
+            let said = line(&mut self.stdout);
+            assert_eq!(said, "resumed", "DebugActiveProcessStop");
+            assert!(self.helper.wait().unwrap().success());
+        }
+    }
 }
 
 /// BL112.3, hypothesis confirmed and fixed. The window's tick accepts a result, which writes the
@@ -773,9 +879,38 @@ fn signal(name: &str, pid: u32) {
 /// acceptance is refused like any other ledger failure (nothing applied, the result still claimed
 /// and handed to a discard job) and the tick comes back within that budget. The bounded wait remains for
 /// callers that may block (jobs, the CLI).
+///
+/// Unix only as written: `SIGSTOP`/`SIGCONT` do not exist on Windows. There the same budget is
+/// proved twice (below): with a peer that holds the lock and idles, and with a peer whose every
+/// thread is suspended by a debugger attached to it (BL168.6.4).
+#[cfg(unix)]
 #[test]
 fn a_peer_stopped_while_holding_the_ledger_lock_cannot_freeze_the_tick() {
-    let world = world("sigstop");
+    a_peer_that_keeps_the_ledger_lock_cannot_freeze_the_tick("sigstop", Frozen::Stopped);
+}
+
+/// [`a_peer_stopped_while_holding_the_ledger_lock_cannot_freeze_the_tick`] on Windows: the peer
+/// takes the ledger lock and waits for a command that does not come, so the lock stays held by
+/// another live process for as long as the tick could wait.
+#[cfg(windows)]
+#[test]
+fn a_peer_idle_while_holding_the_ledger_lock_cannot_freeze_the_tick() {
+    a_peer_that_keeps_the_ledger_lock_cannot_freeze_the_tick("idle-holder", Frozen::Idle);
+}
+
+/// The Unix proof itself on Windows (BL168.6.4): the peer is **suspended**, every thread stopped,
+/// while it holds the ledger lock, and the tick still comes back within its budget. That the peer
+/// really was suspended is checked, not assumed: a `ping` sent while it is suspended gets no answer
+/// within half a second, and the same `ping` is answered right after it is resumed.
+#[cfg(windows)]
+#[test]
+fn a_peer_suspended_while_holding_the_ledger_lock_cannot_freeze_the_tick() {
+    a_peer_that_keeps_the_ledger_lock_cannot_freeze_the_tick("suspended-holder", Frozen::Suspended);
+}
+
+#[cfg(any(unix, windows))]
+fn a_peer_that_keeps_the_ledger_lock_cannot_freeze_the_tick(name: &str, frozen: Frozen) {
+    let world = world(name);
     let mut state = project_with_scene(&world.sandbox, &world.workspace, &world.bundle);
     let mut host = MediaHost::new().interactive();
     let registry = host.registry().clone();
@@ -792,9 +927,31 @@ fn a_peer_stopped_while_holding_the_ledger_lock_cannot_freeze_the_tick() {
     let mut peer = Peer::spawn(&world);
     assert_eq!(peer.ask("hold_ledger")["held"], true);
     let pid = peer.pid;
-    signal("STOP", pid);
-    // Without the bound the tick below never returns; the watchdog resumes the peer after 20 s so
-    // that a regression fails the assertion on the elapsed time instead of hanging the suite.
+    #[cfg(windows)]
+    let mut suspended = None;
+    match frozen {
+        #[cfg(unix)]
+        Frozen::Stopped => signal("STOP", pid),
+        // Nothing to do: it holds the lock and waits for its next command.
+        #[cfg(windows)]
+        Frozen::Idle => {}
+        #[cfg(windows)]
+        Frozen::Suspended => {
+            suspended = Some(suspension::suspend(pid));
+            writeln!(peer.stdin, "ping").unwrap();
+            peer.stdin.flush().unwrap();
+            assert!(
+                matches!(
+                    peer.lines.recv_timeout(Duration::from_millis(500)),
+                    Err(RecvTimeoutError::Timeout)
+                ),
+                "a suspended peer answers nothing"
+            );
+        }
+    }
+    // Without the bound the tick below never returns; the watchdog resumes the peer (Unix) or
+    // ends it (Windows: an idle peer never lets go by itself) after 20 s so that a regression
+    // fails the assertion on the elapsed time instead of hanging the suite.
     let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let finished = done.clone();
     let watchdog = std::thread::spawn(move || {
@@ -805,9 +962,21 @@ fn a_peer_stopped_while_holding_the_ledger_lock_cannot_freeze_the_tick() {
             }
             std::thread::sleep(Duration::from_millis(50));
         }
-        let _ = Command::new("kill")
-            .args(["-CONT", &pid.to_string()])
-            .status();
+        match frozen {
+            #[cfg(unix)]
+            Frozen::Stopped => {
+                let _ = Command::new("kill")
+                    .args(["-CONT", &pid.to_string()])
+                    .status();
+            }
+            // Only the helper that suspended it can resume it: a regression ends the peer.
+            #[cfg(windows)]
+            Frozen::Idle | Frozen::Suspended => {
+                let _ = Command::new("taskkill")
+                    .args(["/F", "/PID", &pid.to_string()])
+                    .status();
+            }
+        }
     });
     let blockers = Blockers::hold(&registry);
 
@@ -816,7 +985,7 @@ fn a_peer_stopped_while_holding_the_ledger_lock_cannot_freeze_the_tick() {
     let elapsed = tick.elapsed();
     eprintln!(
         "BUDGET {}",
-        json!({"measure": "tick-sigstop-peer", "pollMs": elapsed.as_secs_f64() * 1000.0,
+        json!({"measure": format!("tick-{name}-peer"), "pollMs": elapsed.as_secs_f64() * 1000.0,
             "peerPid": pid, "ceilingMs": 100})
     );
     // Not the 1.5 s of the bounded wait either: the tick waits its fixed 20 ms budget and no more,
@@ -849,7 +1018,17 @@ fn a_peer_stopped_while_holding_the_ledger_lock_cannot_freeze_the_tick() {
     // The peer comes back and dies: the lock is free, the discard job removes what is ours.
     done.store(true, std::sync::atomic::Ordering::SeqCst);
     watchdog.join().unwrap();
+    #[cfg(unix)]
     signal("CONT", pid);
+    #[cfg(windows)]
+    if let Some(suspended) = suspended {
+        suspended.resume();
+        assert_eq!(
+            peer.next()["pong"],
+            true,
+            "resumed, it answers the ping it was sent"
+        );
+    }
     peer.crash();
     blockers.release();
     let ended = poll_until_reported(&mut host, &mut state, &discard);

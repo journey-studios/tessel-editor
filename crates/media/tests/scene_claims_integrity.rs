@@ -13,7 +13,8 @@
 //! folder. A bystander adoption keeps the ledger from being emptied (emptying removes the state
 //! file instead of replacing it, which needs no temporary file), so the write really happens.
 //!
-//! Not proven: other kinds of disk failure, Windows, network filesystems, a hostile writer.
+//! Not proven: other kinds of disk failure, Windows other than 11 on NTFS (BL168.6.3), network
+//! filesystems, a hostile writer.
 
 mod directed_resources_common;
 
@@ -156,9 +157,24 @@ impl World {
                     .iter()
                     .map(move |name| (id, name))
             })
-            .map(|(id, name)| self.workspace.join(format!("scenes/{id}/assets/{name}")))
+            .map(|(id, name)| {
+                self.workspace
+                    .join("scenes")
+                    .join(id)
+                    .join("assets")
+                    .join(name)
+            })
             .collect()
     }
+}
+
+/// Whether the path `text` (as the ledger or a report writes it) lies in a folder named
+/// `folder`. Compared by components: on Windows the ledger writes `\` (and `\\?\` canonical
+/// paths), so a text search for `/lot/` would find nothing there and prove nothing.
+fn in_folder(text: &str, folder: &str) -> bool {
+    Path::new(text)
+        .components()
+        .any(|part| part.as_os_str() == folder)
 }
 
 fn entries(workspace: &Path) -> Vec<Value> {
@@ -283,10 +299,8 @@ fn an_adoption_whose_acceptance_cannot_be_written_is_refused_and_keeps_its_files
     assert!(
         file_entries(&world.workspace)
             .iter()
-            .any(|entry| entry["path"]
-                .as_str()
-                .unwrap()
-                .ends_with("lot/assets/backdrop.png")),
+            .any(|entry| Path::new(entry["path"].as_str().unwrap())
+                .ends_with(Path::new("lot").join("assets").join("backdrop.png"))),
         "and still claimed"
     );
 }
@@ -318,7 +332,7 @@ fn a_settle_the_ledger_refuses_returns_the_adoption_still_owning_and_claiming_it
     let claimed = |world: &World| {
         file_entries(&world.workspace)
             .iter()
-            .filter(|entry| entry["path"].as_str().unwrap().contains("/lot/"))
+            .filter(|entry| in_folder(entry["path"].as_str().unwrap(), "lot"))
             .count()
     };
     assert_eq!(claimed(&world), 2, "still claimed by the returned owner");
@@ -433,7 +447,7 @@ fn a_settle_rides_out_a_ledger_lock_another_job_of_this_process_holds_for_a_mome
     assert!(
         file_entries(&world.workspace)
             .iter()
-            .all(|entry| !entry["path"].as_str().unwrap().contains("/lot/")),
+            .all(|entry| !in_folder(entry["path"].as_str().unwrap(), "lot")),
         "and nobody is left to recover it: the acceptance was recorded"
     );
 }
@@ -448,7 +462,7 @@ fn an_acceptance_that_succeeds_makes_the_files_nobodys_to_recover() {
     assert!(
         file_entries(&world.workspace)
             .iter()
-            .all(|entry| !entry["path"].as_str().unwrap().contains("/lot/"))
+            .all(|entry| !in_folder(entry["path"].as_str().unwrap(), "lot"))
     );
 }
 
@@ -486,13 +500,13 @@ fn a_merge_the_ledger_cannot_write_fails_and_nobody_loses_ownership() {
     let street: Vec<PathBuf> = world
         .files()
         .into_iter()
-        .filter(|file| file.to_string_lossy().contains("/street/"))
+        .filter(|file| in_folder(&file.to_string_lossy(), "street"))
         .collect();
     assert!(street.iter().all(|file| file.is_file()));
     world.unblock_writes();
     let held: Vec<Value> = file_entries(&world.workspace)
         .into_iter()
-        .filter(|entry| entry["path"].as_str().unwrap().contains("/street/"))
+        .filter(|entry| in_folder(entry["path"].as_str().unwrap(), "street"))
         .collect();
     assert_eq!(held.len(), 2, "{held:?}");
     assert!(

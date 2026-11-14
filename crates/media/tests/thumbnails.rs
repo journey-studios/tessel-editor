@@ -323,6 +323,11 @@ fn id_of(state: &EditorState, kind: &str) -> String {
         .to_string()
 }
 
+/// The path with `/` separators, so a layout assertion reads the same on Windows and elsewhere.
+fn slashed(path: &str) -> String {
+    path.replace('\\', "/")
+}
+
 fn png_size(path: &str) -> (u32, u32) {
     let bytes = fs::read(path).unwrap();
     assert_eq!(&bytes[1..4], b"PNG", "{path} is a PNG");
@@ -421,7 +426,7 @@ fn a_run_draws_one_source_frame_per_splat_and_scene_at_the_sequence_aspect() {
         fs::read(&b.path).unwrap(),
         "one picture per asset"
     );
-    assert!(a.path.contains(".tessel/cache/"), "{}", a.path);
+    assert!(slashed(&a.path).contains(".tessel/cache/"), "{}", a.path);
     assert_eq!(
         state.project.revision, revision,
         "a thumbnail is not an edit"
@@ -1191,7 +1196,7 @@ fn another_opening_of_the_same_document_is_another_session_for_a_running_job() {
         "only the project that is open had a job that completed"
     );
     assert!(
-        state.thumbnail(&splat).unwrap().path.contains("/film/"),
+        slashed(&state.thumbnail(&splat).unwrap().path).contains("/film/"),
         "{:?}",
         state.thumbnail(&splat)
     );

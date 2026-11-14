@@ -19,8 +19,8 @@
 //!   removable by its own holder afterwards;
 //! * a cancellation that races with the failure still cancels and still leaves no copy.
 //!
-//! Not proven: a disk that fails in some other way (full, read-only), Windows, network
-//! filesystems, a hostile writer.
+//! Not proven: a disk that fails in some other way (full, read-only), Windows other than 11 on
+//! NTFS (BL168.6.3), network filesystems, a hostile writer.
 
 mod directed_resources_common;
 

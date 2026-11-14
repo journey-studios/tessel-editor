@@ -5,7 +5,8 @@
 //! cancelled run leaves the transport root exactly as it was (staging removed, nothing
 //! half-written), nothing is ever overwritten or written through a symbolic link, a second run
 //! reuses what is already there, and shared files are carried once. Not proven: a writer racing
-//! the transport root during publish (a documented residual risk), full disks, Windows.
+//! the transport root during publish (a documented residual risk), full disks, Windows other
+//! than 11 on NTFS (BL168.6.3).
 
 mod directed_resources_common;
 
@@ -15,9 +16,7 @@ use directed_resources_common::*;
 use serde_json::json;
 use tessel_editor_core::jobs::{CancelToken, JobError};
 use tessel_editor_core::scene_resources::{ResourceKey, ResourceManifest};
-use tessel_editor_media::directed_resources::{
-    MaterializeReport, Options, Outcome, SymlinkPolicy, materialize,
-};
+use tessel_editor_media::directed_resources::{MaterializeReport, Options, Outcome, materialize};
 
 fn run(manifest: &ResourceManifest, sandbox: &Sandbox) -> Result<MaterializeReport, JobError> {
     materialize(
@@ -411,9 +410,13 @@ fn cancelling_halfway_removes_the_staged_files() {
     assert!(tree(&sandbox.dst).is_empty(), "{:?}", tree(&sandbox.dst));
 }
 
+// Unix only: creating a symlink on Windows needs a privilege a plain test run lacks (BL167.1
+// records the coverage limit). `SymlinkPolicy` is imported here because only this module uses it.
 #[cfg(unix)]
 mod containment {
     use std::os::unix::fs::symlink;
+
+    use tessel_editor_media::directed_resources::SymlinkPolicy;
 
     use super::*;
 

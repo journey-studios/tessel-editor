@@ -637,7 +637,8 @@ impl ViewportHost {
     }
 
     /// Lets the page read `file`, as an `asset.load` of it would (tests that drive the protocol handle of a host).
-    #[cfg(test)]
+    /// Unix only because its one caller (`asset_io_tests::held_read`) holds a read with a named pipe.
+    #[cfg(all(test, unix))]
     pub(super) fn allow_file(&self, file: &std::path::Path) {
         self.access
             .borrow_mut()

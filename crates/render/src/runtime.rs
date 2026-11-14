@@ -6,6 +6,7 @@ use std::time::Duration;
 use tessel_editor_core::backend::BackendError;
 use tessel_editor_core::bridge::BridgeBackend;
 use tessel_editor_core::session::ViewportSession;
+use tessel_editor_media::tools::locate::{Host, System, Tool, locate};
 
 use crate::process::ProcessTransport;
 
@@ -62,22 +63,18 @@ pub struct RuntimeConfig {
     pub gl: Option<String>,
 }
 
-fn find_in_path(name: &str) -> Option<PathBuf> {
-    let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path)
-        .map(|directory| directory.join(name))
-        .find(|candidate| candidate.is_file())
+/// `TESSEL_NODE` when it is a file, else `node` (`node.exe` on Windows) along the `PATH`, else
+/// the usual install places. The rules live in the media adapter, shared with FFmpeg.
+fn find_node(host: &dyn Host) -> Option<PathBuf> {
+    locate(host, Tool::Node).map(|found| found.path)
 }
 
 impl RuntimeConfig {
     /// Reads `TESSEL_NODE`, `TESSEL_RUNTIME_DIR` and `TESSEL_GL`, then falls back to `node` on
-    /// the PATH and to the `runtime/` directory of this repository.
+    /// the PATH (and, on Windows, to Program Files / WinGet) and to the `runtime/` directory of
+    /// this repository.
     pub fn discover() -> Result<Self, SetupError> {
-        let node = std::env::var_os("TESSEL_NODE")
-            .map(PathBuf::from)
-            .filter(|path| path.is_file())
-            .or_else(|| find_in_path("node"))
-            .ok_or(SetupError::NodeMissing)?;
+        let node = find_node(&System).ok_or(SetupError::NodeMissing)?;
         let runtime_dir = std::env::var_os("TESSEL_RUNTIME_DIR")
             .map(PathBuf::from)
             .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../runtime"));
@@ -151,4 +148,116 @@ pub fn worker_backend(config: &RuntimeConfig) -> BridgeBackend<ProcessTransport>
 /// The session the headless CLI and the tests use: demo images resolve against this repository.
 pub fn session(config: &RuntimeConfig) -> ViewportSession<BridgeBackend<ProcessTransport>> {
     ViewportSession::new(worker_backend(config)).with_demo_dir(demo_dir())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::ffi::OsString;
+    use std::path::{Path, PathBuf};
+
+    use tessel_editor_media::tools::locate::Os;
+
+    use super::*;
+
+    /// A machine with a fixed environment and a fixed set of files; the process environment and
+    /// the disk are never read, so these tests do not race the others.
+    struct Machine {
+        os: Os,
+        vars: Vec<(&'static str, OsString)>,
+        files: Vec<PathBuf>,
+    }
+
+    impl Host for Machine {
+        fn os(&self) -> Os {
+            self.os
+        }
+
+        fn var(&self, name: &str) -> Option<OsString> {
+            self.vars
+                .iter()
+                .find(|(key, _)| key.eq_ignore_ascii_case(name))
+                .map(|(_, value)| value.clone())
+        }
+
+        fn is_file(&self, path: &Path) -> bool {
+            self.files.iter().any(|file| file == path)
+        }
+
+        fn entries(&self, _dir: &Path) -> Vec<PathBuf> {
+            Vec::new()
+        }
+    }
+
+    fn windows(vars: &[(&'static str, &str)], files: &[PathBuf]) -> Machine {
+        Machine {
+            os: Os::Windows,
+            vars: vars.iter().map(|(k, v)| (*k, OsString::from(v))).collect(),
+            files: files.to_vec(),
+        }
+    }
+
+    fn node_dir() -> PathBuf {
+        Path::new("/c/Program Files").join("nodejs")
+    }
+
+    fn path_of(dir: &Path) -> OsString {
+        std::env::join_paths([dir]).unwrap()
+    }
+
+    #[test]
+    fn node_exe_is_found_on_a_windows_path_with_spaces() {
+        let dir = node_dir();
+        let mut machine = windows(&[], &[dir.join("node.exe")]);
+        machine.vars.push(("PATH", path_of(&dir)));
+        assert_eq!(find_node(&machine), Some(dir.join("node.exe")));
+    }
+
+    #[test]
+    fn a_valid_node_override_wins_and_an_invalid_one_falls_back_to_the_path() {
+        let dir = node_dir();
+        let custom = PathBuf::from("/d/node-22/node.exe");
+        let files = [dir.join("node.exe"), custom.clone()];
+        let mut valid = windows(&[("TESSEL_NODE", "/d/node-22/node.exe")], &files);
+        valid.vars.push(("PATH", path_of(&dir)));
+        assert_eq!(find_node(&valid), Some(custom));
+
+        let mut invalid = windows(&[("TESSEL_NODE", "/d/gone/node.exe")], &files);
+        invalid.vars.push(("PATH", path_of(&dir)));
+        assert_eq!(find_node(&invalid), Some(dir.join("node.exe")));
+    }
+
+    #[test]
+    fn nothing_found_is_node_missing() {
+        // The directory rule (a directory is not a tool) is tested where it lives, in
+        // `tessel_editor_media::tools::locate`.
+        let dir = node_dir();
+        let mut machine = windows(&[], &[]);
+        machine.vars.push(("PATH", path_of(&dir)));
+        assert_eq!(find_node(&machine), None);
+        assert_eq!(
+            SetupError::NodeMissing.message(),
+            "Node.js was not found. Install Node 20+ or set TESSEL_NODE to its path."
+        );
+    }
+
+    #[test]
+    fn node_is_found_in_program_files_when_the_path_is_stale() {
+        let node = node_dir().join("node.exe");
+        let machine = windows(
+            &[("ProgramFiles", "/c/Program Files")],
+            std::slice::from_ref(&node),
+        );
+        assert_eq!(find_node(&machine), Some(node));
+    }
+
+    #[test]
+    fn outside_windows_the_bare_name_is_used_as_before() {
+        let dir = Path::new("/usr/bin");
+        let machine = Machine {
+            os: Os::Other,
+            vars: vec![("PATH", path_of(dir))],
+            files: vec![dir.join("node")],
+        };
+        assert_eq!(find_node(&machine), Some(dir.join("node")));
+    }
 }

@@ -2,6 +2,7 @@
 #![allow(dead_code)]
 
 pub mod mock;
+pub mod wrapper;
 
 use std::fs;
 use std::path::{Path, PathBuf};

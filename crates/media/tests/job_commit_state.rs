@@ -17,12 +17,12 @@ mod common;
 
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
-use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, channel};
 use std::time::Duration;
 
+use common::wrapper::forwarding_tool;
 use common::{temp, tools, video_with_audio};
 use serde_json::{Value, json};
 
@@ -83,18 +83,7 @@ impl Session {
 
 /// An `ffmpeg` that is the real one until `flag` exists, then a tool that is gone.
 fn wrapper(dir: &Path, real: &Path, flag: &Path) -> std::path::PathBuf {
-    let path = dir.join("flaky-ffmpeg");
-    fs::write(
-        &path,
-        format!(
-            "#!/bin/sh\nif [ -e '{}' ]; then echo 'forced failure' >&2; exit 1; fi\nexec '{}' \"$@\"\n",
-            flag.display(),
-            real.display()
-        ),
-    )
-    .unwrap();
-    fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
-    path
+    forwarding_tool(dir, "flaky-ffmpeg", real, flag, 0.0)
 }
 
 #[test]

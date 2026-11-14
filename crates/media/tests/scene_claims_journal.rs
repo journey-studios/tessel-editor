@@ -28,13 +28,16 @@
 //! depends on the clock. The journal is never read through `claims_status` before it is checked
 //! (every reader folds it), and the failure is provoked by putting a folder where the journal file
 //! should be, so the record cannot be opened for appending.
-#![cfg(unix)]
+//!
+//! Runs on Windows too since BL168.6.3 (it was Unix-only from the start, by default rather than for
+//! a stated reason): paths are compared by components, because the ledger writes canonical
+//! `\\?\C:\…\scenes\street\…` paths there.
 
 mod directed_resources_common;
 
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, channel};
@@ -192,7 +195,7 @@ impl World {
             .filter(|entry| {
                 entry["path"]
                     .as_str()
-                    .is_some_and(|path| path.contains(fragment))
+                    .is_some_and(|path| has_run(Path::new(path), fragment))
             })
             .count()
     }
@@ -222,17 +225,48 @@ impl World {
     }
 }
 
+/// Whether the folders and file named in `fragment` (`/scenes/street`) appear, in that order and
+/// next to each other, among the components of `path`. Compared by components and not as text:
+/// on Windows the ledger writes `\\?\C:\…\scenes\street\…`, where the text `/scenes/street` is
+/// never found, and a count of zero would then prove nothing.
+fn has_run(path: &Path, fragment: &str) -> bool {
+    let names = |path: &Path| -> Vec<std::ffi::OsString> {
+        path.components()
+            .filter_map(|part| match part {
+                Component::Normal(name) => Some(name.to_os_string()),
+                _ => None,
+            })
+            .collect()
+    };
+    let (names, run) = (names(path), names(Path::new(fragment)));
+    !run.is_empty()
+        && names
+            .windows(run.len())
+            .any(|window| window == run.as_slice())
+}
+
 /// The record the tick appended: one complete line, naming the result's files.
 fn assert_one_record_of_the_street(journal: &Path) {
     let record = fs::read_to_string(journal)
         .unwrap_or_else(|error| panic!("no journal record after the tick: {error}"));
     assert_eq!(record.lines().count(), 1, "one record: {record}");
     assert!(record.ends_with('\n'), "a complete record: {record}");
-    assert!(
-        record.contains("/scenes/street/assets/backdrop.png")
-            && record.contains("/scenes/street/assets/figure.png"),
-        "{record}"
-    );
+    let parsed: Value = serde_json::from_str(record.trim_end())
+        .unwrap_or_else(|error| panic!("a record that does not parse ({error}): {record}"));
+    let keys: Vec<&Path> = parsed["accept"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(Path::new)
+        .collect();
+    for file in ["backdrop.png", "figure.png"] {
+        let named = format!("/scenes/street/assets/{file}");
+        assert!(
+            keys.iter().any(|key| has_run(key, &named)),
+            "{named}: {record}"
+        );
+    }
 }
 
 // ----------------------------------------------------------------------- the tick accepts --

@@ -762,6 +762,17 @@ fn a_folder_without_a_state_is_an_empty_ledger() {
     assert_eq!(tracker.entries().count(), 0);
 }
 
+/// Raises `stop` when it is dropped: when its writer ends, **however** it ends. A writer that
+/// panics (a claim that could not be written) must stop the reader too, or the reader would
+/// loop forever and the test would hang instead of failing.
+struct StopOnExit<'a>(&'a std::sync::atomic::AtomicBool);
+
+impl Drop for StopOnExit<'_> {
+    fn drop(&mut self) {
+        self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
 /// The emptied ledger is removed (state, then lock, then folder) while others look at it and
 /// claim again. A reader must never see that as damage.
 #[test]
@@ -769,11 +780,14 @@ fn emptying_and_refilling_a_ledger_is_never_mistaken_for_damage() {
     let dir = workspace("claims-race");
     let ledger = Ledger::of(dir.path());
     let stop = std::sync::atomic::AtomicBool::new(false);
+    // `scope` joins every thread and re-raises the panic of any of them: a writer that fails
+    // fails the test once the reader has seen `stop`.
     std::thread::scope(|scope| {
         for worker in 0..3 {
             let ledger = ledger.clone();
             let stop = &stop;
             scope.spawn(move || {
+                let _stop = StopOnExit(stop);
                 for round in 0..150 {
                     let holder = next_holder();
                     let path = key(&format!("race-{worker}-{round}"));
@@ -784,7 +798,6 @@ fn emptying_and_refilling_a_ledger_is_never_mistaken_for_damage() {
                     drop(tracker);
                     assert!(matches!(ledger.lock().leave(holder, &path), Leave::Last(_)));
                 }
-                stop.store(true, std::sync::atomic::Ordering::SeqCst);
             });
         }
         let reader = ledger.clone();

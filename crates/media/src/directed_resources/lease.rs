@@ -14,9 +14,15 @@
 //! caller and certainly not shared with another root) and is removed on release so a root that
 //! an operation refused or rolled back is byte-for-byte as it was. The name uses the reserved
 //! `.tessel-staging-` prefix, which `ResourcePath` rejects, so no resource can collide with it.
+//!
+//! On Windows the lock is mandatory (nobody else can read the file while it is held) and an
+//! unlinked file can be replaced while a waiter still holds it open: `crate::lock_file` says
+//! how the holder is named and how a lock on a replaced file is recognised there (BL168.6.1).
 
 use std::fs::{self, File, OpenOptions, TryLockError};
-use std::io::{Read, Write};
+#[cfg(not(windows))]
+use std::io::Read;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use serde_json::json;
@@ -55,7 +61,9 @@ impl RootLease {
                 .map_err(|error| io_error(&lock_path, &error))?;
             match file.try_lock() {
                 Ok(()) => {}
-                Err(TryLockError::WouldBlock) => return Err(busy(&canonical, &mut file)),
+                Err(TryLockError::WouldBlock) => {
+                    return Err(busy(&canonical, holder(&lock_path, &mut file)));
+                }
                 Err(TryLockError::Error(error)) => return Err(io_error(&lock_path, &error)),
             }
             // A holder that released just before our lock removed the file we hold now: the
@@ -65,6 +73,9 @@ impl RootLease {
             }
             let _ = file.set_len(0);
             let _ = write!(file, "{}", std::process::id());
+            // The lock makes the file itself unreadable to everyone else on Windows.
+            #[cfg(windows)]
+            crate::lock_file::write_holder(&lock_path, std::process::id());
             return Ok(Self {
                 root: canonical,
                 lock_path,
@@ -95,10 +106,22 @@ impl Drop for RootLease {
     }
 }
 
-fn busy(root: &Path, file: &mut File) -> JobError {
+/// The process ID the holder wrote into the lock file `file` (at `_lock_path`), if it can be read.
+#[cfg(not(windows))]
+fn holder(_lock_path: &Path, file: &mut File) -> Option<u32> {
     let mut holder = String::new();
     let _ = file.read_to_string(&mut holder);
-    let holder = holder.trim().parse::<u32>().ok();
+    holder.trim().parse::<u32>().ok()
+}
+
+/// Windows locks are mandatory: the locked file cannot be read from this handle (`os error 33`),
+/// so the holder is read from the stream it wrote for that (see `crate::lock_file`).
+#[cfg(windows)]
+fn holder(lock_path: &Path, _file: &mut File) -> Option<u32> {
+    crate::lock_file::read_holder(lock_path)
+}
+
+fn busy(root: &Path, holder: Option<u32>) -> JobError {
     JobError::new(
         "root_busy",
         format!(
@@ -119,9 +142,16 @@ fn is_still_the_lock_file(path: &Path, file: &File) -> bool {
     }
 }
 
+/// No device and inode numbers on Windows: the holder stamps the file it locked and looks for
+/// the stamp at the path (`crate::lock_file`). A file that kept the name exists in both cases.
+#[cfg(windows)]
+fn is_still_the_lock_file(path: &Path, file: &File) -> bool {
+    crate::lock_file::is_still_at(path, file)
+}
+
 /// Without device and inode numbers the check cannot be made; the lease then protects only
-/// against operations that never unlink (limit documented for non-Unix platforms).
-#[cfg(not(unix))]
+/// against operations that never unlink (limit documented for other platforms).
+#[cfg(not(any(unix, windows)))]
 fn is_still_the_lock_file(path: &Path, _file: &File) -> bool {
     path.exists()
 }

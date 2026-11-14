@@ -208,12 +208,20 @@ pub fn manifest(document: Value) -> ResourceManifest {
     ResourceManifest::from_scene(&scene(document))
 }
 
-/// Every file and folder under `dir`, relative and sorted: what a transport root holds.
+/// Every file and folder under `dir`, relative and sorted: what a transport root holds. Written
+/// with `/` between components, the separator of a resource path, on every platform (`display`
+/// would give `assets\figure.png` on Windows for the same file).
 pub fn tree(dir: &Path) -> Vec<String> {
     fn walk(base: &Path, dir: &Path, out: &mut Vec<String>) {
         for entry in fs::read_dir(dir).unwrap() {
             let path = entry.unwrap().path();
-            let relative = path.strip_prefix(base).unwrap().display().to_string();
+            let relative = path
+                .strip_prefix(base)
+                .unwrap()
+                .components()
+                .map(|part| part.as_os_str().to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+                .join("/");
             out.push(relative);
             if path.is_dir() && !path.is_symlink() {
                 walk(base, &path, out);

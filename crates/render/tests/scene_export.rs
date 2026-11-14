@@ -32,12 +32,21 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
+use tessel_editor_core::jobs::CancelToken;
 use tessel_editor_core::state::ProjectSettings;
 use tessel_editor_core::{CommandError, EditorState, headless};
 use tessel_editor_media::host::MediaHost;
 use tessel_editor_media::tools::Tools;
 use tessel_editor_render::RuntimeConfig;
 use tessel_editor_render::scene_host::SceneHost;
+
+/// SHA-256 (hex) of a file, by the media crate's own streaming hash: no external `shasum`, which
+/// only exists where Perl ships it (macOS, most Linux), never on Windows (B4).
+fn sha256(path: &Path) -> String {
+    tessel_editor_media::fsx::hash_file(path, &CancelToken::new(), |_| {})
+        .unwrap_or_else(|error| panic!("hash {}: {error:?}", path.display()))
+        .0
+}
 
 fn corpus() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scripts/directed-scene-proof/corpus")
@@ -598,16 +607,7 @@ fn declared_audio_is_mixed_video_only_is_explicit_and_unevaluated_domains_are_re
         .status()
         .unwrap();
     assert!(made.success());
-    let sum = Command::new("shasum")
-        .args(["-a", "256"])
-        .arg(base.join("audio/mix.wav"))
-        .output()
-        .unwrap();
-    let hash = String::from_utf8_lossy(&sum.stdout)
-        .split_whitespace()
-        .next()
-        .unwrap()
-        .to_string();
+    let hash = sha256(&base.join("audio/mix.wav"));
     let mut raw = raw_without_audio();
     raw["audio"] = json!({"mixRelativePath":"audio/mix.wav","editStartSeconds":0.0,
         "editEndSecondsExclusive":4.0,"sourcePcmHashSha256":hash});
@@ -828,16 +828,7 @@ fn the_headless_binary_mixes_the_declared_wav_at_the_requested_range() {
         .status()
         .unwrap();
     assert!(made.success());
-    let hash = Command::new("shasum")
-        .args(["-a", "256"])
-        .arg(base.join("audio/mix.wav"))
-        .output()
-        .unwrap();
-    let hash = String::from_utf8_lossy(&hash.stdout)
-        .split_whitespace()
-        .next()
-        .unwrap()
-        .to_string();
+    let hash = sha256(&base.join("audio/mix.wav"));
     let mut raw = raw_without_audio();
     raw["audio"] = json!({"mixRelativePath":"audio/mix.wav","editStartSeconds":0.0,
         "editEndSecondsExclusive":4.0,"sourcePcmHashSha256":hash});

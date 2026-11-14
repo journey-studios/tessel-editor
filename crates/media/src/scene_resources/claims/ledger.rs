@@ -20,7 +20,9 @@
 //!   section** that first names it as a holder, and is removed in the one that drops its last
 //!   holder. So under `ledger.lock` "listed owner without a lockable lease" always means dead.
 //! * `ledger.lock` may be unlinked by whoever empties the ledger. A waiter that locked the
-//!   unlinked file notices (path and open file are not the same inode) and starts again.
+//!   unlinked file notices (path and open file are not the same inode; on Windows, not the same
+//!   creation-time stamp, see `crate::lock_file`) and starts again. It is not unlinked while
+//!   another caller of the same process waits for it: the last of them removes it (BL168.6.2).
 //! * Lock order across the module: root lease, then `ledger.lock`. Nothing waits for a root
 //!   lease while holding `ledger.lock`.
 //!
@@ -67,6 +69,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, btree_map};
 use std::fs::{self, File, OpenOptions, TryLockError};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
@@ -149,6 +152,10 @@ struct LiveLease {
 struct Inner {
     dir: PathBuf,
     live: Mutex<Option<LiveLease>>,
+    /// How many callers of this process are inside [`DiskLock::acquire`] for this ledger right
+    /// now. A tracker that empties the ledger leaves `ledger.lock` and the folder in place while
+    /// one of them waits, and the last one out removes them (see [`Tracker`]'s `Drop`).
+    waiting: AtomicUsize,
 }
 
 static LEDGERS: LazyLock<Mutex<HashMap<PathBuf, Arc<Inner>>>> = LazyLock::new(Mutex::default);
@@ -168,6 +175,7 @@ impl Ledger {
             Arc::new(Inner {
                 dir,
                 live: Mutex::new(None),
+                waiting: AtomicUsize::new(0),
             })
         });
         Self(Arc::clone(inner))
@@ -225,7 +233,7 @@ impl Ledger {
     ) -> Result<(), String> {
         let wait = if wait { LOCK_WAIT } else { TICK_WAIT };
         // No ledger: nothing is claimed, so nothing is left to hand over.
-        let Some(lock) = DiskLock::acquire(&self.0.dir, false, wait)? else {
+        let Some(lock) = DiskLock::acquire(&self.0, false, wait)? else {
             return Ok(());
         };
         let mut size = 0;
@@ -265,10 +273,15 @@ fn append_accept<'a>(dir: &Path, keys: impl Iterator<Item = &'a Path>) -> Result
     let mut record = serde_json::to_vec(&json!({ "accept": texts }))
         .map_err(|error| format!("`{}`: {error}", path.display()))?;
     record.push(b'\n');
+    // Opened for writing and positioned by hand, not in append mode: Windows refuses to cut a
+    // file opened only to append (`set_len` needs write access, `Acesso negado`), and the cut is
+    // what drops a torn tail and undoes a failed write. Nobody else writes the journal meanwhile
+    // (the caller holds `ledger.lock`), so writing at `end` is writing at the end.
     let mut file = OpenOptions::new()
         .read(true)
-        .append(true)
+        .write(true)
         .create(true)
+        .truncate(false)
         .open(&path)
         .map_err(|error| io_text(&path, &error))?;
     let end = complete_prefix(&mut file).map_err(|error| io_text(&path, &error))?;
@@ -279,6 +292,11 @@ fn append_accept<'a>(dir: &Path, keys: impl Iterator<Item = &'a Path>) -> Result
         > end
     {
         file.set_len(end).map_err(|error| io_text(&path, &error))?;
+    }
+    {
+        use std::io::{Seek, SeekFrom};
+        file.seek(SeekFrom::Start(end))
+            .map_err(|error| io_text(&path, &error))?;
     }
     if let Err(error) = file.write_all(&record) {
         let _ = file.set_len(end);
@@ -336,7 +354,7 @@ struct DiskLock {
 impl Tracker {
     /// Acquires coordination, validates state and reaps dead leases; any failure stays a fault.
     fn open(inner: &Arc<Inner>, create: bool, wait: std::time::Duration) -> Self {
-        match DiskLock::acquire(&inner.dir, create, wait) {
+        match DiskLock::acquire(inner, create, wait) {
             Ok(lock) => Self::with_lock(inner, lock),
             Err(why) => {
                 let mut tracker = Self::unopened(inner);
@@ -927,7 +945,14 @@ impl Drop for Tracker {
                 Ok(()) => true,
                 Err(error) => error.kind() == io::ErrorKind::NotFound,
             };
-            if leases_gone {
+            // Another caller of this process is waiting for this lock: removing the lock file
+            // now would hand it a lock on a file nobody can find, it would start again, and
+            // under contention it would lose that race every time (a release that empties and a
+            // claim that refills: 64 lost attempts in a row, measured on Windows, BL168.6.2). So the
+            // folder stays, empty (no state: an empty ledger), and the last of them to let go
+            // of an empty ledger removes it. Waiters in other processes still find a removed
+            // file, which the same-file check makes them retry.
+            if leases_gone && self.inner.waiting.load(Ordering::SeqCst) == 0 {
                 // Unlink first, unlock after (the lock file is unlinked while held): a waiter
                 // that locked the old file sees the mismatch and starts again.
                 let _ = fs::remove_file(&lock.path);
@@ -939,10 +964,24 @@ impl Drop for Tracker {
 }
 
 impl DiskLock {
+    /// Takes the lock of `inner`'s ledger like [`DiskLock::acquire_in`], counted in
+    /// `inner.waiting` for as long as it tries, so that a tracker of this process emptying the
+    /// ledger meanwhile does not remove the lock file this caller is waiting for.
+    fn acquire(
+        inner: &Inner,
+        create: bool,
+        wait: std::time::Duration,
+    ) -> Result<Option<Self>, String> {
+        inner.waiting.fetch_add(1, Ordering::SeqCst);
+        let lock = Self::acquire_in(&inner.dir, create, wait);
+        inner.waiting.fetch_sub(1, Ordering::SeqCst);
+        lock
+    }
+
     /// Takes the ledger lock, waiting for it up to `wait`. A holder may keep it briefly or
     /// across several writes during a healthy recovery; `Duration::ZERO` looks once and never waits. `Ok(None)` when there is
     /// no ledger and `create` is not set.
-    fn acquire(
+    fn acquire_in(
         dir: &Path,
         create: bool,
         wait: std::time::Duration,
@@ -1141,9 +1180,17 @@ fn same_file(path: &Path, file: &File) -> bool {
     }
 }
 
+/// No device and inode numbers on Windows, and an unlinked lock file can be replaced under the
+/// same name while a waiter still holds it open (and then locks it): the holder stamps the file
+/// it locked and looks for the stamp at the path (`crate::lock_file`, BL168.6.1).
+#[cfg(windows)]
+fn same_file(path: &Path, file: &File) -> bool {
+    crate::lock_file::is_still_at(path, file)
+}
+
 /// Without device and inode numbers the check cannot be made; the ledger then protects only
-/// against processes that never remove it (limit documented for non-Unix platforms).
-#[cfg(not(unix))]
+/// against processes that never remove it (limit documented for other platforms).
+#[cfg(not(any(unix, windows)))]
 fn same_file(path: &Path, _file: &File) -> bool {
     path.exists()
 }
@@ -1240,4 +1287,69 @@ fn stamp_from_json(value: &Value) -> Option<Stamp> {
         inode: value.get("inode")?.as_u64()?,
         sha256: value.get("sha256")?.as_str()?.to_string(),
     })
+}
+
+#[cfg(test)]
+mod churn_tests {
+    use super::*;
+    use crate::fsx::Staging;
+    use std::time::Duration;
+
+    /// BL168.6.5: another process that keeps emptying the ledger (create `ledger.lock`, lock it,
+    /// unlink it while held, unlock, again) makes a waiter lock files that are already gone. Each
+    /// retry is a fair race between the two (unlike a holder of this very process, BL168.6.2), so
+    /// the fixed [`ATTEMPTS`] were never exhausted, even by a 300 ms burst of thousands of cycles:
+    /// the waiter takes the lock in milliseconds. This pins that down; it is not a reproduction of
+    /// a failure. (A thread stands in for the other process: the protocol on disk is the same.)
+    #[test]
+    fn a_waiter_wins_the_lock_while_another_holder_churns_the_lock_file() {
+        let staging = Staging::create(&std::env::temp_dir(), "ledger-churn").unwrap();
+        let dir = staging.path().join(".tessel-claims");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(LOCK);
+        let burst = Duration::from_millis(300);
+        let churner = {
+            let path = path.clone();
+            std::thread::spawn(move || {
+                let end = Instant::now() + burst;
+                let mut cycles = 0u32;
+                while Instant::now() < end {
+                    let Ok(file) = OpenOptions::new()
+                        .read(true)
+                        .write(true)
+                        .create(true)
+                        .truncate(false)
+                        .open(&path)
+                    else {
+                        continue;
+                    };
+                    // Never block: the waiter may hold this very file, and the test must end.
+                    if file.try_lock().is_err() {
+                        continue;
+                    }
+                    let _ = fs::remove_file(&path);
+                    drop(file);
+                    cycles += 1;
+                }
+                cycles
+            })
+        };
+        let started = Instant::now();
+        let taken = DiskLock::acquire_in(&dir, true, Duration::from_secs(5));
+        let waited = started.elapsed();
+        // The lock is let go before the churner is joined, whatever the outcome.
+        let taken = taken.map(|lock| lock.is_some());
+        let cycles = churner.join().unwrap();
+        eprintln!(
+            "CHURN {}",
+            serde_json::json!({"cycles": cycles, "waitedMs": waited.as_secs_f64() * 1000.0})
+        );
+        assert!(
+            cycles > 100,
+            "the burst really churned the lock file: {cycles} cycles"
+        );
+        let taken = taken.unwrap_or_else(|why| panic!("gave up after {waited:?}: {why}"));
+        assert!(taken);
+        assert!(waited < Duration::from_secs(5), "{waited:?}");
+    }
 }

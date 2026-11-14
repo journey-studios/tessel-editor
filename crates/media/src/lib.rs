@@ -10,6 +10,8 @@ pub mod fsx;
 pub mod host;
 pub mod import;
 pub mod interchange;
+#[cfg(windows)]
+mod lock_file;
 pub mod package;
 pub mod probe;
 pub mod scene_encoder;

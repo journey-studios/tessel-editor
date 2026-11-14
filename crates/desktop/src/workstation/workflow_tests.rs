@@ -25,6 +25,16 @@ fn op(
     }
 }
 
+/// The `ffmpeg` the app itself would run (override, `PATH`, install places), not the bare name:
+/// on Windows the bare name needs a `PATH` that was refreshed after the install. When nothing is
+/// found the bare name stays, so the proof is skipped as before.
+fn ffmpeg() -> std::path::PathBuf {
+    use tessel_editor_media::tools::locate::{System, Tool, locate};
+    locate(&System, Tool::Ffmpeg)
+        .map(|found| found.path)
+        .unwrap_or_else(|| "ffmpeg".into())
+}
+
 fn create_project(view: &Entity<Workstation>, cx: &mut VisualTestContext) {
     op(
         view,
@@ -194,7 +204,7 @@ fn an_import_is_a_job_the_window_keeps_editing_through_and_applies_on_its_tick(
     let scratch = ClaimsScratch::new("import");
     let dir = &scratch.0;
     let picture = dir.join("still.jpg");
-    let made = std::process::Command::new("ffmpeg")
+    let made = std::process::Command::new(ffmpeg())
         .args([
             "-v",
             "error",
@@ -320,7 +330,7 @@ fn committing_the_automatic_prepare_job_before_the_tick_leaves_the_window_free_t
     // Two different files with picture and sound, so that the second is one more asset to prepare.
     let video = |name: &str, size: &str, tone: &str| -> Option<std::path::PathBuf> {
         let path = dir.join(name);
-        std::process::Command::new("ffmpeg")
+        std::process::Command::new(ffmpeg())
             .args(["-v", "error", "-y", "-f", "lavfi", "-i"])
             .arg(format!("testsrc2=size={size}:rate=24:duration=1"))
             .args(["-f", "lavfi", "-i"])

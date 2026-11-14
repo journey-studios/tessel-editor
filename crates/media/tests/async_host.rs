@@ -6,7 +6,6 @@
 mod common;
 
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -19,25 +18,14 @@ use tessel_editor_media::host::{MediaHost, RendererFactory};
 use tessel_editor_media::tools::Tools;
 
 use common::mock::{Mock, Settings};
+use common::wrapper::forwarding_tool;
 use common::{temp, tools, video_with_audio};
 
 /// ffmpeg/ffprobe that wait `delay` seconds, fail while `flag` exists, and otherwise are the real ones.
 fn wrapped_tools(dir: &Path, delay: f64, flag: &Path) -> Tools {
     let real = tools();
-    let wrap = |name: &str, target: &Path| -> PathBuf {
-        let path = dir.join(name);
-        fs::write(
-            &path,
-            format!(
-                "#!/bin/sh\nsleep {delay}\nif [ -e '{}' ]; then echo 'forced failure' >&2; exit 1; fi\nexec '{}' \"$@\"\n",
-                flag.display(),
-                target.display()
-            ),
-        )
-        .unwrap();
-        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
-        path
-    };
+    let wrap =
+        |name: &str, target: &Path| -> PathBuf { forwarding_tool(dir, name, target, flag, delay) };
     Tools {
         ffmpeg: wrap("slow-ffmpeg", &real.ffmpeg),
         ffprobe: wrap("slow-ffprobe", &real.ffprobe),

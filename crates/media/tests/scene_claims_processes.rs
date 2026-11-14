@@ -23,8 +23,9 @@
 //!   copy, and two processes cycling adopt/discard on one workspace end with the workspace as it
 //!   was.
 //!
-//! Not proven: Windows, network filesystems, a hostile writer, an operating system crash (the
-//! ledger is replaced atomically but not synced), a window (no GPUI here).
+//! Not proven: Windows other than 11 on NTFS (BL168.6.3), network filesystems, a hostile writer, an
+//! operating system crash (the ledger is replaced atomically but not synced), a window (no GPUI
+//! here).
 
 mod directed_resources_common;
 
