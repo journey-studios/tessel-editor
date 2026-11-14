@@ -151,7 +151,7 @@ em ambos os decks, e migra todos os orçamentos para pass_budget_in. A câmera e
 nos30 quadros adaptados passam a ser comparados; só instanceFrame/heldInstance ficam de fora.
 A nova referência representável tem ownership separado (BL082.4.17); a S0 fica intacta.
 
-Os erros do vizinho passam a Invalid com ponteiro do deck; a transformação de splat do topo
+Na validação de planos tipados/JSON, os erros do vizinho passam a Invalid com ponteiro do deck; a transformação de splat do topo
 preserva seu erro original. O wire não carrega C: a S2 precisa fechar o contrato de validação
 de primary antes de aceitar planos externos (BL082.4.20). Os limites de bytes são conferidos
 no texto com chave literal, ou depois do parse se escapada; itens/profundidade são conferidos
@@ -171,3 +171,39 @@ O teste passa a conferir o contador primário legado pela fórmula cameraIn+delt
 de offset contra X e heldCamera contra X. Para A vizinho, o contador do plano continua comparado
 diretamente com X. A divergência de metadado fica BL082.4.23; não se alterou produção ou acervo.
 Este resultado vermelho foi preservado e não conta como aprovação; novas execuções são necessárias.
+
+## 7. Gates do reforço integrado em93fb635 (Mac nativo)
+
+O head93fb635 está sobre a main b6cf304 (PR60 integrada); único conflito de merge no backlog,
+com ambos históricos preservados. Produção do core/desktop e Cargo.lock são idênticos a61efdba;
+as mudanças posteriores ajustaram o teste de câmera e docs. No checkout limpo do Mac:
+
+| Prova | Resultado |
+|---|---|
+| fmt | exit0 |
+| Core completo, --no-fail-fast |1594 passaram,0 falharam,7 ignorados,64 resultados |
+| Transições/corpus/baseline com preserve_order explícito |112 +10 +1, sem falhas |
+| Baseline sem transição, release Mac |1/1 no mesmo93fb635 |
+| GPUI scene_fx |80/80 |
+| check workspace, clippy all-targets -D warnings, build desktop |exit0 |
+| cargo tree do core |sem gpui/wry |
+| Backlog tables e higiene de docs |19 e13, passaram |
+
+O run vermelho de61efdba (1593/1/7) fica no §6; a correção do teste foi reexecutada no head
+limpo acima. Um erro de campo end_frame no teste intermediário7891857 também foi detectado
+pelo compilador e corrigido para end_frame_exclusive em93fb635 antes da rodada verde.
+Não houve alteração do oráculo para tornar o teste verde.
+
+Sete mutantes executados em61efdba foram mortos pelos testes: comparação de Option com overflow,
+tempo do vizinho ignorado, clipId repetido permitido, luzes fora do pré-check, erro de versão sem
+ponteiro próprio, erro de splat sem contexto e orçamento antigo no edit. Compilaram e falharam
+por asserção (não por erro de compilação). Fontes restauradas por bytes/SHA, árvore limpa.
+Os quatro arquivos mutados têm os mesmos bytes em93fb635. Os mutantes não medem performance.
+
+Baseline Mac: a captura veio da base e3c20cb, sem produção alterada, probe removido; o JSON
+mantém metadados/perfis Windows anteriores. Logs privados do coordenador preservam identidade,
+resultados e hashes; não são necessários para rodar os testes commitados. Origem não executada,
+sem pixels/runtime/GPU/Linux, sem teclado/ponteiro físico, áudio ou workspace global verde.
+
+Rechecagem Windows deste reforço ainda pendente. A R1 em73775c3 não a substitui.
+F064 segue P, Refuse segue fechado; BL082.4.20/.21/.23 permanecem pendentes.

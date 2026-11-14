@@ -2162,7 +2162,7 @@ contra referência Mac; é pré-condição ausente. Coordenador capturae3separad
 
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
-| BL082.4.16 | PR63 / baseline Mac | Fixture de compatibilidade não inclui perfis debug/release Mac | Correção de dados validada no Mac | BL082.4.3 | Coordenador | Captura sobre e3c20cb sem mudar core/src/Cargo.lock, probe removido/status limpo; Windowsentries canônicas inalteradas. Candidato737+fixture:106transições/10corpus e baseline debug/release passam. Confirmar no head limpo antes de push; Linux não executado. |
+| BL082.4.16 | PR63 / baseline Mac | Fixture de compatibilidade não inclui perfis debug/release Mac | Correção de dados validada no Mac | BL082.4.3 | Coordenador | Captura sobre e3c20cb sem mudar core/src/Cargo.lock, probe removido/status limpo; Windowsentries canônicas inalteradas. Candidato737+fixture:106transições/10corpus e baseline debug/release passam. Head limpo93fb635 passou debug e gates; Linux não executado. |
 | BL082.4.17 | PR63 / referência X | Três lit-held não importam por instância menor que shot, comparações só parcialmente preservadas | Em andamento — referência representável Windows | BL082.4.1/.4.3 | Coordenador / Cursor Sonnet5.5 | JulgarT06/T10/T16 e necessidade de fixtures representáveis sem enfraquecerimportador ouregravarorigem; não promover todosos estados/sondasporassociação. Autor declara reconstrução e limites. |
 
 ### Baseline Mac capturado na base original, não no candidato
@@ -2199,12 +2199,25 @@ luz usa quadro real e o vizinho tem discriminante próprio. Review independente 
 
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
-| BL082.4.18 | PR63 / validador | Overflow e três guardas sem regressão discriminante | Em andamento | BL082.4.3 | Coordenador | Recusar conversão/soma inválidas; testes de tempo real divergente, clipId repetido entre decks e luzes no pré-check; matar os mutantes da revisão e revalidar Windows/Mac. |
-| BL082.4.19 | PR63 / erros | Versão e transformação de splat do vizinho sem deck no erro | Em andamento | BL082.4.3 | Coordenador | Ponteiro /transition/other em planos tipados e JSON, inclusive versão/splat; manter contrato do topo e testar ids colidentes. |
+| BL082.4.18 | PR63 / validador | Overflow e três guardas sem regressão discriminante | A validar — Mac93fb635 passou; review Windows pendente | BL082.4.3 | Coordenador | Recusar conversão/soma inválidas; testes de tempo real divergente, clipId repetido entre decks e luzes no pré-check; matar os mutantes da revisão e revalidar Windows/Mac. |
+| BL082.4.19 | PR63 / erros | Versão e transformação de splat do vizinho sem deck no erro | A validar — Mac93fb635 passou; review Windows pendente | BL082.4.3 | Coordenador | Ponteiro /transition/other em planos tipados e JSON, inclusive versão/splat; manter contrato do topo e testar ids colidentes. |
 | BL082.4.20 | S2 / contrato do plano | Wire sem C e comprimentos não permite validar toda a escolha temporal de primary/held | Pendente | BL082.4.3/.4.4 | Dono de S2 a atribuir | Fixar contrato de validação de planos externos antes do runtime; separar escolha correta do construtor da capacidade do validador isolado. |
 | BL082.4.21 | Validação do teto de itens | Não há plano válido aceito de exatamente 20000 itens sob o teto de bytes | Pendente | BL082.4.3 | Não atribuído | Provar interação dos dois tetos com plano válido representável ou documentar formalmente por que a combinação é impossível; pré-check de arrays não é aceite completo. |
-| BL082.4.22 | PR63 / orçamento | Edit/inspect/gesto/UI ainda usam orçamento que ignora transição | Em andamento | BL082.4.3 | Coordenador | Migrar chamadas restantes para pass_budget_in e discriminar 8 looks mais mistura em respostas compartilhadas; sem abrir Refuse. |
+| BL082.4.22 | PR63 / orçamento | Edit/inspect/gesto/UI ainda usam orçamento que ignora transição | A validar — Mac93fb635 passou; review Windows pendente | BL082.4.3 | Coordenador | Migrar chamadas restantes para pass_budget_in e discriminar 8 looks mais mistura em respostas compartilhadas; sem abrir Refuse. |
 
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
 | BL082.4.23 | S1b / relógio de câmera | Plano primário conserva contador bruto além da câmera curta; offset/oráculo usa contador preso | Pendente — divergência de metadado, sem paridade de estado completo | BL082.4.17/.4.3 | Coordenador / dono de S2 | Julgar contrato preservando bytes sem transição; comparar contador legado e offset separadamente. Exemplo lit-center-held f23: primário23, offset/oráculo11. Pose é hold no kit; isto não é prova de pixels reais. |
+
+### PR63: reforço validado no Mac, pronto para rechecagem Windows
+
+Código93fb635 (produção idêntica a61efdba) sobre mainb6cf304: core1594/0/7,
+64resultados; transições112/corpus10/baseline1 com preserve_order; GPUI80;
+fmt/check/clippy/build/tree passam. Sete mutantes discriminantes em61, fontes
+restauradas; a falha inicial de comparação primária23 vs offset11 foi preservada
+no relatório e o teste corrigido sem editar corpus/produção. BL082.4.23 registra
+a divergência de metadado; não é paridade de estado completo nem prova de pixels.
+BL082.4.18/.19/.22 A validar no Windows; .17 segue em implementação separada;
+S2/S3a não iniciadas, F064 produto P e admissão pública Refuse.
+
+Baseline release do mesmo código93fb635 passou1/1 no Mac; fechamento posterior só documental.

@@ -478,3 +478,11 @@ o frame preso. No caso adaptado A em f23 são23 e11. O teste valida cada contrat
 não declara igualdade dos estados completos desse deck. A referência nova deve usar comprimentos
 representáveis e a S2 precisa manter essa distinção explícita. O resultado vermelho inicial consta
 no relatório S1b, sem ser promovido a prova verde.
+
+No reforço93fb635, Mac nativo passou core1594/0/7, transições112/corpus10/baseline1 com
+preserve_order, GPUI80 e fmt/check/clippy/build; dependências do core sem gpui/wry.
+Sete mutantes em61efdba, cujos arquivos de produção permanecem idênticos, foram detectados.
+O resultado inicial vermelho e o ajuste do teste de câmera estão no relatório S1b §§6–7.
+Windows do novo head ainda a validar; não herdar R1 de73775c3 nem declarar produto entregue.
+
+A baseline release do mesmo93fb635 também passou1/1. Os gates acima pertencem ao código93fb635; o fechamento posterior muda só docs.
