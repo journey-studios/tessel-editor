@@ -28,6 +28,7 @@ import hashlib
 import json
 import os
 import pathlib
+import shutil
 import subprocess
 import sys
 import time
@@ -83,6 +84,8 @@ def tool_versions():
     """Versions as the repository sees them: run in `ROOT`, because rustup picks the toolchain from `rust-toolchain.toml` by the CWD
     (from another directory the attestation would name the default toolchain, not the pinned one)."""
     def out(*cmd):
+        if os.name == "nt":  # Windows starts a bare name only as `<name>.exe`; PATHEXT finds a tool installed as `.cmd` too (BL168.8)
+            cmd = (shutil.which(cmd[0]) or cmd[0], *cmd[1:])
         try:
             return subprocess.run(cmd, capture_output=True, text=True, cwd=ROOT).stdout.strip()
         except OSError:

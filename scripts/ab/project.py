@@ -29,7 +29,7 @@ def absolute(base, stored):
         return stored
     if base is None or not stored or ".." in pathlib.PurePath(stored).parts:
         return None
-    return os.path.join(base, stored)
+    return os.path.join(base, stored.replace("/", os.sep))  # a document stores `/`; on Windows the joined path keeps one separator
 
 
 def library_sources(document):

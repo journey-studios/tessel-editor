@@ -11,8 +11,9 @@
   Windows `PrintWindow` of the process's main window, an observation that never clicks).
 * Windows (BL168.8): the window gets its own socket through `TESSEL_UI_SOCKET` (its default lives
   under `%LOCALAPPDATA%`, where tool discovery also looks, so that is left alone), a stop ends the
-  whole process tree (`taskkill /T`: the WebView2 helpers too) and the repository's `sh` scripts
-  run through Git's `sh` (`script_command`).
+  whole process tree (`taskkill /T`: the WebView2 helpers too), the repository's `sh` scripts
+  run through Git's `sh` (`script_command`) and a `#!` stand-in binary under its interpreter
+  (`portable.program`; Windows starts executables only).
 * `run_surface`: runs one scenario on one surface and NEVER raises: a surface that cannot start,
   answers garbage, hangs or crashes is a recorded failure, the cause is kept, cleanup problems are
   reported next to it (never replace it), and the caller can still try the other surface and write
@@ -159,8 +160,8 @@ class Headless:
         self._eof = False
         self.refused = 0          # replies with `ok: false`; `tessel-headless` then exits with status 1
         try:
-            self.process = subprocess.Popen([binary, *extra], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                            stderr=subprocess.DEVNULL, text=True, bufsize=1)
+            self.process = subprocess.Popen(portable.program(binary, *extra), stdin=subprocess.PIPE,
+                                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1)
         except OSError as error:
             raise SurfaceError(f'cannot start `{binary}`: {error}') from error
         self._reader = threading.Thread(target=self._pump, daemon=True)
@@ -283,8 +284,8 @@ class Native:
         self.log_path = os.path.join(home, 'editor.log')
         try:
             self.log = open(self.log_path, 'w')
-            self.process = subprocess.Popen([binary], env=self.env, stdout=self.log, stderr=self.log,
-                                            start_new_session=True)
+            self.process = subprocess.Popen(portable.program(binary), env=self.env, stdout=self.log,
+                                            stderr=self.log, start_new_session=True)
         except OSError as error:
             if self.log is not None:
                 self.log.close()
@@ -292,8 +293,8 @@ class Native:
 
     def ui(self, *args, timeout=90):
         try:
-            done = subprocess.run([self.binary, 'ui', *args], env=self.env, capture_output=True, text=True,
-                                  timeout=timeout)
+            done = subprocess.run(portable.program(self.binary, 'ui', *args), env=self.env, capture_output=True,
+                                  text=True, timeout=timeout)
         except subprocess.TimeoutExpired as error:
             raise SurfaceError(f'ui {args}: no answer within {timeout}s') from error
         except OSError as error:
