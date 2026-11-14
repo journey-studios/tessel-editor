@@ -15,6 +15,7 @@ use crate::scene_project::SceneCommand;
 use crate::state::camera_edit::{CameraKeysCommand, KEY_FIELDS};
 use crate::state::inspector::{InspectorTab, PropertyKind, property_def};
 use crate::state::layout::{Destination, GroupRef, Layout, LayoutCommand, PanelKind, Region, Side};
+use crate::state::split::SplitAvailability;
 use crate::state::timeline::{Placement, TrackFlag};
 use crate::state::{Command, CommandError, EditorState, Raw, WorkspaceTab};
 use crate::time::Ratio;
@@ -409,6 +410,18 @@ pub fn parse_invoke(
             snap: !state.timeline.snap,
         },
         ("folder:all", "select") => Command::SelectFolder { folder: None },
+        // F017: the selected clip at the playhead. The refusal is the node's `disabled_reason`,
+        // so a client that skips the tree (the headless `invoke`) gets the same answer.
+        ("timeline.split", "invoke") => match state.split_availability() {
+            SplitAvailability::Ready { clip, frame } => Command::SplitClip {
+                clip: clip.to_string(),
+                frame,
+                new_id: None,
+            },
+            SplitAvailability::Blocked(block) => {
+                return Err(CommandError::disabled(block.reason()).target(target));
+            }
+        },
         ("monitor.go_start", "invoke") => seek(0),
         ("monitor.step_back", "invoke") => seek(state.timeline.playhead - 1),
         ("monitor.step_forward", "invoke") => seek(state.timeline.playhead + 1),

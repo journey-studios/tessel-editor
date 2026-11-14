@@ -6,6 +6,14 @@ Lib **V** (`crates/media/tests/import.rs`, `export.rs`, `flow.rs`), `scripts/med
 (diálogo Importar com seletor nativo de arquivos, biblioteca com estado dos assets; provado em
 `scripts/live-flow-proof.py`: mp4, png, ply, wav). Setup de FFmpeg: [media-setup](../media-setup.md).
 
+**Descoberta do FFmpeg/FFprobe (BL167.2):** `TESSEL_FFMPEG`/`TESSEL_FFPROBE` válido vence e um inválido **falha** (sem fallback);
+sem eles, o `PATH` na ordem e depois os lugares usuais da plataforma. No Windows: binários nativos `.exe`/`.com`
+na ordem de `PATHEXT` (busca automática ignora `.bat`/`.cmd`, BL167.2.7), pastas com espaços, WinGet `Links` e o layout `Packages\Gyan.FFmpeg*\ffmpeg-*\bin` (dois níveis, sem
+varredura recursiva); um diretório é rejeitado. macOS/Linux: o `PATH` e `/opt/homebrew/bin`, `/usr/local/bin`, como antes.
+Resolvedor `tessel_editor_media::tools::locate` (adapter, sem regra de domínio); testado com ambiente, plataforma e arquivos
+injetados. Prova real no Windows: [relatório](../migration/windows-tool-discovery-report.md). Validação Mac da integração e limites Linux estão no relatório. A correção BL167.2.7
+é coberta no Mac com plataforma/ambiente Windows injetados; sem nova execução nativa Windows.
+
 ## Importar (P05)
 
 Dois tempos: `prepare` (probe, hash, cópia) só toca o filesystem e roda como **job cancelável**; `commit` aplica tudo ao

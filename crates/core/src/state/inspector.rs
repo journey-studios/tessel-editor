@@ -471,6 +471,36 @@ impl Inspector {
         }
     }
 
+    /// Gives `to` the same overrides `from` has, inside this inspector (a split clip's second
+    /// half starts as an exact copy of the first). Whatever `to` had is replaced.
+    pub(crate) fn duplicate_overrides(&mut self, from: &str, to: &str) {
+        match self.overrides.get(from).cloned() {
+            Some(values) => {
+                self.overrides.insert(to.to_string(), values);
+            }
+            None => {
+                self.overrides.remove(to);
+            }
+        }
+    }
+
+    /// Stores a slider value exactly as computed (no rounding to the slider's decimals), clamped
+    /// to its range. Reserved for edits that derive a value from another by an exact rule (a
+    /// split's Ken Burns continuation), where rounding would move a picture the cut must keep.
+    /// Returns the value stored, or `None` when `id` is not a slider.
+    pub(crate) fn assign_exact(&mut self, clip: &str, id: &str, value: f64) -> Option<f64> {
+        let property = property_def(id)?;
+        let PropertyKind::Slider { min, max, .. } = property.kind else {
+            return None;
+        };
+        if !value.is_finite() {
+            return None;
+        }
+        let bounded = value.clamp(min, max);
+        self.store(clip, property, Value::Number(bounded));
+        Some(bounded)
+    }
+
     /// Drops the values of a clip that no longer exists.
     pub fn forget_clip(&mut self, clip: &str) {
         self.overrides.remove(clip);
@@ -699,6 +729,37 @@ mod tests {
 
     fn number(value: f64) -> Raw {
         Raw::Number(value)
+    }
+
+    #[test]
+    fn a_clip_can_be_duplicated_and_a_slider_stored_exactly_for_the_split() {
+        let mut inspector = Inspector::default();
+        inspector
+            .set_property("a", ClipKind::Video, "opacity", &number(40.0))
+            .unwrap();
+        inspector.duplicate_overrides("a", "b");
+        let opacity = property_def("opacity").unwrap();
+        assert_eq!(inspector.value("b", opacity), Value::Number(40.0));
+        // A clip with nothing to copy leaves the target with nothing too.
+        inspector.duplicate_overrides("untouched", "b");
+        assert_eq!(inspector.value("b", opacity), opacity.default);
+
+        // `assign_exact` keeps every decimal (a set value would round to the slider's one) and
+        // clamps to the range; a non-slider or a non-finite value stores nothing.
+        let zoom = property_def("zoom").unwrap();
+        assert_eq!(
+            inspector.assign_exact("a", "zoom", 77.77777),
+            Some(77.77777)
+        );
+        assert_eq!(inspector.value("a", zoom), Value::Number(77.77777));
+        assert_eq!(inspector.assign_exact("a", "zoom", 9999.0), Some(400.0));
+        assert_eq!(inspector.assign_exact("a", "zoom", 100.0), Some(100.0));
+        assert!(
+            !inspector.is_modified("a", zoom),
+            "the default is not stored"
+        );
+        assert_eq!(inspector.assign_exact("a", "blend", 1.0), None);
+        assert_eq!(inspector.assign_exact("a", "zoom", f64::NAN), None);
     }
 
     #[test]

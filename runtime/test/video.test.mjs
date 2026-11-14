@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
+import { ffToolPath } from './ffmpeg-locate.mjs';
 import {
   holdSeek,
   imageLayer,
@@ -35,7 +36,7 @@ const FRAMES = 48;
 const RATE = { num: 24, den: 1, fps: 24 };
 const CELL = WIDTH / 20;
 
-const ffmpeg = (args) => spawnSync('ffmpeg', ['-nostdin', '-v', 'error', '-y', ...args], { encoding: 'utf8' });
+const ffmpeg = (tool, args) => spawnSync(tool, ['-nostdin', '-v', 'error', '-y', ...args], { encoding: 'utf8' });
 
 const barcodeFilter = () => {
   const boxes = [`drawbox=x=0:y=0:w=${CELL * 10}:h=${CELL}:color=black:t=fill`];
@@ -51,11 +52,18 @@ const source = ['-f', 'lavfi', '-i', `testsrc2=size=${WIDTH}x${HEIGHT}:rate=24:d
 let fixtures = null;
 const makeFixtures = () => {
   if (fixtures) return fixtures;
+  let tool;
+  try {
+    tool = ffToolPath('ffmpeg');
+  } catch (error) {
+    fixtures = { error: error.message };
+    return fixtures;
+  }
   const directory = mkdtempSync(join(tmpdir(), 'tessel-video-'));
   const clips = { directory };
   const encode = (name, codec) => {
     const path = join(directory, name);
-    const result = ffmpeg([...source, ...codec, path]);
+    const result = ffmpeg(tool, [...source, ...codec, path]);
     clips[name] = result.status === 0 ? path : null;
     if (result.status !== 0) clips[`${name}:error`] = result.stderr || String(result.error);
   };
@@ -63,7 +71,7 @@ const makeFixtures = () => {
   encode('vp9.webm', ['-c:v', 'libvpx-vp9', '-b:v', '0', '-crf', '30', '-g', '24', '-cpu-used', '6', '-deadline', 'good', '-pix_fmt', 'yuv420p']);
   // A clip that never changes picture: what a stuck decoder looks like from the outside.
   const still = join(directory, 'still.mp4');
-  const stillResult = ffmpeg(['-f', 'lavfi', '-i', `color=c=red:size=${WIDTH}x${HEIGHT}:rate=24:duration=2`, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', still]);
+  const stillResult = ffmpeg(tool, ['-f', 'lavfi', '-i', `color=c=red:size=${WIDTH}x${HEIGHT}:rate=24:duration=2`, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', still]);
   clips['still.mp4'] = stillResult.status === 0 ? still : null;
   writeFileSync(join(directory, 'broken.mp4'), Buffer.from('this is not a video, only bytes that claim to be one'));
   clips['broken.mp4'] = join(directory, 'broken.mp4');
@@ -72,7 +80,7 @@ const makeFixtures = () => {
     ['jpg', ['-q:v', '3']],
   ]) {
     mkdirSync(join(directory, folder));
-    const result = ffmpeg([...source, ...quality, '-start_number', '0', join(directory, folder, `x%05d.${folder}`)]);
+    const result = ffmpeg(tool, [...source, ...quality, '-start_number', '0', join(directory, folder, `x%05d.${folder}`)]);
     clips[folder] = result.status === 0 ? join(directory, folder, `x%05d.${folder}`) : null;
   }
   fixtures = clips;
@@ -124,8 +132,9 @@ const needs = (t, key) => {
   if (skipUnavailable(t, assert)) return null;
   const clips = makeFixtures();
   if (!clips[key]) {
-    if (process.env.TESSEL_REQUIRE_RUNTIME === '1') assert.fail(`ffmpeg could not make ${key}: ${clips[`${key}:error`] ?? 'ffmpeg missing'}`);
-    t.skip(`ffmpeg could not make ${key}`);
+    const reason = clips[`${key}:error`] ?? clips.error ?? 'ffmpeg missing';
+    if (process.env.TESSEL_REQUIRE_RUNTIME === '1') assert.fail(`ffmpeg could not make ${key}: ${reason}`);
+    t.skip(`ffmpeg could not make ${key}: ${reason}`);
     return null;
   }
   return clips;

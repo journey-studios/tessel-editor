@@ -7,6 +7,11 @@ Lib **V** (`crates/media/tests/export.rs`, `video_audio.rs`, `flow.rs`; `crates/
 relatório de preflight assíncrono, job, progresso, cancelar; `scripts/live-flow-proof.py` mede o som exportado). Exportação ocorre em renderer **headless próprio** (Node+Chrome,
 thread própria), nunca captura o monitor.
 
+**Executáveis (BL167.2):** o export acha FFmpeg/FFprobe, Node e Chrome sem `TESSEL_*` também no Windows (`.exe`/`PATHEXT`,
+WinGet, Program Files, `LOCALAPPDATA`); `TESSEL_FFMPEG`/`TESSEL_FFPROBE` inválido ainda falha. Regras, limites e a prova real
+(`export.start` real com FFmpeg 9.0.2, sem overrides): [media-setup](../media-setup.md#descoberta-dos-executáveis) e
+[relatório](../migration/windows-tool-discovery-report.md). Só o Windows foi provado nesta entrega.
+
 ## Pipeline
 
 `snapshot imutável → preflight → prepare (decode) → mix WAV em blocos de 10 s → frame PNG a frame → FFmpeg
@@ -53,3 +58,15 @@ Verificação final (ffprobe lê o arquivo de volta e o compara com o plano): co
 ## Posse do renderer (BL144.10)
 
 Um export (e seu preflight) pede o renderer pela política única de [F056](renderer-ownership.md): com outro export (ou preflight) no renderer, responde `renderer_busy`/`retryable` e nada é enfileirado; com um job de miniaturas no renderer, o job é parado no próximo quadro e o export é recusado até a nova tentativa (o renderer fica reservado por 30 s). Uma sonda de preflight cancelada continua dona do renderer até largá-lo (BL144.18). Validado (testes que contam renderers, prova headless e nativa; ver F056).
+
+
+## Relógio de áudio nas faixas (BL081.5)
+
+Sem conversão de FPS, a faixa `[from,to)` contém `S(to)-S(from)` amostras, com
+`S(f)=round(f·den·48000/num)`, o mesmo relógio absoluto do core. A montagem dos
+blocos e o alvo final usam essas fronteiras; uma faixa NTSC que começa após zero
+não recebe nem perde uma amostra de cauda por arredondar sua duração novamente.
+Com conversão de FPS, o alvo continua seguindo a duração dos frames codificados,
+com ajuste da cauda quando necessário. A prova compara o WAV PCM entregue ao
+encoder com o mix do core; isso não promete igualdade bit a bit do AAC com perdas.
+Evidência: [continuidade de áudio](../migration/clip-split-audio-continuity-report.md).

@@ -448,6 +448,13 @@ pub fn parse_op(state: &EditorState, request: &Value) -> Result<Option<Op>, Comm
                 .and_then(Raw::from_json)
                 .ok_or_else(|| invalid("Expected scalar field `value`"))?,
         },
+        // F017: explicit clip, ABSOLUTE sequence frame (a fractional one is `invalid_request`),
+        // optional ID of the right half. The selection is never consulted.
+        "clip.split" => Command::SplitClip {
+            clip: string(request, "clip")?.to_string(),
+            frame: integer(request, "frame")?,
+            new_id: optional_string(request, "new_id")?,
+        },
         "sequence.length" => Command::SetSequenceLength {
             frames: integer(request, "frames")?,
         },

@@ -21,6 +21,7 @@ use super::drag::{
 use super::media::demo_image;
 use super::tokens::Tokens;
 use super::waveform::waveform;
+use crate::state::split::{SplitAvailability, SplitBlock};
 use crate::state::timeline::{Clip, ClipKind, Placement, Track, TrackFlag, TrackKind, TrimEdge};
 use crate::state::{Command, Raw, WorkspaceTab};
 
@@ -32,6 +33,22 @@ const FOOTER_HEIGHT: f32 = 12.0;
 const TAIL_PADDING: f32 = 24.0;
 
 const NO_TOOL: &str = "Ferramenta ainda não implementada";
+
+/// The core's refusal (`SplitBlock::reason`, English, as `disabled_reason` in the tree) in the
+/// words of the window's tooltips.
+fn split_block_reason(block: SplitBlock) -> &'static str {
+    match block {
+        SplitBlock::NoSelection => "selecione um clipe",
+        SplitBlock::PlayheadOutside => {
+            "posicione o playhead dentro do clipe selecionado, depois do primeiro quadro"
+        }
+        SplitBlock::FadeCrossesCut => "uma entrada ou saída (fade) do clipe atravessa o playhead",
+        SplitBlock::FadesLongerThanClip => {
+            "os fades são maiores que o clipe; encurte um fade para cortar"
+        }
+        SplitBlock::Refused => "o core recusa o corte aqui; use clip.split para ver o motivo",
+    }
+}
 
 /// Frames between labelled ticks: the smallest candidate that leaves at least
 /// 72 px between labels at the current zoom.
@@ -89,6 +106,7 @@ impl Workstation {
         )
         .selected(snap)
         .on_click(super::controls::click(cx, Command::SetSnap { snap: !snap }));
+        let split_button = self.split_button(cx);
         h_flex()
             .items_center()
             .flex_shrink_0()
@@ -107,12 +125,7 @@ impl Workstation {
                 .selected(true)
                 .disabled(true),
             )
-            .child(disabled_tool_button(
-                "timeline-tool-razor",
-                IconName::Slice,
-                "Cortar clipe",
-                NO_TOOL,
-            ))
+            .child(split_button)
             .child(disabled_tool_button(
                 "timeline-tool-delete",
                 IconName::Trash,
@@ -141,6 +154,36 @@ impl Workstation {
             )
     }
 
+    /// F017: "cut at the playhead". Offered exactly when the core would split (the tree node and
+    /// `timeline.split invoke` read the same `split_availability`); the click is the `SplitClip`
+    /// command the CLI sends, so the window keeps no cutting rule of its own.
+    fn split_button(&self, cx: &mut Context<Self>) -> Div {
+        let button = match self.state.split_availability() {
+            SplitAvailability::Ready { clip, frame } => tool_button(
+                "timeline-split",
+                IconName::Slice,
+                &format!("Cortar {clip} no playhead (quadro {frame})"),
+            )
+            .on_click(super::controls::click(
+                cx,
+                Command::SplitClip {
+                    clip: clip.to_string(),
+                    frame,
+                    new_id: None,
+                },
+            )),
+            SplitAvailability::Blocked(block) => disabled_tool_button(
+                "timeline-split",
+                IconName::Slice,
+                "Cortar clipe no playhead",
+                split_block_reason(block),
+            ),
+        };
+        div()
+            .relative()
+            .child(self.geometry.probe("control:timeline-split"))
+            .child(button)
+    }
     /// What the selector lists: every sequence, named by its name (and its ID when two share one).
     fn sequence_choices(&self) -> Vec<(String, String)> {
         let sequences: Vec<_> = self.state.all_sequences().collect();

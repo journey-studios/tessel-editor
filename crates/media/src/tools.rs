@@ -9,6 +9,8 @@ use std::process::{Command, Stdio};
 use serde_json::{Value, json};
 use tessel_editor_core::jobs::JobError;
 
+pub mod locate;
+
 #[derive(Debug, Clone)]
 pub struct Tools {
     pub ffmpeg: PathBuf,
@@ -20,17 +22,9 @@ pub struct Tools {
     pub muxers: Vec<String>,
 }
 
-fn find(name: &str, env: &str) -> Option<PathBuf> {
-    if let Some(explicit) = std::env::var_os(env) {
-        let explicit = PathBuf::from(explicit);
-        return explicit.is_file().then_some(explicit);
-    }
-    let path = std::env::var_os("PATH").unwrap_or_default();
-    std::env::split_paths(&path)
-        // Homebrew is not on the PATH of GUI-launched processes on macOS.
-        .chain(["/opt/homebrew/bin", "/usr/local/bin"].map(PathBuf::from))
-        .map(|dir| dir.join(name))
-        .find(|candidate| candidate.is_file())
+/// Override, `PATH`, then the install places of the platform (see [`locate`]).
+fn find(tool: locate::Tool) -> Option<PathBuf> {
+    locate::locate(&locate::System, tool).map(|found| found.path)
 }
 
 fn run_text(binary: &Path, args: &[&str]) -> Result<String, JobError> {
@@ -66,16 +60,18 @@ fn listing_names(listing: &str) -> Vec<String> {
 
 impl Tools {
     pub fn discover() -> Result<Self, JobError> {
-        let missing = |name: &str, env: &str| {
+        let missing = |tool: locate::Tool| {
             JobError::new(
                 "tool_unavailable",
-                format!("`{name}` was not found. Install FFmpeg or set {env} to its path."),
+                format!(
+                    "`{}` was not found. Install FFmpeg or set {} to its path.",
+                    tool.binary(),
+                    tool.override_var()
+                ),
             )
         };
-        let ffmpeg =
-            find("ffmpeg", "TESSEL_FFMPEG").ok_or_else(|| missing("ffmpeg", "TESSEL_FFMPEG"))?;
-        let ffprobe = find("ffprobe", "TESSEL_FFPROBE")
-            .ok_or_else(|| missing("ffprobe", "TESSEL_FFPROBE"))?;
+        let ffmpeg = find(locate::Tool::Ffmpeg).ok_or_else(|| missing(locate::Tool::Ffmpeg))?;
+        let ffprobe = find(locate::Tool::Ffprobe).ok_or_else(|| missing(locate::Tool::Ffprobe))?;
         let version = run_text(&ffmpeg, &["-hide_banner", "-version"])?
             .lines()
             .next()
