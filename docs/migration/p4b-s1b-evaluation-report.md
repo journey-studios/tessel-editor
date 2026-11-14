@@ -159,3 +159,15 @@ na árvore. Não se provou plano válido aceito de exatamente20000 itens (.21).
 
 BL082.4.18/.19/.22 estão em correção pelo coordenador. Testes/gates do novo head e rechecagem
 independente continuam a validar. S2 e S3a não foram iniciadas; F064 permanece P.
+
+### Resultado negativo do reforço da comparação de câmera
+
+Core completo no Mac em61efdba:1593 passaram,1 falhou,7 ignorados (64 resultados).
+A falha era no teste ampliado do coordenador: lit-center-held f23 tem contador de câmera23
+no plano primário legado e11 no oráculo preso. A câmera curta tem12quadros. O construtor
+primário preserva a avaliação estrita anterior; evaluate_shot_at_offset clampa separadamente.
+A afirmação da revisão de que esses contadores de A podiam sempre ser comparados era incorreta.
+O teste passa a conferir o contador primário legado pela fórmula cameraIn+delta, o contador
+de offset contra X e heldCamera contra X. Para A vizinho, o contador do plano continua comparado
+diretamente com X. A divergência de metadado fica BL082.4.23; não se alterou produção ou acervo.
+Este resultado vermelho foi preservado e não conta como aprovação; novas execuções são necessárias.

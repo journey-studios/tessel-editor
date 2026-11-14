@@ -471,3 +471,10 @@ A adaptação dos três kits lit-held passa a conferir também câmera e heldCam
 instância que dependem do comprimento adaptado ficam sem comparação. BL082.4.17 adiciona referência
 representável separada; o acervo S0 permanece intacto. Nenhuma dessas correções abre a admissão.
 Os testes novos e os gates do novo head ainda precisam de execução e review. F064 permanece P.
+
+O reforço encontrou uma distinção adicional (BL082.4.23): o contador de câmera do plano primário
+legado pode passar do último frame de uma câmera curta, enquanto o avaliador por offset informa
+o frame preso. No caso adaptado A em f23 são23 e11. O teste valida cada contrato separadamente;
+não declara igualdade dos estados completos desse deck. A referência nova deve usar comprimentos
+representáveis e a S2 precisa manter essa distinção explícita. O resultado vermelho inicial consta
+no relatório S1b, sem ser promovido a prova verde.

@@ -326,12 +326,32 @@ fn deck_matches(
         1e-9,
         what,
     );
-    assert_eq!(
-        deck.frame.camera_clip_frame as i64,
-        int(&state["camera_clip_frame"]),
-        "{what}: camera"
-    );
     let held = scene.bundle().evaluate_shot_at_offset(shot, frame).unwrap();
+    let source = scene.bundle().shot(shot).unwrap();
+    if skip_instance_clocks
+        && source.start_frame <= frame as u64
+        && (frame as u64) < source.end_frame
+    {
+        // The legacy primary evaluator keeps the raw camera counter even past a short clip.
+        // Its pose still holds; the offset evaluator reports the clamped counter. Do not call
+        // those two representations equal or claim the adapted primary is an origin deck.
+        assert_eq!(
+            deck.frame.camera_clip_frame,
+            source.camera_in_frame + frame as u64 - source.start_frame,
+            "{what}: legacy primary camera counter"
+        );
+    } else {
+        assert_eq!(
+            deck.frame.camera_clip_frame as i64,
+            int(&state["camera_clip_frame"]),
+            "{what}: camera"
+        );
+    }
+    assert_eq!(
+        held.evaluation.mapping.camera_clip_frame as i64,
+        int(&state["camera_clip_frame"]),
+        "{what}: offset camera"
+    );
     assert_eq!(
         held.held_camera,
         state["held_camera"] == true,
