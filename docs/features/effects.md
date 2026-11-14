@@ -458,6 +458,11 @@ outros); corrigido em `reset_ops` e coberto por teste de unidade e de GPUI.
   `FX_TRANSITION_NOT_YET`, que **continua valendo** até a ativação (S2A). **Divergência de veredito (alpha):** o piloto
   recusa `alphaMode ≠ opaque` com `fx` ou dissolve legado (`UNSUPPORTED_ALPHA`); o Tessel aceita e desenha opaco, hoje
   já para os três looks. É divergência declarada, **não** paridade; vale para as transições e está em F064.
+  **P4b-S1a (BL082.4.2):** o core já tem o modelo, a leitura e a validação de `transitions[]`, mas só sob uma política de
+  admissão interna (`Accept`, para testes); toda entrada pública continua `Refuse` e este item vale como está escrito
+  acima. O catálogo público (`catalog()`, `catalog_json()`) segue com os três looks; `crossDissolve` vive na tabela
+  separada `transition_catalog()`. Um look em `transitions[]` e uma transição numa trilha são `WRONG_FAMILY` só sob
+  `Accept`; no caminho público seguem `FX_TRANSITION_NOT_YET` e `UNKNOWN_EFFECT`.
 - A prévia ao vivo, o teclado do adaptador e a inserção no quadro exibido existem (seção "Gesto de efeito").
   **Lacuna:** o gizmo de cena (F055) ainda usa o número do playhead como quadro do bundle; só o monitor e a
   inserção de efeito convertem o tempo (registrado em BL082.6).

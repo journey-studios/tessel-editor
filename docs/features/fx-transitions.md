@@ -6,12 +6,18 @@
 misturam os **dois decks** (a imagem de cada plano antes da saída) em luz linear. O único efeito de transição da
 primeira entrega é `crossDissolve`. Quem calcula é o core; o plano carrega o resultado; o runtime só desenha.
 
-**Estado desta entrega (S0, BL082.4.1): somente contrato e oráculo.** Existem este documento, o corpus independente
-(`scripts/pilot-dissolve-corpus.py`, `scripts/pilot_dissolve_analytic.py`, `dissolve-cases.json`, `dissolve-manifest.json`) e as specs Python. **Não existe
-Rust, JSONL, runtime nem UI de transição.** Hoje qualquer `transitions` não vazio continua `FX_TRANSITION_NOT_YET`; o
-catálogo, o seletor de clipe e os planos **não mudam**. Plano de trabalho (versão 2):
-[p4b-cross-dissolve-plan.md](../migration/p4b-cross-dissolve-plan.md), lido no head `2395719`. Um contrato em
-documento não é feature implementada.
+**Estado (S1a, BL082.4.2): fundação de domínio no core, sem habilitar nenhuma transição pública.** Existem este documento,
+o corpus independente da S0 (`scripts/pilot-dissolve-corpus.py`, `scripts/pilot_dissolve_analytic.py`,
+`dissolve-cases.json`, `dissolve-manifest.json`) e, desde a S1a, o modelo de documento, a leitura, a validação completa
+(`explain`), os avisos e a aritmética de janela em `crates/core/src/directed_scene/fx/` (relatório e mapa de caminhos:
+[p4b-s1a-transition-admission-report.md](../migration/p4b-s1a-transition-admission-report.md)). **Tudo isso fica atrás de
+um portão de admissão**: toda entrada pública (importar, anexar, abrir projeto, restaurar pacote, candidato de edição)
+lê com a política `Refuse`, e um `transitions` não vazio continua `FX_TRANSITION_NOT_YET`, com a mesma mensagem. Só os
+testes e o corpus do core têm a política `Accept` (`#[doc(hidden)]`, **não** é barreira de segurança). Continuam sem
+existir: avaliação fora da janela e `ScenePlan.transition` (S1b), runtime/shader/export (S2), operações/gestos/inspetor
+(S3), UI (S4). O catálogo público, o seletor de clipe e os planos **não mudam** (3 looks, `catalogVersion` 1, 13
+capacidades, `PLAN_VERSION` 1). Plano de trabalho (versão 2):
+[p4b-cross-dissolve-plan.md](../migration/p4b-cross-dissolve-plan.md), lido no head `2395719`.
 
 Fica fora (cada item é BL próprio): as outras transições do piloto, `keys` em transições (D10,
 `FX_TRANSITION_KEYS_NOT_YET`, BL082.4.9), escopo `node`, ripple/roll, o dissolve legado (`transitionInto: dissolve`,
@@ -38,7 +44,7 @@ comparado** (`ORIGIN_GOLDEN_NOT_COMPARABLE`). O manifesto lista hoje **33 fontes
 (`scene-lighting`, `weather-model`, `resolve-camera-clip`, `resolve-performance`, `types/fps`, `plane-effects-material`,
 `three-scene-runtime`). Original: 26 (21 + 5).
 
-## Contrato do core / biblioteca (fixado pela S0; **Pendente** no código)
+## Contrato do core / biblioteca (fixado pela S0; **implementado na S1a atrás do portão**, sem avaliação nem plano)
 
 Cada item abaixo tem vetor no corpus, com a **proveniência** da expectativa: `origin-formula` (lida do texto da origem e
 avaliada em Python), `origin-spec-vector` (número que o spec da própria origem fixa), `destination-contract-candidate`
@@ -150,22 +156,58 @@ da origem escreve 1,0), não medida. O dissolve legado segue `DISSOLVE_UNSUPPORT
   critério). Se o limite deixasse de discriminar o mutante, reabre-se como emenda de contrato, nunca como ajuste.
 - Excesso é **FAIL**. **Nenhum pixel do destino foi produzido ou validado** por esta entrega; pré-registrar não é validar.
 
+### Portão de admissão e modelo (S1a)
+
+- **Política única** `TransitionAdmission::{Refuse, Accept}`, guardada no `DirectedScene` (`admission()`). O padrão e a
+  única política de toda entrada pública é `Refuse` (`import_str/_with`, `import_value/_with`, anexar, abrir, restaurar
+  pacote, `render`). O candidato de **toda** edição (`scene.edit`, `scene.fx.edit`) herda a política da cena
+  (`DirectedScene::reimport`): uma edição nunca abre nem fecha o portão. `Accept` e os importadores `*_admitting` são
+  `#[doc(hidden)]`, existem para os testes e o corpus do core e **não** têm flag, variável de ambiente, socket nem
+  arquivo que os alcance. O teste `boundary` varre as fontes de produção de todos os crates (sem comentários nem itens
+  `#[cfg(test)]`) e exige: nenhuma menção fora do importador, nenhuma passagem de `Accept` dentro dele e o inventário
+  fechado dos pontos que criam ou reidratam uma cena (todos `Refuse`).
+- **Modelo:** `Fx.transitions: Vec<FxTransition>` (`id`, `effect`, `from_shot_id`, `to_shot_id`, `duration_frames`,
+  `alignment`, `handles`, `easing`, `params`, `seed`, `hidden`), preenchido só sob `Accept` e só quando nada foi recusado;
+  `Fx::to_json` **não muda**. Tabela própria `transition_catalog()` (só `crossDissolve`, família `transition`,
+  `Reseed::Never`, `curve` como `ParamKind::Choice` e `intensity` 0..1) separada do catálogo público.
+- **Leitura estrita:** `durationFrames` e `seed` são inteiros JSON (`12.0`, `12.5`, booleano e texto são recusados;
+  `seed` é `uint32`); `hidden` aceita `true` ou ausente (`false` é `INVALID_VALUE`); `keys` presente, mesmo `{}`, é
+  `FX_TRANSITION_KEYS_NOT_YET`; `FX_LIMIT` é julgado antes de ler as entradas; ids compartilham o espaço de trilhas e
+  clipes; campos desconhecidos viram avisos `UNKNOWN_FIELD` e os bytes do documento são preservados.
+- **Janela:** `i64` verificada, `div_euclid(2)` (piso); bordas 0 e `edição` valem; `D` fora de `[1, edição]` é recusada
+  antes de qualquer conta; `available_frames` nunca é negativo.
+- **Avisos** (nunca recusam): `TRANSITION_ON_CONTINUOUS` e `TRANSITION_SPLAT_COST`, ignorando transições `hidden`
+  (`DirectedScene::transition_warnings`).
+- **Divergências registradas** (relatório da S1a): o dissolve legado é recusado antes (`DISSOLVE_UNSUPPORTED`), e o
+  oráculo lista `TRANSITION_DUPLICATE` ao lado dele; um id reservado **e** duplicado dá só `RESERVED_ID`; as recusas de
+  efeito/família/parâmetro/easing/enums só aparecem junto com as do bundle depois que o bundle em si é válido.
+
 ## CLI headless
 
-**Pendente** (S1a/S1b/S2A): não há operação, leitura nem erro de transição em `tessel-headless`. A leitura pública
-reproduz as células L por `tessel-headless` real só na S2A. **O oráculo Python não é CLI headless do editor.**
+**S1a:** só a recusa. `scene.attach` com `transitions` não vazio responde `invalid_bundle` com `FX_TRANSITION_NOT_YET`
+em `tessel-headless` real (saída 1 numa sessão com pedido recusado, respostas iguais às da biblioteca), sem mudar o
+documento, a revisão nem o histórico; `scene.fx.catalog` lista só os 3 looks. Nenhuma operação, leitura ou erro novo
+de transição é exposto. A leitura pública (células L por `tessel-headless`) segue na S2A. **O oráculo Python não é CLI
+headless do editor.**
 
 ## UI e CLI da janela
 
-**Pendente** (S4b). Nenhum nó, `Command`, parser ou controle existe; nada é habilitado. Os nós propostos
+**S1a:** só o caso negativo (T32). A janela recusa o mesmo bundle pelo handler compartilhado (`Command::Scene(Attach)`),
+não muda cenas, revisão nem histórico, e a seção «Efeitos» mantém as 3 ações `add:` sem `crossDissolve`. Nenhum diálogo,
+controle ou nó novo. Controles de transição: **Pendente** (S4b). Nenhum nó, `Command`, parser ou controle existe;
+nada é habilitado. Os nós propostos
 (`scene.fx.transitions`, `scene.fx.cut:<de>|<para>`, `scene.fx.transition:<id>`), o rótulo «Suavização» para
 `intensity` e os motivos legítimos de `disabled_reason` estão no plano (seções 9.3 e 11). Entre S2A e S4b o painel não
 tem controle de transição (lacuna registrada), e um documento com transição não quebra o painel dos clipes.
 
 ## Evidências e status
 
-Situação por superfície: **L Pendente · H Pendente · UI Pendente · Oráculo Python: implementado e validado no Windows
-(abaixo)**. Plano de portão público: até a S2A a admissão recusa `transitions` com `FX_TRANSITION_NOT_YET`.
+Situação por superfície (S1a): **L implementado (modelo, leitura, `explain`, janela, avisos; só com a política `Accept`
+dos testes) · H só a recusa (`tessel-headless` real) · UI só a recusa e a ausência de controle · Oráculo Python:
+implementado e validado no Windows (abaixo)**. Portão público: até a S2A a admissão recusa `transitions` com
+`FX_TRANSITION_NOT_YET`. Evidência da S1a (teste `crates/core/tests/scene_fx_transition.rs`, 46 testes; 2 em
+`scene_project::admission_tests`; 2 GPUI em `scene_fx_transition_tests`; corpus lido em Rust sem Python) e
+mutantes detectados: no relatório da S1a.
 
 **S0 — o que roda, versão original** (Windows x64, Python **3.13.17 real**, nenhum stub; ver o relatório
 [p4b-s0-dissolve-corpus-report.md](../migration/p4b-s0-dissolve-corpus-report.md)):
@@ -189,8 +231,10 @@ executada; **nenhum Rust foi alterado**.
 
 ### Células por fase (plano, seção 12; célula vazia = não se aplica)
 
-Códigos: `0` S0 · `1a` S1a · `1b` S1b · `2` S2 · `2A` ativação · `3a`/`3b` S3 · `4a`/`4b` S4 · `5` S5. **Todas as células abaixo
-estão Pendentes**, exceto a coluna `X` marcada `0`, que o corpus desta S0 cobre como **oráculo** (não como feature).
+Códigos: `0` S0 · `1a` S1a · `1b` S1b · `2` S2 · `2A` ativação · `3a`/`3b` S3 · `4a`/`4b` S4 · `5` S5. **As células abaixo
+estão Pendentes**, exceto a coluna `X` marcada `0` (corpus da S0, **oráculo**, não feature) e, **desde a S1a (BL082.4.2)**,
+as células `1a` de T01, T02, T03 (avisos `ON_CONTINUOUS`/`SPLAT_COST`), T05, T28 (limites do documento) e o negativo `○`
+de T32 em L, H e G (`1a ✓` no texto abaixo da tabela). `T02` em H/G, e as demais colunas, seguem como na tabela.
 `○` é controle negativo do portão e `→2A` que a célula se inverte na ativação.
 
 | ID | Caso | L | H | G | W | P | R | E | X |
@@ -229,8 +273,13 @@ estão Pendentes**, exceto a coluna `X` marcada `0`, que o corpus desta S0 cobre
 | T32 | Portão público (8.4) | 1a○→2A | 1a○→2A | 1a○→2A | | | 2○ | | |
 | T33 | Alpha: `straight` aceito e desenhado opaco | 1b | | | | 2 | 2 | | 0 |
 
+**S1a ✓ (BL082.4.2, a validar no CI):** T01 L, T02 L, T03 L (avisos), T05 L, T28 L (limites do documento), T32 L/H/G
+(portão público recusa, estado intacto, catálogo de 3 looks, sem controle novo). Sem lock de GPU: nada aqui mede desempenho.
+`scene_gizmo_rotation` e `scene_gizmo_scale` falham **também** na base (diferença de último bit e cisalhamento de gizmo,
+fora desta entrega); a suíte do workspace inteiro não foi rodada (só `--no-run`).
+
 **A validar / lacunas registradas:** (a) as tolerâncias e os tetos são contrato pré-registrado, sem pixel nem plano
-medidos; (b) `hidden: false` será recusado nas transições e a ordem de used_by será qualificada por deck; (c) a divergência de veredito do alpha
+medidos; (b) `hidden: false` é recusado nas transições (S1a ✓) e a ordem de used_by será qualificada por deck; (c) a divergência de veredito do alpha
 aguarda a revisão de design (Q3); (d) reprodução Python Windows/Mac passou em `9399642`, Linux não foi rodado;
 (e) o pin não existe no clone Windows, mas foi verificado no Mac; isso não executa a origem;
 (f) BL167.5 permanece **parcial** (só a preparação do interpretador): build release, provas vivas e janela D3D11
