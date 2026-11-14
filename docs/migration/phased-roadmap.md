@@ -173,9 +173,11 @@ Base lida: `origin/main` `2b54ac1` (PR #57, "Add clip splitting with exact audio
 2026-11-14T12:30:55Z), os contratos de [docs/features/](../features/README.md), [docs/backlog.md](../backlog.md) e o
 código, com as PRs #39 (P2), #42 (P3/`filmGrain`), #48 (P4a, F062) e #51–#57 (reconciliação S1–S10, testes, higiene do
 backlog e PR #57). **Nada foi reexecutado para escrever esta seção**: cada afirmação cita o estado que o backlog ou o
-contrato registra, com o head que o próprio registro nomeia. A última execução integrada **completa** dos gates é a de
-BL163 em `057b7db` (12/11); desde então entraram #55 (teste), #56 (docs) e #57, validada pelos próprios relatos
-(BL081.5 e BL167.1/.2, Mac e Windows) apenas para o seu escopo. Isto **não** declara a `main` `2b54ac1` verde.
+contrato registra, com o head que o próprio registro nomeia. BL163 registra o harness S10 **24/24** em
+`057b7db` e uma reconfirmação posterior de fmt/check/clippy/build, workspace (2559 passaram, 16 ignorados e
+uma falha de ambiente BL082.47) e runtime384/384 em `bc0c3ea`, depois das PRs #52 e #53. Após `057b7db`
+entraram #51–#57; #52 e #57 alteram produção. A PR57 muda áudio do core, export de mídia e descoberta do runtime;
+seus gates dirigidos não repetem S10. Isto **não** declara a `main` `2b54ac1` verde.
 
 ### 9.0 As quatro colunas (não se misturam)
 
@@ -183,7 +185,7 @@ BL163 em `057b7db` (12/11); desde então entraram #55 (teste), #56 (docs) e #57,
 |---|---|---|
 | **Implementado** | Código presente na `main` `2b54ac1` com contrato em `docs/features/` | Matriz e backlog; leitura de código por amostragem |
 | **Provado** | Execução registrada **por superfície** (lib, JSONL em processo real, GPUI sintético, janela real semântica, pixels), no head que o registro cita. "A validar" no backlog continua **sem** fechamento | Linhas do backlog e relatórios |
-| **Aceite humano** | Alguém olhou/ouviu a saída e aceitou. **Nenhum registro encontrado nos documentos lidos** para E0–E3 nem M1–M8: BL058 (revisão visual/áudio dos exports finais) está "A validar"; BL043 (ponteiro físico), BL046 (áudio ouvido) e BL042 (WKWebView sobre o seletor) seguem abertos | BL058, BL043, BL046 |
+| **Aceite humano** | Alguém olhou/ouviu a saída e aceitou. **Nenhum registro encontrado nos documentos lidos** para E0–E3 nem M1–M8: BL058 (revisão visual/áudio dos exports finais) está "A validar"; BL043 (ponteiro físico), BL046 (áudio ouvido) e BL082.42 (prova de alças/ponteiro e WebView; foco/popover em BL044) seguem abertos | BL058, BL043, BL046 |
 | **Paridade** | Comparação com a origem: **executada** na origem fixada (`d6adac15`, câmera/edição/vereditos do bundle) ou **por fórmula transcrita** por um script Python independente (piloto, sem golden). Nenhuma paridade com o golden da origem é afirmada: `ORIGIN_GOLDEN_NOT_COMPARABLE` | `docs/migration/fixtures/`, F016, F044 |
 
 A prova no Windows se limita ao que BL167 registra (desktop 502/502, runtime 384/384, export 11/11 e flow 2/2 em
@@ -195,9 +197,9 @@ Chrome do runtime, salvo onde a linha diz Windows.
 | Etapa | Implementado | Provado | Aceite humano | Paridade | Lacunas (backlog) |
 |---|---|---|---|---|---|
 | E0 — Contrato e baseline (BB01/BB10) | Leitor/validador do bundle 1.0 (`directed_scene`), corpus de bundles válidos/inválidos, oráculo Node na origem fixada | Corpus ampliado: 47 casos estendidos + 55 base conferidos contra a origem; 49 testes Node e 15 Rust (BL018, F032) | N/A (não é visual) | **Executada** na origem fixada para vereditos do bundle 1.0. Exceção: `invalid-dissolve-transition` vem de um pin anterior ao piloto (ver [p4b-cross-dissolve-plan.md](p4b-cross-dissolve-plan.md), D04) | BL001 `DEFERRED_RULES/FIELDS` (Parcial); pin do piloto `d40ac3f7c0` ausente no clone Windows da origem |
-| E1 — Domínio mínimo (BB02/BB03/BB04) | Grafo e entidades, avaliação temporal, câmera segmentada, `scene.edit` em lote atômico com dry-run/undo (F034), luz pontual (F060) | BL004/BL005/BL004a–d/BL005a–c **A validar** (31 casos do oráculo de edição, `oracle.mjs verify` saiu 0; lib e JSONL); sem ponteiro físico | Nenhum | **Executada** (pose/edição contra o oráculo fixo) | BL001–BL004 Parcial: keys/segmentos gerais, clima, rig, paths, bind/reveal |
-| E2 — Render e recursos (BB05/BB06) | Plano `ScenePlan` v1 (13 capacidades), renderer Three.js no monitor e headless, export de cena (BL008), manifesto/closure/pacote (BL009–BL011), mix offline de áudio (F042A) | BL006 e BL008 **Concluído** (PR #3/#4, 1080p/4K, CLI/socket/diálogo); gates integrados de BL163 em `057b7db` (S10, 24 fases) | Nenhum (BL058 A validar) | Oráculo **independente** do harness da S10 ([F044](../features/scene-acceptance.md)), não execução da origem | BL007 contexto/reload nativos dirigidos; BL009–BL011 mapas/fontes/formatos (BL077) Parcial |
-| E3 — Superfícies (BB07/BB08/BB09) | Seleção/gesto (F039), inspector ligado (BL014), gizmos de translação, rotação e escala (F055; PRs #40/#43), luz com alcance (PR #45), alças 2D da vinheta (PR #46) | BL014 **Concluído**; BL015 e F055/F060/F061 **A validar** (lib, JSONL, GPUI, janela real semântica); sem ponteiro físico (BL043) nem WKWebView (BL042) | Nenhum | Não aplicável por gizmo (comportamento do editor); sem golden | **BL016.1** transporte dirigido (play/seek/pause) Pendente; BL017 narração/takes Pendente |
+| E1 — Domínio mínimo (BB02/BB03/BB04) | Grafo e entidades, avaliação temporal, câmera segmentada, `scene.edit` em lote atômico com dry-run/undo (F034), luz pontual (F060) | BL004/BL005/BL004a–d/BL005a–c **A validar** (31 casos do oráculo de edição, `oracle.mjs verify` saiu 0; lib e JSONL); sem ponteiro físico | Nenhum registro encontrado nos documentos lidos | **Executada** (pose/edição contra o oráculo fixo) | BL001–BL004 Parcial: keys/segmentos gerais, clima, rig, paths, bind/reveal |
+| E2 — Render e recursos (BB05/BB06) | Plano `ScenePlan` v1 (13 capacidades), renderer Three.js no monitor e headless, export de cena (BL008), manifesto/closure/pacote (BL009–BL011), mix offline de áudio (F042A) | BL006 e BL008 **Concluído** (PR #3/#4, 1080p/4K, CLI/socket/diálogo); S10 em `057b7db` (24 fases; não repetida após #57); reconfirmação de gates em `bc0c3ea` | Nenhum registro encontrado nos documentos lidos (BL058 A validar) | Oráculo **independente** do harness da S10 ([F044](../features/scene-acceptance.md)), não execução da origem | BL007 contexto/reload nativos dirigidos; BL009–BL011 mapas/fontes/formatos (BL077) Parcial |
+| E3 — Superfícies (BB07/BB08/BB09) | Seleção/gesto (F039), inspector ligado (BL014), gizmos de translação, rotação e escala (F055; PRs #40/#43), luz com alcance (PR #45), alças 2D da vinheta (PR #46) | BL014 **Concluído**; BL015 e F055/F060/F061 **A validar** (lib, JSONL, GPUI, janela real semântica); sem ponteiro físico (BL043) nem a prova correspondente de WebView/alças (BL082.42; foco/popover BL044) | Nenhum registro encontrado nos documentos lidos | Não aplicável por gizmo (comportamento do editor); sem golden | **BL016.1** transporte dirigido (play/seek/pause) Pendente; BL017 narração/takes Pendente |
 
 **Primeiro marco** (cena mínima → plano → monitor/headless → pacote sem origem → export curto): **atingido como fatia
 integrada** (BL006, BL008, BL163), com as lacunas acima; não é aceite humano nem prova no Windows.
@@ -217,7 +219,7 @@ Para todas as linhas, **Aceite humano** (nenhum registro) e **Windows** (só BL1
 | BB07 interação | BL012/BL013 Parcial | Seleção por entidade, gestos preview/commit/cancel com histórico agrupado | Executável headless real (13 requests), GPUI e socket | N/A | Ponteiro físico e handles (BL043/BL015) |
 | BB08 inspector e overlays | BL014 **Concluído**; BL015 **A validar** | Inspector ligado ao catálogo, gizmos, alças da vinheta | Janela real semântica; mutantes mortos | N/A | WKWebView/ponteiro físico, desempenho dos gizmos |
 | BB09 transporte e áudio | BL016 **A validar**; BL016.1 **Pendente**; BL017 Pendente | Mix offline do WAV declarado (F042A), tempo racional frames/amostras | 270/270 de `audio_export` e harness S10 (áudio medido, **não ouvido**) | Regra da origem (`editStartSeconds`) decidida; divergência BL016.11 declarada | Transporte dirigido com relógio de amostras; narração/takes |
-| BB10 oráculo e gates | BL018/BL019 Parcial; BL163 **Concluído** (12/11) | Corpus, `pilot-fx` (Python independente), harness S10, higiene (BL164–BL166, PRs #54–#56) | BL163 em `057b7db`; spec das tabelas do backlog (BL165) | Ver 9.0 | Provas por domínio novo; desempenho; atestação reprodutível (BL019-F11) |
+| BB10 oráculo e gates | BL018/BL019 Parcial; BL163 **Concluído** (12/11) | Corpus, `pilot-fx` (Python independente), harness S10, higiene (BL164–BL166, PRs #54–#56) | BL163: S10 em `057b7db`, gates em `bc0c3ea`; spec das tabelas do backlog (BL165) | Ver 9.0 | Provas por domínio novo; desempenho; atestação reprodutível (BL019-F11) |
 
 ### 9.3 Fases M1–M8
 

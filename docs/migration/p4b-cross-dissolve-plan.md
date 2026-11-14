@@ -102,12 +102,12 @@ estão em Q1–Q4 (seção 15).
 | ID | Regra na origem (ponta `3655790`) | Decisão no Tessel | Justificativa |
 |---|---|---|---|
 | D01 | Camada `fx.transitions[]` com `id`, `effect`, `fromShotId`, `toShotId`, `durationFrames`, `alignment`, `handles`, `easing`, opcionais `params`, `keys`, `seed`, `hidden` | **Mesmos nomes de campo.** O rascunho de `effects.md` (~l.450: `type`, `fromShot`, `toShot`) fica **superado**: atualizar F016 na S1a | `fx/mod.rs` já declara o formato como "o do piloto"; documentos do piloto precisam importar sem conversão |
-| D02 | Uma transição por corte (`fromShotId|toShotId`); `setTransition` substitui a do mesmo corte | Idem. `TRANSITION_DUPLICATE` na importação; `set_transition` é *upsert* por corte, preserva o ID | Evita duas janelas no mesmo corte; edição previsível |
+| D02 | Uma transição por corte (`fromShotId\|toShotId`); `setTransition` substitui a do mesmo corte | Idem. `TRANSITION_DUPLICATE` na importação; `set_transition` é *upsert* por corte, preserva o ID | Evita duas janelas no mesmo corte; edição previsível |
 | D03 | Janelas por `alignment`: `center` começa em `corte − floor(D/2)`, `start` em `corte`, `end` em `corte − D`; `quadrosAntes = max(0, min(fim,corte) − início)` | Idem, em inteiros, sem segundos | A janela é aritmética de quadros; nada nela depende do FPS (seção 6.1) |
 | D04 | `transitionInto: dissolve` legado é lido como `crossDissolve` centrada, `hold`, `easing linear`, `curve linear`, ID `dissolve-<shot>`; duplicata com `fx` é erro | **Fora de S0–S5.** Entra como S6 (BL082.4.7) | Muda o veredito de `invalid-dissolve-transition` no corpus BB10 (o oráculo vem de um pin mais antigo que o piloto); trocar veredito de oráculo na mesma PR que cria o encanamento mistura duas revisões. BL082.4 só fecha com S6 |
 | D05 | `handles`: `use` e `refuse` exigem quadros **reais** (instância **e** câmera, contados à parte); só `hold` aceita congelados; `refuse ≡ use` no cálculo (decisões #6) | Idem, os 3 valores aceitos e preservados | Documentos do piloto importam; nenhum dado é migrado depois se `refuse` ganhar sentido |
 | D06 | Padrões de transição nova: `alignment center`, `handles hold`, `easing easeInOutCubic`; duração omitida = típica do efeito | Idem; a duração típica (24) é **cortada** ao que os dois planos suportam, **dada** explícita demais é recusada (`TRANSITION_TOO_LONG`) | Mesma política de F062 (`fx::default_duration`: omitida corta, dada recusa) |
-| D07 | Fórmula: `p = ease((f − início + 0,5)/D)`; `shaped = mix(p, smoothstep(p), smooth)`; `saída = mix(mix(a,b,p), mix(a,b,shaped), amount)`, `alpha = 1` | Idem. `smooth = (curve == "smooth")`, `amount = clamp01(intensity)`. **`intensity = 0` não é identidade**: é a mistura linear simples (o inverso do que valia para os looks) | Fidelidade; o validador do plano **não** pode aplicar a regra `amount = intensity × peso` dos looks |
+| D07 | Fórmula: `p = ease((f − início + 0,5)/D)`; `shaped = mix(p, smoothstep(p), smooth)`; `saída = mix(mix(a,b,p), mix(a,b,shaped), amount)`, `alpha = 1` | Idem. `smooth = (curve == "smooth")`, `amount = clamp01(intensity)`. **`intensity = 0` não é identidade**: mistura os decks usando `progress` já eased, sem a segunda modelagem smoothstep. Com `curve=linear`, intensity não altera a saída | Fidelidade; o validador do plano **não** pode aplicar a regra `amount = intensity × peso` dos looks |
 | D08 | Mistura em luz linear, decks com 8 bits codificados em sRGB (a origem decodifica para half-float linear) | Decodificar IEC 61966-2-1 → misturar → codificar, nos alvos de 8 bits do runtime (como `vignette`/`fade`/`filmGrain` em `output-fx.js`) | Mesma convenção do runtime atual; a diferença de arredondamento é declarada e medida (D13) |
 | D09 | Por quadro: ordem **passes do plano A/B → mistura → passes de saída** | Idem | Ordem de F062 + um estágio |
 | D10 | `keys` em transições: recortadas para o intervalo da janela | **Recusadas**: `FX_TRANSITION_KEYS_NOT_YET` (código tipado, sem ignorar) | Chaves de F058 são de clipe; reaproveitar tocaria inspector e gesto de chaves. BL082.4.9 |
@@ -131,13 +131,13 @@ estão em Q1–Q4 (seção 15).
 | `crates/core/src/scene_plan/{model,build,timeline,validate,json,mod}.rs` | `ScenePlan` (um deck), `Capability::ALL` (13), `PlanTimeline::at_frame`, `check_fx` (l.459), `derive_requires` | Um deck; passe `shot` só do plano do quadro | `transition` aditivo, `Capability::FxTransition`, `validate_deck`, união de recursos |
 | `crates/core/src/scene_edit/{fx,fx_inspector,fx_choice,fx_intent,fx_animation}.rs` | `parse_fx_batch`, ops de clipe, inspector, escolha nomeada, `fx.rs:593` cria `fx` com `transitions: []`, `fx.rs:753` poda `fx` vazio | Sem ops de transição | Ops `set_transition`…; a poda do `fx` vazio já testa `transitions == []` |
 | `crates/core/src/scene_project/{fx,fx_gesture,query,command,fx_seek,run}.rs` | `scene.fx.*`; `fx.rs:58` anuncia `refused: {transitions}` | Leituras sem transições | Leituras e gesto com `transition`; tirar `transitions` de `refused` |
-| `crates/core/src/ops.rs` | parser `scene.fx.edit` (l.666, `dry_run`, `base_revision`), `scene.fx.gesture.begin` (`clip` obrigatório), `scene.fx.inspect` | | `gesture.begin {transition}` (exclusivo com `clip`), `inspect {transition|cut}` |
+| `crates/core/src/ops.rs` | parser `scene.fx.edit` (l.666, `dry_run`, `base_revision`), `scene.fx.gesture.begin` (`clip` obrigatório), `scene.fx.inspect` | | `gesture.begin {transition}` (exclusivo com `clip`), `inspect {transition\|cut}` |
 | `crates/core/src/state/tree.rs` | nós `scene.fx` | | Nós de transição e de corte (seção 11) |
 | `crates/core/src/scene_export/snapshot.rs` | snapshot congelado do export | | Inclui `fx.transitions`; teste de que mudança durante o export não vaza |
 | `crates/render/src/{scene,scene_renderer,scene_host}.rs`, `crates/render/tests/scene_fx*.rs` | renderer headless, 54 sondas por quadro contra a referência do core | | `scene_fx_transition.rs` |
 | `runtime/src/directed-scene.js`, `compositor.js`, `output-fx.js`, `assets.js` | `SCENE_CAPABILITIES`, `parseDirectedLayer`, `prepareDirectedScene` (~l.877–964), `sceneTarget`, `fxPipeline`, `dropFxPipeline`, `splatLease`, `SRGB_CURVES` | Um deck por camada | `parseTransition`, shader, alvos `primary`/`other`, ciclo de vida |
 | `runtime/test/fixtures/fx-catalog.json`, `output-fx.test.mjs`, `directed-scene-fx-browser.test.mjs` | catálogo espelhado e testes Chrome | | Entradas do catálogo; testes novos |
-| `crates/desktop/src/workstation/scene_fx*.rs`, `automation/commands.rs` | seção Efeitos, nós `scene.fx.clip:<id>`, `scene.fx.budget`, `fx_run_guarded` (`stale_revision`) | | Seção Transições, `scene.fx.transition:<id>`, `scene.fx.cut:<de>|<para>` |
+| `crates/desktop/src/workstation/scene_fx*.rs`, `automation/commands.rs` | seção Efeitos, nós `scene.fx.clip:<id>`, `scene.fx.budget`, `fx_run_guarded` (`stale_revision`) | | Seção Transições, `scene.fx.transition:<id>`, `scene.fx.cut:<de>\|<para>` |
 | `scripts/pilot-fx-corpus.py`, `pilot-fade-corpus.py`, `pilot-grain-corpus.py`, `scene-fx-shot-scope-proof.py`, `scene-fx-ui-proof.py`, `docs/migration/fixtures/pilot-fx/`, `docs/migration/p4a-shot-scope/mutate.py` | corpora independentes, provas da janela, corredor de mutantes | | `pilot-dissolve-corpus.py`, `scene-fx-transition-proof.py`, `p4b-cross-dissolve/mutate.py` |
 
 Lacunas confirmadas no código atual, que a P4b fecha: o importador recusa `transitions`; não há tipo de parâmetro
@@ -253,7 +253,7 @@ Exemplos fixos (C = 48): `center`, D=12 → [42,54) (6 + 6); `center`, D=5 → [
 D = 12 (a janela de qualquer corte; só `f − início` importa), calculados à mão com as fórmulas acima; a referência
 Python da S0 os regenera e o manifesto os fixa:
 
-| `f − início` | `p` linear | `easeInOutCubic` | `+ smooth` (padrão) |
+| `f − início` | `t` sem easing | `progress` após `easeInOutCubic` | `weight` após smoothstep (`intensity=1`) |
 |---|---|---|---|
 | 0 | 0,041667 | 0,000289 | 0,000000 |
 | 1 | 0,125000 | 0,007813 | 0,000182 |
@@ -266,6 +266,12 @@ Simetria `p(k) + p(11−k) = 1` vale nas três colunas. Vetor de cor: canal 200 
 decodificados 0,577580 e 0,021219, peso 0,330723, mistura linear 0,393579, codificado **168,39 → 168**. Consequência
 documentada: com os padrões do piloto (`easeInOutCubic` + `smooth` somados) os três primeiros e os três últimos
 quadros de uma janela de 12 são quase um deck puro; é fiel ao piloto e **não** é bug.
+
+
+Para esse mesmo quadro (`curve=smooth`, easing cúbico), `intensity=0` dá canal162,41→162 e
+`intensity=0,5` dá165,43→165; `intensity=1` dá168,39→168. São vetores documentais da fórmula,
+não saída do motor executado. `curve=linear` torna os pesos iguais em qualquer intensity e
+não discrimina o mutante que ignora amount; T07/T29 devem usar também smooth.
 
 ## 7. Avaliação por quadro e plano
 
@@ -532,7 +538,7 @@ evidência separada** (lib e processo real são provas distintas; janela sintét
 | T04 | `hidden` e ausência = corte seco com os bytes do plano de hoje | ● | ● | | | ● | ● | | ● |
 | T05 | Janela: tabela de alinhamento/duração (par, ímpar, D=1, `start`, `end`), bordas 0 e fim da edição, −1 e +1 inválidas | ● | ● | | | | | | ● |
 | T06 | FPS racional 24, 25, 60, 30000/1001: mesma janela/progresso; tempo de instância do vizinho racional | ● | ● | | | | ● | | ● |
-| T07 | Progresso: tabela da seção 6.2; `linear/linear`; `intensity` 0 = mistura linear simples, 0,5, 1 | ● | ● | | | | | | ● |
+| T07 | Progresso: tabela da seção 6.2; `linear/linear`; `curve=smooth` com `intensity` 0, 0,5, 1 (mistura pelo progresso já eased versus curva; controles discriminantes) | ● | ● | | | | | | ● |
 | T08 | Planos **sem** transição idênticos em bytes e digest ao `main` (corpus existente) | ● | ● | | | | ● | | |
 | T09 | Plano na janela: topo/vizinho/`primary`, recursos em união, `requires`, capacidade, JSON ida e volta; cada adulteração recusada (progresso, vizinho, passe de saída no `other`, ordem, recurso não resolvido) | ● | ● | | | | | | |
 | T10 | `hold`: instância e câmera independentes; `use` com quadros reais; caso do corpus `valid-cut-instance-offsets` | ● | ● | | | | ● | | ● |
@@ -572,7 +578,7 @@ a matriz ou o índice por conta própria (o coordenador integra as linhas propos
 
 | Fase | Entrega e aceite | Depende de | Arquivos (propostos) | Dono proposto |
 |---|---|---|---|---|
-| **S0 — Contrato e oráculo** (docs + Python, sem produção) | `docs/features/fx-transitions.md` (F064 proposta), linha da matriz, reconferência no pin/ponta (seção 2), `scripts/pilot-dissolve-corpus.py` + spec, `docs/migration/fixtures/pilot-fx/dissolve-{cases,manifest}.json` com hashes de blob; vetores das seções 6.1/6.2 regenerados. **Aceite:** `--check` reproduz os JSON; spec Python verde com controles negativos; nenhum Rust alterado | este plano | `docs/features/fx-transitions.md`, `docs/features/effects.md` (nota de que o rascunho de extensão está superado), `scripts/pilot-dissolve-corpus.py(.spec.py)`, `docs/migration/fixtures/pilot-fx/dissolve-*.json` | Doc/oráculo |
+| **S0 — Contrato e oráculo** (docs + Python, sem produção) | `docs/features/fx-transitions.md` (F064 proposta), patch da linha da matriz ao coordenador, reconferência no pin/ponta (seção 2), `scripts/pilot-dissolve-corpus.py` + spec, `docs/migration/fixtures/pilot-fx/dissolve-{cases,manifest}.json` com hashes de blob; vetores das seções 6.1/6.2 regenerados. **Aceite:** `--check` reproduz os JSON; spec Python verde com controles negativos; nenhum Rust alterado | este plano | `docs/features/fx-transitions.md`, `docs/features/effects.md` (nota de que o rascunho de extensão está superado), `scripts/pilot-dissolve-corpus.py(.spec.py)`, `docs/migration/fixtures/pilot-fx/dissolve-*.json` | Doc/oráculo |
 | **S1a — Documento, janela, validação** | `Fx.transitions`, `FxTransition`, catálogo + `ParamKind::Choice`, `read_transitions`, janela/handles/`TRANSITION_*`, avisos, leituras `scene.fx.list/catalog` com transições, `FX_LIMIT`. `ScenePlan::build` em quadro de janela devolve `PlanError::Unsupported { domain: "transitions" }` **tipado** (nunca ignora). **Aceite:** T01–T03, T05, T28 (L e H) | S0 | `crates/core/src/directed_scene/fx/{mod,read,catalog,transition,window}.rs`, `scene_project/fx.rs`, testes `crates/core/tests/scene_fx_transition/` | Core |
 | **S1b — Avaliação e plano** | `evaluate_shot_at_offset`, `Fx::resolve_frame`, `ScenePlan.transition`, `Capability::FxTransition`, `validate_deck`, JSON, `PlanTimeline` do vizinho, orçamento de dois decks, `scene.fx.frame` com `transition`. **Aceite:** T04, T06–T11, T13, T14, T28 (L e H); `pilot_dissolve_corpus.rs` verde; T08 (planos sem transição inalterados) | S1a | `crates/core/src/temporal/shot_offset.rs`, `scene_plan/{model,build,timeline,validate,json}.rs`, `directed_scene/fx/mod.rs`, `crates/core/tests/pilot_dissolve_corpus.rs`, `.../scene_fx_transition/plan.rs` | Core |
 | **S2 — Runtime e render** | `parseTransition`, shader, alvos, ciclo de vida, `SCENE_CAPABILITIES`; `crates/render/tests/scene_fx_transition.rs`; testes `node --test` do runtime; teste de runtime antigo. **Aceite:** T12, T15–T19 (R, P) e T16 contra a referência X; export de quadros brutos | S1b | `runtime/src/{directed-scene,compositor,output-fx}.js`, `runtime/test/*`, `runtime/test/fixtures/fx-catalog.json`, `crates/render/tests/scene_fx_transition.rs` | Runtime/render |
@@ -589,7 +595,7 @@ Conflito de arquivos entre S2 e S3: nenhum (S2 só toca `runtime/`+`crates/rende
 **Tracer bullet mínimo (primeiro resultado verificável):** um bundle do corpus (`valid-cut-instance-offsets`) com uma
 transição `crossDissolve` `center` D=12 `hold` (corte em C = 40) → `tessel-headless` real responde `scene.fx.frame` no
 quadro 37 com o plano de dois decks (janela [34,46), `frameInWindow` 3, `primary: "from"`, vizinho `shot-b` com
-`heldInstance` e `heldCamera` verdadeiros, progresso 0,027595 com os padrões), e o teste de corpus confere janela,
+`heldInstance` e `heldCamera` verdadeiros, progress (após easing) 0,099248; peso efetivo (após smoothstep, intensity=1) 0,027595), e o teste de corpus confere janela,
 progresso e a mistura de pixel de duas cores constantes. É o fim da S1b, antes de qualquer runtime.
 
 ## 14. Gates, ambiente, mbx e disco
@@ -622,7 +628,7 @@ Gates **separados** e nenhum implica o outro:
 | Digest dos planos existentes mudar | Chave aditiva ausente quando não usada; T08 fixa os bytes do corpus |
 | Cache servir pixel velho do vizinho | Chave por deck; T19 e mutante |
 | Meia mistura em erro | Erro da camada, nunca desenho parcial; T18 |
-| `intensity = 0` tratado como identidade | D07 e T07 explícitos; o validador não usa a regra dos looks |
+| `intensity = 0` tratado como identidade ou progresso sem easing | D07 e T07 explícitos; usar curve=smooth e progress já eased |
 | Prova só da lib vendida como UI | Cada superfície tem a sua coluna; sintético ≠ físico |
 
 ## 15. IDs propostos, perguntas reais e entrega
