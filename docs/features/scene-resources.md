@@ -135,8 +135,10 @@ O comportamento de links usa unix; os módulos de symlink continuam sem execuç�
 ### Claims no Windows (BL167.6)
 
 O ledger de claims que protege estes arquivos (`scene_resources::claims`, [F040](scene-resource-integration.md))
-foi executado no Windows real por esta fatia. Estado: **implementado e provado no Windows; Mac a
-revalidar** (a mudança de `claims.journal` também roda no Unix).
+foi executado no Windows real por esta fatia. Estado: **A validar; PR60 não aprovada em
+`0cea8d6`**, por uma retentativa de acesso negado que excede o orçamento do tick. A correção
+do coordenador e as regressões novas ainda exigem execução Windows. Mac também precisa ser
+revalidado (a mudança de `claims.journal` roda no Unix).
 
 | Superfície | Evidência | Estado |
 |---|---|---|
@@ -152,7 +154,17 @@ O `ledger.lock` é disputado por polling (`LOCK_POLL`), sem fila: sob contençã
 esperar quase todo o orçamento de 1,5 s dos jobs (medido: até 1,3 s com retenções abaixo de 11 ms). É
 inanição, não violação de exclusão; o teste de exclusividade usa um orçamento próprio de 60 s e o limite de espera
 tem testes próprios. Um open que o Windows recusa com "acesso negado" (remoção pendente do arquivo) é repetido até
-50 vezes antes de a recusa ser acreditada.
+50 vezes, **dentro do orçamento do chamador**, antes de a recusa ser acreditada. Sem prazo
+restante, a negação é devolvida imediatamente; cada pausa é limitada ao tempo restante.
+
+A revisão independente confirmou a identidade do lock e o journal no Windows, mas reproduziu
+121–126 ms em uma negação persistente, inclusive em `accept(wait=false)` (tick de 20 ms), e
+uma falha por inanição em 140 execuções da corrida. O coordenador acrescentou a guarda de prazo,
+limitou a pausa e separou o prazo de estresse da corrida (60 s, só em teste). Regressões Windows
+com arquivo somente-leitura e diretório em `ledger.lock` conferem ZERO/tick/accept, teto de
+100 ms e claims preservadas. **Ainda não executadas nesta correção**; não são prova de janela.
+A identidade por volume/índice foi exercitada em NTFS; ReFS e filesystems de rede continuam
+sem prova. O defeito equivalente de identidade do RootLease pertence a BL079/BL167.6.3.
 
 ## Integração pelo coordenador
 

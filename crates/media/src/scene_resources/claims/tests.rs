@@ -1,4 +1,4 @@
-﻿//! Unit tests of the claims ledger: ownership rules (BL096) and what makes them hold across
+//! Unit tests of the claims ledger: ownership rules (BL096) and what makes them hold across
 //! processes (BL111). The two-process proofs are in `tests/scene_claims_processes.rs`.
 
 use std::fs::{self, File};
@@ -822,6 +822,9 @@ impl Drop for Writer<'_> {
 fn emptying_and_refilling_a_ledger_is_never_mistaken_for_damage() {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
+    // This checks integrity during continual churn, not whether the polling lock is fair.
+    // Production wait limits have their own tests; keep this stress test bounded separately.
+    const STRESS_WAIT: std::time::Duration = std::time::Duration::from_secs(60);
     const WRITERS: usize = 3;
     let dir = workspace("claims-race");
     let ledger = Ledger::of(dir.path());
@@ -835,12 +838,15 @@ fn emptying_and_refilling_a_ledger_is_never_mistaken_for_damage() {
                 for round in 0..150 {
                     let holder = next_holder();
                     let path = key(&format!("race-{worker}-{round}"));
-                    let mut tracker = ledger.lock_creating();
+                    let mut tracker = ledger.lock_creating_for(STRESS_WAIT);
                     tracker
                         .create_file(holder, path.clone(), &root(), None)
                         .unwrap();
                     drop(tracker);
-                    assert!(matches!(ledger.lock().leave(holder, &path), Leave::Last(_)));
+                    assert!(matches!(
+                        ledger.lock_for(STRESS_WAIT).leave(holder, &path),
+                        Leave::Last(_)
+                    ));
                 }
             });
         }
@@ -848,7 +854,7 @@ fn emptying_and_refilling_a_ledger_is_never_mistaken_for_damage() {
         let running = &running;
         scope.spawn(move || {
             while running.load(Ordering::SeqCst) > 0 {
-                let tracker = reader.lock();
+                let tracker = reader.lock_for(STRESS_WAIT);
                 assert!(tracker.fault().is_none(), "{:?}", tracker.fault());
             }
         });

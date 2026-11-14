@@ -117,7 +117,8 @@ pub(in crate::scene_resources) const TICK_WAIT: std::time::Duration =
     std::time::Duration::from_millis(20);
 const LOCK_POLL: std::time::Duration = std::time::Duration::from_micros(500);
 /// How many times, and how far apart, an open that Windows refuses with "access denied" is retried
-/// (a lock file whose removal is pending) before the denial is believed.
+/// (a lock file whose removal is pending) before the denial is believed, within the caller's
+/// remaining lock-wait budget.
 const DENIED_RETRIES: u32 = 50;
 const DENIED_PAUSE: std::time::Duration = std::time::Duration::from_millis(2);
 
@@ -1034,10 +1035,13 @@ impl DiskLock {
                 Err(error)
                     if cfg!(windows)
                         && error.kind() == io::ErrorKind::PermissionDenied
-                        && denied < DENIED_RETRIES =>
+                        && denied < DENIED_RETRIES
+                        && Instant::now() < deadline =>
                 {
                     denied += 1;
-                    std::thread::sleep(DENIED_PAUSE);
+                    std::thread::sleep(
+                        DENIED_PAUSE.min(deadline.saturating_duration_since(Instant::now())),
+                    );
                     continue;
                 }
                 Err(error) => return Err(format!("open `{}`: {error}", path.display())),

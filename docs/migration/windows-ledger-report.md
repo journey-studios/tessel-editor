@@ -61,7 +61,7 @@ escritores entraram em pânico, então uma falha real virava uma espera infinita
 - Erros espúrios de `same_file`: 0 observados.
 - Retry de remoção pendente retirado cedo demais (0/80), reposto após 2/40 no código final (causa 5).
 
-## Resultados no código final (Windows real)
+## Resultados da implementação original (Windows real; anteriores à revisão)
 
 | Prova | Resultado |
 |---|---|
@@ -102,7 +102,7 @@ Nenhuma dessas falhas foi atribuída ao ledger e nenhuma foi mascarada.
 
 - `scene_claims_budget` continua só Unix (mede tempo do tick; exige a rodada de desempenho com o lock de GPU).
 - Sem `SIGSTOP` no Windows: o peer segura o lock, mas não é suspenso.
-- `Stamp` sem dev/inode (BL078). A identidade volume+índice depende de NTFS/ReFS; em FS de rede não foi provada.
+- `Stamp` sem dev/inode (BL078). Identidade volume+índice exercitada em NTFS; ReFS e FS de rede não foram provados.
 - Testes `read_only` são vazios no Windows (permissão de pasta não impede o dono).
 - Sem fila no lock: inanição sob disputa contínua é possível dentro do orçamento (causa 4); fairness em produção
   não foi implementada (decisão proposta).
@@ -119,3 +119,39 @@ no Unix não mudou, só passou a `pub(super)`; `scene_claims_journal` era `cfg(u
 `crates/media/Cargo.toml` (dependência `same-file = "1"` em `cfg(windows)`) e uma linha em `Cargo.lock`
 (`"same-file"` em `tessel-editor-media`; a crate já estava no lockfile). Necessários porque `unsafe` é proibido e
 `file_index` do std é instável.
+
+## Revisão independente de `0cea8d6` e correção do coordenador
+
+A revisão **não aprovou** este head. Confirmou identidade do lock e exclusividade, com mutação
+negativa de `path.exists()`, e repetiu claims 48/48 e os testes de processos listados acima.
+A corrida falhou por inanição em **1/140** execuções; exclusividade teve 0/40 falhas. Os 0/40
+do autor continuam como resultado histórico, sem contradizer a falha posterior.
+
+**P1 / BL167.6.1:** PermissionDenied repetia 50 pausas sem olhar o deadline. Com diretório ou
+arquivo somente-leitura em `ledger.lock`, ZERO levou 123–126 ms, tick 121 ms e accept 122 ms,
+acima do orçamento de 20 ms e do teto de 100 ms. A correção exige prazo restante antes de
+retentar e limita a pausa a esse restante. LOCK_WAIT (1,5 s), TICK_WAIT (20 ms) e a mitigação
+de remoção pendente para jobs são preservados. Os dois testes novos em
+`claims/denied_budget_tests.rs` são Windows reais, verificam as três recusas e preservação
+das claims; até a rechecagem Windows, são testes escritos, **não executados**.
+
+**BL167.6.2:** a corrida usa `lock_creating_for/lock_for(60 s)` em leitores e escritores,
+assim como o teste de exclusividade. É prazo limitado de teste para verificar integridade
+sob churn, não mudança do limite produtivo nem alegação de fairness. O guard de pânico do
+escritor permanece. O BOM UTF-8 introduzido em `claims/tests.rs` foi removido.
+
+**Proveniência:** `_gates-summary.log` do autor identifica a base `2b54ac1` com árvore ainda
+sem commit. O hash do binário identifica aquele artefato; os logs não validam por SHA o head
+publicado `0cea8d6`. Nenhum log demonstra TESSEL_REQUIRE_RUNTIME=1; esta entrega não afirma
+esse gate. As execuções independentes acima pertencem ao head revisado, não ao novo patch.
+CodeRabbit NEUTRAL não é aprovação e não existe CI de testes nesta PR.
+
+**Validação da correção:** `cargo fmt --all` executado no Mac. O teste de claims pelo wrapper
+`./scripts/cargo` falhou antes de compilar: ao criar o target gerenciado, retornou
+`Not a directory (os error 20)`. Não houve desvio de target, limpeza ou execução de Rust.
+Windows e Unix continuam A validar no novo patch; resultados serão atribuídos ao seu head.
+
+Seguimentos registrados no backlog: RootLease ainda usa `path.exists()` fora de Unix e tem
+diagnóstico PID ilegível sob lock obrigatório (BL167.6.3/BL079); rollback de append parcial e
+disco cheio sem prova (BL167.6.4); possível giro quente se same_file falha sempre, ainda só
+por leitura (BL167.6.5). Nenhum foi tratado como corrigido por este patch.
