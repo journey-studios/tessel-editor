@@ -2156,4 +2156,10 @@ Código de produto, orçamento20ms e critério100ms não mudam.
 
 | ID | Área | Pendência | Status | Dependências | Responsável | Aceite e evidência |
 |---|---|---|---|---|---|---|
-| BL167.6.10 | Testes / watchdog | Watchdog não libera o peer com lock se o poll regredir e bloquear | Em andamento — follow-up separado após merge PR60 | BL167.6, BL112.3 | Coordenador | Helper por handle do Child próprio, SIGCONT Unix seguido de término e wait, cancelamento quando trabalho acaba; teste real de liberação de lock e controle de cancelamento, ambos com limpeza própria. Mac/Windows a validar; não é mudança de produto/performance. |
+| BL167.6.10 | Testes / watchdog | Watchdog não libera o peer com lock se o poll regredir e bloquear | A validar — Mac15/15, Windows pendente | BL167.6, BL112.3 | Coordenador | Helper por handle do Child próprio, SIGCONT Unix seguido de término e wait, cancelamento quando trabalho acaba; teste real de liberação de lock e controle de cancelamento, ambos com limpeza própria. Mac/Windows a validar; não é mudança de produto/performance. |
+
+BL167.6.10, código67ba3a6: Mac job_discard_claims15/15; clippy do alvo com-Dwarnings
+exit0 e fmt passam. Dois mutantes compilados falham por asserção: sóCONT sem término
+(novo controle falha em5s, limpando peer/waiter antes da asserção) e ignorar cancelamento
+(falha após20s, peer recolhido). Fontes restauradas por bytes/SHA e regressões2/2 verdes.
+Não se alterou produto/Cargo.lock/orçamentos. Validação/review Windows pendente.

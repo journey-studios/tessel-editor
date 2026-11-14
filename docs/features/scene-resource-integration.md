@@ -592,3 +592,9 @@ sozinho não libera o arquivo que o peer conserva enquanto espera outro comando.
 é só teste; operações, orçamento do tick e limite de100ms não mudam. Testes novos exercitam
 lock real/liberação por término e cancelamento do watchdog, com limpeza mesmo na falha.
 Validação Mac e Windows pendente nesta edição; sem nova evidência de janela ou desempenho.
+
+No código67ba3a6, Mac executou job_discard_claims15/15, fmt e clippy do alvo com-Dwarnings.
+Dois mutantes foram detectados: resumir sem encerrar e ignorar cancelamento; o primeiro
+falha em5s com limpeza antes da asserção, o segundo após o prazo de20s. Fontes restauradas,
+regressões2/2 novamente verdes. Esses controles provam o harness, sem medir desempenho do
+produto. Windows/revisão independente pendentes; esta prova não promove a UI.
