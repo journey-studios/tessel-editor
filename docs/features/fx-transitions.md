@@ -313,7 +313,7 @@ de posição em GPU.
 as hipóteses LIN/LSR/LCC/LCE têm pelo menos três sondas em dois quadros; em `lit-start-held`,
 LIN/LCC também. Com intensidade 20, foram 8/12/8/5 sondas em 2/3/2/2 quadros no primeiro caso,
 e 7 sondas em 3 quadros no segundo. As janelas `center` não demonstram isoladamente esse poder:
-podem rejeitar pelo primário ou ter só até duas sondas em um quadro. O erro de fps nominal é
+podem rejeitar pelo primário ou separar poucas sondas em um único quadro, abaixo do portão de dois quadros. O erro de fps nominal é
 global. S2 deve respeitar esse alcance e comparar os estados de cada deck separadamente.
 
 O teste de câmera ganhou o quadro exato 40 e dois segmentos com `previousEnd` e com retorno
@@ -324,5 +324,7 @@ inicial. Isso corrige a interpretação de overshoot da revisão, mantendo uma r
 de cerca de 1e-14 entre segundos racionais do destino e divisão da origem não altera os códigos
 de 8 bits destes vetores. O módulo analítico ainda exige separação em módulos se crescer na S2.
 
-Esta correção permanece **A validar** até rechecagem Windows; todas as superfícies de produto
-continuam Pending, sem engine, golden da origem ou textura executados.
+A R3 independente aprovou a S0 no head `e4078ff`, com corpus 167 e analítico 39 passando
+no Windows, normal e `-O`, mais controles negativos de intensidade e fronteira de câmera.
+A aprovação cobre oráculo e contrato; todas as superfícies de produto continuam Pending,
+sem engine, golden da origem ou textura executados. O relato completo está no relatório, §12.

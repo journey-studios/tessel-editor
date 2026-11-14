@@ -281,7 +281,8 @@ Execuções do coordenador em macOS, Python 3.14.3, sobre a fonte desta correç�
 77c4d7bc5f7b95adc37d2ec1560adffb7772c3aa6ee805079ffdb9f0a392ce42  dissolve-manifest.json   27892 bytes
 ```
 
-Windows ainda não reexecutado neste patch; a S0 segue **A validar** até nova rechecagem.
+Estado anterior à R3: Windows ainda não havia sido reexecutado neste patch. A rechecagem
+concluída no mesmo head de código aprovou S0, conforme §12.
 Nenhum Cargo, Node, runtime, engine, GPU, FFmpeg, UI ou golden foi executado nesta correção.
 As superfícies de produto da matriz continuam Pending. Os resultados de §10 identificam
 a versão anterior `9399642` e não validam esta revisão por herança.
@@ -305,3 +306,33 @@ os limiares são pré-registrados e **A validar** pela revisão de design; sem G
   independente do P2-2.
 - **F064** (matriz): manter lib/JSONL/UI **Pending**; coluna de oráculo: "Python `origin-formula` com X analítico de hold misto e
   luz real (planos planos), quadros texturizados só na S2"; link [fx-transitions.md](../features/fx-transitions.md).
+
+
+## 12. Fechamento da S0: R3 independente no Windows em e4078ff
+
+A R3 aprovou **somente a S0, oráculo Python e contrato**, no head
+`e4078ffd91de8bec2a8720ed56553fb964ef317b`, sem bloqueadores. Nenhum código ou fixture
+mudou depois dessa revisão; esta atualização final corrige prosa e status.
+
+Execução independente no Windows 10.0.26200, Python 3.13.17 real, árvore limpa antes/depois:
+corpus 167 normal/-O offline (dois skips de origem) e com origem (sem skips), analítico
+39 normal/-O, `generate --check` byte a byte, `verify` normal/-O offline e com origem exit 0;
+strict sem origem e com origem sem commit pin exit 4; `digests` sem origem exit 2.
+Backlog 19/19, higiene 13/13 e diff check limpo. Hashes e tamanhos iguais aos de §11.
+Mutantes próprios em memória (lâmpadas 24 e fronteira de câmera `<=`) recusados; controles
+restaurados passaram. No Mac, os resultados correspondentes estão no §11, separados.
+
+P2-A fechado: todos os kits respeitam intensidade 20 e demais limites do destino, por leitura
+ dos validadores e dados. Representabilidade não é execução do motor. P3-1/P3-2 têm escopo
+explícito: só `start`/`end` isolam fortemente a luz do vizinho; coordenadas são diagnósticas;
+S1b/S2 devem comparar os estados de **cada deck** e as cores nos pixels prescritos.
+
+Nits não bloqueantes continuam como BL082.4.12: o gerador não recusa sozinho uma lâmpada
+inválida (a spec é o gate), nome `end_pose` para um frame e divisão do módulo se crescer.
+A S2 traduz arrays compactos de cor/posição em objetos do destino. Não existe consumidor
+executável dos estados por deck até as fases seguintes, nem pixel texturizado nesta S0.
+
+A fonte JS foi lida por blobs da ponta fixa; não executada. Pin verificado no Mac e ausente
+no clone Windows; Linux não executado. As superfícies de produto F064 permanecem **P** e a
+admissão pública mantém `FX_TRANSITION_NOT_YET` até S2A. BL082.4.1 encerra só a preparação S0;
+BL082.4 e a transição de produto seguem pendentes das fases restantes.
