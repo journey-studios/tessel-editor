@@ -242,8 +242,12 @@ Mutações **não** rodadas nesta rodada (da lista da rodada anterior): escala `
   tornar-se zero, e tempos de `1e9` s ou mais são `audio_window_invalid`. A métrica `peak`/`rms` é de `f32` e uma fonte
   float perto de `f32::MAX` interpolada pode dar `inf` na métrica; o áudio continua limitado a fundo de escala (limite
   conhecido, sem feature nova).
-- O harness da R10 (`proof.py`, fase `ui_export_flow`) ainda espera a recusa do padrão `audio=yes`; com o mix
-  entregue essa fase muda de resultado e é ajuste da frente S10 (não alterado aqui).
+- O harness da R10 (`scripts/directed-scene-export-proof/proof.py`, fase `ui_export_flow`) esperava a recusa do padrão
+  `audio=yes`. Desde 2026-11-14 (BL168.8) ela aceita os mesmos três resultados honestos da fase da CLI
+  `export_audio_policy`: o mix medido no arquivo, a recusa tipada sem job nem arquivo, ou o arquivo só de vídeo com aviso
+  explícito. O descarte silencioso continua reprovando. Executada no Windows, ela passa com 91/91 e `outcome: mixed`:
+  440 Hz e depois 880 Hz no arquivo, e a duração do áudio igual à do vídeo. `audio=no` segue omitindo o áudio com o aviso
+  tipado. Esse script não é fixado pelo livro da S10, então a mudança não abre rodada.
 
 ### Aceite independente da S10 (PR #8, `proof.py` em `c03b41e`) — divergência de semântica, não de qualidade
 

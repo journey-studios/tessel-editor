@@ -186,8 +186,8 @@ def require_binary(ctx, key, hint):
     return path
 
 
-RENDER_HINT = "python3 /Users/wallyssonnunes/.cache/tessel-editor/cargo-serial.py build -p tessel-editor-render --locked"
-EDITOR_HINT = "python3 /Users/wallyssonnunes/.cache/tessel-editor/cargo-serial.py build -p tessel-editor --release --locked"
+RENDER_HINT = "./scripts/cargo build -p tessel-editor-render --locked"
+EDITOR_HINT = "./scripts/cargo build -p tessel-editor --release --locked"
 
 
 def history(op):
@@ -1042,37 +1042,75 @@ def phase_ui_export_flow(ctx, p):
     run = ExportRun(info["state"] == "succeeded", info.get("result"), info.get("error"), time.monotonic() - started, next(iter(new_jobs)), info)
     p.metrics["ui_export"] = verify_case(ctx, p, "ui export", run, destination, "restored_1080", "main")
 
-    # Audio: a scene that declares a mix is refused by default, and only the user's explicit `no` leaves it out.
+    # Audio: `yes` (the default) goes through the same shared operation as the CLI's `export_audio_policy`, so it has the
+    # same three honest outcomes there: the mix is in the file (measured), the export is refused with a typed code and no
+    # file, or the file is video-only and the result says so explicitly. A silent drop is the one outcome that fails.
+    # (Until F042A delivered the mix this phase required the refusal; the mix is now the editor's answer: BL168.8.)
+    # Only the user's explicit `no` leaves a declared mix out, with the typed omission warning.
     attach(channel, "withaudio", ctx.corpus_dir / "bundle.audio.json")
     resolve_resources(ctx, channel, "withaudio", ctx.corpus_dir)
     audio_case = ctx.exp["cases"]["audio_1080"]
-    audio_destination = out / "ui-audio.mp4"
-    ui.invoke("flow.export_scene", "open")
-    ui.fill(scene="withaudio", preset=audio_case["preset"], destination=str(audio_destination),
-            audio="yes", **{"from": str(audio_case["from"]), "frames": str(audio_case["frames"])})
-    jobs_before = collect_ids(must(channel, {"op": "job.list"}))
-    refused = ui.invoke("dialog.submit")
-    code = (refused.get("error") or {}).get("code")
-    p.check("audio yes on a scene that declares a mix is refused with a typed code (never exported silently)",
-            not refused.get("ok") and code in ctx.adapters["error_codes"]["audio_refusal"], refused)
-    p.check("the refusal keeps the dialog open, starts no job and writes no file",
-            (ui.state("dialog") or {}).get("flow") == "export_scene" and collect_ids(must(channel, {"op": "job.list"})) == jobs_before
-            and not audio_destination.exists(), ui.state("dialog"))
-    ui.fill(audio="no")
-    started = time.monotonic()
-    submitted = ui.invoke("dialog.submit")
-    if p.check("audio no is accepted: the user chose to leave the mix out", submitted.get("ok"), submitted):
+    fields_of = ctx.adapters["ops"]["export"]["result"]["fields"]
+
+    def one_new_job(before, label):
         new_jobs = set()
         deadline = time.monotonic() + ctx.adapters["limits"]["job_start_timeout_seconds"]
         while not new_jobs and time.monotonic() < deadline:
-            new_jobs = collect_ids(must(channel, {"op": "job.list"})) - jobs_before
+            new_jobs = collect_ids(must(channel, {"op": "job.list"})) - before
             time.sleep(ctx.adapters["limits"]["poll_seconds"])
-        if p.check("exactly one job was started", len(new_jobs) == 1, sorted(new_jobs)):
-            info = wait_job(ctx, channel, next(iter(new_jobs)), audio_case["budgetSeconds"])
-            run = ExportRun(info["state"] == "succeeded", info.get("result"), info.get("error"), time.monotonic() - started,
-                            next(iter(new_jobs)), info)
-            p.metrics["ui_export_audio_no"] = verify_case(ctx, p, "ui export (audio no)", run, audio_destination, "audio_1080", "audio")
-            warnings = dig(run.result, ctx.adapters["ops"]["export"]["result"]["fields"]["warnings"]) or []
+        return next(iter(new_jobs)) if p.check(f"{label}: exactly one job was started", len(new_jobs) == 1, sorted(new_jobs)) else None
+
+    def submit_audio(choice, destination):
+        ui.invoke("flow.export_scene", "open")
+        ui.fill(scene="withaudio", preset=audio_case["preset"], destination=str(destination),
+                audio=choice, **{"from": str(audio_case["from"]), "frames": str(audio_case["frames"])})
+        before = collect_ids(must(channel, {"op": "job.list"}))
+        return before, time.monotonic(), ui.invoke("dialog.submit")
+
+    def finished(job, started):
+        info = wait_job(ctx, channel, job, audio_case["budgetSeconds"])
+        return ExportRun(info["state"] == "succeeded", info.get("result"), info.get("error"), time.monotonic() - started, job, info)
+
+    audio_destination = out / "ui-audio.mp4"
+    jobs_before, started, submitted = submit_audio("yes", audio_destination)
+    if not submitted.get("ok"):
+        code = (submitted.get("error") or {}).get("code")
+        p.metrics["ui_audio_policy"] = {"outcome": "refused", "code": code}
+        p.check("audio yes refused: with a typed code (never exported silently)", code in ctx.adapters["error_codes"]["audio_refusal"], submitted)
+        p.check("the refusal keeps the dialog open, starts no job and writes no file",
+                (ui.state("dialog") or {}).get("flow") == "export_scene" and collect_ids(must(channel, {"op": "job.list"})) == jobs_before
+                and not audio_destination.exists(), ui.state("dialog"))
+        ui.invoke("dialog.cancel")
+    else:
+        job = one_new_job(jobs_before, "audio yes")
+        if job is not None:
+            run = finished(job, started)
+            if p.check("audio yes: the export finished", run.ok, run.error):
+                expect = v.expectation("audio_1080", ctx.exp, ctx.bundle("audio"))
+                probe, metrics = v.verify_container(p, audio_destination, expect)
+                audios = [s for s in (probe or {"streams": []})["streams"] if s["codec_type"] == "audio"]
+                if audios:
+                    p.metrics["ui_audio_policy"] = {"outcome": "mixed"}
+                    p.metrics["ui_export_audio_yes"] = v.verify_mixed_audio(p, audio_destination, probe, metrics.get("duration_seconds", 0.0))
+                    p.check("audio yes: the result reports audio as present", audio_claimed(dig(run.result, fields_of["audio"])),
+                            dig(run.result, fields_of["audio"]))
+                else:
+                    warnings = dig(run.result, fields_of["warnings"]) or []
+                    said = [w for w in warnings if isinstance(w, dict)
+                            and w.get("code") in ctx.adapters["error_codes"]["audio_not_mixed_warning_codes"]]
+                    p.metrics["ui_audio_policy"] = {"outcome": "explicit_limit" if said else "dropped_silently", "warnings": warnings}
+                    p.check("audio yes without an audio stream: the result says so with an explicit typed limit (a silent drop fails)",
+                            bool(said), warnings)
+                    v.verify_no_audio(p, probe, run.result)
+
+    no_destination = out / "ui-audio-no.mp4"
+    jobs_before, started, submitted = submit_audio("no", no_destination)
+    if p.check("audio no is accepted: the user chose to leave the mix out", submitted.get("ok"), submitted):
+        job = one_new_job(jobs_before, "audio no")
+        if job is not None:
+            run = finished(job, started)
+            p.metrics["ui_export_audio_no"] = verify_case(ctx, p, "ui export (audio no)", run, no_destination, "audio_1080", "audio")
+            warnings = dig(run.result, fields_of["warnings"]) or []
             p.check("the file's result carries the typed omission warning",
                     any(isinstance(w, dict) and w.get("code") in ctx.adapters["error_codes"]["audio_omitted_warning_codes"] for w in warnings), warnings)
     p.metrics["note"] = ("semantic protocol only (get/set/invoke): proves the dialog reaches scene.export and its refusals, "
