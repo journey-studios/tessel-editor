@@ -65,7 +65,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, btree_map};
 use std::fs::{self, File, OpenOptions, TryLockError};
-use std::io::{self, Write};
+use std::io::{self, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -82,8 +82,11 @@ const STATE_TMP: &str = "claims.json.tmp";
 const JOURNAL: &str = "claims.journal";
 const LIVE: &str = "live";
 const VERSION: u64 = 1;
-/// How many times a lock is retaken when the lock file it got was unlinked meanwhile (or the
-/// open raced with that unlink).
+/// How many times a lock is retaken, at least, when the lock file it got was unlinked meanwhile
+/// (or the open raced with that unlink). Past this many, retaking goes on only while the budget
+/// the caller gave (`wait`) lasts: every lost round means another holder emptied the ledger, so
+/// the ledger as a whole is making progress, and a fixed count turned that into an error for the
+/// one caller that kept queueing behind them (BL167.6).
 const ATTEMPTS: usize = 64;
 /// Consecutive looks that find the state without its lock before that is called damage, and the
 /// pause between looks.
@@ -113,6 +116,10 @@ const LOCK_WAIT: std::time::Duration = std::time::Duration::from_millis(1500);
 pub(in crate::scene_resources) const TICK_WAIT: std::time::Duration =
     std::time::Duration::from_millis(20);
 const LOCK_POLL: std::time::Duration = std::time::Duration::from_micros(500);
+/// How many times, and how far apart, an open that Windows refuses with "access denied" is retried
+/// (a lock file whose removal is pending) before the denial is believed.
+const DENIED_RETRIES: u32 = 50;
+const DENIED_PAUSE: std::time::Duration = std::time::Duration::from_millis(2);
 
 /// Recovers a poisoned process-local mutex without discarding the persisted ledger.
 fn relock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -205,6 +212,17 @@ impl Ledger {
         Tracker::open(&self.0, true, LOCK_WAIT)
     }
 
+    /// [`Ledger::lock_creating`] with the budget chosen by the caller: the exclusivity stress test
+    /// has workers that take the lock back to back, and its subject is who holds the ledger, not
+    /// how long a job waits for it (that has its own tests).
+    #[cfg(test)]
+    pub(in crate::scene_resources) fn lock_creating_for(
+        &self,
+        wait: std::time::Duration,
+    ) -> Tracker {
+        Tracker::open(&self.0, true, wait)
+    }
+
     /// The results that listed `keys` were accepted: the project owns them now (BL112.7).
     ///
     /// `wait` says whether the caller may block (a job, the CLI: [`LOCK_WAIT`]) or is the
@@ -265,10 +283,15 @@ fn append_accept<'a>(dir: &Path, keys: impl Iterator<Item = &'a Path>) -> Result
     let mut record = serde_json::to_vec(&json!({ "accept": texts }))
         .map_err(|error| format!("`{}`: {error}", path.display()))?;
     record.push(b'\n');
+    // Not `.append(true)`: on Windows an append-only handle has no right to change the length of
+    // the file, so cutting off a torn tail (or undoing a write that failed, below) was refused
+    // with "access denied" (BL167.6). The caller holds `ledger.lock`, so nobody else writes: the
+    // record goes where the complete records end, which is what appending meant.
     let mut file = OpenOptions::new()
         .read(true)
-        .append(true)
+        .write(true)
         .create(true)
+        .truncate(false)
         .open(&path)
         .map_err(|error| io_text(&path, &error))?;
     let end = complete_prefix(&mut file).map_err(|error| io_text(&path, &error))?;
@@ -280,6 +303,8 @@ fn append_accept<'a>(dir: &Path, keys: impl Iterator<Item = &'a Path>) -> Result
     {
         file.set_len(end).map_err(|error| io_text(&path, &error))?;
     }
+    file.seek(SeekFrom::Start(end))
+        .map_err(|error| io_text(&path, &error))?;
     if let Err(error) = file.write_all(&record) {
         let _ = file.set_len(end);
         return Err(io_text(&path, &error));
@@ -290,7 +315,7 @@ fn append_accept<'a>(dir: &Path, keys: impl Iterator<Item = &'a Path>) -> Result
 /// How many bytes of `file` end with its last newline: what follows is a record whose writer did
 /// not finish. Looks only at the end of the file unless a record is longer than one chunk.
 fn complete_prefix(file: &mut File) -> io::Result<u64> {
-    use std::io::{Read, Seek, SeekFrom};
+    use std::io::Read;
     let mut end = file.metadata()?.len();
     let mut chunk = [0u8; 4096];
     while end > 0 {
@@ -949,8 +974,18 @@ impl DiskLock {
     ) -> Result<Option<Self>, String> {
         let path = dir.join(LOCK);
         let mut dangling = 0;
+        let mut denied = 0;
+        let mut attempt = 0;
         let deadline = Instant::now() + wait;
-        for _ in 0..ATTEMPTS {
+        loop {
+            // The count is a floor, the budget the ceiling (see `ATTEMPTS`).
+            attempt += 1;
+            if attempt > ATTEMPTS && Instant::now() >= deadline {
+                return Err(format!(
+                    "`{}` is being created and removed too quickly to be locked",
+                    dir.display()
+                ));
+            }
             if create {
                 match fs::create_dir(dir) {
                     Ok(()) => {}
@@ -992,6 +1027,19 @@ impl DiskLock {
                     std::thread::sleep(std::time::Duration::from_millis(1));
                     continue;
                 }
+                // Windows answers "access denied" to an open of a file whose removal is pending
+                // (the process that emptied the ledger unlinked it, a handle still holds it). It
+                // goes away within moments; a real denial answers it every time, so it is only
+                // retried a few times before it is reported as it is.
+                Err(error)
+                    if cfg!(windows)
+                        && error.kind() == io::ErrorKind::PermissionDenied
+                        && denied < DENIED_RETRIES =>
+                {
+                    denied += 1;
+                    std::thread::sleep(DENIED_PAUSE);
+                    continue;
+                }
                 Err(error) => return Err(format!("open `{}`: {error}", path.display())),
             };
             // Bounded (BL112.3): healthy recovery can hold this lock across several full ledger
@@ -1022,11 +1070,9 @@ impl DiskLock {
             if same_file(&path, &file) {
                 return Ok(Some(Self { _file: file, path }));
             }
+            // The file we locked is not the one at the path any more: its holder emptied the
+            // ledger and unlinked it while we waited. Start again on the one there is now.
         }
-        Err(format!(
-            "`{}` is being created and removed too quickly to be locked",
-            dir.display()
-        ))
     }
 }
 
@@ -1133,7 +1179,7 @@ fn is_alive(dir: &Path, owner: u128) -> bool {
 
 #[cfg(unix)]
 /// Checks whether the open lock still names the path, detecting unlink and replacement races.
-fn same_file(path: &Path, file: &File) -> bool {
+pub(super) fn same_file(path: &Path, file: &File) -> bool {
     use std::os::unix::fs::MetadataExt;
     match (fs::metadata(path), file.metadata()) {
         (Ok(on_disk), Ok(open)) => on_disk.dev() == open.dev() && on_disk.ino() == open.ino(),
@@ -1141,10 +1187,27 @@ fn same_file(path: &Path, file: &File) -> bool {
     }
 }
 
-/// Without device and inode numbers the check cannot be made; the ledger then protects only
-/// against processes that never remove it (limit documented for non-Unix platforms).
-#[cfg(not(unix))]
-fn same_file(path: &Path, _file: &File) -> bool {
+/// Windows: the volume serial and file index of the open handle against those of whatever the
+/// path names now. `path.exists()` is not an answer: whoever emptied the ledger unlinks the lock
+/// while it is held, another process may create a **new** `ledger.lock` straight away, and a
+/// waiter that then locks the old, unlinked file would believe it holds the ledger while the
+/// creator holds the new one (two writers on `claims.json`, BL167.6). A file that cannot be
+/// identified counts as different: the caller opens the path again.
+///
+/// The index cannot be reused while a handle to the file is open, so the open lock file cannot
+/// collide with a successor.
+#[cfg(windows)]
+pub(super) fn same_file(path: &Path, file: &File) -> bool {
+    let Ok(open) = file.try_clone().and_then(same_file::Handle::from_file) else {
+        return false;
+    };
+    same_file::Handle::from_path(path).is_ok_and(|named| named == open)
+}
+
+/// Neither Unix nor Windows: no identity to compare, so the ledger protects only against
+/// processes that never remove it (limit documented for other platforms).
+#[cfg(not(any(unix, windows)))]
+pub(super) fn same_file(path: &Path, _file: &File) -> bool {
     path.exists()
 }
 

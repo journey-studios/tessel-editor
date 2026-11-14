@@ -13,6 +13,11 @@ serde_json.workspace = true
 sha2 = "0.10"
 crc32fast = "1"
 
+[target.'cfg(windows)'.dependencies]
+# File identity (volume + file index) for the claims ledger lock, where `unsafe` is forbidden and
+# std keeps `file_index` unstable (BL167.6). Already in the lockfile through `walkdir`.
+same-file = "1"
+
 [lints]
 workspace = true
 
