@@ -202,10 +202,10 @@ jsonl6, discard13, corefx25/transições61 eGPUI80; fmt/check/clippy/no-run/buil
 passaram. Stress320/exclusividade40 e mutantes são da R3 em f054, com fontes
 do ledger/testes idênticas; não foram apresentados como execução nova.
 
-No Mac nativo, no mesmo89a8401, passaram claims51 e seis integrações65 no total
+No Mac nativo, no mesmo89a8401, passaram claims51 e seis suítes de integração (65 testes) no total
 (discard13/failure6/integrity11/journal13/jsonl6/processos16). O caminho Unix de
 append_accept(write+seek) foi executado. Core completo1528/0/7ignorados e
-fmt/check/clippyworkspace/build passaram; treecore semgpui/wry. Nenhuma prova
+fmt/check/clippy do workspace e build passaram; árvore do core semgpui/wry. Nenhuma prova
 de workspace completo, Linux, janela, GPU, áudio ou desempenho decorre disso.
 
 A revisão reproduziu espera quente por NotFound em workspace removido:
@@ -225,8 +225,20 @@ transitórios e ZERO; outra usa workspace realmente inexistente e prova recusa
 sem criar pais. São provas de controle, não medição de CPU ou desempenho. Os
 resultados de89 acima não são evidência da execução deste patch posterior.
 
-**Execução nativa do patch0f9d1ab.** Mac:claims55/55 (quatro regressõesnovas),
-seis integrações65, fmt/check/clippyworkspace/build passaram e treecore não
+**Execução nativa do patch 0f9d1ab.** Mac: 55/55 claims (quatro regressões novas),
+seis suítes de integração (65 testes), fmt/check/clippy do workspace e build passaram e árvore do core não
 lista gpui/wry. Sem pausacreate, sem pausaopen e sleepignorandodeadline foram
 detectados por regressões distintas; após restauração exata,4/4 passaram.
-Windows continua a validar o patch, sem herdar as provas antigas de89.
+O Windows validou o patch em c66887e; a cobertura parcial restante está em BL167.6.9.
+
+**Revisão final do patch de espera.** Windows validado em `c66887e`, código
+`0f9d1ab`: 58 testes de claims, integrações 14/13/11/6/13, corefx25/transições61
+e fmt/check/clippy/no-run/build. Corrida320/320 e exclusividade40/40 sequenciais
+passaram sem timeout. Não houve achado P0/P1/P2 de código. Mac permanece
+comprovado no código0f: 55 claims, 65 integrações e gates.
+
+A prova das pausas de create/open NotFound é discriminante; InvalidInput e
+identidade trocada ainda são por leitura. M4 sem a pausa de identidade passa,
+e o handle do lock inválido pode ficar aberto até500us durante a pausa, sem
+alterar exclusão. O complemento de cobertura e higiene fica em BL167.6.9.
+Não houve medida de CPU/FPS nem prova causal do mecanismo NTFS.

@@ -246,7 +246,7 @@ prova de `2522290` e foram repetidos (`g3-*`, `final2-*`).
 R3 aprovou o código Windows no head f0544b09d1b0f4d344f329c0bac83ec855edb584,
 sem achado P0/P1/P2 de código. O ledger é2522290 (SHA9A57B83B…434774).
 O revisor executou:claims54/54, denied6/6, processos14, journal13, integrity11,
-jsonl6, discard13, fmt/check/clippyall-targets e treecore semGPUI/wry.
+jsonl6, discard13, fmt/check/clippyall-targets e árvore do core semGPUI/wry.
 Corrida320/320 e exclusividade40/40 independentes/sequenciais, semtimeout.
 Quatro variantes de mutantes foram detectadas (retrycreate, deadline, deadline
 mais minpause e teto), com fonte restaurada por SHA. A base0/320 do autor continua
@@ -277,7 +277,7 @@ media versusf054 e core/desktop versuse3c20cb vazios. Só o backlog tinha
 conflito; nenhum código de merge inventado. Verificou ausência dos dois bytes
 de controle nos259Markdown com controle negativo.
 
-Windows: fmt/check/clippy, workspace no-run/build e treecore passam. Claims54,
+Windows: fmt/check/clippy, workspace no-run/build e árvore do core passam. Claims54,
 denied6, processos14, journal13, integrity11, jsonl6, discard13, corefx25,
 transições61 eGPUI80 passaram. Os320/40 e mutantes continuam sendo da R3f054,
 fontes do ledger/deniedtest idênticas; não houve repetição por ritual.
@@ -330,7 +330,7 @@ LOCK_WAIT/TICK_WAIT permanecem inalterados.
 ### Execução Mac em0f9d1ab (posterior às provas de89)
 
 Em0f9d1abf41aa5459af0a0f987a2f2ad83c585e68 limpo:fmt, claims55/55, seis
-integrações65, check/clippyalltargets do workspace, builddesktop e treecore
+integrações65, check/clippyalltargets do workspace, builddesktop e árvore do core
 passaram. Quatro regressões novas incluem ZERO e falha real sem workspace.
 Três mutantes novos falharam (exit101) nas regressões pretendidas: remoção
 da pausa create; remoção da pausa open; helper ignorando deadline. A fonte
@@ -341,3 +341,23 @@ retry_waitSHAc0369b465c424fa1ab5ff16597ccf544495271d6ef91a84cff1abdf1a0082074.
 Esses testes observam pedidos de sono, não medem CPU ou FPS. Os320/40 deR3
 e o core completo1528 de89 continuam atribuídos aos seus heads. Nova execução
 Windows é necessária: a alteração deixou de ser somente documental.
+
+## Revisão final do código0f9d1ab no Windows
+
+Aprovado em c66887e49507d0ce7625718dee06226c108712cb, sem P0/P1/P2 de código.
+Windows: fmt/check/clippy/no-run/build e árvore do core passam; 58claims
+(48+6denied+4retry), integrações14/13/11/6/13, corefx25 e transições61.
+Corrida320/320 e exclusividade40/40 sequenciais, sem falha ou timeout, com
+binário do head. Uma execução inicial foi abortada por erro do runner e
+preservada separadamente; não é falha nem aprovação de produto.
+
+M1 (deadline), M2 (create) e M3 (open) falham nas regressões. M4, retirando
+drop/pausa da identidade, sobreviveu (58/58). As pausas de InvalidInput e
+identidade continuam cobertas por leitura, não por regressão discriminante.
+No lock InvalidInput o handle ainda fica aberto durante a pausa de até500us;
+não enfraquece exclusão. Estes itens e a amostra legada de erro estão no
+BL167.6.9, não bloqueante. Nada de produção foi alterado após a revisão.
+
+As provas Mac do código0f e do journal Unix continuam válidas nos heads
+registrados. O workspace global, CPU/FPS, ReFS/rede, mecanismo NTFS causal,
+janela/GPU e áudio permanecem sem prova.
