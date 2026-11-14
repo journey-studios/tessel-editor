@@ -260,8 +260,18 @@ impl EditorState {
         });
 
         let mut adjustments = Vec::new();
-        let fade_in = property_number(self, clip, "fade_in").round() as i64;
-        let fade_out = property_number(self, clip, "fade_out").round() as i64;
+        // Loaded visual fades may be fractional: match the renderer's unrounded opacity
+        // ramps. Only audio uses the mixer's whole-frame fade durations.
+        let fade = |property| {
+            let value = property_number(self, clip, property);
+            if entry.kind == ClipKind::Audio {
+                value.round()
+            } else {
+                value
+            }
+        };
+        let fade_in = fade("fade_in");
+        let fade_out = fade("fade_out");
         let unsupported = |reason: &'static str, message: String| {
             CommandError::new("split_unsupported", message)
                 .target(format!("clip:{}", entry.id))
@@ -272,9 +282,9 @@ impl EditorState {
         // The mixer shortens two fades that together outlast a sound, in proportion; a half is
         // shorter, so it would shorten them differently and the gain would move.
         if entry.kind == ClipKind::Audio
-            && fade_in > 0
-            && fade_out > 0
-            && fade_in + fade_out > entry.duration
+            && fade_in > 0.0
+            && fade_out > 0.0
+            && fade_in + fade_out > entry.duration as f64
         {
             return Err(unsupported(
                 "fades_longer_than_clip",
@@ -285,14 +295,14 @@ impl EditorState {
                 ),
             ));
         }
-        if fade_in > 0 && before < fade_in {
+        if fade_in > 0.0 && (before as f64) < fade_in {
             return Err(unsupported(
                 "fade_in_crosses_cut",
                 format!(
                     "The {fade_in}-frame fade-in of `{}` is still ramping at frame {frame}; \
                      two clips cannot share one ramp. Cut at {} or later, or shorten the fade",
                     entry.id,
-                    entry.start + fade_in
+                    entry.start + fade_in.ceil() as i64
                 ),
             ));
         }
@@ -300,26 +310,26 @@ impl EditorState {
         // fades by frame (`remaining / fade`, one at the ramp's start); a sound fades by sample,
         // where the last sample of a frame is one sample short of the next frame boundary.
         let slack = if entry.kind == ClipKind::Audio { 0 } else { 1 };
-        if fade_out > 0 && after + slack < fade_out {
+        if fade_out > 0.0 && ((after + slack) as f64) < fade_out {
             return Err(unsupported(
                 "fade_out_crosses_cut",
                 format!(
                     "The {fade_out}-frame fade-out of `{}` has already started at frame {frame}; \
                      two clips cannot share one ramp. Cut at {} or earlier, or shorten the fade",
                     entry.id,
-                    end - fade_out + slack
+                    end - fade_out.ceil() as i64 + slack
                 ),
             ));
         }
         // Each half keeps the ramp at its own outer edge; the inner edges are plain cuts.
-        if fade_out > 0 {
+        if fade_out > 0.0 {
             adjustments.push(Adjustment {
                 half: Half::Left,
                 property: "fade_out",
                 value: 0.0,
             });
         }
-        if fade_in > 0 {
+        if fade_in > 0.0 {
             adjustments.push(Adjustment {
                 half: Half::Right,
                 property: "fade_in",

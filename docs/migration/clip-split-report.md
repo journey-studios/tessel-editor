@@ -193,3 +193,25 @@ metadado novo persistido no clipe. A restrição audio_sample_grid foi removida 
 modelo; fades atravessando o corte seguem recusados. Contrato/evidências atuais:
 [continuidade de áudio](clip-split-audio-continuity-report.md). Os resultados do
 BL081 original acima não são prova automática dessa alteração.
+
+
+## Revisão de integração — PR #57 / BL081.13 (2026-11-14)
+
+OpenQodex encontrou um fade visual fracionário carregado pelo documento sendo
+arredondado pela guarda do corte, embora o renderer use o valor original. A
+regressão reproduziu a disponibilidade indevida antes da correção. A guarda
+agora conserva o valor visual, e só áudio segue o arredondamento do mixer.
+Fade-in 1,4 recusa corte no frame1; fade-out 2,4 recusa no47 de um clipe0..48.
+As recusas são atômicas e a disponibilidade compartilhada com a UI é coerente.
+Cortes fora da rampa preservam todos os planos; fade-in0,4 é zerado na borda
+interna. Um áudio com fade-in1,4 continua cortável no1 e conserva PCM bit a bit.
+
+Provas Mac no código corrigido: split23, audio_fades8, fase14; core completo1456
+passam,0falhas,7ignorados existentes; desktop split4. fmt/checkworkspacealltargets/
+clippyworkspacealltargets-Dwarnings/testworkspace--no-run/build desktop exit0.
+Evidências duráveis: `tessel-bl0815-coordination/mac/merge-review-gates/`,
+`fractional-visual-fades-before.log` (falha esperada) e `fractional-visual-fades-after.log`.
+Não se repetiu janela, Windows, desempenho ou execução completa do workspace para
+essa correção. As provas anteriores mantêm sua proveniência original.
+Integração autorizada na [PR #57](https://github.com/journey-studios/tessel-editor/pull/57),
+sem ampliar corte dentro de fade (BL081.2).

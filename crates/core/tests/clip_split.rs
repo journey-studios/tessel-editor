@@ -419,6 +419,67 @@ fn a_cut_inside_a_visual_fade_is_refused_and_leaves_everything_as_it_was() {
 }
 
 #[test]
+fn loaded_fractional_visual_fades_use_the_renderers_exact_boundaries() {
+    for (property, fade, refused, accepted) in [
+        ("fade_in", 1.4, Some(1), 2),
+        ("fade_out", 2.4, Some(47), 46),
+        ("fade_in", 0.4, None, 1),
+    ] {
+        let mut doc = project_24(&format!("fractional-{property}-{fade}")).to_document(None);
+        doc["clip_properties"]["c-title"]["fade_in"] = json!(0.0);
+        doc["clip_properties"]["c-title"]["fade_out"] = json!(0.0);
+        doc["clip_properties"]["c-title"][property] = json!(fade);
+        let mut state = EditorState::from_document(&doc, None).unwrap();
+        assert_eq!(number(&state, "c-title", property), fade);
+
+        if let Some(frame) = refused {
+            run(
+                &mut state,
+                json!({"op":"invoke","target":"clip:c-title","action":"select"}),
+            );
+            run(
+                &mut state,
+                json!({"op":"set","target":"timeline.playhead","field":"frame","value":frame}),
+            );
+            assert!(matches!(
+                state.split_availability(),
+                SplitAvailability::Blocked(_)
+            ));
+            let untouched = fingerprint(&state);
+            let error = fail(
+                &mut state,
+                json!({"op":"clip.split","clip":"c-title","frame":frame}),
+            );
+            assert_eq!(error.code, "split_unsupported");
+            assert_eq!(
+                error.details.as_ref().unwrap()["reason"],
+                format!("{property}_crosses_cut")
+            );
+            assert_eq!(fingerprint(&state), untouched);
+        }
+
+        let before = plans(&mut state);
+        split(&mut state, "c-title", accepted);
+        let inner = if property == "fade_in" {
+            "c-title-split-1"
+        } else {
+            "c-title"
+        };
+        assert_eq!(number(&state, inner, property), 0.0);
+        assert_same_picture(&before, &plans(&mut state));
+    }
+
+    // Sound keeps the mixer's rounded duration: a loaded 1.4-frame ramp ends at frame 1.
+    let mut doc = project_24("fractional-audio-control").to_document(None);
+    doc["clip_properties"]["c-tone"]["fade_in"] = json!(1.4);
+    doc["clip_properties"]["c-tone"]["fade_out"] = json!(0.0);
+    let mut state = EditorState::from_document(&doc, None).unwrap();
+    let before = mix(&state);
+    split(&mut state, "c-tone", 1);
+    assert_eq!(before.samples, mix(&state).samples);
+}
+
+#[test]
 fn audio_fades_cut_in_the_plateau_mix_the_same_sound() {
     let mut state = project_24("audio-fades");
     for (property, value) in [("fade_in", 12), ("fade_out", 24)] {

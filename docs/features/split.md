@@ -71,6 +71,8 @@ Nenhum erro altera clipe, propriedade, seleção, revisão, histórico ou consum
 
 Fade que cruza o corte não é aproximado: uma rampa não pode ser dividida em duas sem mudar o ganho. Imagem recusa fade-in se
 `frames_antes < fade_in` e fade-out se `frames_depois + 1 < fade_out`; áudio, fade-out se `frames_depois < fade_out`.
+Fades visuais carregados do documento conservam o valor fracionário nessas comparações,
+como no renderer; só os fades de áudio são arredondados a frames, como no mixer (BL081.13).
 Dois fades de áudio cuja soma excede o clipe (o mixer os encurta) são recusados.
 
 ### Áudio em grade fracionária (BL081.5 — validado Windows/Mac)
@@ -118,3 +120,13 @@ GPUI com clique simulado) e a prova na janela própria por `tessel-editor ui …
 
 Revisão Mac: uma recusa preserva também o gesto de slider aberto e seu histórico;
 a validação ocorre antes de liquidar o gesto. Evidências finais no relatório.
+
+Revisão da [PR #57](https://github.com/journey-studios/tessel-editor/pull/57), BL081.13:
+regressão de fade visual fracionário carregado pelo documento, recusa atômica e
+controle de disponibilidade compartilhado com a UI; cortes aceitos conservam todos
+os planos, e o controle de áudio mantém o PCM bit a bit. Validação dessa correção
+no Mac; não foi repetida janela nem execução Windows para esse ajuste.
+
+Gate Mac dessa correção: core completo **1456 passam, 0 falhas, 7 ignorados
+existentes**; split23/fades8/fase14 e desktop split4 passam. fmt, check de todos
+os targets, clippy, compilação de todos os testes e build desktop: exit0.
