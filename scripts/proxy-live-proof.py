@@ -32,6 +32,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import portable  # BL168.8: Windows socket, UTF-8, tools
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -72,9 +73,9 @@ class Variant:
         self.binary = binary
 
     def start(self):
-        env = {**os.environ, "HOME": self.home, **self.env}
         editor = video.Editor.__new__(video.Editor)
-        editor.socket_path = os.path.join(self.home, ".cache/tessel-editor/ui.sock")
+        editor.socket_path = portable.window_socket(self.home)
+        env = {**os.environ, "HOME": self.home, **portable.window_env(editor.socket_path), **self.env}
         editor.log_path = os.path.join(self.home, "editor.log")
         editor.log = open(editor.log_path, "w")
         editor.process = subprocess.Popen([self.binary], env=env, stdout=editor.log, stderr=editor.log, start_new_session=True)
@@ -250,7 +251,7 @@ def export(variant, destination, frames):
 
 
 def framemd5(path):
-    out = subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-i", path, "-map", "0:v:0", "-f", "framemd5", "-"], capture_output=True, text=True)
+    out = subprocess.run([portable.ffmpeg(), "-nostdin", "-v", "error", "-i", path, "-map", "0:v:0", "-f", "framemd5", "-"], capture_output=True, text=True)
     return [line.split(",")[-1].strip() for line in out.stdout.splitlines() if line and not line.startswith("#")]
 
 
@@ -259,7 +260,7 @@ def psnr(path, reference, frames, through_proxy=False):
     540-row proxy size and back, i.e. what an export drawn from the proxy would look like."""
     squeeze = "scale=960:540:flags=bicubic,scale=1920:1080:flags=bicubic," if through_proxy else ""
     out = subprocess.run(
-        ["ffmpeg", "-nostdin", "-i", path, "-i", reference, "-frames:v", str(frames),
+        [portable.ffmpeg(), "-nostdin", "-i", path, "-i", reference, "-frames:v", str(frames),
          "-lavfi", f"[0:v]format=yuv420p[a];[1:v]{squeeze}format=yuv420p[b];[a][b]psnr", "-f", "null", "-"],
         capture_output=True, text=True)
     for line in out.stderr.splitlines():
@@ -277,10 +278,11 @@ def main():
     parser.add_argument("--keep", action="store_true")
     parser.add_argument("--only", help="comma separated variant names (and `pixel`); default all")
     args = parser.parse_args()
+    args.binary = portable.executable(args.binary)
     if not os.path.exists(args.binary):
         print(f"missing {args.binary}; run ./scripts/cargo build --release --locked")
         return 2
-    work = tempfile.mkdtemp(prefix="tpp-", dir="/tmp")
+    work = tempfile.mkdtemp(prefix="tpp-", dir=portable.TEMP)
     length = 240
     clip = os.path.join(work, "h264-1080.mp4")
     check("fixture h264 1080p", video.clip(clip, 1920, 1080, length, video.H264))
@@ -382,7 +384,7 @@ def main():
             # no proxy at all, so an identical export cannot have been drawn from one.
             report["export"] = {"psnr_auto_vs_source": psnr_auto, "psnr_original_policy_vs_source": psnr_original,
                                 "frames": len(hashes_auto), "identical_to_original_policy": hashes_original == hashes_auto}
-            probe = json.loads(subprocess.run(["ffprobe", "-v", "error", "-show_streams", "-of", "json", exports["auto"]], capture_output=True, text=True).stdout)
+            probe = json.loads(subprocess.run([portable.ffprobe(), "-v", "error", "-show_streams", "-of", "json", exports["auto"]], capture_output=True, text=True).stdout)
             video_stream = next((s for s in probe.get("streams", []) if s["codec_type"] == "video"), {})
             check("export: 1920x1080 at 24 fps", (video_stream.get("width"), video_stream.get("height"), video_stream.get("r_frame_rate")) == (1920, 1080, "24/1"), video_stream)
 

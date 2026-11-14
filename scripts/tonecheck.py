@@ -8,13 +8,15 @@ import math
 import struct
 import subprocess
 
+import portable
+
 RATE = 48000
 
 
 def tone_level(path, start, duration, freq):
     """RMS amplitude (0..1) of `freq` Hz in `[start, start + duration)` seconds of the file's audio."""
     raw = subprocess.run(
-        ["ffmpeg", "-loglevel", "error", "-ss", str(start), "-t", str(duration), "-i", path,
+        [portable.ffmpeg(), "-loglevel", "error", "-ss", str(start), "-t", str(duration), "-i", path,
          "-vn", "-ac", "1", "-ar", str(RATE), "-f", "s16le", "-"],
         capture_output=True, check=True).stdout
     count = len(raw) // 2

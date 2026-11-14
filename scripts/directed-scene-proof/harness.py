@@ -4,23 +4,25 @@ Nothing here knows a rule of the editor. It sends requests, compares answers wit
 (written by `corpus.py` from the independent model) and says what was and was not proven.
 """
 import contextlib
-import fcntl
 import hashlib
 import json
 import os
 import pathlib
+import queue
 import select
 import shutil
-import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import portable  # noqa: E402  (BL168.8: Windows socket, UTF-8, tools)
 
 HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
 CORPUS = HERE / "corpus"
-GPU_LOCK_PATH = "/tmp/tessel-scene-gpu.lock"
+GPU_LOCK_PATH = portable.temp_path("tessel-scene-gpu.lock")
 MIN_FREE_GIB = 6
 WORK_BUDGET_BYTES = 2 * 1024 ** 3
 
@@ -126,7 +128,7 @@ def newest_source_mtime():
 def binary_info(path):
     """Identity of a binary under test, so a result can never be detached from what produced it.
     `older_than_sources` warns that the binary may predate the current checkout; it does not fail."""
-    path = pathlib.Path(path)
+    path = pathlib.Path(portable.executable(path))
     if not path.is_file():
         return {"path": str(path), "present": False}
     stat = path.stat()
@@ -142,9 +144,9 @@ def git_state():
             "dirty_files": len([line for line in run("status", "--porcelain").splitlines() if line])}
 
 
-def free_gib(path="/tmp"):
-    stat = os.statvfs(path)
-    return stat.f_bavail * stat.f_frsize / 1024 ** 3
+def free_gib(path=portable.TEMP):
+    # f_bavail x f_frsize on Unix (statvfs), the same on Windows, which has no statvfs (BL168.8).
+    return shutil.disk_usage(path).free / 1024 ** 3
 
 
 def tree_bytes(path):
@@ -163,7 +165,7 @@ class Workspace:
         if free_gib() < MIN_FREE_GIB:
             raise SystemExit(f"refusing to start: {free_gib():.1f} GiB free under /tmp, need {MIN_FREE_GIB}")
         self.keep = keep
-        self.path = pathlib.Path(base) if base else pathlib.Path(tempfile.mkdtemp(prefix="tsp-", dir="/tmp"))
+        self.path = pathlib.Path(base) if base else pathlib.Path(tempfile.mkdtemp(prefix="tsp-", dir=portable.TEMP))
         self.path.mkdir(parents=True, exist_ok=True)
 
     def sub(self, name):
@@ -190,7 +192,7 @@ def acquire_gpu_lock():
         return
     handle = open(GPU_LOCK_PATH, "a")
     print(f"waiting for {GPU_LOCK_PATH} ...", flush=True)
-    fcntl.flock(handle, fcntl.LOCK_EX)
+    portable.lock_file(handle)
     print("holding the GPU bench lock", flush=True)
     _gpu_lock_handle = handle
 
@@ -203,13 +205,39 @@ class JsonlSession:
         self.timeout = timeout
         self.stderr = tempfile.TemporaryFile(mode="w+b")
         try:
-            self.process = subprocess.Popen([str(binary), *args], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            self.process = subprocess.Popen([portable.executable(binary), *args], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                             stderr=self.stderr, env=env, cwd=cwd)
         except BaseException:
             self.stderr.close()
             raise
         self.pending = bytearray()
-        os.set_blocking(self.process.stdout.fileno(), False)
+        if portable.WINDOWS:
+            # No select() on pipes there: a reader thread feeds a queue that is waited on with the deadline.
+            self.chunks = queue.Queue()
+            threading.Thread(target=self._pump, daemon=True).start()
+        else:
+            os.set_blocking(self.process.stdout.fileno(), False)
+
+    def _pump(self):
+        while True:
+            try:
+                chunk = os.read(self.process.stdout.fileno(), 65536)
+            except OSError:
+                chunk = b""
+            self.chunks.put(chunk)
+            if not chunk:
+                return
+
+    def _read(self, remaining):
+        """The next chunk of output (`b""` at its end), or `None` when none came within `remaining` s."""
+        if portable.WINDOWS:
+            try:
+                return self.chunks.get(timeout=remaining)
+            except queue.Empty:
+                return None
+        if not select.select([self.process.stdout], [], [], remaining)[0]:
+            return None
+        return os.read(self.process.stdout.fileno(), 65536)
 
     def __call__(self, request):
         """One bounded response; stderr is drained by the OS to a file, including during decode."""
@@ -218,11 +246,11 @@ class JsonlSession:
         deadline = time.monotonic() + self.timeout
         while b"\n" not in self.pending:
             remaining = deadline - time.monotonic()
-            if remaining <= 0 or not select.select([self.process.stdout], [], [], remaining)[0]:
+            chunk = self._read(remaining) if remaining > 0 else None
+            if chunk is None:
                 self.process.kill()
                 self.process.wait(timeout=5)
                 raise Abort(f"timeout waiting for {request.get('op')} after {self.timeout}s")
-            chunk = os.read(self.process.stdout.fileno(), 65536)
             if not chunk:
                 self.stderr.seek(0, os.SEEK_END)
                 self.stderr.seek(max(0, self.stderr.tell() - 1200))
@@ -252,18 +280,18 @@ class EditorLab:
 
     def __init__(self, binary, home):
         self.home = str(home)
-        self.socket_path = os.path.join(self.home, ".cache/tessel-editor/ui.sock")
+        self.socket_path = portable.window_socket(self.home)
         if len(self.socket_path) > 100:
             raise SystemExit("socket path too long for a unix socket; use a shorter --work")
         self.log_path = os.path.join(self.home, "editor.log")
         self.log = open(self.log_path, "w")
-        env = {**os.environ, "HOME": self.home}
-        self.process = subprocess.Popen([str(binary)], env=env, stdout=self.log, stderr=self.log, start_new_session=True)
+        # TESSEL_VIEWPORT_INSPECT=1: the monitor reads its pictures back, so `last_frame.hash` exists and
+        # can be compared with an explicit render (without it the monitor skips that readback; docs/ui-automation.md).
+        env = {**os.environ, "HOME": self.home, "TESSEL_VIEWPORT_INSPECT": "1", **portable.window_env(self.socket_path)}
+        self.process = subprocess.Popen([portable.executable(binary)], env=env, stdout=self.log, stderr=self.log, start_new_session=True)
 
     def send(self, request, timeout=60):
-        with socket.socket(socket.AF_UNIX) as conn:
-            conn.settimeout(timeout)
-            conn.connect(self.socket_path)
+        with portable.connect_ui(self.socket_path, timeout) as conn:
             conn.sendall((json.dumps({"version": 1, **request}) + "\n").encode())
             data = b""
             while not data.endswith(b"\n"):
@@ -290,11 +318,14 @@ class EditorLab:
         raise RuntimeError("the editor's viewport never became ready")
 
     def stop(self):
-        self.process.terminate()
-        try:
-            self.process.wait(10)
-        except subprocess.TimeoutExpired:
-            self.process.kill()
+        if portable.WINDOWS:
+            portable.kill_tree(self.process)  # terminate() is a kill there: the WebView2 helpers go with it
+        else:
+            self.process.terminate()
+            try:
+                self.process.wait(10)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
         self.log.close()
 
 

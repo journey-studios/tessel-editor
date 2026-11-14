@@ -34,14 +34,13 @@ Exit 0: every run valid, every pixel check passed; 1: a failed check or an inval
 the locks / the disk reserve could not be had.
 """
 import argparse
-import fcntl
+import hashlib
 import json
 import math
 import os
 import pathlib
 import random
 import shutil
-import socket
 import statistics
 import struct
 import subprocess
@@ -49,6 +48,7 @@ import sys
 import tempfile
 import threading
 import time
+import portable  # BL168.8: Windows socket, UTF-8, tools
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from ab import ROOT, load_module  # noqa: E402
@@ -58,7 +58,7 @@ FPS = 24
 PERIOD_MS = 1000.0 / FPS
 # An interval above a frame and a half is a visible hitch at 24 fps; it is the threshold of the 60 ms acceptance.
 SLOW_MS = 1.5 * PERIOD_MS
-LOCK_PATHS = ("/tmp/tessel-scene-gpu.lock", "/tmp/tessel-video-bl140-bl144-review-gpu.lock")
+LOCK_PATHS = (portable.temp_path("tessel-scene-gpu.lock"), portable.temp_path("tessel-video-bl140-bl144-review-gpu.lock"))
 MIN_FREE_GIB = 16
 POLL_SECONDS = 4.0
 # Frames after a cut in which its first picture may appear (a cut frame the clock skipped is shown a few later).
@@ -222,7 +222,7 @@ def acquire_locks(wait_seconds, paths=LOCK_PATHS, sleep=time.sleep, now=time.mon
         handle = open(path, "a")
         while True:
             try:
-                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                portable.lock_file(handle, blocking=False)
                 handles.append(handle)
                 break
             except OSError:
@@ -235,25 +235,20 @@ def acquire_locks(wait_seconds, paths=LOCK_PATHS, sleep=time.sleep, now=time.mon
     return handles
 
 
-def free_gib(path="/tmp"):
+def free_gib(path=portable.TEMP):
     usage = shutil.disk_usage(path)
     return usage.free / 1024 ** 3
 
 
 def webkit_rss():
     """{pid: rss KiB} of every WebKit helper process on the machine."""
-    out = subprocess.run(["ps", "-axo", "pid=,rss=,command="], capture_output=True, text=True).stdout
-    found = {}
-    for line in out.splitlines():
-        parts = line.split(None, 2)
-        if len(parts) == 3 and "com.apple.WebKit." in parts[2] and parts[0].isdigit() and parts[1].isdigit():
-            found[int(parts[0])] = int(parts[1])
-    return found
+    # On Windows the WebView's helpers are `msedgewebview2.exe`.
+    return {row["pid"]: row["rss_kib"] for row in portable.processes()
+            if "com.apple.WebKit." in row["command"] or row["name"].lower() == "msedgewebview2.exe"}
 
 
 def process_rss(pid):
-    out = subprocess.run(["ps", "-o", "rss=", "-p", str(pid)], capture_output=True, text=True).stdout.strip()
-    return int(out) if out.isdigit() else 0
+    return portable.rss_kib(pid) or 0
 
 
 class MemorySampler:
@@ -300,18 +295,16 @@ class Lab:
     def __init__(self, binary, work, env):
         self.home = os.path.join(work, "h")
         os.makedirs(self.home)
-        self.socket_path = os.path.join(self.home, ".cache/tessel-editor/ui.sock")
+        self.socket_path = portable.window_socket(self.home)
         if len(self.socket_path) > 100:
             raise SystemExit("socket path too long for a unix socket; use a shorter TMPDIR")
         self.log_path = os.path.join(self.home, "editor.log")
         self.log = open(self.log_path, "w")
-        self.process = subprocess.Popen([binary], env=lab_environment(os.environ, self.home, env), stdout=self.log, stderr=self.log,
+        self.process = subprocess.Popen([binary], env={**lab_environment(os.environ, self.home, env), **portable.window_env(self.socket_path)}, stdout=self.log, stderr=self.log,
                                         start_new_session=True)
 
     def send(self, request, timeout=60):
-        with socket.socket(socket.AF_UNIX) as conn:
-            conn.settimeout(timeout)
-            conn.connect(self.socket_path)
+        with portable.connect_ui(self.socket_path, timeout) as conn:
             conn.sendall((json.dumps({"version": 1, **request}) + "\n").encode())
             data = b""
             while not data.endswith(b"\n"):
@@ -463,7 +456,7 @@ def private_copy(document, destination):
     for entry in sorted(os.listdir(folder)):
         if entry in (os.path.basename(source), ".tessel"):
             continue
-        os.symlink(os.path.join(folder, entry), os.path.join(destination, entry))
+        portable.link(os.path.join(folder, entry), os.path.join(destination, entry))
     return copied
 
 
@@ -490,8 +483,8 @@ def open_project(lab, document, work):
 # ------------------------------------------------------------------------------------------------- timing
 def timing_run(binary, document, arm, cuts, work, total_frames):
     """One fresh editor plays the project once. Returns the run record (summary + raw per-run facts)."""
-    load = os.getloadavg()
-    run = {"arm": arm, "loadavg_start": [round(v, 2) for v in load], "free_gib_start": round(free_gib(), 1)}
+    load = portable.loadavg()
+    run = {"arm": arm, "loadavg_start": [round(v, 2) for v in load] if load else None, "free_gib_start": round(free_gib(), 1)}
     baseline = webkit_rss().keys()
     lab = Lab(binary, work, env_for(arm, False))
     sampler = None
@@ -659,7 +652,7 @@ def main():
     parser.add_argument("--skip-timing", action="store_true")
     parser.add_argument("--keep", action="store_true")
     args = parser.parse_args()
-    binary = pathlib.Path(args.binary).resolve()
+    binary = pathlib.Path(portable.executable(args.binary)).resolve()
     for needed in (binary, ROOT / "runtime" / "dist" / "runtime.js"):
         if not needed.exists():
             print(f"missing prerequisite: {needed}")
@@ -674,14 +667,14 @@ def main():
     if locks is None:
         print(f"BLOCKED: the GPU bench locks were not free within {args.lock_wait:.0f} s")
         return 2
-    work = tempfile.mkdtemp(prefix="tw-", dir="/tmp")
+    work = tempfile.mkdtemp(prefix="tw-", dir=portable.TEMP)
     sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True).stdout.strip()
     report = {"git": sha, "binary": str(binary), "args": vars(args), "runs": [], "pixels": [], "checks": checks}
     try:
-        digest = subprocess.run(["shasum", "-a", "256", str(binary)], capture_output=True, text=True).stdout.split()[0]
+        # hashlib, not `shasum` (Perl, absent on Windows; BL168.8): the same SHA-256.
+        digest = hashlib.sha256(pathlib.Path(binary).read_bytes()).hexdigest()
         report["binary_sha256"] = digest
-        report["runtime_dist_sha256"] = subprocess.run(["shasum", "-a", "256", str(ROOT / "runtime" / "dist" / "runtime.js")],
-                                                       capture_output=True, text=True).stdout.split()[0]
+        report["runtime_dist_sha256"] = hashlib.sha256((ROOT / "runtime" / "dist" / "runtime.js").read_bytes()).hexdigest()
         print(f"build {sha[:9]} binary sha256 {digest[:12]}", flush=True)
         cuts = [index * args.cut_frames for index in range(args.cuts)]
         document = build_project(str(binary), os.path.join(work, "build"), args.splats, args.cuts, args.cut_frames)

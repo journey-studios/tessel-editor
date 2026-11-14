@@ -148,6 +148,38 @@ Evidence (temporary fixture, outside the editor repository):
 The only commit created for validation was in that temporary fixture; the editor
 was not committed or pushed. Its worktrees were created solely to exercise caching.
 
+## Windows — 2026-11-14 (BL168.7)
+
+The cache works on Windows; the "0 hits" seen earlier came from incremental builds,
+where only the workspace crates rebuild and mbx builds those incrementally on purpose
+(`learned_incremental`), so there is nothing to look up. A build from scratch is the
+real measure.
+
+One Windows-only defect did defeat it: on a Windows whose Visual Studio tools are not
+in English, `cl.exe` (run by the `cc` crate for `vswhom-sys`) prints its warnings in
+the console code page (850/1252), not UTF-8. mbx then logs `build-script result was not
+stored: build-script stdout is not UTF-8` and bypasses the cache for every crate built
+on it. `VSLANG=1033` does not help when only the local language pack is installed.
+`scripts/mbx` now switches the console to UTF-8 (`chcp.com 65001`) for the build and
+restores the previous code page when it ends, including on Ctrl+C; without `chcp.com`
+(macOS, Linux) nothing changes.
+
+Measured with `check -p tessel-editor` into a fresh `TESSEL_CARGO_LANE`, on Windows 11:
+
+| Run | Hits | Misses | Bypassed | Time |
+|---|---|---|---|---|
+| Before the fix | 65 | 486 | 7 | 76 s |
+| First after the fix (old records were written under code page 850, and the linker's version text is part of the key) | 422 | 185 | 6 | 31 s |
+| Steady state | 601 | 9 | 0 | 21 s |
+
+Still warned by `mbx doctor`, on purpose: the store is on `C:` and the main checkout on
+another volume, so a restore into that checkout copies instead of hard-linking. The T3
+worktrees live on `C:` and do link; moving `cache_dir` would turn that around. Neither
+`ar` nor `llvm-ar` is installed, so archive determinism is not probed; no bypass in the
+runs above came from it. `scripts/cargo` still needs Git's `sh`. From PowerShell, `sh` is not on
+`PATH` and `bash` is WSL's (`C:\Windows\System32\bash.exe`), so call Git's shell by its
+path: `& "$env:ProgramFiles\Git\bin\sh.exe" ./scripts/cargo …` (checked), or use Git Bash.
+
 ## Official references
 
 - [Setup](https://mr-boxington.jdx.dev/setup)

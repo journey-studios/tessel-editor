@@ -64,3 +64,38 @@ diretório chamado `ffmpeg.exe` é rejeitado.
 
 `TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test --workspace --locked` transforma "runtime ausente" em
 falha em vez de pular os testes que dependem de Node/Chrome/FFmpeg.
+
+## Provas Python no Windows (BL168.8)
+
+As provas `scripts/*-proof.py` precisam de Python 3 (só biblioteca padrão); nesta máquina, Python 3.13 instalado com
+`winget install --id Python.Python.3.13 -e --scope user`. Rode com `py scripts/<prova>.py …` (ou o `python.exe` instalado),
+não com o `python` da Microsoft Store. Os scripts `sh` do repositório (`scripts/fixtures`, `scripts/cargo`) rodam pelo `sh`
+do Git (no PowerShell: `& "$env:ProgramFiles\Git\bin\sh.exe" ./scripts/fixtures <pasta>`).
+
+O que `scripts/portable.py` e `scripts/proof_surface.py` resolvem para as provas, sem mudar nada no macOS/Linux:
+
+- **Texto em UTF-8.** O Python do Windows lê texto em cp1252 fora do modo UTF-8; o script se reexecuta com `-X utf8`.
+- **Socket da janela.** O Python do Windows não tem `socket.AF_UNIX`; `portable.connect_ui` abre o `AF_UNIX` nativo pelo
+  Winsock (`ctypes`). A janela de uma prova tem socket próprio via `TESSEL_UI_SOCKET` (caminho absoluto, até 107 bytes), e
+  nunca se fala com uma janela que você tenha aberta.
+- **FFmpeg/ffprobe** achados como o editor acha (`TESSEL_*`, `PATH`, pacote WinGet), não pelo nome no `PATH`.
+- **Processos e pastas.** A janela é encerrada com a árvore (`taskkill /T`, inclusive o WebView2); pastas de trabalho em
+  caminho longo passam de 260 caracteres dentro do projeto, então use a pasta padrão da prova (em `%TEMP%`) ou uma curta.
+- **Captura nativa** da janela por `PrintWindow`: observação, sem clique.
+
+- **Unix sem equivalente:** `/tmp` vira `portable.TEMP` (no Unix continua `/tmp`), `ps` vira `portable.processes()`/`rss_kib()`
+  (no Windows os ajudantes do WebView são `msedgewebview2.exe`), `fcntl.flock` vira `portable.lock_file()` (`msvcrt`),
+  `os.killpg` vira `portable.kill_group()`, symlink vira junção (`portable.link`, sem privilégio), `os.statvfs` vira
+  `shutil.disk_usage`, `os.getloadavg` vira `portable.loadavg()` (`None` no Windows) e o uso da GPU do `ioreg` fica
+  desconhecido.
+- **Provas que esperam um editor aberto** (`seek-scrub-proof.py`, `live-proof.py`): abra o editor com `TESSEL_UI_SOCKET`
+  e passe o mesmo caminho (`--socket` ou a variável) à prova.
+
+Executadas no Windows 11 (janela real, build debug, GPU AMD): `live-flow-proof.py` 116/116, `accented-titles-proof.py`
+14/14 + 28/28, `grading-proof.py` 4/4 + 20/20, `video-live-proof.py` 25/25, `viewport-lifecycle-proof.py` 151/151,
+`scene-lifecycle-proof.py` 221/221, `seek-scrub-proof.py`, `point-light-ui-proof.py` 28/28, `scene-edit-proof.py`,
+`proxy-live-proof.py` 32/32, `live-proof.py` 57/57, `directed-scene-proof/proof.py` (todas as fases executáveis) e
+`directed-scene-export-proof/proof.py` (22 de 23 fases; a da janela espera a recusa antiga de `audio=yes`, ver
+[scene-export-audio](features/scene-export-audio.md)). As de
+desempenho (`perf-meter`, `scene-warm`, `preview-quality`, `measure-render`) rodam, mas sem o lock de GPU nenhum número
+delas é aceito; `gizmo-perf/native.py` e `viewport-validation/run-live.py` foram portadas e não executadas (ver BL168.8).

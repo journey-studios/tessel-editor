@@ -248,7 +248,7 @@ def run_scene_flow(p, op, reopen, workspace, label):
 
 # ---------------------------------------------------------------------------------- phases
 def require_binary(ctx, key, hint):
-    path = ctx.bins[key]
+    path = ctx.bins[key] = h.portable.executable(ctx.bins[key])  # `.exe` on Windows (BL168.8)
     if not pathlib.Path(path).is_file():
         raise Blocked(f"binary not built: {path}", f"build it with the coordinator's serialized helper, e.g. {hint}", "BL019")
     ctx.binaries[key] = h.binary_info(path)
@@ -526,7 +526,11 @@ def phase_socket_render(ctx, p):
         if (status.get("last_frame") or {}).get("hash") == expected_hash and (status.get("last_frame") or {}).get("request", 0) > baseline:
             break
         time.sleep(0.03)
-    p.check("interactive scene monitor converges to a new frame with the explicit reference pixels", (status.get("last_frame") or {}).get("hash") == expected_hash and (status.get("last_frame") or {}).get("request", 0) > baseline)
+    last = status.get("last_frame") or {}
+    p.check("interactive scene monitor converges to a new frame with the explicit reference pixels",
+            last.get("hash") == expected_hash and last.get("request", 0) > baseline,
+            {"expected_hash": expected_hash, "baseline_request": baseline,
+             "last_frame": {key: last.get(key) for key in ("hash", "request", "width", "height", "inspected")}})
 
 
 def phase_ui_semantic(ctx, p):

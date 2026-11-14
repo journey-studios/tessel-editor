@@ -81,7 +81,7 @@ import zlib
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from proof_surface import Headless, MIN_FREE_GIB, Native, ProofFailure, free_gib, run_surface  # noqa: E402
+from proof_surface import Headless, MIN_FREE_GIB, Native, ProofFailure, free_gib, run_surface, script_command  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 FRAME = (320, 180)
@@ -843,7 +843,7 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     fixtures = out / 'fixtures'
     try:
-        subprocess.run([str(ROOT / 'scripts/fixtures'), str(fixtures)], check=True, capture_output=True, timeout=300)
+        subprocess.run(script_command(ROOT / 'scripts/fixtures', fixtures), check=True, capture_output=True, timeout=300)
         variants = write_variants(fixtures)
     except (subprocess.SubprocessError, OSError) as error:
         sys.exit(f'cannot write the fixtures: {error}')
