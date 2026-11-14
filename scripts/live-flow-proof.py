@@ -5,6 +5,10 @@
     ./scripts/cargo build -p tessel-editor --locked
     python3 scripts/live-flow-proof.py /tmp/tessel-proof [--work DIR] [--report FILE] [--uhd]
 
+On Windows (BL168.8) the same command runs with `py` and any fixture folder; the window gets its own socket in the
+work folder (`TESSEL_UI_SOCKET`), so a window the user has open is never driven, and FFmpeg is found like the
+editor finds it (`scripts/portable.py`).
+
 It launches `target/debug/tessel-editor` itself (and kills it for the crash step), then:
 
   create project -> import (dialog) mp4 + png + ply + wav -> timeline with splat scene, text,
@@ -20,26 +24,25 @@ refreshes its report, `dialog.submit` runs the operation, `jobs` reports the bac
 import json
 import os
 import shutil
-import signal
-import socket
 import subprocess
 import sys
+import tempfile
 import time
 import zipfile
 
+import portable
 import tonecheck
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SOCKET = os.path.expanduser("~/.cache/tessel-editor/ui.sock")
+SOCKET = portable.ui_socket_path()
+EDITOR_ENV = dict(os.environ)
 # TESSEL_EDITOR_BIN lets a run use a copy of the binary: the shared `target/` is garbage-collected by the cargo wrapper when disk is short.
 BINARY = os.environ.get("TESSEL_EDITOR_BIN", os.path.join(ROOT, "target/debug/tessel-editor"))
 FAILED = []
 
 
 def send(request, timeout=90):
-    with socket.socket(socket.AF_UNIX) as conn:
-        conn.settimeout(timeout)
-        conn.connect(SOCKET)
+    with portable.connect_ui(SOCKET, timeout) as conn:
         conn.sendall((json.dumps(request) + "\n").encode())
         data = b""
         while not data.endswith(b"\n"):
@@ -80,7 +83,8 @@ LAUNCHED = []
 
 
 def launch():
-    process = subprocess.Popen([BINARY], stdout=open("/tmp/tessel-flow-editor.log", "w"), stderr=subprocess.STDOUT)
+    log = open(os.path.join(portable.TEMP, "tessel-flow-editor.log"), "w")
+    process = subprocess.Popen([BINARY], stdout=log, stderr=subprocess.STDOUT, env=EDITOR_ENV)
     for _ in range(150):
         if os.path.exists(SOCKET):
             try:
@@ -121,7 +125,7 @@ def fill(fields):
 
 def ffprobe(path):
     out = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_streams", "-show_format", "-of", "json", path],
+        [portable.ffprobe(), "-v", "error", "-show_streams", "-show_format", "-of", "json", path],
         capture_output=True, text=True, check=True,
     ).stdout
     return json.loads(out)
@@ -148,12 +152,27 @@ def alive(pid):
     return subprocess.run(["ps", "-p", str(pid)], capture_output=True).returncode == 0
 
 
+def submit_export():
+    """Submits the export dialog. The submit never retries by itself (BL144.19): a `renderer_busy`
+    refusal (the renderer still finishing the dialog's own preflight or a frame) is the person's to
+    repeat, so the proof clicks again, a bounded number of times, and says how many it took."""
+    submitted, repeats = invoke("dialog.submit"), 0
+    while not submitted["ok"] and (submitted.get("error") or {}).get("code") == "renderer_busy" and repeats < 30:
+        repeats += 1
+        time.sleep(1)
+        submitted = invoke("dialog.submit")
+    return submitted, repeats
+
+
 def verified(timeout=60):
     """`dialog.verify` starts a preflight/verification *job* (nothing blocks the window); the dialog's
     report fills in when the job finishes. Returns `(report, error)` once it has."""
     def finished():
         state = get("dialog")["data"]["state"]
-        if state.get("verifying"):
+        # A renderer still busy with the previous frame or probe makes the dialog ask again by itself
+        # for about ten seconds, showing WAITING_FOR_RENDERER (crates/desktop/src/workstation/flows.rs,
+        # BL144.19): that is not its answer yet.
+        if state.get("verifying") or str(state.get("report") or "").startswith("Aguardando o renderer"):
             return None
         return (state.get("report"), state.get("error"))
     return settle(finished, timeout) or (None, "the dialog report never arrived")
@@ -277,16 +296,22 @@ def main():
         print(__doc__)
         return 2
     fixtures = args[0]
-    work = args[args.index("--work") + 1] if "--work" in args else "/tmp/tessel-flow-proof"
+    work = args[args.index("--work") + 1] if "--work" in args else os.path.join(portable.TEMP, "tessel-flow-proof")
     report_path = args[args.index("--report") + 1] if "--report" in args else None
-    shutil.rmtree(work, ignore_errors=True)
-    os.makedirs(work)
+    portable.fresh_dir(work)
+    if portable.WINDOWS:
+        # The default socket is per user: a window the user has open would answer it. This run's
+        # window gets its own (crates/desktop/src/automation/mod.rs, `TESSEL_UI_SOCKET`).
+        global SOCKET
+        # A short folder of its own: an AF_UNIX path holds at most 107 bytes, which a deep work folder exceeds.
+        SOCKET = os.path.join(tempfile.mkdtemp(prefix="tessel-ui-"), "ui.sock")
+        EDITOR_ENV["TESSEL_UI_SOCKET"] = SOCKET
     originals = os.path.join(work, "originals")
     os.makedirs(originals)
     for name in ("quadrants.png", "cloud.ply", "cloud.splat", "cloud.spz", "tone-440.wav"):
         shutil.copy(os.path.join(fixtures, name), originals)
     subprocess.run(
-        ["ffmpeg", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=duration=2:size=320x180:rate=24",
+        [portable.ffmpeg(), "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=duration=2:size=320x180:rate=24",
          "-f", "lavfi", "-i", "sine=frequency=330:duration=2", "-c:v", "libx264", "-pix_fmt", "yuv420p",
          "-c:a", "aac", "-shortest", os.path.join(originals, "clip.mp4")], check=True)
     metrics = {}
@@ -294,9 +319,8 @@ def main():
     try:
         flow(work, originals, metrics, fixtures, "--uhd" in args)
     finally:
-        process.kill()
-        if os.path.exists(SOCKET):
-            pass
+        for launched in LAUNCHED:
+            portable.kill_tree(launched)
     if report_path:
         with open(report_path, "w") as handle:
             json.dump(metrics, handle, indent=2)
@@ -390,7 +414,7 @@ def flow(work, originals, metrics, fixtures, uhd):
         bad = archive.testzip()
         names = archive.namelist()
     check("python zipfile reads the package and every CRC passes", bad is None and any(n.endswith("manifest.json") for n in names), f"{bad} {names[:6]}")
-    check("an external unzip agrees", subprocess.run(["unzip", "-tq", package], capture_output=True).returncode == 0)
+    check("an external unzip agrees", subprocess.run(portable.zip_test_command(package), capture_output=True).returncode == 0)
     metrics["package_bytes"] = os.path.getsize(package)
 
     # ---- originals disappear; restore elsewhere ----
@@ -448,7 +472,9 @@ def flow(work, originals, metrics, fixtures, uhd):
         report, report_error = verified()
         check(f"{preset}: preflight shows a ready report", verify["ok"] and report and "Pronto" in report, str((report, report_error)))
         started = time.time()
-        check(f"{preset}: export starts", invoke("dialog.submit")["ok"])
+        submitted, repeats = submit_export()
+        metrics.setdefault("export_submit_repeats", {})[preset] = repeats
+        check(f"{preset}: export starts", submitted["ok"], str(submitted)[:400])
         wait_applied(base + index, timeout=900)
         metrics[f"export_{preset}_seconds"] = round(time.time() - started, 1)
         probe = ffprobe(destination)
@@ -473,7 +499,9 @@ def flow(work, originals, metrics, fixtures, uhd):
     invoke("node:16")
     cancel_target = os.path.join(out, "cancel.mp4")
     fill({"preset": "uhd4k", "destination": cancel_target})
-    invoke("dialog.submit")
+    submitted, repeats = submit_export()
+    metrics.setdefault("export_submit_repeats", {})["uhd4k-cancel"] = repeats
+    check("the 4K export to cancel starts", submitted["ok"], str(submitted)[:400])
     running = None
     end = time.time() + 120
     while time.time() < end:
@@ -508,8 +536,7 @@ def flow(work, originals, metrics, fixtures, uhd):
     listing = op({"op": "project.recover", "path": document, "apply": False})
     check("autosave wrote a recovery revision on its own", listing["ok"] and len(listing["data"].get("revisions", listing["data"].get("recoveries", []))) >= 1, str(listing)[:300])
     crashed = LAUNCHED[-1]
-    os.kill(crashed.pid, signal.SIGKILL)
-    crashed.wait(timeout=10)
+    portable.kill_tree(crashed)  # SIGKILL on Unix; TerminateProcess of the tree on Windows
     time.sleep(1)
     relaunched = launch()
     try:
@@ -525,7 +552,7 @@ def flow(work, originals, metrics, fixtures, uhd):
         check("a recovered project is dirty: it was never saved", persistence["dirty"] is True, str(persistence))
         check("and still editable", op({"op": "track.add", "id": "after-crash", "kind": "audio", "name": "After"})["ok"])
     finally:
-        relaunched.kill()
+        portable.kill_tree(relaunched)
 
 
 if __name__ == "__main__":

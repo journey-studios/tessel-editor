@@ -20,23 +20,27 @@ pointer, nor the overlay painted by WKWebView, nor performance.
 """
 import json
 import os
-import socket
 import subprocess
 import sys
+import tempfile
 import time
+import portable  # BL168.8: Windows socket, UTF-8, tools
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SOCKET = os.path.expanduser("~/.cache/tessel-editor/ui.sock")
-BINARY = os.environ.get("TESSEL_EDITOR_BIN", os.path.join(ROOT, "target/debug/tessel-editor"))
+SOCKET = portable.ui_socket_path()
+BINARY = portable.executable(os.environ.get("TESSEL_EDITOR_BIN", os.path.join(ROOT, "target/debug/tessel-editor")))
+EDITOR_ENV = dict(os.environ)
+if portable.WINDOWS:
+    # Its own socket: a window the user has open on the default one is never driven (BL168.8).
+    SOCKET = portable.window_socket(tempfile.mkdtemp(prefix="tessel-light-"))
+    EDITOR_ENV.update(portable.window_env(SOCKET))
 CORPUS = os.path.join(ROOT, "scripts/directed-scene-proof/corpus")
 LAMP = "scene/scene-a/light/lamp"
 FAILED = []
 
 
 def send(request, timeout=120):
-    with socket.socket(socket.AF_UNIX) as conn:
-        conn.settimeout(timeout)
-        conn.connect(SOCKET)
+    with portable.connect_ui(SOCKET, timeout) as conn:
         conn.sendall((json.dumps(request) + "\n").encode())
         data = b""
         while not data.endswith(b"\n"):
@@ -89,7 +93,8 @@ bundle["sceneDefinitions"][0]["lighting"] = {"ambient": 1, "lights": [{
     "id": "lamp", "position": {"x": 0.0, "y": 1.0, "z": -3.0},
     "color": {"r": 1.0, "g": 0.8, "b": 0.5}, "intensity": 6.0, "radius": 2.5, "flicker": 0.0}]}
 
-process = subprocess.Popen([BINARY], stdout=open("/tmp/tessel-light-editor.log", "w"), stderr=subprocess.STDOUT)
+process = subprocess.Popen([BINARY], stdout=open(portable.temp_path("tessel-light-editor.log"), "w"), stderr=subprocess.STDOUT,
+                           env=EDITOR_ENV)
 try:
     for _ in range(150):
         if os.path.exists(SOCKET):
@@ -165,11 +170,14 @@ try:
     op({"op": "history.undo"})
     check("the window stayed alive", process.poll() is None)
 finally:
-    process.terminate()
-    try:
-        process.wait(timeout=10)
-    except subprocess.TimeoutExpired:
-        process.kill()
+    if portable.WINDOWS:
+        portable.kill_tree(process)
+    else:
+        process.terminate()
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
 
 print("FAILED: " + ", ".join(FAILED) if FAILED else "ALL PASSED")
 sys.exit(1 if FAILED else 0)

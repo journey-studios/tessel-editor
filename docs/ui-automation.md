@@ -210,6 +210,11 @@ protocol runs over a native AF_UNIX socket (`uds_windows`) at `%LOCALAPPDATA%\te
 there are no mode bits, the per-user directory ACL is the restriction, and the CLI is
 `target\debug\tessel-editor.exe ui <command>` (`./scripts/ui` is a `sh` wrapper). One instance
 owns the endpoint; a stale socket is removed at startup and a live one is never replaced.
+`TESSEL_UI_SOCKET=<absolute path>` moves the endpoint of one window, and of the `ui` CLI started with
+the same variable, so a proof can run its own window next to the user's (BL168.8; a relative path is
+refused). The directory holding it is made private like the default one, so give it a directory of
+its own. On Unix the proofs keep isolating with `HOME`; on Windows they use this variable, because
+`%LOCALAPPDATA%` is also where tool discovery finds the WinGet FFmpeg (`scripts/proof_surface.py`).
 No HTTP listener. Newline-delimited JSON, 64 KiB maximum, read/write timeouts:
 
 ```json

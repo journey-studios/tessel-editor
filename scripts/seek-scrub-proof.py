@@ -46,13 +46,13 @@ byte-identical (same hash) to an explicit `render.frame` of the final playhead a
 import argparse
 import json
 import os
-import socket
 import statistics
 import sys
 import threading
 import time
+import portable  # BL168.8: Windows socket, UTF-8, tools
 
-DEFAULT_SOCKET = os.path.expanduser("~/.cache/tessel-editor/ui.sock")
+DEFAULT_SOCKET = portable.ui_socket_path()
 
 
 class Editor:
@@ -62,9 +62,7 @@ class Editor:
         self.path, self.timeout = path, timeout
 
     def send(self, command, **fields):
-        with socket.socket(socket.AF_UNIX) as sock:
-            sock.settimeout(self.timeout)
-            sock.connect(self.path)
+        with portable.connect_ui(self.path, self.timeout) as sock:
             sock.sendall((json.dumps(dict(version=1, command=command, **fields)) + "\n").encode())
             data = b""
             while not data.endswith(b"\n"):

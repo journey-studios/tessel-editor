@@ -47,12 +47,12 @@ import json
 import os
 import pathlib
 import shutil
-import socket
 import subprocess
 import sys
 import tempfile
 import threading
 import time
+import portable  # BL168.8: Windows socket, UTF-8, tools
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts" / "directed-scene-proof"))
@@ -106,7 +106,8 @@ CHAOS_SCRIPT = r"""
   // A slow disk: the asset of a scene file under a `slow-*` directory arrives late, so a frame that needs
   // it is genuinely in flight (loading) while the scenario acts.
   window.fetch = (input, init) => {
-    const path = pathOf(input);
+    // Windows paths arrive with backslashes: the `/slow-a/` rules match either separator (BL168.8).
+    const path = pathOf(input).replace(/\\/g, '/');
     const rule = path ? config.slow.find((item) => path.includes(item.match)) : null;
     if (!rule) return realFetch(input, init);
     return new Promise((resolve) => setTimeout(resolve, rule.delay_ms)).then(() => realFetch(input, init));
@@ -187,17 +188,15 @@ class Lab:
     def __init__(self, binary, work, env):
         self.home = os.path.join(work, "h")
         os.makedirs(self.home)
-        self.socket_path = os.path.join(self.home, ".cache/tessel-editor/ui.sock")
+        self.socket_path = portable.window_socket(self.home)
         if len(self.socket_path) > 100:
             raise SystemExit("socket path too long for a unix socket; use a shorter TMPDIR")
         self.log_path = os.path.join(self.home, "editor.log")
         self.log = open(self.log_path, "w")
-        self.process = subprocess.Popen([binary], env={**os.environ, "HOME": self.home, **env}, stdout=self.log, stderr=self.log, start_new_session=True)
+        self.process = subprocess.Popen([binary], env={**os.environ, "HOME": self.home, **portable.window_env(self.socket_path), **env}, stdout=self.log, stderr=self.log, start_new_session=True)
 
     def send(self, request, timeout=60):
-        with socket.socket(socket.AF_UNIX) as conn:
-            conn.settimeout(timeout)
-            conn.connect(self.socket_path)
+        with portable.connect_ui(self.socket_path, timeout) as conn:
             conn.sendall((json.dumps({"version": 1, **request}) + "\n").encode())
             data = b""
             while not data.endswith(b"\n"):
@@ -239,7 +238,9 @@ class Lab:
         raise RuntimeError("the viewport never became ready")
 
     def stop(self):
-        if self.process.poll() is None:
+        if portable.WINDOWS:
+            portable.kill_tree(self.process)  # terminate() is a kill there: the WebView2 helpers go with it
+        elif self.process.poll() is None:
             self.process.terminate()
             try:
                 self.process.wait(10)
@@ -732,6 +733,7 @@ def main():
     parser.add_argument("--keep", action="store_true")
     parser.add_argument("--only", help="comma separated: " + ",".join(name for name, _ in SCENARIOS) + " (s0 always runs; s2-s3 need s1's playhead, s9/s10 need a project)")
     args = parser.parse_args()
+    args.binary = portable.executable(args.binary)
     if not os.path.exists(args.binary):
         print(f"missing {args.binary}; build it with python3 /Users/wallyssonnunes/.cache/tessel-editor/cargo-serial.py build -p tessel-editor --locked")
         return 2
@@ -739,12 +741,12 @@ def main():
         if not (ROOT / "runtime" / "dist" / needed).exists():
             print("runtime/dist is not built; run ./scripts/runtime setup")
             return 2
-    if h.free_gib("/tmp") < MIN_FREE_GIB:
-        print(f"only {h.free_gib('/tmp'):.1f} GiB free under /tmp; this proof needs {MIN_FREE_GIB}")
+    if h.free_gib(portable.TEMP) < MIN_FREE_GIB:
+        print(f"only {h.free_gib(portable.TEMP):.1f} GiB free under /tmp; this proof needs {MIN_FREE_GIB}")
         return 2
     wanted = set(args.only.split(",")) if args.only else None
 
-    work = tempfile.mkdtemp(prefix="te-r8-", dir="/tmp")
+    work = tempfile.mkdtemp(prefix="te-r8-", dir=portable.TEMP)
     global WORK
     WORK = work
     report["binary"] = h.binary_info(args.binary)

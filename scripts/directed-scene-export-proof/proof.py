@@ -78,8 +78,8 @@ NOT_CLAIMED = [
 
 # ---------------------------------------------------------------------------------- environment
 def free_gib(path="/tmp"):
-    stat = os.statvfs(path)
-    return stat.f_bavail * stat.f_frsize / 1024 ** 3
+    # f_bavail x f_frsize on Unix (statvfs), the same on Windows, which has no statvfs (BL168.8).
+    return shutil.disk_usage(path).free / 1024 ** 3
 
 
 class Workspace:
@@ -179,7 +179,7 @@ def must(op, request, timeout=60):
 
 
 def require_binary(ctx, key, hint):
-    path = ctx.bins[key]
+    path = ctx.bins[key] = harness.portable.executable(ctx.bins[key])  # `.exe` on Windows (BL168.8)
     if not pathlib.Path(path).is_file():
         raise Blocked(f"binary not built: {path}", f"build it with the coordinator's serialized helper, e.g. {hint}", "BL019")
     ctx.binaries[key] = harness.binary_info(path)

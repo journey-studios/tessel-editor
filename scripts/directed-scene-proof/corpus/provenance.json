@@ -2,7 +2,7 @@
   "corpusVersion": 1,
   "generator": {
     "file": "scripts/directed-scene-proof/corpus.py",
-    "sha256": "025c0e260c9158b30ee45a09070bb092f963ecab254ca99ed6d5c239d8ad8337",
+    "sha256": "eb725b24a7eb5c045345cd9ec436a37f7de2bf75ea34f9acf6220d9230435d66",
     "model": {
       "file": "scripts/directed-scene-proof/model.py",
       "sha256": "322af021aceb5ae45d8b99992c126c5360faa243c571e5bf5db73c6c7991e9bd"

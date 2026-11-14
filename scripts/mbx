@@ -37,4 +37,22 @@ if [ -n "${TESSEL_CARGO_LANE:-}" ]; then
     export CARGO_TARGET_DIR="$project_root/target/lanes/$TESSEL_CARGO_LANE"
 fi
 
+# BL168.7 (Windows): MSVC's cl.exe, which the `cc` crate runs for C/C++ dependencies (`vswhom-sys`
+# here), prints its warnings in the language of the installed tools and in the console code page
+# (850/1252 on a Portuguese Windows), not UTF-8. mbx then cannot store that build script's result
+# ("build-script stdout is not UTF-8") and bypasses the cache for everything built on it. With the
+# console at UTF-8 (code page 65001) cl.exe writes UTF-8. The previous code page is put back when
+# this script ends, however it ends. Elsewhere there is no chcp.com and nothing changes.
+if command -v chcp.com >/dev/null 2>&1; then
+    previous_cp=$(chcp.com 2>/dev/null | tr -cd '0-9')
+    if [ -n "$previous_cp" ] && [ "$previous_cp" != 65001 ] && chcp.com 65001 >/dev/null 2>&1; then
+        trap 'chcp.com "$previous_cp" >/dev/null 2>&1 || :' EXIT
+        trap 'exit 130' INT
+        trap 'exit 143' TERM
+        status=0
+        "$mbx_binary" "$@" || status=$?
+        exit "$status"
+    fi
+fi
+
 exec "$mbx_binary" "$@"

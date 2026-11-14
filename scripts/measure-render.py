@@ -28,16 +28,16 @@ import json
 import os
 import re
 import shutil
-import socket
 import subprocess
 import sys
 import tempfile
 import threading
 import time
+import portable  # BL168.8: Windows socket, UTF-8, tools
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-RENDER = os.path.join(ROOT, "target", "debug", "tessel-render")
-SOCKET = os.path.expanduser("~/.cache/tessel-editor/ui.sock")
+RENDER = portable.executable(os.path.join(ROOT, "target", "debug", "tessel-render"))
+SOCKET = portable.ui_socket_path()
 
 # Explicit tolerances. H.264 at the export bitrate is lossy, so an exported frame differs from the
 # renderer's own frame by codec noise only (same renderer, same size, same moment).
@@ -69,11 +69,8 @@ def descendants(pid, table):
 
 def process_table():
     table = {}
-    listing = subprocess.run(["ps", "-axo", "pid=,ppid=,rss=,comm="], capture_output=True, text=True).stdout
-    for line in listing.splitlines():
-        parts = line.strip().split(None, 3)
-        if len(parts) == 4:
-            table[int(parts[0])] = (int(parts[1]), int(parts[2]), parts[3])
+    for row in portable.processes():
+        table[row["pid"]] = (row["ppid"], row["rss_kib"], row["command"])
     return table
 
 
@@ -149,7 +146,7 @@ class Session:
 
 
 def ffmpeg(*args):
-    return subprocess.run(["ffmpeg", "-v", "info", "-nostdin", "-y", *args], capture_output=True, text=True)
+    return subprocess.run([portable.ffmpeg(), "-v", "info", "-nostdin", "-y", *args], capture_output=True, text=True)
 
 
 def compare(first, second):
@@ -167,9 +164,7 @@ def compare(first, second):
 
 
 def live_send(request, timeout=120):
-    with socket.socket(socket.AF_UNIX) as conn:
-        conn.settimeout(timeout)
-        conn.connect(SOCKET)
+    with portable.connect_ui(SOCKET, timeout) as conn:
         conn.sendall((json.dumps({"version": 1, "command": "op", "request": request}) + "\n").encode())
         data = b""
         while not data.endswith(b"\n"):
@@ -191,7 +186,7 @@ def main():
         raise SystemExit("build tessel-render first: ./scripts/cargo build -p tessel-editor-render --bin tessel-render")
 
     fixtures = os.path.join(out, "fixtures")
-    subprocess.run([os.path.join(ROOT, "scripts", "fixtures"), fixtures], check=True, capture_output=True)
+    subprocess.run(portable.script_command(os.path.join(ROOT, "scripts", "fixtures"), fixtures), check=True, capture_output=True)
     with open(os.path.join(fixtures, "proof.jsonl")) as handle:
         setup = [json.loads(line) for line in handle if line.strip()]
 
