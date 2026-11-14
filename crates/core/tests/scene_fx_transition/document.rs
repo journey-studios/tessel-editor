@@ -844,6 +844,176 @@ fn too_long_is_judged_inside_the_two_shots() {
     assert_eq!(codes, [TRANSITION_OUT_OF_RANGE, fx::TRANSITION_TOO_LONG]);
 }
 
+/// `s1` `[0, 48)`, `s2` `[48, 58)` (only 10 frames), `s3` `[58, 96)`: the shot between the two
+/// cuts is the short one, so each cut has a long side and a short side on opposite ends.
+fn short_middle() -> Edit {
+    let mut edit = Edit::spec()
+        .shot("s2", |shot| shot.end = 58)
+        .shot("s3", |shot| {
+            shot.start = 58;
+            shot.end = 96;
+        });
+    edit.duration = 96;
+    edit
+}
+
+#[test]
+fn too_long_is_judged_per_side_so_swapping_before_and_after_is_caught() {
+    const FITS: &[&str] = &[];
+    const LONG: &[&str] = &[fx::TRANSITION_TOO_LONG];
+    // The cut `s1 → s2` is at 48 (long shot before, 10 frames after); `s2 → s3` is at 58 (10
+    // frames before, long shot after). By hand: `start` asks `D` of the shot after the cut,
+    // `end` asks `D` of the shot before it, `center` asks ⌊D/2⌋ before and ⌈D/2⌉ after.
+    let cases: [(&str, &str, &str, u64, &[&str]); 15] = [
+        // short shot AFTER the cut
+        ("s1", "s2", "start", 10, FITS),
+        ("s1", "s2", "start", 11, LONG),
+        ("s1", "s2", "start", 20, LONG),
+        ("s1", "s2", "end", 20, FITS), // 20 before the cut, 0 after: fine
+        ("s1", "s2", "center", 19, FITS), // 9 before, 10 after
+        ("s1", "s2", "center", 20, FITS), // 10 before, 10 after
+        ("s1", "s2", "center", 21, LONG), // 10 before, 11 after > 10
+        // short shot BEFORE the cut
+        ("s2", "s3", "end", 10, FITS),
+        ("s2", "s3", "end", 11, LONG),
+        ("s2", "s3", "end", 12, LONG),
+        ("s2", "s3", "start", 20, FITS), // 0 before the cut, 20 after: fine
+        ("s2", "s3", "start", 38, FITS),
+        ("s2", "s3", "center", 21, FITS), // 10 before, 11 after
+        ("s2", "s3", "center", 22, LONG), // 11 before > 10, 11 after
+        ("s2", "s3", "center", 1, FITS),  // 0 before, 1 after
+    ];
+    for (from, to, alignment, duration, expected) in cases {
+        let bundle = with_transitions(
+            short_middle().bundle(),
+            vec![tr(json!({"fromShotId": from, "toShotId": to,
+                           "alignment": alignment, "durationFrames": duration}))],
+        );
+        assert_eq!(
+            admit_codes(bundle),
+            expected,
+            "{from} → {to}, {alignment}, {duration} frames"
+        );
+    }
+
+    // The numbers named in the refusal are the two halves, in the right shots.
+    let one = |from: &str, to: &str, alignment: &str, duration: u64| {
+        let bundle = with_transitions(
+            short_middle().bundle(),
+            vec![tr(json!({"fromShotId": from, "toShotId": to,
+                           "alignment": alignment, "durationFrames": duration}))],
+        );
+        let error = admit(bundle).expect_err("too long");
+        let issue = &error.issues()[0];
+        (
+            issue.message.clone(),
+            issue.details.as_ref().unwrap()["hint"]
+                .as_str()
+                .unwrap()
+                .to_string(),
+        )
+    };
+    assert_eq!(
+        one("s1", "s2", "start", 20),
+        (
+            "Transition tr needs 0 frames inside s1 (48) and 20 inside s2 (10)".to_string(),
+            "With alignment start the longest these two shots hold is 10 frames.".to_string()
+        )
+    );
+    assert_eq!(
+        one("s2", "s3", "end", 11),
+        (
+            "Transition tr needs 11 frames inside s2 (10) and 0 inside s3 (38)".to_string(),
+            "With alignment end the longest these two shots hold is 10 frames.".to_string()
+        )
+    );
+    assert_eq!(
+        one("s1", "s2", "center", 21),
+        (
+            "Transition tr needs 10 frames inside s1 (48) and 11 inside s2 (10)".to_string(),
+            "With alignment center the longest these two shots hold is 20 frames.".to_string()
+        )
+    );
+    assert_eq!(
+        one("s2", "s3", "center", 22),
+        (
+            "Transition tr needs 11 frames inside s2 (10) and 11 inside s3 (38)".to_string(),
+            "With alignment center the longest these two shots hold is 21 frames.".to_string()
+        )
+    );
+}
+
+#[test]
+fn windows_are_judged_in_start_order_whatever_the_document_order() {
+    // Four shots of 4 frames: cuts at 4, 8 and 12. `a`, `b` and `c` sit on them in that order.
+    let edit = Edit::many_shots(4);
+    let on_cut = |id: &str, from: u32, alignment: &str, duration: u64| {
+        tr(
+            json!({"id": id, "fromShotId": format!("s{from}"), "toShotId": format!("s{}", from + 1),
+                  "alignment": alignment, "durationFrames": duration, "handles": "hold"}),
+        )
+    };
+    let list = |entries: [&Value; 3], order: [usize; 3]| -> Vec<Value> {
+        order.iter().map(|&index| entries[index].clone()).collect()
+    };
+    let orders = [
+        [0, 1, 2],
+        [0, 2, 1],
+        [1, 0, 2],
+        [1, 2, 0],
+        [2, 0, 1],
+        [2, 1, 0],
+    ];
+
+    // Disjoint windows `[4, 6)`, `[8, 10)`, `[12, 14)`, and ones that only touch: `[4, 8)`,
+    // `[8, 10)`. No order of the document is an overlap, and the document order is kept.
+    for first in [2, 4] {
+        let a = on_cut("a", 0, "start", first);
+        let b = on_cut("b", 1, "start", 2);
+        let c = on_cut("c", 2, "start", 2);
+        for order in orders {
+            let ids = ["a", "b", "c"];
+            let bundle = with_transitions(edit.bundle(), list([&a, &b, &c], order));
+            let scene = admit(bundle).unwrap_or_else(|error| {
+                panic!("order {order:?}, a lasts {first}: {:?}", codes(&error))
+            });
+            let kept: Vec<&str> = scene
+                .bundle()
+                .fx
+                .transitions
+                .iter()
+                .map(|transition| transition.id.as_str())
+                .collect();
+            let wanted: Vec<&str> = order.iter().map(|&index| ids[index]).collect();
+            assert_eq!(kept, wanted, "the document order is the order kept");
+        }
+    }
+
+    // `a` is `[4, 7)` and `b` (centred, 4) is `[6, 10)`: they share frame 6, in every order of
+    // the document and with `c` anywhere between. One refusal, on the window that starts later,
+    // at that window's own place in the document.
+    let a = on_cut("a", 0, "start", 3);
+    let b = on_cut("b", 1, "center", 4);
+    let c = on_cut("c", 2, "start", 2);
+    for order in orders {
+        let error = admit(with_transitions(edit.bundle(), list([&a, &b, &c], order)))
+            .err()
+            .unwrap_or_else(|| panic!("order {order:?} must overlap"));
+        assert_eq!(codes(&error), [fx::TRANSITION_OVERLAP], "order {order:?}");
+        let issue = &error.issues()[0];
+        let place = order.iter().position(|&index| index == 1).unwrap();
+        assert_eq!(
+            issue.path,
+            format!("/fx/transitions/{place}"),
+            "reported on `b`, which starts later: order {order:?}"
+        );
+        assert_eq!(
+            issue.message, "Transitions a (frames 4 to 7) and b (from frame 6) overlap",
+            "order {order:?}"
+        );
+    }
+}
+
 #[test]
 fn a_legacy_dissolve_is_still_refused_by_the_importer_before_any_transition() {
     // The oracle's `spec+legacy-dissolve` case reports TRANSITION_DUPLICATE; this importer refuses
