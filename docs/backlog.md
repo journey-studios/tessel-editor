@@ -289,7 +289,7 @@ regressão falhando antes e passando depois; não permanece como alternativa de 
 
 | ID | Área | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
-| BL081 | F017 | Dividir clipe/corte interno no core, CLI e UI | Pendente | Modelo de timeline existente | — | Operação real com tempo racional, undo único e erro atômico; não confundir com edição de shots do piloto |
+| BL081 | F017 | Dividir clipe/corte interno no core, CLI e UI | A validar — implementação Windows recebida, revisão e regressão Mac em execução | Modelo de timeline; base65ea9a4 (B1/B2) | Cursor Sonnet5.5 Windows; coordenador revisa e integra | Command::SplitClip, clip.split, timeline.split; undo único, erros atômicos, source_start racional. Windows20+3 testes e janela semântica; correções Mac de recusa/gesto e grade de áudio (.5/.6), rechecagem final pendente. [Relatório](migration/clip-split-report.md) |
 | BL082 | F016 | Efeitos de clipe e regras compartilhadas de processamento | A validar — primeira fatia (vinheta, escopo de saída) em lib, JSONL e janela; P0+P1 (BL082.6/.16/.17) entregues no branch `t3/fx-candidate-preview`; restante em BL082.1–BL082.5; revisão R1 em BL082.7–BL082.15 | BL004/BL006 aplicáveis | Sub-agente de efeitos (branch `t3/implement-vignette-effects`) | Domínio decidido: `fx` no documento do bundle dirigido (um só modelo, sem cópia na sequência), edição atômica `scene.fx.edit` com uma entrada de undo, `Fx::resolve` por quadro, `ScenePlan.fx` + `Capability::OutputFx`, runtime só desenha. **Executado (head 32860ec)**: core `scene_fx` 16 + 5 unitários da referência; runtime `node --test` 186/186 (efeito: 5 puros + 2 em Chrome); renderer `scene_fx` 3 (54 sondas por quadro contra a referência do core); export `scene_fx_export` 1 (FFmpeg real, pior 7/255, maior mudança 69); janela GPUI 7; janela real `scripts/scene-fx-ui-proof.py` 70/70 (monitor, controles, recusa tipada, undo, salvar/reabrir, dois exports pelo diálogo). **Correção R1 (este head)**: runtime executado (11 puros + 7 em Chrome); `scene-fx-ui-proof.spec.py` 23/23; **Rust (core e GPUI) escrito, só `fmt`, sem compilar** (BL082.17). Limites: nenhum ponteiro físico (BL043); P0+P1: prévia ao vivo, teclado do adaptador, inserção no quadro exibido e aviso visível entregues (ver BL082.6/.16/.17). [Contrato](features/effects.md) **P2 (branch `t3/fx-inspector-fade-p2`, F057):** segundo look `fade` e inspector neutro, 2 de 59 efeitos, Provado no head de código do branch (macOS/SwiftShader); integração com `main`, Windows e aceite humano pendentes. |
 | BL082.1 | F016 | Demais efeitos do catálogo do piloto (59 shaders): cada um é uma entrada no catálogo, um shader no runtime, um teste de pixel e uma linha de UI | Parcial — 3 de 59 (P3, revisão independente em74dc1b9) | BL082, BL036 | — | Efeito só entra com referência independente, plano, runtime, lib/JSONL/janela e prova de pixel no monitor e no export; sem portar famílias inteiras de uma vez **P2:** `fade` entrou (referência independente em Python `scripts/pilot-fade-corpus.py`, plano, runtime, lib/JSONL/janela, pixels no monitor e no export); `vignette` + `fade` = 2 de 59, os outros 57 seguem pendentes e sem controle habilitado. |
 | BL082.2 | F016 | Animação de parâmetros por chaves (`keys`) e `seed` | Validado no head74dc1b9; sem merge | BL082 | Coordenador | Chaves/easing/seed em lib, JSONL e UI; persistência/undo/export e provas nativas no head limpo; F058/F059 e PR42. Timeline P6, ponteiro físico, GPU real e Windows permanecem pendentes |
@@ -1516,3 +1516,115 @@ Workspace Windows inteiro não foi promovido a verde; hang de claims e outras
 falhas de execução permanecem separados. O coordenador não fez push, PR ou merge;
 a branch Windows já publicada não foi reescrita. Raiz antiga, planos e worktrees
 paralelos foram preservados.
+
+
+### BL081/F017 — início autorizado (2026-11-13)
+
+Usuário autorizou a próxima frente de produto: dividir clipe/corte interno.
+Base de conteúdo `65ea9a4`, já com B1/B2 integrados localmente; nenhuma publicação
+adicional autorizada. Implementação atribuída a um único Cursor Sonnet5.5 no
+Computador, por delegate_task. T3 recusou isolation=worktree em environment
+remoto; execução usará o checkout do projeto somente se limpo na base ead9ca2,
+sem trocar branch nem commitar. Dependências aplicadas por patch verificado; diff
+BL081 separado por snapshot/índice temporário, preservando o índice real.
+
+Ownership do implementador: código e testes de corte em `crates/core` (timeline,
+Command, histórico, ops/parser, árvore e persistência se necessário), integração
+mínima em `crates/desktop` (comando, controle de timeline/inspector e testes),
+`docs/features/split.md`, somente linha F017 da matriz, e relatório focado em
+`docs/migration/clip-split-report.md`. Não tocar media/render/runtime/áudio de
+produção nem os arquivos B1/B2; exceção técnica deve vir com motivo antes da edição.
+`docs/backlog.md` é exclusivo da coordenação; agente entrega propostas por ID.
+
+Aceite: dois clipes positivos no mesmo track, comprimento total e conteúdo
+preservados (source_start racional, velocidade, câmera/keys, texto/propriedades e
+fades existentes); ID novo único, undo/redo de uma edição, save/reopen; recusar
+bordas, IDs inválidos, frações não admitidas e overflow atomicamente. CLI/headless
+não dependem da seleção. UI corta o clipe selecionado no playhead, com disabled_reason
+coerente e acesso semântico. Limites que o modelo não puder representar devem ser
+recusados explicitamente e registrados, sem adulterar mídia ou conteúdo em silêncio.
+Provas por biblioteca, processo headless e janela própria usando scripts/ui;
+sem cliques por coordenada, aceite físico ou desempenho implícitos. Sem commit,
+push, PR ou merge pelo implementador; coordenador revisa e integra depois.
+
+
+Delegação BL081 inicial (retomada abaixo): [BL081 — implementar corte interno de clipe](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:ff60d84b8c8902150d9fbe762ec50034715042e4edff6118ccf46c76c6121dc0),
+Computador, provider cursor / claude-sonnet-5-5, sem opções extras (herança remota
+vazia conferida). Task node:delegated-task:command%3Amcp%3A2630e3f6-1350-4c47-bbd2-8295faa658fd%3Aremote-delegate%3Abl081-clip-split-windows-shared-20261113.
+A tentativa isolation=worktree foi recusada antes de criar executor. Nova chamada
+sem isolation iniciou execução; nenhuma segunda implementação concorrente.
+Base transportada gzip/base64: patch ead9ca2→65ea9a4,157254 bytes, SHA256
+540935fc83aec91ed11b17dd4b8f903a8bff682fd246612a4b8a5084e46c89c8.
+Artefato durável no Mac: /Volumes/Extreme Pro/tessel-bl081-coordination/.
+O coordenador aguarda o evento de conclusão sem polling; revisão/validação Mac e
+integração continuam pendentes. Nenhuma feature BL081 foi declarada entregue.
+
+
+### BL081 — desbloqueio de preparação e retomada (2026-11-13)
+
+A primeira execução terminou sem editar: main@ead9ca2 só tinha o untracked
+`docs/computador-readiness-2026-11-12.md`. A guarda genérica de árvore limpa
+foi restrita: coordenador autoriza esse relatório conhecido permanecer no lugar,
+fora do diff/snapshot, com18579bytes e SHA256
+AF30904C7156F620210D232A2842040F0960928CBA8809A9D008A0EF19486659
+preservados antes/depois. Nenhuma autorização de descarte ou edição desse arquivo.
+Qualquer outra mudança continua protegida; não se pede ao usuário que remova
+um registro do próprio projeto para executar esta feature.
+
+Preparação simplificada: reutilizar patch B1 local verificado11462bytes e commit
+B2 publicado05289a5 (extraído como patch, sem checkout/cherry-pick/commit), mais
+patch do helper JS5292bytes SHA256
+bd16ce8cb663fd692ad75b5f82b492eb2faa1d9a3a27ed41c3fd331f9a4c7ecb.
+Esse último foi enviado por base64 pequeno, evitando retranscrever o pacote157254B.
+Manifesto das18fontes B1/B2 identifica equivalência de código com65ea9a4; não
+se afirma identidade da árvore/documentação do checkout Windows com o commit Mac.
+Diferenças de relato da coordenação não bloqueiam o corte; índice real intacto e
+diff BL081 deve excluir as dependências por snapshot temporário explícito.
+
+Mesma [delegação BL081](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:ff60d84b8c8902150d9fbe762ec50034715042e4edff6118ccf46c76c6121dc0)
+retomada para continuar a implementação após desbloqueio, run ordinal2 iniciado.
+Não é revisão nova, não há segundo implementador concorrente, sem polling.
+Contrato, ownership e aceite anteriores continuam; nada implementado/provado
+no retorno inicial. Execução da preparação corrigida e produto ainda aguardam retorno.
+
+
+### BL081 — entrega recebida e revisão Mac (2026-11-14)
+
+Patch recebido do transcript,96710bytes, SHA256
+5aff608f5b8e56cb8ba2d5f7b03ca1142590d50af293dd097994ab7fbc87088d,
+14paths. Original preservado em /Volumes/Extreme Pro/tessel-bl081-coordination/received/.
+Aplicado sobre65ea9a4: só contexto da matriz divergia pelas provas B2 locais;
+foi integrada apenas a linha F017, sem sobrescrever F019/F021/F029.
+Windows entregou20 testes de integração lib/headless,3 testes desktop e janela
+própria por socket; nenhuma alteração B1/B2 (18fontes), readiness intacto.
+No Mac a entrega original passou fmt/check/clippy, core completo, desktop3,
+workspace no-run, build e cargo tree sem GPUI/Wry. Isso é evidência anterior às
+correções de revisão, não gate do código corrigido.
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL081.1 | Corte / expansão futura | Corte em lote e atalho de teclado | Pendente — fora da fatia atual | BL081 | — | Definir seleção/múltiplos e um undo; não inferir autorização para implementar só por estar no backlog |
+| BL081.2 | Corte / envelope | Fades atravessando o ponto do corte não são representáveis em duas rampas atuais | Pendente — recusa explícita implementada | BL081, BL142 | — | Preservar envelope/amostras e quadro sem aproximar; enquanto isso split_unsupported com motivo |
+| BL081.3 | Documentação | Incluir clip.split no vocabulário F015 | Corrigido pela coordenação | BL081 | Coordenador | Linha no contrato project-creation aponta F017 e argumentos absolutos; sem mudar outras operações |
+| BL081.4 | Windows / cache | Artefato debug GPUI reaproveita CARGO_MANIFEST_DIR de W: após mudança para E:; shader não abre | Pendente | BL167.4 | — | Invalidar por caminho ou incorporar HLSL sem tocar cache global; provar janela de debug em outro checkout. Executor atualizou mtime do build.rs, sem diff, apenas como contorno |
+| BL081.5 | Revisão / amostras | Novo segmento de áudio pode mudar fase em grade fracionária, mesmo com source_start racional | Parcial — guardado com recusa explícita; suporte pleno pendente | BL081, BL016 | Coordenador (guarda); expansão não atribuída | Caso real de lib:30000/1001fps, clipe de áudio movido ao frame1 e cortado no2 muda PCM em0.020370752. Só aceitar grades com amostras inteiras de saída/fonte por quadro (com velocidade); demais recusam audio_sample_grid sem mutação. Modelo futuro deve preservar fase fracionária e equivalência de mix em qualquer faixa |
+| BL081.6 | Revisão / atomicidade | Split inválido liquidava gesto de slider aberto antes de recusar | Corrigido no Mac; rechecagem Windows pendente | BL081 | Coordenador | Preflight antes de liquidar gesto; recusa mantém gesture/history/revision/documento. Regressão falha no código entregue e passa corrigida; split válido mantém política de liquidação existente |
+
+Controles de revisão:22 testes no alvo clip_split —20 antigos passam e2 novos
+reprovam na entrega original (áudio em grade fracionária e gesto aberto). Corrigidos
+localmente,22/22 passam. A prova de áudio inicialmente tentada com speed em clipe
+Audio foi inválida (propriedade não aplicável); o controle válido usa deslocamento
+do clipe. Logs brutos inclusive essa tentativa preservados em mac/.
+Gates do código corrigido, prova nativa Mac e rechecagem Windows em andamento.
+Sem commit/push/PR/merge BL081 nesta atualização.
+
+
+BL081 — revisão Mac concluída nas correções: fmt/check/clippy/no-run/build exit0,
+core1435 passam/7 ignorados existentes/0 falhas (clip_split22/22), desktop3/3,
+backlog19/19; core semGPUI/Wry. Prova nativa própria11 requisições semânticas passou
+(corte/undo/redo/recusa, PID92936 fechado; sem ponteiro/pixels/áudio ouvido).
+Manifesta18fontes B1/B2 idênticas, fontesBL081 em mac-final/code-manifest.json.
+Rechecagem Windows final iniciada com novo delegate_task:
+[BL081 — rechecagem Windows das correções de revisão](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:17b83891c96d66a070df0b763d6f78dc8532b75ce0657ccc492972d16d845f01).
+Task node:delegated-task:command%3Amcp%3A77122fb9-fe19-4ca6-b856-7beca247f3a3%3Aremote-delegate%3Abl081-windows-review-recheck-20261114.
+Retorno por evento, sem polling; BL081 permanece A validar até essa rechecagem.
