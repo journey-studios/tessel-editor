@@ -1878,7 +1878,7 @@ concreto da S0, sem link para arquivo inexistente nem validação de lib/CLI/UI 
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
 | BL082.4.1 | P4b/S0 | Contrato F064 e corpus independente dissolve, fonte e X analítico | Concluído — somente S0 oráculo/contrato | BL082.4; setupPythonBL167.5 parcial | Coordenador / Cursor Sonnet5.5 | R3 independente aprova e4078ff no Windows; corpus167/analítico39 normal e-O, reprodução byte a byte e Mac equivalente. Produto lib/JSONL/UI permanece P; detalhes no relatório S0 §12. |
-| BL082.4.2 | P4b/S1a | Documento/janela/validação tipada e ativação pública failclosed | Pendente | BL082.4.1/.11 | Não atribuído | Contrato corrigido B3; nenhumhardcutfallback/exportfalhandonomeio, erro existente/tipado |
+| BL082.4.2 | P4b/S1a | Documento/janela/validação tipada e política de admissão fechada | A validar — PR62, revisão independente pendente | BL082.4.1/.11 concluídos | Cursor Sonnet5.5 / coordenador | Modelo, catálogo separado, Choice, leitura estrita, janela checked e política herdada por candidatos. Autor Windows:46integração/2core/2GPUI e processoheadlessreal; gatesestáticos/build/norun. Duasfalhasgizmo tambémna base; workspacecompleto/Mac pendentes. Movimentação de teste do coordenador ainda não compilada. |
 | BL082.4.3 | P4b/S1b | Avaliação dos dois decks e plano, recursosporassetId/used_bysemambiguidade | Pendente | BL082.4.2 | Não atribuído | Recurso próprio por deck euniãoderivadaestável, clock/handlessemunderflow, parserprofundidadelimitada |
 | BL082.4.4 | P4b/S2 | Runtime/renderer/mistura e lifecycle/cache | Pendente | BL082.4.3; S2A também BL082.4.5/S3a | Não atribuído | Cor8bits/alpha declarados, capability, dois splats/leases/contextloss/dispose e pixelsindependentes |
 | BL082.4.5 | P4b/S3 | Ops/gestos/inspector/persistência ecoreparser/nós | Pendente | BL082.4.3 | Não atribuído | Atomicidade/revisão/undo, módulossemcrescerarquivosproibidos; dividirS3aseS3bseútil |
@@ -1943,3 +1943,20 @@ comparar estados por deck e cores, com isolamento só-vizinho restrito aos casos
 A S2 traduz arrays compactos para os objetos do destino. R3 não é aprovação formal noGitHub;
 CodeRabbit ainda estava em andamento na consulta do revisor e terminou SUCCESS em e4078ff
 na consulta posterior do coordenador. Nenhuma reviewhumana foi alegada.
+
+
+### S1a entregue na PR62; reconciliação antes da revisão — 2026-11-14
+
+PR62 headoriginalbb43b16 (código5e21e0, basebb309a7): modelo/leitura/validação/janela e
+TransitionAdmissionRefuse padrão. Accept sóentrada doc(hidden) deensaios, não segurança;
+reimport herda política eboundaryvarreprodução/inventáriode5pontos. Autorreportou46integração,
+2testescore,2GPUI,11mutantes, processoheadlessrealexit1; fmt/check/clippy/build/tree/norunpassam.
+Corecompleto nãoverde por2gizmos tambémbaseW1; workspaceexecutado/Mac/runtime nãoexecutados.
+Nenhum efeito público novo, caps/versões/catálogo 3looks inalterados; produtoF064 continuaP.
+
+O coordenador completa linhas comuns não entregues, corrige nome do arquivo no relatório e
+move o teste de catálogo/runtime de core/tests/scene_fx.rs para módulo próprio, sem tocar produção.
+A auditoria identificou o teste como arquivo que cresceu acima de1000, não a UI. Correção aguarda revisão/compilação Windows.
+Trailersdeassistente nos2commitspublicados serão omitidos da mensagem do squash, semforce.
+Divergências deoráculo/legacy/IDs/corpus declaradas no relatório são objeto da revisão, não
+aceitas por padrão. BL082.4.2 permaneceAvalidar; S1b nãoiniciada ePR62semmerge.

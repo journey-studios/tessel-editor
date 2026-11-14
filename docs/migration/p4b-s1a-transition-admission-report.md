@@ -108,9 +108,13 @@ Não houve mutante sobrevivente entre os listados. O mutante «`#[default]` remo
 Os `match` exaustivos sobre `ParamKind` e `FxValue` exigiram um braço novo para `Choice` fora de `fx/`:
 `scene_plan/json.rs` (recusa tipada, inalcançável hoje: o plano ainda não carrega transição), `scene_edit/fx_animation.rs`
 (`"choice"`), `desktop/.../scene_fx_keys.rs` (`value_text`) e `crates/core/tests/scene_fx.rs` (`unreachable!`). São
-adaptações mínimas, sem comportamento novo. `scene_fx.rs` (1365 linhas) fica com **+1 linha** (o braço novo): o
-`match` não pode deixar de ser exaustivo, então a regra «delta líquido ≤ 0 em módulo > 1000 linhas» tem aqui uma exceção
-justificada. `scene_edit/fx.rs` (1235) ficou com delta líquido **0**.
+adaptações mínimas, sem habilitar controles novos. A auditoria do diff corrigiu a identificação
+do arquivo: o crescimento de 1364 para 1365 linhas estava em crates/core/tests/scene_fx.rs,
+não em scene_fx.rs da UI. scene_fx_keys.rs tinha 719 linhas, abaixo do teto. O coordenador
+moveu o teste existente de contrato do catálogo/runtime para scene_fx/runtime_catalog.rs,
+reduzindo o arquivo principal e preservando as mesmas asserções e o mesmo alvo Cargo.
+Nenhuma fonte de produção mudou depois do head bb43b16; scene_edit/fx.rs mantém delta líquido 0.
+A movimentação de teste é posterior aos gates do implementador e aguarda compilação Windows.
 
 ## Gates (Windows x64, Rust 1.99.1, wrapper `./scripts/cargo`; sem lock de GPU: nada mede desempenho)
 
@@ -140,7 +144,14 @@ Não foram mascaradas nem corrigidas aqui.
 - `TRANSITION_SPLAT_COST` usa um nó `splat` montado no teste (nenhum fixture do repositório tem splat).
 - `T02` em H/G (entradas pelas superfícies), e todas as demais células, seguem como no F064.
 
-## Linhas de backlog e de matriz para o coordenador
+## Reconciliação pelo coordenador
 
-Ver a resposta final desta entrega (texto exato dos patches de BL082.4.2 e da linha F064); este relatório não edita
-`docs/backlog.md`, `docs/features/README.md`, `docs/README.md` nem o plano.
+O implementador não entregou as linhas prometidas na resposta final. O coordenador integrou
+BL082.4.2 e a nota de F064 nesta PR, com status **A validar** e todas as superfícies de produto
+P: o fluxo novo só existe pela entrada interna de ensaio, enquanto o fluxo público recusa.
+As evidências anteriores ficam atribuídas a 5e21e0/bb43b16; o patch do coordenador inclui
+movimentação de teste e aguarda rechecagem no Windows, sem herdar aqueles gates.
+
+Os dois commits publicados pelo implementador têm trailers de coautoria injetados pelo wrapper.
+Não foram reescritos nem enviados com force. A integração, se aprovada, usará squash com mensagem
+explícita sem atribuição a assistentes. Isso não é aprovação da PR nem remove o histórico da branch.
