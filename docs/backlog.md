@@ -2221,3 +2221,24 @@ BL082.4.18/.19/.22 A validar no Windows; .17 segue em implementação separada;
 S2/S3a não iniciadas, F064 produto P e admissão pública Refuse.
 
 Baseline release do mesmo código93fb635 passou1/1 no Mac; fechamento posterior só documental.
+
+### PR63 R2 aprovada; comentário tardio de handles exige correção
+
+R2 independente aprovou d2c1861 para a fundação interna:112/10/1isolado e
+preserve_order, baseline release1, admission4, GPUI80, fmt/check/clippy/no-run/build
+Windows passam. Mac93fb6351594/0/7 continua atribuído ao seu head. Produto P.
+
+BL082.4.19: validador e leitor qualificam vizinho, mas o construtor build/PlanTimeline
+NÃO qualifica erro de splat/frame/domínio do vizinho; probeR2 cloud espelhado emB
+retorna mesmoSplatTransform em f44/f52/f70 sem deck. Fechamento noS2, não encerrar
+o ID como cobertura total. O comentário de pose ganhou assert explícito no teste.
+
+Novo comentárioCodeRabbit emd2 apontou cabeça de câmera inexistente. Root reproduziu:
+cameraIn49 com câmera48 aceita handles use indevidamente; teste novo falhou por
+asserção na admissão (não por compilação), antes da correção. Cabeça contígua agora
+é0 quando cameraIn passa o comprimento; igualdade com end exclusivo conserva os
+quadros anteriores reais. Ausência de comprimento conhecido conserva comportamento.
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL082.4.24 | PR63 / handles | cameraIn além do fim conta cabeça inexistente e use/refuse aceita frames presos | Em andamento — coordenador | BL082.4.3 | Coordenador | Regressões49/60 com câmera48 recusam TRANSITION_NO_HANDLES, hold admite e prende47; 47/48 conservam cabeça real e não prendem o vizinho. Testar/core/Mac e rechecagem Windows nova antes do merge; acervoS0 intocado. |

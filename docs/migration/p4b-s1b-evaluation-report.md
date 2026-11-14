@@ -207,3 +207,19 @@ sem pixels/runtime/GPU/Linux, sem teclado/ponteiro físico, áudio ou workspace 
 
 Rechecagem Windows deste reforço ainda pendente. A R1 em73775c3 não a substitui.
 F064 segue P, Refuse segue fechado; BL082.4.20/.21/.23 permanecem pendentes.
+
+## 8. R2 Windows e comentário posterior sobre câmera
+
+R2 aprovou d2c1861:112transition nos3perfis,10corpus/1baseline nos2perfis e1release,
+admission4/GPUI80, fmt/check/clippy/no-run/build/tree, mutantes discriminantes. F1: os erros
+do CONSTRUTOR ainda não levam deck (cloudB espelhado f44/f52/f70); o validador/leitor levam.
+Isso fica explicitamente emBL082.4.19/S2. F2opcional: a pose hold da câmera legada ganhou
+assert equivalente ao probeWindowsR2 que já passava; não se alterou produção para isso.
+
+Depois da R2 chegou CodeRabbit shot_offset.rs/head_camera. O coordenador reproduziu com
+cameraIn49/câmera48, incominginstanceStart6 e câmera de saída com tail suficiente: use
+importava sem erro embora a cabeça contenha frame48 inexistente. O teste novo falhou na
+asserção de admissão, antes do patch. Cabeça=0 se offset>total; offset==total conserva os
+frames anteriores, e comprimento desconhecido mantém a regra anterior. Dois testes cobrem
+49/60 negativos, hold com câmera47presa e instância livre, e47/48positivos (.24).
+O código novo precisa de novos gates/revisão; não herda a aprovação de d2.

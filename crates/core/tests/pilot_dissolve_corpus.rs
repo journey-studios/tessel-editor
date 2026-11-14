@@ -340,6 +340,10 @@ fn deck_matches(
             source.camera_in_frame + frame as u64 - source.start_frame,
             "{what}: legacy primary camera counter"
         );
+        assert_eq!(
+            deck.camera, held.evaluation.camera,
+            "{what}: legacy primary pose"
+        );
     } else {
         assert_eq!(
             deck.frame.camera_clip_frame as i64,

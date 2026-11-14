@@ -111,7 +111,7 @@ itens de cada deck; o parser de texto também mantém o limite de recursão do s
 não mede bytes de texto. Os planos reais do corpus têm ~6 KB.
 
 A relação `editFrame = startFrame + frameInWindow` exige conversão e soma representáveis; dois overflows
-não são igualdade. Erros do vizinho têm ponteiro `/transition/other` (versão: `planVersion`, transformação
+não são igualdade. Erros do vizinho na validação/leitura têm ponteiro `/transition/other` (versão: `planVersion`, transformação
 de splat: `nodes`), inclusive em planos montados à mão; estes erros são `Invalid`, e o erro de splat do
 topo preserva o contrato existente. O construtor escolhe `primary` pelo corte. O validador isolado confere
 os shotIds dos decks e a cabeça presa, mas não recebe o quadro C do corte nem os comprimentos dos clipes;
@@ -218,3 +218,5 @@ admissão pública nem prova pixels reais.
 ### Gate integrado e ordem de chaves JSON
 
 A execução do workspace unifica `serde_json/preserve_order` vindo de GPUI. O golden da R6 originalmente passava isolado e falhava no workspace apenas pela ordem das chaves. O comparador agora ordena objetos recursivamente antes do digest, mantendo valores, números, arrays e erros exatos. Os digests de referência não foram regenerados nem as tolerâncias afrouxadas.
+
+O construtor (`ScenePlan::build`/`PlanTimeline::build`) ainda não qualifica erros de splat/frame/domínio do vizinho por deck (BL082.4.19); isso fica paraS2, com admissão pública ainda fechada.

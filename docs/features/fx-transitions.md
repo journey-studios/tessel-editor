@@ -486,3 +486,11 @@ O resultado inicial vermelho e o ajuste do teste de câmera estão no relatório
 Windows do novo head ainda a validar; não herdar R1 de73775c3 nem declarar produto entregue.
 
 A baseline release do mesmo93fb635 também passou1/1. Os gates acima pertencem ao código93fb635; o fechamento posterior muda só docs.
+
+A revisão R2 Windows aprovou d2c1861 no escopo interno, com gates e mutantes; o construtor
+continua sem contexto de deck em seus erros (BL082.4.19), diferente do validador/leitor.
+Um comentário tardio de handles foi reproduzido e está em correção (.24): se cameraIn excede
+o comprimento conhecido, não existe cabeça contígua de quadros reais. `use`/`refuse` recusam
+quando a janela pede essa cabeça; `hold` permanece válido e prende no último frame.
+Câmera começando exatamente no end exclusivo ainda tem os frames anteriores reais.
+O acervo S0 não foi alterado; gates/review do novo código são separados da aprovação R2.

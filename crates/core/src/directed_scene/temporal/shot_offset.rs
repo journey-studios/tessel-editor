@@ -82,7 +82,14 @@ impl Bundle {
         Some(ShotReach {
             head_instance: start,
             tail_instance: available_frames(to_i64(instance.duration_frames), start, length),
-            head_camera: camera.map_or(i64::MAX, |_| camera_in),
+            // The head must end on a real frame. At `camera_in == total` the preceding
+            // frames exist; beyond it even the closest preceding frame is already held.
+            head_camera: camera.map_or(
+                i64::MAX,
+                |total| {
+                    if camera_in <= total { camera_in } else { 0 }
+                },
+            ),
             tail_camera: camera
                 .map_or(i64::MAX, |total| available_frames(total, camera_in, length)),
         })

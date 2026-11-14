@@ -97,6 +97,73 @@ fn a_typed_neighbour_version_error_names_the_neighbour() {
     refused_in_both_doors(&plan, "/transition/other/planVersion");
 }
 
+fn camera_head(camera_in: u64) -> Edit {
+    Edit::spec()
+        .camera("cam1", 60)
+        .camera("cam2", 48)
+        .shot("s2", |shot| {
+            shot.instance_start = 6;
+            shot.camera_in = camera_in;
+        })
+}
+
+#[test]
+fn a_camera_offset_past_its_end_cannot_supply_real_head_handles() {
+    for camera_in in [49, 60] {
+        let edit = camera_head(camera_in);
+        for handles in ["use", "refuse"] {
+            let error = admit(with_transitions(
+                edit.bundle(),
+                vec![tr(json!({"handles": handles}))],
+            ))
+            .err()
+            .expect("the incoming head asks for a camera frame past its end");
+            assert_eq!(
+                codes(&error),
+                ["TRANSITION_NO_HANDLES"],
+                "{camera_in} {handles}"
+            );
+        }
+        let scene = scene_of(with_transitions(
+            edit.bundle(),
+            vec![tr(json!({"handles":"hold"}))],
+        ));
+        let bundle = scene.bundle();
+        assert_eq!(
+            bundle
+                .shot_reach(bundle.shot("s2").unwrap())
+                .unwrap()
+                .head_camera,
+            0
+        );
+        let at = bundle.evaluate_shot_at_offset("s2", 47).unwrap();
+        assert_eq!(at.evaluation.mapping.camera_clip_frame, 47);
+        assert!(at.held_camera && !at.held_instance);
+    }
+}
+
+#[test]
+fn a_camera_at_its_exclusive_end_still_has_real_preceding_frames() {
+    for camera_in in [47, 48] {
+        let edit = camera_head(camera_in);
+        let scene = scene_of(with_transitions(
+            edit.bundle(),
+            vec![tr(json!({"handles":"use"}))],
+        ));
+        let bundle = scene.bundle();
+        assert_eq!(
+            bundle
+                .shot_reach(bundle.shot("s2").unwrap())
+                .unwrap()
+                .head_camera,
+            camera_in as i64
+        );
+        let at = bundle.evaluate_shot_at_offset("s2", 47).unwrap();
+        assert_eq!(at.evaluation.mapping.camera_clip_frame, camera_in - 1);
+        assert!(!at.held_camera && !at.held_instance);
+    }
+}
+
 #[test]
 fn a_splat_transform_error_with_colliding_node_ids_names_the_bad_deck() {
     let mut raw = with_transitions(Edit::spec().bundle(), vec![tr(json!({}))]);
