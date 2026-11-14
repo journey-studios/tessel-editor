@@ -12,6 +12,7 @@ pub mod layout;
 pub mod library;
 pub mod project;
 pub mod property_gesture;
+pub mod split;
 pub mod timeline;
 pub mod tree;
 
@@ -167,6 +168,14 @@ pub enum Command {
         edge: timeline::TrimEdge,
         frame: i64,
     },
+    /// F017: cuts a clip in two at an absolute sequence frame (strictly inside it). The left
+    /// half keeps the ID; the right half gets `new_id` or `<clip>-split-<n>`. The selection is
+    /// not consulted; afterwards the right half is the selection.
+    SplitClip {
+        clip: String,
+        frame: i64,
+        new_id: Option<String>,
+    },
     ReorderTrack {
         track: String,
         anchor: String,
@@ -292,6 +301,7 @@ impl Command {
             Self::SetTrackFlag { .. } => "Track flag",
             Self::MoveClip { .. } => "Move clip",
             Self::TrimClip { .. } => "Trim clip",
+            Self::SplitClip { .. } => "Split clip",
             Self::ReorderTrack { .. } => "Reorder track",
             Self::CreateTrack { .. } => "Add track",
             Self::AddAsset { .. } => "Add asset",
@@ -560,6 +570,16 @@ impl EditorState {
             Command::PropertyGesture(gesture) => return self.run_property_gesture(gesture),
             other => other,
         };
+        // A refused split must not commit a slider preview before reporting the refusal.
+        // Check against that preview first; settling a valid cut changes history, not values.
+        if let Command::SplitClip {
+            clip,
+            frame,
+            new_id,
+        } = &command
+        {
+            self.plan_split(clip, *frame, new_id.as_deref())?;
+        }
         // An edit never runs on top of a slider gesture that is still previewing.
         if command.settles_property_gesture() && !self.is_idle_gizmo_release(&command) {
             self.settle_property_gesture();
@@ -694,6 +714,11 @@ impl EditorState {
                 self.subject = Subject::Clip;
                 Ok(outcome)
             }
+            Command::SplitClip {
+                clip,
+                frame,
+                new_id,
+            } => self.split_clip(&clip, frame, new_id.as_deref()),
             Command::ReorderTrack {
                 track,
                 anchor,

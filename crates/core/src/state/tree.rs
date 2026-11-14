@@ -16,6 +16,7 @@ use super::inspector::{
     section_properties,
 };
 use super::layout::{Layout, Node as LayoutNode, PanelKind};
+use super::split::SplitAvailability;
 use super::timeline::{ClipKind, TrackKind, ZOOM_MAX, ZOOM_MIN};
 use super::{EditorState, WorkspaceTab};
 use crate::content::TextSpec;
@@ -648,17 +649,15 @@ fn build_timeline(state: &EditorState, nodes: &mut Vec<Node>) {
             .state("selected", true)
             .disabled("The selection tool is the only tool and is always active"),
     );
-    for (id, label) in [
-        ("timeline.tool.razor", "Razor tool"),
-        ("timeline.tool.delete", "Delete clip"),
-    ] {
-        nodes.push(
-            Node::new(id, "icon_button", label)
-                .parent("region:timeline")
-                .disabled(NO_TOOL)
-                .action("invoke"),
-        );
-    }
+    // F017: the razor button is the real `clip.split` at the playhead. It stays visible while
+    // blocked and says why, like every other control (`disabled_reason`).
+    nodes.push(build_split_control(state, edit));
+    nodes.push(
+        Node::new("timeline.tool.delete", "icon_button", "Delete clip")
+            .parent("region:timeline")
+            .disabled(NO_TOOL)
+            .action("invoke"),
+    );
     let sequence_ids: Vec<&str> = state.all_sequences().map(|t| t.id.as_str()).collect();
     nodes.push(
         Node::new("timeline.sequence", "select", "Sequence")
@@ -778,6 +777,28 @@ fn build_timeline(state: &EditorState, nodes: &mut Vec<Node>) {
             );
         }
     }
+}
+
+/// `timeline.split` (F017): cut the selected clip at the playhead. Enabled exactly when
+/// `invoke` would run the split; otherwise the reason is the one `invoke` answers with.
+fn build_split_control(state: &EditorState, edit: bool) -> Node {
+    let timeline = &state.timeline;
+    let mut node = Node::new("timeline.split", "icon_button", "Cut clip at playhead")
+        .parent("region:timeline")
+        .visible(edit)
+        .state("playhead", timeline.playhead)
+        .state(
+            "clip",
+            timeline.selected_clip.map(|clip| format!("clip:{clip}")),
+        )
+        .action("invoke");
+    node = match state.split_availability() {
+        SplitAvailability::Ready { clip, frame } => node
+            .state("target", format!("clip:{clip}"))
+            .state("frame", frame),
+        SplitAvailability::Blocked(block) => node.disabled(block.reason()),
+    };
+    node
 }
 
 fn build_inspector(state: &EditorState, nodes: &mut Vec<Node>) {
@@ -1538,5 +1559,85 @@ mod tests {
             json!({"op":"invoke","target":"clip:basalt-cliffs","action":"select"}),
         );
         assert!(found(&state, "clip_text:title-north").is_none());
+    }
+
+    #[test]
+    fn the_cut_control_is_enabled_exactly_where_invoke_would_split() {
+        let mut state = EditorState::demo();
+        let run =
+            |state: &mut EditorState, request: Value| crate::headless::execute(state, &request);
+        state.timeline.selected_clip = None;
+        let cut = node(&state, "timeline.split");
+        assert_eq!(cut["parent"], "region:timeline");
+        assert_eq!(cut["enabled"], false);
+        assert_eq!(
+            cut["disabled_reason"],
+            crate::state::split::SplitBlock::NoSelection.reason()
+        );
+        assert_eq!(
+            cut["actions"][0]["enabled"], false,
+            "the action is advertised as disabled"
+        );
+        assert!(node(&state, "timeline.tool.delete")["enabled"] == false);
+
+        run(
+            &mut state,
+            json!({"op":"invoke","target":"clip:basalt-cliffs","action":"select"}),
+        )
+        .unwrap();
+        let (start, end) = {
+            let clip = state.timeline.clip("basalt-cliffs").unwrap();
+            (clip.start, clip.end())
+        };
+        for edge in [start, end, end + 1] {
+            run(
+                &mut state,
+                json!({"op":"set","target":"timeline.playhead","field":"frame","value":edge}),
+            )
+            .unwrap();
+            let cut = node(&state, "timeline.split");
+            assert_eq!(cut["enabled"], false, "frame {edge}");
+            assert!(
+                cut["disabled_reason"]
+                    .as_str()
+                    .unwrap()
+                    .contains("playhead")
+            );
+            let error = run(
+                &mut state,
+                json!({"op":"invoke","target":"timeline.split","action":"invoke"}),
+            )
+            .unwrap_err();
+            assert_eq!(error.code, "disabled_element");
+        }
+        run(
+            &mut state,
+            json!({"op":"set","target":"timeline.playhead","field":"frame","value":start + 1}),
+        )
+        .unwrap();
+        let cut = node(&state, "timeline.split");
+        assert_eq!(cut["enabled"], true);
+        assert!(cut.get("disabled_reason").is_none());
+        assert_eq!(cut["state"]["target"], "clip:basalt-cliffs");
+        assert_eq!(cut["state"]["frame"], start + 1);
+        let outcome = run(
+            &mut state,
+            json!({"op":"invoke","target":"timeline.split","action":"invoke"}),
+        )
+        .unwrap();
+        assert_eq!(outcome["right"]["start"], start + 1);
+        // The new right half is the selection and the node follows it.
+        assert_eq!(
+            node(
+                &state,
+                &format!("clip:{}", outcome["new_id"].as_str().unwrap())
+            )["state"]["selected"],
+            true
+        );
+        assert_eq!(
+            node(&state, "timeline.split")["enabled"],
+            false,
+            "the playhead is now an edge"
+        );
     }
 }

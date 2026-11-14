@@ -887,6 +887,8 @@ mod sharp_capture_tests;
 #[cfg(test)]
 mod slider_gesture_tests;
 #[cfg(test)]
+mod split_tests;
+#[cfg(test)]
 mod title_text_tests;
 #[cfg(test)]
 mod viewport_host_tests;

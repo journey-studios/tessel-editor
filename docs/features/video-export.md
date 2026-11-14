@@ -7,6 +7,11 @@ Lib **V** (`crates/media/tests/export.rs`, `video_audio.rs`, `flow.rs`; `crates/
 relatório de preflight assíncrono, job, progresso, cancelar; `scripts/live-flow-proof.py` mede o som exportado). Exportação ocorre em renderer **headless próprio** (Node+Chrome,
 thread própria), nunca captura o monitor.
 
+**Executáveis (BL167.2):** o export acha FFmpeg/FFprobe, Node e Chrome sem `TESSEL_*` também no Windows (`.exe`/`PATHEXT`,
+WinGet, Program Files, `LOCALAPPDATA`); `TESSEL_FFMPEG`/`TESSEL_FFPROBE` inválido ainda falha. Regras, limites e a prova real
+(`export.start` real com FFmpeg 9.0.2, sem overrides): [media-setup](../media-setup.md#descoberta-dos-executáveis) e
+[relatório](../migration/windows-tool-discovery-report.md). Só o Windows foi provado nesta entrega.
+
 ## Pipeline
 
 `snapshot imutável → preflight → prepare (decode) → mix WAV em blocos de 10 s → frame PNG a frame → FFmpeg

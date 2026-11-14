@@ -10,8 +10,10 @@ use std::fs;
 
 use serde_json::{Value, json};
 
+use crate::audio_clock::{SourceCursor, source_step};
 use crate::backend::BackendError;
 use crate::id::Id;
+use crate::time::Ratio;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WavFormat {
@@ -202,12 +204,17 @@ pub struct AudioSegment {
     pub output_start: u64,
     /// Output sample frames written.
     pub frames: u64,
-    /// Position in the source, in source sample frames, of the first output frame.
+    /// Whole part (floor) of the position in the source, in source sample frames, of the first
+    /// output frame. The exact position is `source_start + source_phase`; see
+    /// [`crate::audio_clock`]: the phase is what keeps a cut clip on the same samples.
     pub source_start: i64,
+    /// Fractional part of that position, in source sample frames, in `[0, 1)`.
+    pub source_phase: Ratio,
     pub source_rate: u32,
-    /// Source frames read per output frame, relative to the rates: `1.0` plays in time, `2.0`
-    /// twice as fast (varispeed: pitch follows, there is no time-stretch).
-    pub speed: f64,
+    /// Source frames read per output frame, relative to the rates: `1` plays in time, `2`
+    /// twice as fast (varispeed: pitch follows, there is no time-stretch). Exact; the mixer
+    /// steps `source_rate * speed / sample_rate` source frames per output frame.
+    pub speed: Ratio,
     pub gain: f32,
     /// `-1.0` left .. `1.0` right.
     pub pan: f32,
@@ -273,8 +280,11 @@ impl AudioPlan {
             "segments": self.segments.iter().map(|segment| json!({
                 "clip": segment.clip, "asset": segment.asset,
                 "output_start": segment.output_start, "frames": segment.frames,
-                "source_start": segment.source_start, "source_rate": segment.source_rate,
-                "speed": segment.speed, "gain": segment.gain, "pan": segment.pan,
+                "source_start": segment.source_start,
+                "source_phase": segment.source_phase.to_json(),
+                "source_rate": segment.source_rate,
+                "speed": segment.speed.to_f64(), "speed_exact": segment.speed.to_json(),
+                "gain": segment.gain, "pan": segment.pan,
                 "fade_in": segment.fade_in, "fade_out": segment.fade_out,
                 "clip_offset": segment.clip_offset, "clip_frames": segment.clip_frames,
             })).collect::<Vec<_>>(),
@@ -326,19 +336,34 @@ impl AudioBackend for OfflineMixer {
                     ),
                 ));
             }
-            let ratio =
-                f64::from(segment.source_rate) / f64::from(plan.sample_rate) * segment.speed;
+            // The position of every output sample is exact (`audio_clock`): the cursor carries
+            // the phase of the first sample and the rational step, so a segment, a cut half of
+            // it and a chunk of it read the same samples.
+            let unrepresentable = || {
+                BackendError::new(
+                    "invalid_audio_plan",
+                    format!(
+                        "The source position of `{}` is not representable",
+                        segment.clip
+                    ),
+                )
+            };
+            let step = source_step(segment.source_rate, segment.speed, plan.sample_rate)
+                .ok_or_else(unrepresentable)?;
+            let start = Ratio::from_int(segment.source_start)
+                .add(segment.source_phase)
+                .ok_or_else(unrepresentable)?;
+            let mut cursor = SourceCursor::new(start, step).ok_or_else(unrepresentable)?;
             let angle = f64::from(segment.pan.clamp(-1.0, 1.0) + 1.0) * std::f64::consts::FRAC_PI_4;
             let (mono_left, mono_right) = (angle.cos() as f32, angle.sin() as f32);
             let (balance_left, balance_right) =
                 (1.0f32.min(1.0 - segment.pan), 1.0f32.min(1.0 + segment.pan));
             for index in 0..segment.frames {
-                let position = segment.source_start as f64 + index as f64 * ratio;
-                if position < 0.0 || position >= pcm.frames() as f64 {
+                let (whole, fraction) = cursor.next_position();
+                if whole < 0 || whole >= pcm.frames() as i128 {
                     continue;
                 }
-                let base = position.floor() as usize;
-                let fraction = (position - position.floor()) as f32;
+                let base = whole as usize;
                 let channel = |channel: usize| {
                     let a = pcm.sample(base, channel);
                     let b = if base + 1 < pcm.frames() {
@@ -420,7 +445,8 @@ mod tests {
             frames: 100,
             source_start: 0,
             source_rate: 1000,
-            speed: 1.0,
+            source_phase: Ratio::ZERO,
+            speed: Ratio::from_int(1),
             gain,
             pan,
             fade_in: 0,
@@ -460,7 +486,8 @@ mod tests {
                 frames: 10,
                 source_start: 0,
                 source_rate: 1000,
-                speed: 1.0,
+                source_phase: Ratio::ZERO,
+                speed: Ratio::from_int(1),
                 gain: 1.0,
                 pan: 0.0,
                 fade_in: 0,

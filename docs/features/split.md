@@ -2,17 +2,125 @@
 
 ## Status
 
-**Pendente** em UI, CLI e biblioteca. Nenhuma API ou comando desta feature está entregue.
-Estado demonstrativo e controles desabilitados não comprovam implementação funcional.
+**A validar (BL081 e BL081.5).** Entregue em biblioteca, CLI headless (processo JSONL) e janela. Evidência e limites em
+[clip-split-report.md](../migration/clip-split-report.md) e, para o som em qualquer grade (BL081.5), em
+[clip-split-audio-continuity-report.md](../migration/clip-split-audio-continuity-report.md). Sem ponteiro físico, sem áudio
+ouvido e sem pixels: a prova da janela é semântica (`ui get/set/invoke/op`).
 
-## Contrato a implementar
+## Contrato
 
-Começar pelo core sem GPUI: entradas e IDs próprios, consultas, comandos, resultados e erros.
-Documentar unidades, pré-condições e efeitos no estado. Expor a mesma operação pela CLI headless
-antes de conectá-la à UI. Para batch, não depender de seleção da interface.
+Corta **um clipe da sequência ativa** num **frame absoluto** da sequência. A regra vive em `crates/core/src/state/split.rs`
+(`EditorState::plan_split` valida tudo sem tocar o estado; `split_clip` aplica um plano que não pode falhar). Lib, headless e
+janela chamam o mesmo `Command::SplitClip`.
 
-## Evidências necessárias
+| Entrada | Tipo | Regra |
+|---|---|---|
+| `clip` | ID do clipe | tem de existir na sequência ativa |
+| `frame` | inteiro, frame **absoluto** | estritamente dentro do clipe: `start < frame < start + duration` |
+| `new_id` | texto, opcional | ID do clipe da direita |
 
-Fluxo programático pela lib, execução em processo sem UI, erro relevante sem alteração indevida
-de estado e validação da integração UI. Substituir este planejamento pelo contrato executável
-na entrega; atualizar [matriz](README.md) na mesma mudança.
+Op JSON: `{"op":"clip.split","clip":"title-north","frame":10,"new_id":"title-north-b"}`. Também
+`invoke timeline.split invoke` (usa o clipe selecionado e o playhead; só a **UI** depende da seleção, a op não).
+
+### Efeito
+
+- Esquerda: mantém o ID, `start` e a faixa; `duration = frame − start`.
+- Direita: novo ID, mesma faixa e mesmo asset, `start = frame`, `duration = end − frame`; entra logo depois da esquerda na ordem
+  de `clips`. Duas durações positivas cobrem o clipe original exatamente (sem lacuna nem sobreposição).
+- `source_start` da direita = `source_start + (frames_antes / fps) × velocidade`, em `Ratio` com aritmética checada (sem `f64`).
+  Vale para taxa racional (30000/1001) e velocidade ≠ 1.
+- Propriedades do inspetor (texto, zoom, opacidade…) são copiadas para a direita. Câmera: ver abaixo.
+- A direita fica **selecionada** (`selected_media` e assunto = clipe). A seleção é estado de sessão: undo/redo **não** a restauram,
+  apenas descartam a que deixou de existir.
+- Desfazer/refazer: **uma** entrada de histórico ("Split clip"). Salvar e reabrir preserva os dois clipes.
+
+### Política do ID
+
+- `new_id` explícito: validado por `Id::validate` (as mesmas regras de `Id::new`, sem internar). Duplicado (clipe, track ou clipe
+  de qualquer sequência) → `duplicate_id`; inválido → `invalid_id`.
+- Sem `new_id`: `<clip>-split-<n>`, o menor `n` ≥ 1 livre em faixas, clipes e todas as sequências (determinístico). Se o nome
+  padrão não cabe em `MAX_ID_LEN`, erro `invalid_id` (não trunca): passe `new_id`.
+- Recusa não consome ID, revisão nem histórico.
+
+### Continuidade
+
+Cada frame da sequência lê, depois do corte, o mesmo tempo de fonte, câmera, zoom e opacidade que lia antes.
+
+| Caso | Regra |
+|---|---|
+| Câmera orbital (sem chaves) | a direita começa onde a órbita já estava: `camera.at(shift)` |
+| Câmera com chaves | ancorada no tempo absoluto da cena: nada a mudar |
+| Ken Burns (só imagem estática, `ken_burns` ligado, `end_zoom ≠ zoom`) | esquerda termina em `z0 + (z1−z0)(k−1)/(D−1)`; direita começa em `z0 + (z1−z0)k/(D−1)` e mantém `end_zoom`. Valores gravados **sem arredondar** |
+| Fade-in | a esquerda mantém o fade; a direita fica com 0 |
+| Fade-out | a direita mantém o fade; a esquerda fica com 0 |
+| Áudio (BL081.5) | o mix das metades é **o mesmo, amostra a amostra (bit a bit)**, em qualquer taxa de quadros, taxa de fonte (44,1/48 kHz), mono/estéreo, velocidade, offset e stream, sem recusa por grade fracionária; ver "Áudio em grade fracionária" |
+
+### Erros tipados (atômicos)
+
+Nenhum erro altera clipe, propriedade, seleção, revisão, histórico ou consumo de ID.
+
+| `code` | Quando |
+|---|---|
+| `unknown_element` | clipe inexistente |
+| `out_of_bounds` | `frame < start` ou `frame > end` |
+| `invalid_duration` | `frame == start` ou `frame == end` (metade vazia) |
+| `invalid_id` / `duplicate_id` | `new_id` inválido/duplicado, ou nome padrão que não cabe |
+| `invalid_time` | estouro de aritmética checada (frames ou tempo de fonte) |
+| `invalid_request` | parser: `frame` fracionário/não inteiro, tipos errados |
+| `split_unsupported` | `details.reason`: `fade_in_crosses_cut`, `fade_out_crosses_cut`, `fades_longer_than_clip` |
+| `disabled_element` | `invoke timeline.split` com o controle desabilitado |
+
+Fade que cruza o corte não é aproximado: uma rampa não pode ser dividida em duas sem mudar o ganho. Imagem recusa fade-in se
+`frames_antes < fade_in` e fade-out se `frames_depois + 1 < fade_out`; áudio, fade-out se `frames_depois < fade_out`.
+Dois fades de áudio cuja soma excede o clipe (o mixer os encurta) são recusados.
+
+### Áudio em grade fracionária (BL081.5)
+
+Antes, um corte de som era recusado (`split_unsupported`, `reason: audio_sample_grid`, `SplitBlock::AudioSampleGrid`) quando as
+amostras por quadro (saída a 48 kHz ou fonte com velocidade) não eram inteiras: 30000/1001, 24000/1001, 44,1 kHz a 24 fps e até os
+cortes em múltiplos de 5 no NTSC. O mixer arredondava `source_start` a uma amostra inteira em cada segmento, então cada metade
+reiniciava a fase. O modelo agora é exato e **não precisa de metadado novo no clipe** (ver
+[core-architecture.md](../core-architecture.md) e `crates/core/src/audio_clock.rs`):
+
+- Relógio de saída **absoluto**: o quadro `f` começa na amostra `S(f) = round(f · den · 48000 / num)`. Um clipe soa em
+  `S(start) .. S(end)`; um trecho do mix é uma diferença de dois `S`.
+- A amostra de saída `n` lê a fonte em `(source_start + (n/48000 − start/taxa) · velocidade − offset_do_stream) · sr`, em
+  fração racional (`i128`), sem arredondar. `AudioSegment` carrega `source_start` (inteiro, piso), `source_phase` (fração em `[0,1)`)
+  e `speed` exato (`Ratio`); o mixer anda com `audio_clock::SourceCursor` (soma inteira com vai-um), sem acumulador de float.
+- O corte mantém `source_start` racional (`source_start + decorrido × velocidade`, como já fazia). Como a fórmula só usa `start`,
+  `source_start`, velocidade e offset, mover, aparar, mudar a velocidade ou cortar de novo não deixa âncora velha.
+- Fades de áudio medem rampas e `clip_offset`/`clip_frames` nesse mesmo relógio (`S(start+fade) − S(start)`, `S(end) − S(end−fade)`):
+  a rampa externa de uma metade é a do clipe inteiro, amostra a amostra.
+- `plan_audio` e o export contam amostras pelo relógio absoluto: pedaços postos em sequência são o mix inteiro (bit a bit).
+- O corte só recusa o som se a posição de fonte da metade direita não cabe nos inteiros (`invalid_time`, atômico).
+
+**Compatibilidade.** Em grade inteira (24/25/30/60 fps a 48 kHz, passos de fonte exatos em `f64`) o PCM é **idêntico bit a bit** ao
+anterior (teste com emulação do mixer antigo). Em grade fracionária o PCM do clipe **inteiro** mudou: o modelo antigo começava cada
+segmento na amostra de fonte mais próxima do *quadro* e não do instante da amostra de saída, até meia amostra de erro; o novo coincide
+com a posição física. O contrato novo é provado contra um oráculo independente, e não contra o comportamento antigo.
+
+## Superfícies
+
+- **Lib/headless:** `Command::SplitClip` / op `clip.split`; `./scripts/headless` executa a sessão JSONL sem janela.
+- **UI:** botão do Kit "Cortar clipe no playhead" (ícone `Slice`) na barra da timeline, no lugar do antigo placeholder da navalha.
+  Habilitado só quando `split_availability()` é `Ready`; desabilitado traz `disabled_reason` coerente.
+- **CLI da janela:** nó `timeline.split` (`icon_button`, ação `invoke`), `state.playhead/clip/target/frame`; `enabled` e
+  `disabled_reason` vêm da mesma regra que o botão e o `invoke`.
+
+## Limites conhecidos
+
+- Só a sequência ativa; clipes de outras sequências não são cortados por esta op.
+- Cortes dentro de um fade são recusados (nunca aproximados): BL081.2, fora do BL081.5, em qualquer grade.
+- O Ken Burns e a órbita são recalculados em `f64` (propriedades do inspetor são `f64`); o tempo de fonte e a divisão do tempo
+  são exatos.
+- A direita herda o nome do clipe (não é renomeada).
+- Sem atalho de teclado, sem corte por clique na timeline e sem corte em lote (a op é por clipe).
+- Selecionar de volta o clipe original depois de undo/redo não é automático (seleção é de sessão).
+
+## Evidências
+
+Ver [clip-split-report.md](../migration/clip-split-report.md): `crates/core/tests/clip_split.rs` (22 testes: lib e processo
+`tessel-headless`), testes de unidade (`id`, `inspector`, `tree`, `audio_clock`), `crates/desktop/src/workstation/split_tests.rs`
+(4 testes GPUI com clique simulado) e a prova na janela própria por `tessel-editor ui …`. Som (BL081.5):
+`crates/core/tests/clip_split_audio_phase.rs` (14 testes, oráculo racional independente) e
+[clip-split-audio-continuity-report.md](../migration/clip-split-audio-continuity-report.md).

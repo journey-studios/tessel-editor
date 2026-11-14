@@ -290,7 +290,7 @@ fn a_fade_is_one_undoable_edit_and_survives_save_and_reopen() {
 }
 
 #[test]
-fn fractional_frame_rates_keep_chunk_fades_within_one_sample_of_the_whole_mix() {
+fn fractional_frame_rates_keep_chunk_fades_identical_to_the_whole_mix() {
     for numerator in [24_000_u32, 30_000] {
         let mut state = project(&format!("fractional-{numerator}"));
         state.timeline.rate = tessel_editor_core::time::Rate::new(numerator, 1001).unwrap();
@@ -298,7 +298,6 @@ fn fractional_frame_rates_keep_chunk_fades_within_one_sample_of_the_whole_mix() 
         fade(&mut state, "fade_out", 12);
         let whole = mix(&state, 0, 120);
         let fade_samples = (12.0 * 48_000.0 * 1001.0 / f64::from(numerator)).round() as f32;
-        let tolerance = LEVEL / fade_samples + 1e-7;
         let end = ((60_i128 * 48_000 * 1001 + i128::from(numerator) / 2) / i128::from(numerator))
             as usize;
         assert!(
@@ -313,11 +312,12 @@ fn fractional_frame_rates_keep_chunk_fades_within_one_sample_of_the_whole_mix() 
             let base = ((i128::from(from) * 48_000 * 1001 + i128::from(numerator) / 2)
                 / i128::from(numerator)) as usize;
             for index in 0..chunk.frames() {
-                // Independently rounded frame boundaries may differ by one sample; the
-                // allowed amplitude error is one envelope step, not a fixed loose epsilon.
+                // BL081.5: the planner counts on one absolute clock, so a chunk is the same
+                // samples as the whole mix, bit for bit (it used to be within one envelope step).
                 if base + index < whole.frames() {
-                    assert!(
-                        (left(&chunk, index) - left(&whole, base + index)).abs() <= tolerance,
+                    assert_eq!(
+                        left(&chunk, index).to_bits(),
+                        left(&whole, base + index).to_bits(),
                         "rate {numerator}/1001 from {from} sample {index}"
                     );
                 }

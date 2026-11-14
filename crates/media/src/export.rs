@@ -20,6 +20,7 @@ use serde_json::{Value, json};
 use tessel_editor_core::EditorState;
 use tessel_editor_core::assets::{Asset, MediaKind, Source};
 use tessel_editor_core::audio::{AudioBackend, OfflineMixer};
+use tessel_editor_core::audio_clock;
 use tessel_editor_core::backend::{Capabilities, Output};
 use tessel_editor_core::jobs::{JobContext, JobError};
 use tessel_editor_core::plan::{
@@ -128,13 +129,24 @@ pub fn schedule(state: &EditorState, request: &ExportRequest) -> Result<Schedule
         .and_then(|rate| duration.mul(rate))
         .map_or(0, Ratio::round)
         .max(1) as u64;
-    let seconds = Ratio::new(
+    let encoded_samples = Ratio::new(
         frames as i64 * i64::from(output_rate.den()),
         i64::from(output_rate.num()),
     )
     .and_then(|time| time.mul_int(i64::from(MIX_SAMPLE_RATE)))
     .map_or(0, Ratio::round)
     .max(0) as u64;
+    let audio_samples = if output_rate == sequence_rate {
+        audio_clock::sample_at(sequence_rate, to)
+            .zip(audio_clock::sample_at(sequence_rate, from))
+            .and_then(|(end, start)| end.checked_sub(start))
+            .and_then(|samples| u64::try_from(samples).ok())
+            .ok_or_else(|| JobError::new("invalid_time", "The export audio clock overflows"))?
+    } else {
+        // A frame-rate override can round the number of encoded frames. Match that duration;
+        // the source mix may need a tail trim/pad of at most that rounding interval.
+        encoded_samples
+    };
     Ok(Schedule {
         from,
         to,
@@ -142,7 +154,7 @@ pub fn schedule(state: &EditorState, request: &ExportRequest) -> Result<Schedule
         output_rate,
         frames,
         geometry: request.preset.geometry(timeline.width, timeline.height),
-        audio_samples: seconds,
+        audio_samples,
     })
 }
 
@@ -676,10 +688,9 @@ struct AudioReport {
     rms: f64,
 }
 
-/// Mixes the range chunk by chunk into `path`. A chunk starts at its exact sample boundary: the
-/// planner rounds each chunk independently, so a chunk is trimmed or the gap zero-filled by at
-/// most one sample, and the error never accumulates across chunks. The file ends with exactly
-/// `schedule.audio_samples` samples, which is what makes video and audio the same length.
+/// Mixes the range into a WAV on the core's absolute sample clock. With unchanged FPS,
+/// chunks are adjacent and the target is S(to)-S(from), including ranges starting after zero.
+/// An output-FPS override follows the encoded-frame duration and may trim/pad the tail.
 fn render_audio(
     state: &EditorState,
     schedule: &Schedule,
@@ -703,12 +714,14 @@ fn render_audio(
         let pcm = mixer.mix(&plan).map_err(|error| {
             JobError::new(error.code.clone(), format!("Audio mix: {}", error.message))
         })?;
-        let exact_start = schedule
-            .sequence_rate
-            .frame_to_time(from - schedule.from)
-            .mul_int(i64::from(MIX_SAMPLE_RATE))
-            .map_or(0, Ratio::round)
-            .max(0) as u64;
+        // The core's clock is absolute (BL081.5): a chunk starts where the previous one ended, so
+        // for a whole-frame schedule this is `written` and nothing is trimmed or zero-filled.
+        let exact_start = audio_clock::sample_at(schedule.sequence_rate, from)
+            .zip(audio_clock::sample_at(
+                schedule.sequence_rate,
+                schedule.from,
+            ))
+            .map_or(0, |(chunk, origin)| (chunk - origin).max(0)) as u64;
         let mut samples: &[f32] = &pcm.samples;
         if written < exact_start {
             let gap = (exact_start - written).min(target - written);
