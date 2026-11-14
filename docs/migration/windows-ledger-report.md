@@ -139,6 +139,8 @@ das claims; até a rechecagem Windows, são testes escritos, **não executados**
 assim como o teste de exclusividade. É prazo limitado de teste para verificar integridade
 sob churn, não mudança do limite produtivo nem alegação de fairness. O guard de pânico do
 escritor permanece. O BOM UTF-8 introduzido em `claims/tests.rs` foi removido.
+**Isto não bastou:** a revisão R2 em `8cad5c2` ainda viu a corrida falhar (seção abaixo). A
+corrida **não** era só um problema de orçamento de teste.
 
 **Proveniência:** `_gates-summary.log` do autor identifica a base `2b54ac1` com árvore ainda
 sem commit. O hash do binário identifica aquele artefato; os logs não validam por SHA o head
@@ -155,3 +157,86 @@ Seguimentos registrados no backlog: RootLease ainda usa `path.exists()` fora de 
 diagnóstico PID ilegível sob lock obrigatório (BL167.6.3/BL079); rollback de append parcial e
 disco cheio sem prova (BL167.6.4); possível giro quente se same_file falha sempre, ainda só
 por leitura (BL167.6.5). Nenhum foi tratado como corrigido por este patch.
+
+## R2 em `8cad5c2`: acesso negado ao criar a pasta do ledger (BL167.6.2)
+
+**Revisão R2 (head `8cad5c2`).** O P1 de BL167.6.1 está fechado: o open do lock recusado responde em
+ZERO ~0,2 ms e tick/accept em ~20 ms (guarda de prazo + pausa mínima). O **P2 continua aberto**: a
+corrida `emptying_and_refilling_a_ledger_is_never_mistaken_for_damage` falhou **5/320** com
+`PermissionDenied` (os error 5) em `fs::create_dir(.tessel-claims)`, **antes** de qualquer open do
+lock, então a retentativa do open não a cobria. A remoção pendente é a hipótese do mecanismo, **não
+uma causa provada**; só a recusa observada e o ponto onde ela ocorre estão comprovados.
+
+**Não reproduzido localmente.** `base-8cad.exe` (SHA-256
+`B3AC779AC5D5C781200B79C3928B5A984F9AEC07D9DC87D41DD901CEAD9B225C`, build de `8cad5c2`),
+320 execuções sequenciais, runner próprio, uma por vez, prazo de processo: **0/320** falhas
+(`baseline-8cad.log`). Sondas de instrumentação temporária (binários descartáveis, fora da árvore) com a
+corrida ociosa e sob carga: 0/160 e 0/160. Então o 0/320 abaixo **não prova a eficácia** da correção:
+a base também dá 0/320 nesta máquina. O que ele prova é a ausência de regressão e de timeout.
+
+### Correção (`2522290`, filho de `8cad5c2`; ainda não publicado até esta seção)
+
+`DiskLock::acquire` passa a usar uma política única, `denial_is_transient`, para o `create_dir` da pasta
+e para o open do lock: só `PermissionDenied` no Windows; no máximo `DENIED_RETRIES` = 50 tentativas
+**somadas** nas duas chamadas (contador `denied` compartilhado, sem zerar); só enquanto o prazo do
+chamador não passou (ZERO nunca espera; a pausa de 2 ms é limitada ao restante; o prazo não é
+renovado). `LOCK_WAIT` (1,5 s), `TICK_WAIT` (20 ms), a exclusão mútua fail-closed e os erros
+definitivos (reportados como são) não mudaram. Sem laço ilimitado, sem aceitar erro definitivo e sem
+detecção por PID. Visibilidade: só `DENIED_RETRIES` virou `pub(super)` (os testes contam as tentativas); o
+gancho `CREATE_FOLDER` é `#[cfg(test)]`, thread-local, e não existe no binário de produção.
+
+### Testes: o que cada um prova (e o que não)
+
+| Teste (`claims/denied_budget_tests.rs`) | Tipo | Prova |
+|---|---|---|
+| `a_denied_create_that_goes_away_is_retried_to_a_lock` | **injeção** (os error 5 no `create_dir`, 5 vezes) | o controle de retentativas: 6 chamadas, lock obtido, claim gravada e ledger removido ao sair |
+| `a_denied_create_is_not_retried_by_a_caller_that_does_not_wait` | **injeção** | ZERO: 1 chamada, mensagem com `os error 5`, nada criado |
+| `a_denied_create_that_stays_is_given_up_at_the_retry_cap` | **injeção** | o teto: 51 chamadas e a recusa é reportada; prazo de 5 s não alarga |
+| `a_real_denied_create_respects_the_zero_and_tick_budgets` | **ACL real persistente** (`icacls /deny *S-1-1-0:(AD)` na pasta do teste; levantada no `Drop`) | uma recusa real do `create_dir` dentro do orçamento (ZERO e tick, abaixo do teto de 100 ms), mensagem da recusa, nada criado, ledger funciona após levantar a regra |
+
+A injeção **não** prova o mecanismo do NTFS na corrida; a ACL real **não** reproduz a recusa transitória
+(ela fica na pasta, não some em milissegundos): prova apenas a recusa real e o orçamento. Cada
+falha do mecanismo real continua só observada pelo revisor.
+
+**Teste anterior, substituído.** O commit local não publicado `2d4f58b` trazia um teste ACL
+**transitório** (a regra era levantada por uma thread enquanto o `create_dir` repetia). Ele foi
+frágil: `gate-claims-lib.log` registra `a_denied_create_that_goes_away_is_retried_to_a_lock … FAILED`
+(51 passaram, 1 falhou, exit 101). Não foi ignorado nem relaxado: foi trocado pelo seam
+`CREATE_FOLDER` (injeção determinística) mais o teste de ACL real persistente. `2d4f58b` nunca foi
+publicado e foi substituído por `2522290` com o mesmo pai (`8cad5c2`), via plumbing local.
+
+### Evidência por head (Windows 10.0.26200, Git Bash, `./scripts/cargo`, target padrão)
+
+Todos os logs em `C:\Users\wally\tessel-bl167-6-2-logs\`. Fonte final: `ledger.rs` SHA-256
+`9A57B83B485DD9BD24CB9F11F56E1E4158D31EDE33B98BF312C8817089434774` (cópia `ledger.rs.HEAD2`).
+
+| Prova em `2522290` | Resultado | Log |
+|---|---|---|
+| `cargo fmt --all -- --check` | exit 0 | `g3-fmt.log` |
+| `./scripts/cargo check --workspace --locked` | exit 0 | `g3-check.log` |
+| `./scripts/cargo clippy --workspace --all-targets --locked -- -D warnings` | exit 0 | `g3-clippy.log` |
+| `test -p tessel-editor-media --lib claims` | **54/54** (os 6 `denied_budget_tests` incluídos) | `g3-claims-lib.log` |
+| `scene_claims_processes` / `scene_claims_journal` / `scene_claims_integrity` / `scene_claims_jsonl` / `job_discard_claims` | 14 / 13 / 11 / 6 / 13 passam | `g3-integ-*.log` |
+| Corrida ×320 sequencial (`final-head2.exe`, SHA-256 `553BC7B37A2BCD87FFB76C681F1D6F9BAFEB1EDBB359BDF3E6BBE6FDFD315F21`, binário compilado de `2522290` limpo; runner `run-seq.ps1`: um processo por vez, 60 s de prazo, um runner por log) | **320/320**, 0 falhas, 0 timeouts, sem sobreposição (tag `final-head2-2522290`) | `final2-race-320.log` |
+| Exclusividade ×40 (mesmo binário, mesmo runner) | **40/40** | `final2-excl-40.log` |
+| Mutantes sobre a fonte final (binários `h2-mut*`, fonte restaurada, árvore limpa) | todos mortos, abaixo | `h2-mutants.log` |
+
+Mutantes (`denied_budget_tests`, `--test-threads=8`): sem retentativa do create → 2 falham
+(`…goes_away…`, `…given_up_at_the_retry_cap`); sem guarda de prazo → 4 falham (ZERO, ACL real, e os dois
+da recusa do lock); sem teto → 1 falha (`…given_up_at_the_retry_cap`; passa por 5 s de prazo).
+
+**Não herdados.** `final-race-320.log` (tag `2d4f58b`, 320/320), `final-excl-40.log` e os `gate-*.log`
+de 16:43–16:44 pertencem ao `2d4f58b`: o `ledger.rs` daquele head tem outro hash
+(`05205B12A3320874948F324B370970811E96D7437959583EAE62C35E95B0BC7F`) e os testes diferem. Não são
+prova de `2522290` e foram repetidos (`g3-*`, `final2-*`).
+
+### Limites e o que continua em aberto
+
+- Workspace inteiro **não** foi declarado verde: falhas conhecidas de W1/`lease`/`adopt`/`base`
+  (tabela acima) estão fora do ledger e não foram reexecutadas.
+- Sem prova de performance/GPU, janela, Unix ou Mac. `append_accept` (abrir com escrita + `seek`) **ainda
+  precisa de Mac**; o retry novo é `cfg!(windows)`.
+- A correção do P2 depende da hipótese do mecanismo; se a recusa vier de outra janela (por exemplo
+  um antivírus mantendo a pasta por mais de ~100 ms), o teto de 50 retentativas ainda a reportaria.
+- BL167.6.2 permanece **A validar** até a revisão independente do head publicado. Fechar BL167.6.1 no
+  Windows não equivale a PR aprovada.

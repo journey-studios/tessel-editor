@@ -136,13 +136,14 @@ O comportamento de links usa unix; os módulos de symlink continuam sem execuç�
 
 O ledger de claims que protege estes arquivos (`scene_resources::claims`, [F040](scene-resource-integration.md))
 foi executado no Windows real por esta fatia. Estado: **A validar; PR60 não aprovada em
-`0cea8d6`**, por uma retentativa de acesso negado que excede o orçamento do tick. A correção
-do coordenador e as regressões novas ainda exigem execução Windows. Mac também precisa ser
-revalidado (a mudança de `claims.journal` roda no Unix).
+`0cea8d6` nem em `8cad5c2`** (revisão R2: o P1 do tick fechou, a corrida ainda falhou 5/320 por acesso
+negado ao criar a pasta do ledger). A correção em `2522290` está provada no Windows como descrito abaixo e
+no [relatório](../migration/windows-ledger-report.md), ainda sem revisão independente. Mac também precisa
+ser revalidado (a mudança de `claims.journal` roda no Unix).
 
 | Superfície | Evidência | Estado |
 |---|---|---|
-| Lib (core/media, sem janela) | `claims/tests.rs`: 48 testes, entre eles `trackers_never_hold_an_emptied_and_refilled_ledger_at_the_same_time`, `a_lock_file_replaced_at_its_path_is_not_the_one_that_was_opened`, `an_emptied_and_refilled_ledger_reads_the_same_every_time` e a corrida `emptying_and_refilling_a_ledger_is_never_mistaken_for_damage` | Windows: passam; antes a corrida ficava mais de 30 min com CPU ocupada |
+| Lib (core/media, sem janela) | módulo `claims` (54 testes em `2522290`; 48 antes de BL167.6.1/.2), entre eles `trackers_never_hold_an_emptied_and_refilled_ledger_at_the_same_time`, `a_lock_file_replaced_at_its_path_is_not_the_one_that_was_opened`, `an_emptied_and_refilled_ledger_reads_the_same_every_time` e a corrida `emptying_and_refilling_a_ledger_is_never_mistaken_for_damage` | Windows: passam; antes a corrida ficava mais de 30 min com CPU ocupada |
 | Dois processos reais | `scene_claims_processes` (14), `scene_claims_journal` (13, antes `cfg(unix)`), `job_discard_claims` (13), `scene_claims_integrity` (11), `scene_claims_jsonl` (6) | Windows: passam; `scene_claims_failure` depende do ajuste de `adopt.rs` que o [relatório](../migration/windows-ledger-report.md) propõe |
 | CLI headless / janela | Sem mudança de contrato; `scene.resources.*` já era coberto pelos testes acima (processos `tessel-media` reais) | Sem prova nova de janela no Windows |
 
@@ -162,9 +163,26 @@ A revisão independente confirmou a identidade do lock e o journal no Windows, m
 uma falha por inanição em 140 execuções da corrida. O coordenador acrescentou a guarda de prazo,
 limitou a pausa e separou o prazo de estresse da corrida (60 s, só em teste). Regressões Windows
 com arquivo somente-leitura e diretório em `ledger.lock` conferem ZERO/tick/accept, teto de
-100 ms e claims preservadas. **Ainda não executadas nesta correção**; não são prova de janela.
+100 ms e claims preservadas; a R2 em `8cad5c2` as executou e o P1 fechou. Não são prova de janela.
 A identidade por volume/índice foi exercitada em NTFS; ReFS e filesystems de rede continuam
 sem prova. O defeito equivalente de identidade do RootLease pertence a BL079/BL167.6.3.
+
+**BL167.6.2 (R2, 2522290).** Na R2 a corrida falhou 5/320 com PermissionDenied em
+s::create_dir(.tessel-claims), antes do open. O create e o open do lock passam a usar a mesma
+política estreita (denial_is_transient): só PermissionDenied no Windows, até 50 tentativas
+**somadas**, só enquanto o prazo do chamador dura (ZERO nunca espera; a pausa nunca excede o
+restante; o prazo e o contador não são renovados). LOCK_WAIT (1,5 s), TICK_WAIT (20 ms) e a
+exclusão mútua fail-closed não mudaram; a remoção pendente é hipótese do mecanismo, não causa
+provada, e a falha não reproduziu aqui na base (8cad5c2: 0/320). Provas, sem confundir:
+**injeção** (CREATE_FOLDER, #[cfg(test)], erro 5 no create_dir) prova o controle das
+retentativas (volta ao lock após 5 recusas; ZERO 1 chamada; teto 51 chamadas), **não** o mecanismo
+do NTFS; uma **ACL real persistente** prova uma recusa real e o orçamento de ZERO/tick, **não** a
+recusa transitória. Um teste ACL transitório anterior (commit local não publicado 2d4f58b) falhou
+no gate e foi substituído por esses dois, não relaxado. Em 2522290: claims 54/54, processos 14,
+journal 13, integrity 11, jsonl 6, job_discard_claims 13, fmt/check/clippy -D warnings exit 0, corrida
+320/320 e exclusividade 40/40 (binário compilado do head), mutantes mortos; workspace inteiro não
+declarado verde. Mac/Unix não validados (ppend_accept com escrita + seek ainda precisa de Mac).
+BL167.6.2 permanece **A validar** até revisão independente.
 
 ## Integração pelo coordenador
 
