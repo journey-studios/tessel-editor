@@ -533,6 +533,17 @@ fn read_fx_value(params: &Obj<'_>, name: &str, kind: &ParamKind) -> Result<FxVal
     match kind {
         ParamKind::Number { .. } => Ok(FxValue::Number(params.number(name)?)),
         ParamKind::Bool { .. } => Ok(FxValue::Bool(params.boolean(name)?)),
+        // No plan pass carries one today (the plan's effects are the looks of `effect`); the arm
+        // keeps the match total with a typed refusal, not an acceptance of a value it cannot name.
+        ParamKind::Choice { options, .. } => {
+            let chosen = params.text(name)?;
+            options
+                .iter()
+                .copied()
+                .find(|option| *option == chosen)
+                .map(FxValue::Choice)
+                .ok_or_else(|| params.fail(name, "not one of the options of the parameter"))
+        }
         ParamKind::Color { .. } => {
             let color = params.object(name)?;
             color.only(&["r", "g", "b"])?;

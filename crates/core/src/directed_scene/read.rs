@@ -270,6 +270,11 @@ impl<'a> Obj<'a> {
             self.invalid(key, format!("expected a whole number, got {number}"));
             return None;
         };
+        self.check_integer(key, integer, bound)
+    }
+
+    /// The range and bound every integer reader applies after it has an `i64`.
+    fn check_integer(&self, key: &str, integer: i64, bound: Bound) -> Option<i64> {
         if !(-MAX_SAFE_INT..=MAX_SAFE_INT).contains(&integer) {
             self.invalid(
                 key,
@@ -296,6 +301,39 @@ impl<'a> Obj<'a> {
             return Some(None);
         };
         self.read_integer(key, value, bound).map(Some)
+    }
+
+    /// An integer written as one: `12` is accepted, `12.0`, `12.5` and `1e1` are not (they are
+    /// JSON floats), nor is a boolean or a string. The lenient [`Self::int`] reads `12.0` as 12,
+    /// as the origin's `JSON.parse` does; the fields of `fx.transitions` do not coerce.
+    fn read_strict_integer(&self, key: &str, value: &Value, bound: Bound) -> Option<i64> {
+        let Value::Number(number) = value else {
+            self.mismatch(key, "integer", value);
+            return None;
+        };
+        let Some(integer) = number.as_i64() else {
+            self.invalid(
+                key,
+                format!(
+                    "expected a whole number written without a fraction or exponent, got {number}"
+                ),
+            );
+            return None;
+        };
+        self.check_integer(key, integer, bound)
+    }
+
+    /// A required [`Self::read_strict_integer`] field.
+    pub(super) fn strict_int(&self, key: &str, bound: Bound) -> Option<i64> {
+        self.read_strict_integer(key, self.required(key)?, bound)
+    }
+
+    /// An optional [`Self::read_strict_integer`] field: `Some(None)` when absent.
+    pub(super) fn opt_strict_int(&self, key: &str, bound: Bound) -> Option<Option<i64>> {
+        let Some(value) = self.take(key) else {
+            return Some(None);
+        };
+        self.read_strict_integer(key, value, bound).map(Some)
     }
 
     /// A required non-negative or positive integer as `u64`.

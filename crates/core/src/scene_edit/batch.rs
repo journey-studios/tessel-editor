@@ -434,7 +434,10 @@ pub fn apply_with(
     }
 
     let modified = net_modified(scene.document(), &work, &data)?;
-    let candidate = DirectedScene::import_value_with(work, limits)
+    // `reimport`, never `import_value_with`: the candidate is read under the scene's own
+    // transition policy (F064).
+    let candidate = scene
+        .reimport(work, limits)
         .map_err(|error| rejected(error, &touched))?;
     let mut issues = candidate.edit_join_issues();
     issues.extend(candidate.temporal_issues());

@@ -875,6 +875,8 @@ mod scene_fx_scope_tests;
 #[cfg(test)]
 mod scene_fx_tests;
 #[cfg(test)]
+mod scene_fx_transition_tests;
+#[cfg(test)]
 mod scene_gizmo_perf_tests;
 #[cfg(test)]
 mod scene_gizmo_tests;

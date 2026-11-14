@@ -1331,6 +1331,7 @@ fn the_runtime_contract_fixture_is_the_catalog() {
                 fx::ParamKind::Color { .. } => json!({"id": param.id, "kind": "color", "min": 0, "max": 1}),
                 fx::ParamKind::Point { min, max, .. } => json!({"id": param.id, "kind": "vec2", "min": min, "max": max}),
                 fx::ParamKind::Bool { .. } => json!({"id": param.id, "kind": "bool"}),
+                fx::ParamKind::Choice { .. } => unreachable!("only the transition table has choices"),
             }).collect::<Vec<_>>(),
         })).collect::<Vec<_>>(),
     });
