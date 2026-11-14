@@ -168,7 +168,7 @@ da origem escreve 1,0), não medida. O dissolve legado segue `DISSOLVE_UNSUPPORT
   nunca o exclui, só a declaração por um módulo de teste; `cfg` ambíguo conta como produção; falha de lexer fecha) e
   exige: nenhuma menção fora do importador, nenhuma passagem de `Accept` dentro dele e o inventário fechado dos pontos
   que criam ou reidratam uma cena (todos `Refuse`). É **auxiliar textual, não barreira de segurança**: não vê macros que
-  geram código, `include!`, `cfg_attr` nem `#[path]` em módulo em linha. A prova que não depende do scanner são os testes
+  geram código, `include!`, `cfg_attr` nem `#[path]` no próprio módulo em linha. A prova que não depende do scanner são os testes
   dinâmicos `reload` (abrir, recarregar e anexar por arquivo recusam e mantêm estado, revisão e histórico).
 - **Modelo:** `Fx.transitions: Vec<FxTransition>` (`id`, `effect`, `from_shot_id`, `to_shot_id`, `duration_frames`,
   `alignment`, `handles`, `easing`, `params`, `seed`, `hidden`), preenchido só sob `Accept` e só quando nada foi recusado;
@@ -415,3 +415,17 @@ produção seguinte a um bloco sob `cfg(test)`. A regressão inclui os controles
 com/sem ponto e vírgula e referência também condicionada a testes. A execução
 Windows deste ajuste está pendente na revisão R2; os resultados de `517946a`
 continuam atribuídos àquele head. Nenhum comportamento de produto mudou.
+
+**Revisão independente R2 concluída em `a752f0a`.** S1a aprovada no seu escopo
+interno. No Windows: fmt/check/clippy/workspace no-run/build passaram;
+`scene_fx_transition` 61, `scene_fx` 25 e GPUI 80 passaram, com processo headless
+real, perfis `preserve_order` e mutantes discriminantes. O core completo teve
+1525 resultados ok e 2 falhas de gizmo da base. O workspace inteiro, Mac, runtime,
+GPU e UI física não foram executados nesta revisão. Os resultados substituem a
+pendência de execução do ajuste `const {}` acima, cuja regressão falha sem ele.
+
+A coleta de IDs automáticos de looks ainda não inclui IDs das transições. Sob
+`Accept`, uma transição `fx-1` ou `fx-track-1` pode causar `DUPLICATE_ID` ao
+adicionar um look sem ID: recusa segura e hoje inalcançável pela entrada pública.
+A correção e seus testes ficam na S3, registrada em BL082.4.15. Esta pendência
+não bloqueou o parecer S1a. F064 permanece P e o portão público fechado até S2A.

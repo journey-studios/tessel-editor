@@ -1878,7 +1878,7 @@ concreto da S0, sem link para arquivo inexistente nem validação de lib/CLI/UI 
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
 | BL082.4.1 | P4b/S0 | Contrato F064 e corpus independente dissolve, fonte e X analítico | Concluído — somente S0 oráculo/contrato | BL082.4; setupPythonBL167.5 parcial | Coordenador / Cursor Sonnet5.5 | R3 independente aprova e4078ff no Windows; corpus167/analítico39 normal e-O, reprodução byte a byte e Mac equivalente. Produto lib/JSONL/UI permanece P; detalhes no relatório S0 §12. |
-| BL082.4.2 | P4b/S1a | Documento/janela/validação tipada e política de admissão fechada | A validar — reforço concluído, revisão independente final pendente | BL082.4.1/.11 concluídos | Cursor Sonnet5.5 / coordenador | Código517946a e docs1f4883a:60transition/25scene_fx/80GPUI, processoheadlessreal, três perfis serde e mutantes dinâmicos/scanner/domínio. Core1524ok/2gizmosbase; workspaceexecutado/Mac pendentes. Produto P. |
+| BL082.4.2 | P4b/S1a | Documento/janela/validação tipada e política de admissão fechada | Concluído no escopo interno; R2 aprova a752f0a | BL082.4.1/.11 concluídos | Coordenador / revisão Windows | R2:61transition/25scene_fx/80GPUI, processo headless real, perfis serde e mutantes dinâmicos/scanner/domínio. fmt/check/clippy/no-run/build passam. Core1525ok/2gizmosbase, workspaceexecutado/Mac pendentes. Produto P; IDgerado fica BL082.4.15/S3. |
 | BL082.4.3 | P4b/S1b | Avaliação dos dois decks e plano, recursosporassetId/used_bysemambiguidade | Pendente | BL082.4.2 | Não atribuído | Recurso próprio por deck euniãoderivadaestável, clock/handlessemunderflow, parserprofundidadelimitada |
 | BL082.4.4 | P4b/S2 | Runtime/renderer/mistura e lifecycle/cache | Pendente | BL082.4.3; S2A também BL082.4.5/S3a | Não atribuído | Cor8bits/alpha declarados, capability, dois splats/leases/contextloss/dispose e pixelsindependentes |
 | BL082.4.5 | P4b/S3 | Ops/gestos/inspector/persistência ecoreparser/nós | Pendente | BL082.4.3 | Não atribuído | Atomicidade/revisão/undo, módulossemcrescerarquivosproibidos; dividirS3aseS3bseútil |
@@ -2013,3 +2013,16 @@ a um bloco sob `cfg(test)`. Coordenador distingue bloco de declaração e adicio
 regressão discriminante com controles. Produção inalterada; fmt e diff-check no
 Mac passam, execução Rust e mutação inversa ficam com a revisão R2 em andamento.
 Os 60 testes de517946a não são prova deste ajuste posterior.
+
+### PR62: S1a aprovada pela revisão final — 2026-11-14
+
+R2 aprovoua752f0a no Windows:61transition/25scene_fx/80GPUI, fmt/check/clippy/no-run/build,
+processoheadless, três perfis serde e mutantes. Core1525ok/2gizmosbase, exit101;
+workspace completo nãoexecutado. Const-bloco comprovado com mutação inversa.
+Correção documental desta integração não muda crates, lock ou testes do head aprovado.
+Alias/macros não são cobertos de forma geral pelo scanner; path não tratado é o
+atributo no próprio módulo em linha, não a declaração externa dentro dele.
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL082.4.15 | PR62 R2 / S3 | IDs automáticos de looks e trilhas ignoram IDs de transições | Pendente — incorporar à S3 | BL082.4.5 | Não atribuído | Incluir transitions no namespace de every_id; provar transições fx-1/fx-track-1, IDs automáticos distintos, recusa explícita atômica, undo/redo. Hoje apenas Accept: recusa segura, não corrupção, sem acesso público. Não bloqueia S1a. |

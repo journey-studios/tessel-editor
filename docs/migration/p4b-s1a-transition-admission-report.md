@@ -278,7 +278,7 @@ Rust (`proc-macro2`, `default-features = false`, **só dev-dependency do core**;
 - **Cada arquivo é contado:** o teste `the_scan_sees_the_whole_repository_and_every_file_is_accounted_for` exige zero
   órfãos e zero módulos não resolvidos, só testes por declaração e as duas ocorrências de `Accept` em `admission.rs`.
 - **Não tratados (limites):** macros que geram código, `include!`, `cfg_attr`, `#[test]` fora de itens `cfg(test)`,
-  `#[path]` em módulo em linha. Um fim de item heurístico só pode **sub-podar**, o que é seguro.
+  `#[path]` no próprio módulo em linha. Um fim de item heurístico só pode **sub-podar**, o que é seguro.
 
 Mutantes do scanner, aplicados em árvore real e depois revertidos:
 
@@ -339,3 +339,37 @@ sob `cfg(test)`. Não transforma o scanner em barreira de segurança.
 No macOS, `cargo fmt --all -- --check` e `git diff --check` passaram. A regressão
 Rust e a mutação inversa ainda precisam de execução no Windows pela revisão R2
 em andamento; os 60 testes de `517946a` não validam esta mudança posterior.
+
+## Fechamento independente R2 — `a752f0a`
+
+**S1a aprovada no head `a752f0ad3921f766de986896242d59d015d97df1`.** O parecer
+vale para domínio/admissão/provas da fase interna; F064 produto continua P, sem
+render, export ou edição pública de transições. Esta seção supera os estados
+"a validar" das rodadas anteriores, preservados como histórico.
+
+O revisor executou no Windows, com a árvore limpa: fmt, check/clippy all-targets
+do workspace, workspace no-run e build do desktop (todos exit 0); efeitos 25,
+transições 61, GPUI 80 e filtro `--lib admission` 3 (inclui perf_history). Core
+completo: 1525 ok e 2 falhas de gizmo da base, exit 101; workspace inteiro não
+executado. Não se herdou esse resultado de 517946a.
+
+O processo headless real e reload/scan foram executados. Mutantes de admissão
+em abrir/anexar por arquivo falham pelos testes dinâmicos; sort das janelas,
+TOO_LONG antes/depois e overlap inclusivo falham pelos testes novos. O sort
+lexical dos params é discriminado apenas nos perfis preserve_order/workspace;
+o perfil isolado é explicitamente cego. A regressão const-bloco passa no final
+e falha tanto com o scanner anterior quanto forçando const_block=false.
+
+Limites do scanner: nomes literais e macros/aliases não são uma prova geral de
+programas Rust. A nota sobre path foi corrigida: ele resolve path em declaração
+externa dentro de módulo em linha; não trata path no próprio módulo em linha.
+A defesa comportamental são os testes dinâmicos; nenhuma barreira de segurança.
+
+Achado baixo da R2, reservado para S3 como BL082.4.15: every_id não inclui IDs
+de transições ao gerar IDs de looks/trilhas. Sob Accept, fx-1 ou fx-track-1 pode
+causar recusa segura DUPLICATE_ID; não há acesso público hoje nem corrupção.
+Corrigir e provar os dois prefixos, recusa explícita e undo/redo na S3.
+
+CodeRabbit NEUTRAL e threads resolvidos não equivalem a aprovação humana nem
+CI de testes. A integração autorizada usa squash com mensagem limpa. Mac/Unix,
+GPU, runtime, UI física e workspace completo permanecem fora desta revisão.
