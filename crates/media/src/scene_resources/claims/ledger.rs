@@ -116,10 +116,10 @@ const LOCK_WAIT: std::time::Duration = std::time::Duration::from_millis(1500);
 pub(in crate::scene_resources) const TICK_WAIT: std::time::Duration =
     std::time::Duration::from_millis(20);
 const LOCK_POLL: std::time::Duration = std::time::Duration::from_micros(500);
-/// How many times, and how far apart, an open that Windows refuses with "access denied" is retried
-/// (a lock file whose removal is pending) before the denial is believed, within the caller's
-/// remaining lock-wait budget.
-const DENIED_RETRIES: u32 = 50;
+/// How many times, and how far apart, a create of the ledger folder or an open of its lock that
+/// Windows refuses with "access denied" is retried (together) before the denial is believed, within
+/// the caller's remaining lock-wait budget.
+pub(super) const DENIED_RETRIES: u32 = 50;
 const DENIED_PAUSE: std::time::Duration = std::time::Duration::from_millis(2);
 
 /// Recovers a poisoned process-local mutex without discarding the persisted ledger.
@@ -988,7 +988,7 @@ impl DiskLock {
                 ));
             }
             if create {
-                match fs::create_dir(dir) {
+                match create_folder(dir) {
                     Ok(()) => {}
                     Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
                     // A folder another process is removing right now can answer "not found" to
@@ -997,6 +997,9 @@ impl DiskLock {
                         std::thread::yield_now();
                         continue;
                     }
+                    // Windows was seen answering "access denied" to this create while the folder was
+                    // being emptied and removed by someone else; it clears within milliseconds.
+                    Err(error) if denial_is_transient(&error, &mut denied, deadline) => continue,
                     Err(error) => return Err(format!("`{}`: {error}", dir.display())),
                 }
             }
@@ -1028,22 +1031,9 @@ impl DiskLock {
                     std::thread::sleep(std::time::Duration::from_millis(1));
                     continue;
                 }
-                // Windows answers "access denied" to an open of a file whose removal is pending
-                // (the process that emptied the ledger unlinked it, a handle still holds it). It
-                // goes away within moments; a real denial answers it every time, so it is only
-                // retried a few times before it is reported as it is.
-                Err(error)
-                    if cfg!(windows)
-                        && error.kind() == io::ErrorKind::PermissionDenied
-                        && denied < DENIED_RETRIES
-                        && Instant::now() < deadline =>
-                {
-                    denied += 1;
-                    std::thread::sleep(
-                        DENIED_PAUSE.min(deadline.saturating_duration_since(Instant::now())),
-                    );
-                    continue;
-                }
+                // Windows answers "access denied" to an open of a file that is being unlinked
+                // (the process that emptied the ledger removed it, a handle still holds it).
+                Err(error) if denial_is_transient(&error, &mut denied, deadline) => continue,
                 Err(error) => return Err(format!("open `{}`: {error}", path.display())),
             };
             // Bounded (BL112.3): healthy recovery can hold this lock across several full ledger
@@ -1078,6 +1068,45 @@ impl DiskLock {
             // ledger and unlinked it while we waited. Start again on the one there is now.
         }
     }
+}
+
+/// Creates the ledger folder. In tests a thread can replace it ([`CREATE_FOLDER`]) to make the
+/// refusals of the race happen on cue, which a real file system cannot do without a clock.
+fn create_folder(dir: &Path) -> io::Result<()> {
+    #[cfg(test)]
+    if let Some(answer) = CREATE_FOLDER.with(|hook| hook.borrow_mut().as_mut().map(|f| f(dir))) {
+        return answer;
+    }
+    fs::create_dir(dir)
+}
+
+#[cfg(test)]
+type CreateFolder = Box<dyn FnMut(&Path) -> io::Result<()>>;
+
+#[cfg(test)]
+thread_local! {
+    /// What [`create_folder`] answers on this thread instead of the file system, when set.
+    pub(super) static CREATE_FOLDER: std::cell::RefCell<Option<CreateFolder>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Whether `error` is a Windows "access denied" worth another look: the ledger folder and its lock
+/// file are removed by whoever emptied the ledger while others create and open them again, and
+/// either call can be refused for a few milliseconds in that window (BL167.6, BL167.6.2). A real
+/// denial answers every time and is reported as it is. Every retry is paid from the caller's own
+/// `deadline` (a pause never outlasts it, and none starts once it has passed, so `Duration::ZERO`
+/// never retries) and from `DENIED_RETRIES`, counted in `denied` across both calls.
+fn denial_is_transient(error: &io::Error, denied: &mut u32, deadline: Instant) -> bool {
+    if !cfg!(windows)
+        || error.kind() != io::ErrorKind::PermissionDenied
+        || *denied >= DENIED_RETRIES
+        || Instant::now() >= deadline
+    {
+        return false;
+    }
+    *denied += 1;
+    std::thread::sleep(DENIED_PAUSE.min(deadline.saturating_duration_since(Instant::now())));
+    true
 }
 
 /// Takes the exclusive lock of `file`, waiting until `deadline`. `Ok(false)` when it was still
