@@ -79,7 +79,7 @@ def interpreter_problem(executable=None, version_info=None, size=None):
             size = Path(executable).stat().st_size
         except OSError:
             size = None  # an alias can fail to stat; the stub path rule above already caught the known shape
-    if size == 0:
+    if size == 0 and not ("/windowsapps/" in lowered and "pythonsoftwarefoundation" in lowered):
         return "%s is an empty file, not an interpreter" % executable
     return None
 
@@ -797,6 +797,13 @@ def describe_param(definition):
     return "one of %s, default %s" % ("|".join(definition["values"]), definition["default"])
 
 
+def corpus_numeric_issue_text(value):
+    """Match the origin's integral-float spelling for corpus values, not all ECMAScript formatting."""
+    if isinstance(value, float) and math.isfinite(value) and value.is_integer() and abs(value) < 1e21:
+        return str(int(value))
+    return json.dumps(value)
+
+
 def param_issues(transition, meta):
     issues, label = [], "Transition %s" % transition["id"]
     known = ", ".join(definition["id"] for definition in meta["params"])
@@ -811,7 +818,7 @@ def param_issues(transition, meta):
             if isinstance(value, bool) or not isinstance(value, (int, float)):
                 problem = ("PARAM_TYPE", "Parameter %s has the wrong type" % name)
             elif not (math.isfinite(value) and definition["min"] <= value <= definition["max"]):
-                problem = ("PARAM_OUT_OF_RANGE", "Parameter %s is %s, outside what it accepts" % (name, json.dumps(value)))
+                problem = ("PARAM_OUT_OF_RANGE", "Parameter %s is %s, outside what it accepts" % (name, corpus_numeric_issue_text(value)))
         else:
             if not isinstance(value, str):
                 problem = ("PARAM_TYPE", "Parameter %s has the wrong type" % name)
@@ -1321,6 +1328,7 @@ def explain_cases(facts):
         ("param-type-intensity-bool", spec, [tr(params={"intensity": True})]),
         ("param-range-enum", spec, [tr(params={"curve": "wavy"})]),
         ("param-range-intensity-high", spec, [tr(params={"intensity": 1.5})]),
+        ("param-range-intensity-integral-float", spec, [tr(params={"intensity": 2.0})]),
         ("param-range-intensity-negative", spec, [tr(params={"intensity": -0.25})]),
         ("param-ok-edges", spec, [tr(params={"curve": "linear", "intensity": 0})]),
         ("unknown-easing", spec, [tr(easing="bounce")]),
@@ -1384,7 +1392,7 @@ def keys_and_hidden_cases():
             "origin_schema": "hidden: z.literal(true).optional(): `true` or absent",
             "cases": [{"hidden": True, "origin": "accepted", "draws": False}, {"hidden": None, "origin": "accepted", "draws": True},
                       {"hidden": False, "origin": "refused by the schema (literal true)", "draws": None}],
-            "destination": "UNDECIDED: the plan's example writes `hidden: false`, which the origin schema refuses; S1a must decide to omit it or to accept false",
+            "destination": "DECIDED: transitions accept true or an absent hidden field, matching the origin; explicit false is a structural refusal before explain (S1a). Existing look clips keep their current contract.",
         },
         "seed": {"kind": "origin-formula", "range": "uint32 0..4294967295", "consumed_by_crossDissolve": False, "preserved": True,
                  "note": "the effect draws no noise; the seed is kept in the document (Reseed::Never in the plan)"},
@@ -1691,7 +1699,7 @@ def check_origin(origin, require_pin):
         else:
             unverified.append(path)
             warnings.append("PIN_BLOB_UNVERIFIED: %s (%s) is not an object here; attested by the coordinator only" % (path, pin_blob[:10]))
-    if require_pin and (not pin_commit) and unverified:
+    if require_pin and not pin_commit:
         findings.append("PIN_UNVERIFIED")
     return findings, warnings
 
@@ -1766,7 +1774,7 @@ def build_manifest(corpus_bytes, corpus, facts):
             {"id": "KEYS_REFUSED", "detail": "Keys on a transition are accepted by the origin and refused by the plan's destination (FX_TRANSITION_KEYS_NOT_YET)."},
             {"id": "NARRATION_OUT_OF_SCOPE", "detail": "At the tip, render-bundle.schema.ts imports editFrameToSeconds and calls explainNarration with the duration: the NARRATION behaviour differs from the pin (a behaviour difference, not a comment). The contract is valid WITHOUT narration (the editor has none: BL017/BL026); TRANSITION_OVER_SPEECH is N/A until narration exists. Every other rule used here is the same at the pin and at the tip."},
             {"id": "LEGACY_FIXTURES_UNTOUCHED", "detail": "The legacy corpus (invalid-dissolve-transition, DISSOLVE_UNSUPPORTED) is history of an older pin and is not edited; the legacy dissolve is a separate S6 track with its own oracle lane (plan D04, Q2). Nothing here changes a legacy byte."},
-            {"id": "HIDDEN_FALSE", "detail": "The origin schema accepts hidden only as `true` or absent; the plan's example writes `hidden: false`. Undecided; S1a decides."},
+            {"id": "HIDDEN_FALSE", "detail": "The coordinator chose true or absent for transition hidden, matching the origin. Explicit false must be refused structurally in S1a; look clip compatibility is unchanged."},
             {"id": "STRICT_INTEGERS", "detail": "The oracle refuses floats, booleans, strings and integers beyond 2^53 - 1 for frame fields (ORACLE_* codes); the origin's schema only requires `int()`."},
             {"id": "DURATION_CHECKED_FIRST", "detail": "D is compared with the edit before the window arithmetic (same code, TRANSITION_OUT_OF_RANGE, as the origin gives for any window that cannot fit)."},
         ],
@@ -1823,6 +1831,9 @@ def cmd_digests(origin):
 
 
 def cmd_generate(origin, directory, check, require_pin):
+    if require_pin and origin is None:
+        say(sys.stderr, "PIN_UNVERIFIED: --require-pin needs --origin PATH; offline the pin is not checked")
+        return EXIT_PIN_UNVERIFIED
     if origin is None and not check:
         say(sys.stderr, "ORIGIN_UNAVAILABLE: `generate` re-checks the origin text it transcribes; pass --origin PATH (or use --check offline)")
         return EXIT_ORIGIN_UNAVAILABLE
@@ -1863,6 +1874,9 @@ def cmd_generate(origin, directory, check, require_pin):
 
 
 def cmd_verify(origin, directory, require_pin):
+    if require_pin and origin is None:
+        say(sys.stderr, "PIN_UNVERIFIED: --require-pin needs --origin PATH; offline the pin is not checked")
+        return EXIT_PIN_UNVERIFIED
     cases_path, manifest_path = paths(directory)
     findings, warnings = [], []
     if not cases_path.exists() or not manifest_path.exists():
@@ -1901,7 +1915,9 @@ def cmd_verify(origin, directory, require_pin):
             say(sys.stderr, "ORIGIN_UNAVAILABLE: %s" % error)
             return EXIT_ORIGIN_UNAVAILABLE
         findings += more
-        mode = "against the origin blobs (origin-blob verified; the origin was NOT executed)"
+        pin_absent = any(warning.startswith("PIN_COMMIT_ABSENT:") for warning in warnings)
+        tier = "pin NOT verified (attestation only)" if pin_absent else "pin commit verified for %d attested sources; %d tip-only sources" % (len(ATTESTED), len(TIP_ONLY))
+        mode = "against the origin blobs (origin-blob verified; %s; the origin was NOT executed)" % tier
     else:
         mode = "offline (origin blobs not re-read; pass --origin to re-check them)"
     report(findings, warnings)
@@ -1921,7 +1937,7 @@ def main(argv=None):
     sub = parser.add_subparsers(dest="command", required=True)
     for name in ("generate", "verify", "digests"):
         command = sub.add_parser(name)
-        command.add_argument("--origin", type=Path, default=None)
+        command.add_argument("--origin", type=Path, default=None, required=(name == "digests"))
         if name != "digests":
             command.add_argument("--out", type=Path, default=None)
             command.add_argument("--require-pin", action="store_true")

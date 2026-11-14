@@ -110,7 +110,7 @@ comprimento (`TRANSITION_TOO_LONG`) → handles (`TRANSITION_NO_HANDLES`, que di
 remédio) → sobreposição (`TRANSITION_OVERLAP`). `WRONG_FAMILY` (look em `transitions[]`) **não** é `UNKNOWN_EFFECT`.
 Acrescentados pelo Tessel: `FX_TRANSITION_KEYS_NOT_YET` (D10) e `FX_LIMIT` (no máximo `shots − 1` transições, antes do
 custo). Ids: mesma regra de `fx-ids` (padrão ASCII, reservados sem distinguir maiúsculas, duplicado). `hidden`: a origem
-aceita só `true` ou ausente; o exemplo do plano escreve `hidden: false`, que a origem recusa — **decisão pendente da S1a**.
+aceita só `true` ou ausente. Decisão do coordenador: manter essa regra nas transições e recusar `false` estruturalmente na S1a; isso não muda os looks existentes.
 
 ### Plano de dois decks (contrato candidato, 7.3)
 
@@ -198,17 +198,17 @@ estão Pendentes**, exceto a coluna `X` marcada `0`, que o corpus desta S0 cobre
 | T03 | Avisos `ON_CONTINUOUS`, `SPLAT_COST` (1a); `FX_PASS_BUDGET` dois decks (1b) | 1a, 1b | 2A | 4b | 4b | | | | |
 | T04 | `hidden` e ausência = corte seco com os bytes de hoje | 1b | 2A | | | 2 | 2 | | 0 |
 | T05 | Janela: alinhamento/duração, bordas | 1a | 2A | | | | | | 0 |
-| T06 | FPS racional; relógio de cena do vizinho em `f/fps` | 1b | 2A | | | | 2 | | 0 |
+| T06 | FPS racional; relógio do vizinho em f/fps; X atual só estados temporais, sonda de cor pendente | 1b | 2A | | | | 2 | | 0 |
 | T07 | Progresso; `smooth` com `intensity` 0/0,5/1 = 162/165/168 | 1b | 2A | | | | | | 0 |
 | T08 | Planos sem transição idênticos ao `main` | 1b | 2A | | | | 2 | | |
 | T09 | Plano na janela, `requires`, adulterações | 1b | 2A | | | | | | |
-| T10 | `hold` por instância/câmera; ids de nó e assets colidentes | 1b | 2A | | | | 2 | | 0 |
+| T10 | Hold por instância/câmera; X atual só estados temporais, sonda analítica pendente | 1b | 2A | | | | 2 | | 0 |
 | T11 | Clipe `shot` na borda segura o quadro | 1b | 2A | | | | 2 | | 0 |
 | T12 | Passe de saída depois da mistura | 1b | | | | 2 | 2 | | 0 |
 | T13 | `filmGrain` de saída: mesma semente com e sem transição | 1b | 2A | | | | 2 | | 0 |
 | T14 | Orçamento conta os dois decks e a mistura | 1b | 2A | 4b | | | | | |
 | T15 | Runtime sem `fxTransition` recusa | | | | | 2 | 2 | | |
-| T16 | Pixel: cor constante e texturizado por quadro | | | | | 2 | 2 | | 0 |
+| T16 | X atual cobre só cor constante; analítico de hold misto e texturizado ainda pendentes | | | | | 2 | 2 | | 0 |
 | T17 | Resize e perda de contexto na janela | | | | | 2 | 2 | | |
 | T18 | Erro de um deck e dispose dos dois | | | | | 2 | 2 | | |
 | T19 | Seek = sequencial; cache do vizinho | | | | | 2 | 2 | | |
@@ -228,7 +228,31 @@ estão Pendentes**, exceto a coluna `X` marcada `0`, que o corpus desta S0 cobre
 | T33 | Alpha: `straight` aceito e desenhado opaco | 1b | | | | 2 | 2 | | 0 |
 
 **A validar / lacunas registradas:** (a) as tolerâncias e os tetos são contrato pré-registrado, sem pixel nem plano
-medidos; (b) `hidden: false` e a ordem de `used_by` aguardam decisão de design; (c) a divergência de veredito do alpha
+medidos; (b) `hidden: false` será recusado nas transições e a ordem de used_by será qualificada por deck; (c) a divergência de veredito do alpha
 aguarda a revisão de design (Q3); (d) o `--check` em macOS/Linux não foi rodado; (e) o pin não é verificável neste
 clone; (f) BL167.5 permanece **parcial** (só a preparação do interpretador): build release, provas vivas e janela D3D11
 seguem dependendo de BL167.1–.4.
+
+### Revisão independente da S0 e correções do coordenador
+
+A revisão em `173f5f4` confirmou as fórmulas por Decimal independente, mas **não aprovou S0**.
+O coordenador corrigiu `--require-pin`: sem origem explícita é exit 4; mesmo com todos os blobs
+presentes por id, a ausência do commit impede comprovar pertencimento ao pin e continua exit 4.
+O modo de sucesso identifica pin verificado ou atestação, sem chamar texto presente de análise
+estrutural: check_against é só presença textual; hashes fixam o conteúdo, não executam TS.
+A CLI `digests` exige `--origin` (uso inválido: exit 2). Python legítimo da Store em execução pode
+ter alias de tamanho 0; um stub sem intérprete não executa o script e falha antes (9009).
+Um vetor `intensity: 2.0` fixa a mensagem numérica integral `2`; a paridade de textos numéricos fora
+dos vetores do corpus não é prometida como implementação completa de String(number) do JS.
+
+**Ainda A validar:** X analítico para hold misto e relógio da luz. O X atual de T06/T10 é
+somente temporal e T16 só tem cores constantes; não atribuir pixel texturizado à S0 atual.
+As sondas faltantes bloqueiam o aceite correspondente de S2, e sua conclusão/revisão fecha S0.
+A linha F064 foi acrescentada à matriz com todas as superfícies de produto pendentes.
+
+Na atualização do coordenador, os **166 testes** passaram no macOS com Python 3.14.3,
+nos modos normal e `-O`, com origem. `generate --check` reproduziu os arquivos byte a byte;
+`verify --origin … --require-pin` confirmou o commit do pin neste clone (21 fontes do pin
+e 5 só da ponta). Isso atualiza a evidência histórica de 161 testes acima, sem provar o motor.
+O plano original lido pela autora foi `2395719`; esta atualização incorpora a versão final
+de PR58, fonte `002fe9f`, integrada em `1796107`, e mantém explícita a lacuna analítica.

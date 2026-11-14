@@ -48,7 +48,7 @@
   "corpus": {
     "check": "scripts/pilot-dissolve-corpus.py generate --check   (writes nothing; offline)",
     "counts": {
-      "explain": 31,
+      "explain": 32,
       "handles": 12,
       "pixel_cases": 15,
       "pixel_grid_probes": 144,
@@ -62,7 +62,7 @@
       "path": "docs/migration/fixtures/bundles/valid-cut-instance-offsets.bundle.json",
       "sha256": "43fd1a5568a63745c1043eab45cae028fa03a772eea11c9d0bac43e808718e2b"
     },
-    "sha256": "c803136bc55a54538900e52bcc768fcd14d1c29c046b4e53e28ab037674006a4"
+    "sha256": "c02fa1d867defc060d8e6177fccd017c6115bdd3e6e9347c6e8e5117d0bb1d5a"
   },
   "documented_differences": [
     {
@@ -86,7 +86,7 @@
       "id": "LEGACY_FIXTURES_UNTOUCHED"
     },
     {
-      "detail": "The origin schema accepts hidden only as `true` or absent; the plan's example writes `hidden: false`. Undecided; S1a decides.",
+      "detail": "The coordinator chose true or absent for transition hidden, matching the origin. Explicit false must be refused structurally in S1a; look clip compatibility is unchanged.",
       "id": "HIDDEN_FALSE"
     },
     {

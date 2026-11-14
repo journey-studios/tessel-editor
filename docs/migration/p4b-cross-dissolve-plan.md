@@ -92,7 +92,7 @@ Nenhum deles bloqueia a P4b por associação, e a P4b não os habilita.
 | Origem JS, só leitura por `git show` em `refs/remotes/origin/t3/scene-engine-pilot` (**ponta `365579076782c1fc19c6464f3bc0199b30c0ab8f`, 2026-11-03**) | Lidos pela autora (Windows): os 16 arquivos de regra citados logo abaixo da tabela 2.1, na ponta |
 | **Pin do snapshot do piloto `d40ac3f7c0`** (citado em `source-feature-inventory.md`) | A autora (Windows) **não leu o pin**: `git cat-file -t d40ac3f7c0` falha no clone Windows. O **coordenador (Mac)** comparou depois, **por objetos Git, somente leitura**, 21 blobs do pin com a ponta: **19 idênticos e 2 diferentes** (2.1). Relato do coordenador, **não reconferido pela autora**; **a origem não foi executada** |
 | Golden da origem (`catalog/__golden__/crossDissolve.png`) | Existe na ponta; **não aberto, não comparado**, origem não executada |
-| Corpus de bundles (`docs/migration/fixtures/bundles/`) | Lido: `valid-minimal-continuous`, `valid-cut-instance-offsets`, `invalid-dissolve-transition` (`renderProfile.alphaMode: "straight"` nos dois últimos; `valid-cut-instance-offsets`: 2 shots, edição de 100 quadros) |
+| Corpus de bundles (`docs/migration/fixtures/bundles/`) | Lido: `valid-minimal-continuous`, `valid-cut-instance-offsets`, `invalid-dissolve-transition` (`renderProfile.alphaMode: "straight"` nos três; `valid-cut-instance-offsets`: 2 shots, edição de 100 quadros) |
 
 ### 2.1 Relação pin × ponta (relato do coordenador, a reproduzir no manifesto da S0)
 
@@ -155,7 +155,7 @@ registradas como decisões do coordenador (Q1–Q4, seção 15).
 | D16 | (sem equivalente: a origem desenha overlays sobre o deck do topo) | Durante a janela, gizmo de nó e alças de efeito são **recusados com motivo tipado** `transition_window` por **um predicado do core** (9.6); edição por propriedades segue permitida com alvo explícito | O plano do topo é um de dois decks: uma alça sobre ele não corresponde ao que se vê. Decisão Q1; reversível porque o predicado é único |
 | D17 | `resolveShotAtOffset` e `fx-frame-decks.ts` (a S0 confirma **de onde** vem o relógio do vizinho) | O deck vizinho tem **três relógios**: instância e câmera **presas** (D14) e o **relógio de cena** (luz com cintilação, clima futuro) no **quadro de edição real** `f`. Um deck em `hold` ainda cintila. Se a leitura da S0 mostrar outra regra na origem, ela é registrada como divergência **antes** da S1b | `lighting.rs:447–452` calcula a cintilação em `edit_frame/fps`; o avaliador já recebe o quadro de edição |
 | D18 | Família errada: `WRONG_FAMILY` (`pilot-fx-shots-studio-features.md` l.53–54; `scene-fx-plan.md` l.131) | **Adotar `WRONG_FAMILY`**: look em `transitions[]` ou efeito de transição em clipe de trilha. `UNKNOWN_EFFECT` só para nome fora dos dois catálogos. **Com o portão fechado (D19) os dois lados mantêm o comportamento de hoje** | "Nenhum código é inventado": é o código da origem |
-| D19 | (sem equivalente) | **Portão de admissão** (8.4): a entrada pública do documento recusa `transitions` não vazio com `FX_TRANSITION_NOT_YET` (comportamento de hoje) **até a S2A**. S1a/S1b/S2/S3a entregam código inalcançável pelos adaptadores públicos; cada PR mantém o comportamento público byte a byte | Evita export que falha no quadro 34 de 100 e corte seco silencioso: ninguém consome o que ainda não é desenhado |
+| D19 | (sem equivalente) | **Portão de admissão** (8.4): a entrada pública do documento recusa `transitions` não vazio com `FX_TRANSITION_NOT_YET` (comportamento de hoje) **até a S2A**. S1a/S1b/S2/S3a entregam código inalcançável pelos adaptadores públicos; cada PR mantém os documentos, planos e catálogo públicos byte a byte; o hello do runtime ganha a capacidade aditiva na S2 | Evita export que falha no quadro 34 de 100 e corte seco silencioso: ninguém consome o que ainda não é desenhado |
 | D20 | `UNSUPPORTED_ALPHA`: `alphaMode ≠ opaque` com `fx` não vazio **ou com dissolve** é erro (`scene-fx-decisions.md` #19, #46, #49) | **Divergência de veredito declarada** (Q3): o Tessel aceita e a transição desenha **opaco**, para os três looks e para a transição. O `renderProfile` do bundle do tracer é `straight`: os casos dele são "contrato Tessel", **não** "aceito pela origem". Um caso com deck de pixels parcialmente transparentes fixa o comportamento. Registrada em F016, F064 e na S6 | A regra de alpha global é outra fatia (fora da P4b); esconder a divergência seria declarar paridade falsa |
 | D21 | Limites e entrada hostil do plano (a origem valida no schema) | Limites explícitos no Rust **e** no JS (5.3): profundidade de `transition.other` 1 com recusa **sem recursar**, teto de bytes e de itens somando os dois decks, inteiros estritos | Entrada hostil não pode esgotar pilha nem memória antes da recusa tipada |
 
@@ -163,7 +163,8 @@ registradas como decisões do coordenador (Q1–Q4, seção 15).
 
 Contagens de linha lidas em 14/11/2026. **Arquivos que já passam de 1000 linhas** (BL082.55/BL082.62 proíbem crescê-los):
 `scene_edit/fx.rs` 1235, `ops.rs` 1217, `state/tree.rs` 1643, `scene_project/gizmo.rs` 1404,
-`desktop/workstation/scene_fx.rs` 1469 e `runtime/src/compositor.js` 1166. `overlay.js` (945) está a ~55 linhas do limite.
+`desktop/workstation/scene_fx.rs` 1469, `commands.rs` 1399, `scene_edit/fx_inspector.rs` 1045,
+`state/mod.rs` 1533 e `runtime/src/compositor.js` 1166. `overlay.js` (945) está a ~55 linhas do limite.
 **Regra desta rodada (H10):** o código novo vai para **módulos novos**; o gancho necessário num arquivo acima de 1000 linhas
 tem delta líquido ≤ 0, compensado por extração equivalente de código existente na mesma PR; `ops.rs` e `tree.rs` só ganham
 **uma entrada por op/nó novo** (a exceção que o BL082.62 já prevê), com o corpo em módulo novo.
@@ -211,8 +212,7 @@ deck; o runtime desenha **uma** cena por camada dirigida; `check_fx` amarra os p
       "handles": "hold",
       "easing": "easeInOutCubic",
       "params": { "curve": "smooth", "intensity": 1 },
-      "seed": 0,
-      "hidden": false
+      "seed": 0
     }]
 } }
 ```
@@ -455,7 +455,7 @@ transição (digests de planos sem transição ficam idênticos; teste de ouro s
   `root/backdrop/figure` e os mesmos assets, e `plan_resources` ordena por `assetId` num `BTreeMap`. Por isso **não existe,
   nem se inventa, um identificador de recurso que atravesse decks**: a referência é sempre o par (deck, id de nó) e o
   recurso é identificado por `assetId`.
-- **União derivada, não serializada.** Para `requires` e para o preflight, `ScenePlan::resource_union()` (função pura,
+- **União derivada, não serializada.** Para `requires`, preflight **e todos os carregadores do host**, `ScenePlan::resource_union()` (função pura,
   fora do JSON) devolve `BTreeMap<assetId, UnionResource>` na mesma ordem estável por `assetId`, com
   `used_by: Vec<{ deck: "primary" | "other", node_id }>` **qualificado por deck** (ou sem cruzamento: nunca ids de nó crus
   misturados). Se o mesmo `assetId` aparece nos dois decks com `revisionId`, `contentHash` ou caminho diferentes, o plano é
@@ -464,6 +464,13 @@ transição (digests de planos sem transição ficam idênticos; teste de ouro s
 - `requires` do topo = união ordenada de `requires` do topo, de `other.requires` e de `fxTransition`
   (`derive_requires` estendido; um runtime que recusa capacidade desconhecida vê tudo que precisa). **Teste obrigatório
   com nós e assets colidentes** (o corpus acima): `resource_union` ordenada, `used_by` qualificado, `requires` completo.
+- **Carregadores do host (R2/R1).** `SceneResourceMap::from_root` e o `resolve` do renderer
+  (`crates/render/src/scene.rs`), `approved_map` (`crates/render/src/scene_operation.rs`) e
+  `resource_map` do export (`crates/render/src/scene_export/mod.rs`) iteram **resource_union()**,
+  em vez de apenas `plan.resources`. Os quatro caminhos pertencem a S2 e são condição de S2A.
+  T10 e T18 incluem um asset usado **apenas pelo other**, além de ids de nós colidentes: quando presente,
+  monitor/render/export resolvem e desenham os dois decks; quando ausente, recusam antes de desenhar/exportar,
+  com identificação do deck. Uma fixture em que ambos usam os mesmos assets não prova esse caminho.
 - `progress` é o valor **já com easing**; o runtime não calcula easing nem decide regra. O validador recomputa
   `ease(easing, (frameInWindow+0,5)/durationFrames)` e confere com tolerância 1e-9 (`/transition/progress`), confere
   `frameInWindow = frame.edit_frame − startFrame ∈ [0, durationFrames)`, `amount = clamp01(intensity)` (**não** a regra
@@ -480,8 +487,13 @@ transição (digests de planos sem transição ficam idênticos; teste de ouro s
 - **Referência independente (X).** `scripts/pilot-dissolve-corpus.py` (stdlib) transcreve da **fonte TS** (não do Rust):
   janela, progresso, escolha dos quadros dos decks (D14/D15) e a mistura por pixel; gera `dissolve-cases.json` e
   `dissolve-manifest.json` com os hashes de blob da origem lida (seção 2) e a proveniência de cada expectativa. Os
-  decks da referência são os **8 bits do próprio runtime** renderizando cada plano **sem** transição (T08 prova que esse
-  plano é o de hoje), e a mistura é calculada em Python sobre esses bytes (D08, seção 12). O teste Rust
+  decks texturizados da referência são os **8 bits do runtime** em quadros puros **realmente equivalentes**
+  (T08 prova que esse plano é o de hoje), e a mistura é calculada em Python sobre esses bytes (D08, seção 12).
+  Isso **não** serve para hold misto (instância presa, câmera correndo) nem para o relógio da luz em f: podem
+  não corresponder a nenhum quadro puro. Para esses casos, S0 fixa estados temporais esperados e sondas
+  analíticas independentes de cenas simples (marcadores/cores/luz conhecidos), quantizados a 8 bits; S2 compara
+  a projeção/cor dessas sondas e o plano a X. Sem esse oráculo, o caso continua A validar e bloqueia seu aceite;
+  não fabricar um quadro puro equivalente nem obter ambos os lados pelo mesmo avaliador de transição. O teste Rust
   `crates/core/tests/pilot_dissolve_corpus.rs` **só lê o JSON** (roda no Windows sem Python), como `pilot_fx_corpus.rs`.
 - **Nenhum `Domain` novo.** `PlanError::Unsupported` só aceita `Domain::ALL` (13 valores: `weather` … `relief`) e a
   transição **não é** um domínio não avaliado: com o portão (8.4) o plano nunca vê uma transição antes de poder
@@ -542,6 +554,10 @@ medidos** aqui (BL082.4.8, sob lock da GPU, rodada própria).
   quadros idênticos aos mesmos números do export completo (comparação em quadros brutos antes do codec; o H.264 só é
   comparado contra a referência com tolerância declarada, seção 12).
 
+Os quatro carregadores citados em 7.3 são parte deste estágio: monitor (`approved_map`), renderer
+(`from_root` e `resolve`) e export (`resource_map`) resolvem a união derivada por assetId. A ativação
+S2A exige T10/T18 com asset exclusivo do vizinho presente e ausente, em P/R/E.
+
 ### 8.4 Portão público: nada consome uma transição antes de poder desenhá-la
 
 **Estratégia escolhida (D19): recusar publicamente até a ativação (S2A), com controles negativos por consumidor.** A
@@ -560,6 +576,9 @@ dez superfícies, e qualquer uma esquecida seria um corte seco silencioso ou um 
 - **A entrada interna** (`Accept`) é só para testes e corpus das fases S1a–S3a: `#[doc(hidden)] pub`, porque os testes de
   integração de `crates/core`, `crates/render` e o corpus precisam chamá-la. Nenhum adaptador (desktop, headless, `ops`,
   media, render de produção) a chama: um **teste de fronteira** que varre as fontes falha se um deles referencia o símbolo.
+  Esta política é um **gate de compatibilidade e ativação dos adaptadores suportados**, não uma barreira
+  de segurança: doc(hidden) pub continua chamável por outro crate. O contrato de recusa vale para as
+  entradas normais enumeradas acima; a API de ensaio deve declarar que não é uma entrada suportada de produção.
 - **Catálogo e seletor não mudam antes da S2A.** A tabela de transições é separada do `CATALOG` dos looks (seção 4), o
   seletor de efeito de clipe continua oferecendo só os 3 looks e `scene.fx.catalog` não lista `crossDissolve`;
   `REASON_FAMILY_NOT_YET` (`fx_inspector.rs:727`) e `refused: {transitions}` (`scene_project/fx.rs:58–60`) ficam como estão.
@@ -573,7 +592,7 @@ dez superfícies, e qualquer uma esquecida seria um corte seco silencioso ou um 
 | `scene.export` e preflight | idem | L e R | preflight por intervalo (abaixo) |
 | Inspector e seletor de efeito de clipe | só os 3 looks | G | `WRONG_FAMILY` (D18) |
 
-**Condições para a S2A** (ela só abre o portão se todas valerem; senão as células ficam "A validar" e o portão fecha):
+**Condições para a S2A** (depende de S2 **e S3a**; ela só abre o portão se todas valerem; senão as células ficam "A validar" e o portão fecha):
 
 1. o runtime e o renderer desenham a janela (T12, T15–T19, T30, T31, T33 em P e R) e o export de quadros brutos é igual
    entre o export completo e o sub-intervalo (T27, E);
@@ -760,7 +779,7 @@ mesma célula se inverte na ativação: **antes** da S2A, um H positivo seria fa
 | T07 | Progresso: tabela de 6.2; `linear/linear`; **`curve=smooth` com `intensity` 0, 0,5 e 1 (162, 165, 168 no vetor de 6.2)**; `linear` com os três valores iguais (controle que **não** discrimina `amount`) | 1b | 2A | | | | | | 0 |
 | T08 | Planos **sem** transição idênticos em bytes e digest ao `main` (corpus existente) | 1b | 2A | | | | 2 | | |
 | T09 | Plano na janela: topo/vizinho/`primary`, `requires`, capacidade, JSON ida e volta; cada adulteração recusada (progresso, vizinho, passe de saída no `other`, ordem, recurso do `other` adulterado, `assetId` repetido com conteúdo diferente) | 1b | 2A | | | | | | |
-| T10 | `hold`: instância e câmera independentes; `use` com quadros reais; caso do corpus `valid-cut-instance-offsets`; **ids de nó e assets colidentes entre decks** (`resource_union`, `used_by` por deck) | 1b | 2A | | | | 2 | | 0 |
+| T10 | `hold`: instância e câmera independentes; `use` com quadros reais; caso do corpus `valid-cut-instance-offsets`; **ids de nó e assets colidentes entre decks** (`resource_union`, `used_by` por deck); asset exclusivo do other presente e ausente em todos os quatro carregadores | 1b | 2A | | | 2 | 2 | 2 | 0 |
 | T11 | Clipe `shot` que encosta na borda segura o quadro; clipe no meio não entra | 1b | 2A | | | | 2 | | 0 |
 | T12 | Passe de saída cobrindo a janela age **depois** da mistura; ordem observável em pixel | 1b | | | | 2 | 2 | | 0 |
 | T13 | `filmGrain` de saída: mesma semente por quadro com e sem transição | 1b | 2A | | | | 2 | | 0 |
@@ -768,7 +787,7 @@ mesma célula se inverte na ativação: **antes** da S2A, um H positivo seria fa
 | T15 | **Runtime sem `fxTransition`** recusa `unsupported`+`missing`, não desenha | | | | | 2 | 2 | | |
 | T16 | Pixel: decks de cor constante (200 → 40 canal, `f−início = 5` → 168 dentro da tolerância da seção 12) e texturizados, por quadro da janela | | | | | 2 | 2 | | 0 |
 | T17 | Resize e perda de contexto no meio da janela; quadro depois = quadro de render novo | | | | | 2 | 2 | | |
-| T18 | Erro de um deck (recurso ausente): erro tipado `deck`, sem meia mistura; **dispose** libera alvos, texturas, materiais, geometria e locações dos dois decks | | | | | 2 | 2 | | |
+| T18 | Erro de um deck (recurso exclusivo do other ausente nos quatro carregadores): erro tipado `deck`, sem meia mistura; **dispose** libera alvos, texturas, materiais, geometria e locações dos dois decks | | | | | 2 | 2 | 2 | |
 | T19 | Seek aleatório = sequencial (hash); invalidação do cache ao mudar o **vizinho**; alvos retidos dentro do orçamento | | | | | 2 | 2 | | |
 | T20 | Edição: add (padrões), substituir no mesmo corte (ID preservado), resize, parâmetro (inclusive `intensity` com `linear`), oculta, remover; **uma** entrada de undo cada; `dry_run` não muda nada; no-op sem entrada; lote com erro inalterado; `stale_revision`; **texto pt-br/en/es de todo código novo** | 3a | 3b | 4b | 4b | | | | |
 | T21 | Gesto: begin/update/commit ≡ `scene.fx.edit`; cancel; invalidação (revisão, transição trocada/removida, shot sumiu) | 3b | 3b | 4b | 4b | | | | |
@@ -782,7 +801,7 @@ mesma célula se inverte na ativação: **antes** da S2A, um H positivo seria fa
 | T29 | **Mutantes** (corredor `mutate.py`): `+0,5` do progresso, easing ignorado, decks trocados, prendimento junto de instância e câmera, saída antes da mistura, `⌊D/2⌋`→`⌈D/2⌉`, `start`/`end` trocados, capacidade omitida, `amount` ignorado, **vizinho sem invalidar cache**, **mistura cacheada só pelo digest dos decks**, **lease do splat contado errado**; **todos mortos** | 5 | | | | 5 | 5 | | |
 | T30 | **Splat → splat** e junta `continuous` (mesma instância e mesmo splat): leases, ordenação, custo declarado | 1b | | | | 2 | 2 | | |
 | T31 | **Cache da mistura:** mudar só `intensity` (ou `curve`) com decks idênticos remistura **sem redesenhar** os decks | | | | | 2 | 2 | | |
-| T32 | **Portão público (8.4):** cada consumidor recusa com `FX_TRANSITION_NOT_YET` antes da ativação e aceita depois; fronteira (nenhum adaptador chama a entrada interna); seletor de clipe só com os 3 looks; planos e catálogo sem mudança | 1a○→2A | 1a○→2A | 1a○→2A | | | 2○ | | |
+| T32 | **Portão público (8.4):** cada consumidor recusa com `FX_TRANSITION_NOT_YET` antes da ativação e aceita depois; fronteira (nenhum adaptador chama a entrada interna); seletor de clipe só com os 3 looks; planos e catálogo sem mudança | 1a○,3a○→2A | 1a○,3a○→2A | 1a○→2A | | | 2○→2A | | |
 | T33 | **Alpha (D20):** bundle com `renderProfile.alphaMode: "straight"` aceito e desenhado **opaco**; deck de pixels parcialmente transparentes; mesma política dos 3 looks, registrada como divergência | 1b | | | | 2 | 2 | | 0 |
 
 **Tolerâncias** (**contrato fixado no manifesto da S0 antes de qualquer execução do motor; não se mexe depois**).
@@ -808,7 +827,7 @@ Windows ou áudio ouvido; humano não aceitou a aparência (BL058).
 Cada fase é uma PR revisável. "Gate" é o que a PR precisa comprovar **para si**; nenhuma fase altera `docs/backlog.md`,
 `docs/features/README.md` ou `docs/README.md` por conta própria: **o implementador entrega ao coordenador o patch das
 linhas** (inclusive a linha da matriz) e o coordenador as integra. Com o portão (8.4), **S1a, S1b, S2 e S3a são integráveis
-isoladamente**: o comportamento público fica byte a byte o de hoje (T08, T32 e as suítes existentes), e o aceite de
+isoladamente**: documentos, planos e catálogo públicos ficam byte a byte como hoje; o hello do runtime ganha fxTransition na S2 (T08, T32 e as suítes existentes), e o aceite de
 cada uma inclui o controle negativo público. Não há "pilha rascunho": o gate do head conjunto é o da S2A.
 
 | Fase (BL) | Entrega e aceite | Depende de | Arquivos (propostos; código novo em módulos novos) | Dono proposto |
@@ -816,12 +835,12 @@ cada uma inclui o controle negativo público. Não há "pilha rascunho": o gate 
 | **S0 — Contrato e oráculo** (BL082.4.1; docs + Python, sem produção) | `docs/features/fx-transitions.md` (F064), **patch** da linha da matriz e de `effects.md` ao coordenador, manifesto com os **21 blobs** (2.1), tolerâncias e tetos (5.3, 12) **como contrato**, `scripts/pilot-dissolve-corpus.py` + spec, `docs/migration/fixtures/pilot-fx/dissolve-{cases,manifest}.json`; vetores de 6.1/6.2 regenerados (inclusive `intensity`); **divergências declaradas** (D17, D20). **Aceite (X):** `--check` reproduz os JSON, a spec Python passa com controles negativos e **recusa o stub do Windows Store como interpretador**; nenhum Rust alterado. Executa em Windows com Python **real** (14) | este plano | `docs/features/fx-transitions.md`, `docs/features/effects.md` (nota de que o rascunho de extensão está superado), `scripts/pilot-dissolve-corpus.py(.spec.py)`, `docs/migration/fixtures/pilot-fx/dissolve-*.json` | Doc/oráculo |
 | **S1a — Documento, janela, validação (portão fechado)** (BL082.4.2) | `Fx.transitions`, `FxTransition`, tabela de transições + `ParamKind::Choice`, `read_transitions`, janela e aritmética verificada, `TRANSITION_*`, `WRONG_FAMILY`, avisos de documento, `FX_LIMIT`, **política de admissão** e entrada interna; leituras com transição só pela entrada interna. **Aceite:** T01, T02, T03 (documento), T05, T28 (documento) em L; **T32 negativo em L, H e G** | S0 | `crates/core/src/directed_scene/fx/{mod,read,transition,transition_read,transition_catalog,window}.rs`, `scene_project/fx.rs`, testes `crates/core/tests/scene_fx_transition/` | Core |
 | **S1b — Avaliação e plano (portão fechado)** (BL082.4.3) | `evaluate_shot_at_offset`, `Fx::resolve_frame`, `ScenePlan.transition`, `Capability::FxTransition` (Rust), `validate_deck`, `resource_union`, JSON, `PlanTimeline` do vizinho, orçamento de dois decks, `scene.fx.frame` com `transition` (pela entrada interna). **Aceite (L):** T03 (orçamento), T04, T06–T14, T28 (plano), T30, T33; `pilot_dissolve_corpus.rs` verde; T08 e T32 (planos e catálogo públicos inalterados) | S1a | `crates/core/src/directed_scene/temporal/shot_offset.rs`, `directed_scene/fx/frame.rs`, `scene_plan/{model,json}.rs` (campo e capacidade) e `scene_plan/transition{,_json,_validate}.rs`, `crates/core/tests/pilot_dissolve_corpus.rs`, `.../scene_fx_transition/plan.rs` | Core |
-| **S2 — Runtime, render e export de quadros brutos** (BL082.4.4) | `parseTransition` e limites, shader, alvos, ciclo de vida, `SCENE_CAPABILITIES`; `crates/render/tests/scene_fx_transition.rs`; testes `node --test`; teste de runtime antigo. **Aceite (P, R, E):** T04, T06, T08, T10–T13 em R; T12, T15–T19, T30, T31, T33 em P e R; T16 contra a referência X; **T27 (quadros brutos iguais entre export completo e sub-intervalo)** | S1b | `runtime/src/{directed-transition,transition-blend}.js` (novos), ganchos em `directed-scene.js`/`compositor.js` (delta ≤ 0), `output-fx.js`, `runtime/test/*`, `runtime/test/fixtures/fx-catalog.json`, `crates/render/tests/scene_fx_transition.rs` | Runtime/render |
-| **S3a — Edição no core (portão fechado)** (BL082.4.5) | Ops, dry-run, no-op, undo, revisão, `errors[]` com texto nas 3 línguas, contrato de shot apagado, **predicado de janela** (puro). **Aceite (L):** T20, T22, T26 (predicado) | S1b (**não** S2) | `scene_edit/fx_transition.rs` (novo), `scene_project/fx.rs` (já existente), `ops.rs` (uma entrada por op), `directed_scene/fx/window_guard.rs`, `crates/core/tests/scene_fx_transition/edit.rs` | Core (outro agente; **paralela** à S2) |
-| **S2A — Ativação** (BL082.4.4, última PR) | Abre o portão (8.4): remove a política e `FX_TRANSITION_NOT_YET`, tabela de transições no catálogo público, `refused` sem `transitions`, **preflight do intervalo inteiro**, `scene.fx.budget` com os dois decks; inverte T32. **Aceite (H, G):** T01–T03, T05–T11, T13, T14, T28 pela entrada pública por `tessel-headless` real; T32 invertido; painel de clipes não quebra com transição no documento (G); tracer bullet público | S2 e S1b | `directed_scene` (admissão), `scene_project/fx.rs`, `scene_edit/fx_inspector.rs` (família), `scene_export` (preflight), testes | Core + coordenação |
+| **S2 — Runtime, render e export de quadros brutos** (BL082.4.4) | `parseTransition` e limites, shader, alvos, ciclo de vida, `SCENE_CAPABILITIES`; `crates/render/tests/scene_fx_transition.rs`; testes `node --test`; teste de runtime antigo. **Aceite (P, R, E):** T04 em P/R; T06, T08, T10–T13 em R; T10/T18 com asset exclusivo do other em P/R/E; T32 negativo R; T12, T15–T19, T30, T31, T33 em P e R; T16 contra a referência X; **T27 (quadros brutos iguais entre export completo e sub-intervalo)** | S1b | `runtime/src/{directed-transition,transition-blend}.js` (novos), ganchos em `directed-scene.js`/`compositor.js` (delta ≤ 0), `output-fx.js`, `runtime/test/*`, `runtime/test/fixtures/fx-catalog.json`, `crates/render/tests/scene_fx_transition.rs`, `crates/render/src/scene.rs` (from_root/resolve), `scene_operation.rs` (approved_map), `scene_export/mod.rs` (resource_map) | Runtime/render |
+| **S3a — Edição no core (portão fechado)** (BL082.4.5) | Ops, dry-run, no-op, undo, revisão, `errors[]` com texto nas 3 línguas, contrato de shot apagado, **predicado de janela** (puro). **Aceite (L):** T20, T22, T26 (predicado); T32 negativo L/H das novas ops pela entrada normal | S1b (**não** S2) | `scene_edit/fx_transition.rs` (novo), `scene_project/fx.rs` (já existente), `ops.rs` (uma entrada por op), `directed_scene/fx/window_guard.rs`, `crates/core/tests/scene_fx_transition/edit.rs` | Core (outro agente; **paralela** à S2) |
+| **S2A — Ativação** (BL082.4.4, última PR) | Abre o portão (8.4): remove a política e `FX_TRANSITION_NOT_YET`, tabela de transições no catálogo público, `refused` sem `transitions`, **preflight do intervalo inteiro**, `scene.fx.budget` com os dois decks; inverte T32. **Aceite (H, G):** T01–T03, T05–T11, T13, T14, T28 pela entrada pública por `tessel-headless` real; T32 invertido L/H/G/R; painel de clipes não quebra com transição no documento (G); tracer bullet público | S2 e S3a | `directed_scene` (admissão), `scene_project/fx.rs`, `scene_edit/fx_inspector.rs` (família), `crates/render/src/scene.rs`, `scene_operation.rs`, `scene_export/mod.rs` (checagem dos quatro carregadores), `scene_export` (preflight), testes | Core + coordenação |
 | **S3b — Gesto, inspector, persistência (core)** (BL082.4.5) | Gesto de transição, `TransitionInspector`, persistência/pacote/intercâmbio, parser (`commands.rs`) e nós de estado (`tree.rs`, uma entrada por nó). **Aceite:** T20 (H), T21, T22 (H), T23 (L, H, R) | **S3a e S2A** | `scene_edit/fx_transition_inspector.rs`, `scene_project/fx_gesture.rs`, `commands.rs`, `state/tree.rs` (entradas), `crates/core/tests/scene_fx_transition/{gesture,persist}.rs` | Core |
 | **S4a — Guarda de overlay (core + aviso no monitor)** (BL082.4.6) | Fiação do predicado em gizmo, alças, gesto aberto e alvo do vizinho; aviso `transition_window` no monitor. **Aceite:** T26 (L, H, G, W). **Só começa com a base W1 (PR #59, BL167.3/.7) integrada e validada** (seção 14) | S2A, S3a, **W1** | `scene_project/gizmo.rs` (delta ≤ 0), `scene_project/fx_handles.rs`, `scene_interaction/fx_handles.rs`, `scene_project/fx_seek.rs`; `runtime/src/overlay.js` só se o aviso exigir (BL082.62: extrair antes) | Core |
-| **S4b — UI Kit e automação** (BL082.4.6) | Seção Transições, nós de painel, handlers compartilhados, prova da janela. **Aceite:** T02/T03/T14/T20/T21/T22 (G, W), T24, T25 (W, P) | S3b e S4a | `crates/desktop/src/workstation/scene_fx_transition*.rs`, `scripts/scene-fx-transition-proof.py(.spec.py)` | UI |
+| **S4b — UI Kit e automação** (BL082.4.6) | Seção Transições, nós de painel, handlers compartilhados, prova da janela. **Aceite:** T02/T03/T20/T21 (G, W), T14 (G), T22 (W), T24, T25 (W, P) | S3b e S4a | `crates/desktop/src/workstation/scene_fx_transition*.rs`, `scripts/scene-fx-transition-proof.py(.spec.py)` | UI |
 | **S5 — Fechamento** (BL082.4.10) | Mutantes (T29), tolerância do codec (T27 E, 5), NTSC e limites já verdes, docs F064/F016/F062 e matriz (patch), relatório com evidências por superfície. **Aceite:** tabela da seção 12 com cada célula marcada *executado*, *A validar* ou *N/A* | S2A, S3b, S4a, S4b | `docs/migration/p4b-cross-dissolve/{mutate.py,test_mutate.py}`, `crates/render/tests/scene_fx_transition_export.rs`, docs | Coordenador de integração |
 | **S6 — Dissolve legado, expansão de contrato** (BL082.4.7) | Faixa de oráculo **nova** do piloto, importar `transitionInto: dissolve` como `crossDissolve` sintético (D04) **sem editar o acervo antigo**. **Aceite:** abaixo | **S5 (BL082.4.10)** e decisão Q2 | `directed_scene/{parse,joins}.rs`, `docs/migration/fixtures/pilot-dissolve/`, registro de divergência, F044 | Core |
 
@@ -847,7 +866,7 @@ o acervo BB10 foi gerado de um pin **anterior** a isso e o Tessel recusa o caso 
   casos mudados; o harness S10 reexecuta onde as pré-condições valham.
 
 **Dependências exatas.** S0 → S1a → S1b → {S2 ∥ S3a} → S2A → S3b → S4a → S4b → S5 → S6, com S3b ∥ S4a permitido quando a
-base W1 já estiver integrada. S3a **não** espera S2 (só precisa do plano e do documento); S2A **não** espera S3a. Nenhuma fase
+base W1 já estiver integrada. S3a **não** espera S2 (só precisa do plano e do documento); S2A **espera S3a**: ambas tocam scene_project/fx.rs e executam sequencialmente; após a ativação as ops JSONL já existem. Nenhuma fase
 depende de `node` scope (BL082.40), P5 (BL082.5) ou P6. Conflito de arquivos entre S2 e S3a: nenhum (S2 só toca
 `runtime/`+`crates/render`; S3a só `crates/core`). S1a e S1b **dividem** `directed_scene/fx/mod.rs`: sequenciais, nunca
 paralelas. **S4a toca `gizmo.rs`, `fx_handles.rs` e (se preciso) `overlay.js`, que a frente W1 também lê (BL167.3: geometria
@@ -875,14 +894,17 @@ Gates **separados** e nenhum implica o outro:
 **Ambiente Windows (H12).**
 
 - **Invocação.** `scripts/cargo`, `scripts/ui` e `scripts/headless` são `#!/bin/sh` (BL167.4 registra a dependência de Git
-  Bash). Em PowerShell, **`bash ./scripts/cargo <subcomando>`** e `bash ./scripts/ui ...`; o texto "Cargo só por
-  `./scripts/cargo`" vale assim. Alvo padrão; **nunca** `CARGO_TARGET_DIR`, `--target-dir`, `build.target-dir` ou
+  Bash). Em PowerShell, localizar o **Git Bash real**, por exemplo
+  `& 'C:\Program Files\Git\bin\bash.exe' ./scripts/cargo <subcomando>` (também para scripts/ui e scripts/headless).
+  Não usar bash não qualificado: o PATH desta máquina encontra o Microsoft Bash Launcher/WSL. Conferir a origem
+  do executável, versão e o caminho real instalado; o texto Cargo só por ./scripts/cargo vale pela invocação explícita. Alvo padrão; **nunca** `CARGO_TARGET_DIR`, `--target-dir`, `build.target-dir` ou
   `TESSEL_CARGO_LANE`; sem `clean`/`gc`/limpeza de cache; artefatos/cache em `tmp` > 500 MB proibidos; reserva de disco
   ≥ 16 GiB para trabalho pesado (piso 12); evitar `--workspace`/release concorrentes (há outras frentes Windows).
-- **Python real.** Nesta máquina `python`/`python3` resolvem para o **atalho da Microsoft Store** (stub de
-  `WindowsApps` que responde "Python was not found"): **não existe interpretador** (conferido em 14/11/2026). Isto **não
-  é** disponibilidade de Python. A S0 começa em **outro clone Windows**, onde o usuário **disponibiliza um Python real pelo
-  canal oficial** (autorizado pelo coordenador). Isso **não altera** a descoberta de ferramentas de produção e **não
+- **Python real.** Na leitura inicial desta máquina, `python`/`python3` resolviam para o **atalho da Microsoft Store** (stub de
+  `WindowsApps` que responde "Python was not found"): **não havia interpretador identificado** naquela leitura de 14/11/2026. Isto **não
+  é** disponibilidade de Python. A S0 executa em **outro clone Windows**, com preparo de Python oficial por usuário
+  autorizado pelo coordenador. O relato posterior da PR61 informa Python real3.13.17 via winget e161 testes normal/-O;
+  setup e corpus continuam sob revisão, e o atalho do PATH não substitui esse intérprete. Isso **não altera** a descoberta de ferramentas de produção e **não
   admite falso verde**: o corredor e a spec **recusam** o stub (saem com erro, `SKIP` não é passe) e imprimem `sys.version`.
   Scripts de Windows (`bash ./scripts/cargo`) e o Python real são **coisas diferentes**; nada é feito por alias do Store.
 - **BL167.5 fica parcial.** Só a preparação do interpretador, **antes** do corpus. Build *release* e as provas vivas
@@ -994,3 +1016,18 @@ resto **no corpo**, não por adendo.
 | Nit: texto de erro | Teste enumera todos os códigos novos nas 3 línguas | 9.4, T20 |
 | Nit: alpha sem regra no core | Divergência registrada em F016 e F064 | D20 |
 | Evidência do pin | Relato do coordenador reproduzido, com a diferença de narração | 2.1 |
+
+## 17. Fechamento documental da rechecagem R2
+
+R2 em2395719 liberou S0/S1a/S1b e pediu R1 antes de S2/S2A. O coordenador corrigiu o corpo:
+os quatro carregadores do host usam resource_union e têm caso com asset exclusivo do vizinho; S2A
+depende de S3a, T32 cobre as novas ops e R; hello aditivo não integra a promessa de bytes estáveis.
+Hold misto tem oráculo analítico distinto de frames texturizados equivalentes; os três arquivos
+grandes restantes entram na regra de módulos/delta; Git Bash é identificado explicitamente.
+As células T04/T10/T18/T32 e os aceites das fases foram reconciliados. Isso é verificação de
+contrato e documento, não execução de Rust/runtime/export. BL082.4.11 rastreia esta correção
+no backlog do coordenador; não é fase de produto adicional e não renumera .1–.10.
+
+Decisão após a revisão S0: no documento de transição hidden aceita true ou ausência, igual ao
+schema do piloto; false explícito é recusa estrutural tipada na S1a. Tornar visível por operação
+remove a chave, em vez de gravar false. Não muda o contrato de hidden dos looks existentes.

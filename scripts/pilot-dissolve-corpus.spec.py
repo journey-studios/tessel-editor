@@ -490,6 +490,12 @@ class ExplainTests(unittest.TestCase):
             d.explain_transitions(self.edit, [d.tr(keys={"intensity": []})])
         self.assertEqual(caught.exception.code, "ORACLE_KEYS_NOT_MODELLED")
 
+    def test_an_integral_float_range_error_uses_the_origin_numeric_spelling(self):
+        issues = d.explain_transitions(self.edit, [d.tr(params={"intensity": 2.0})])
+        self.assertEqual(issues[0]["code"], "PARAM_OUT_OF_RANGE")
+        self.assertIn("Parameter intensity is 2, outside", issues[0]["message"])
+        self.assertNotIn("2.0", issues[0]["message"])
+
     def test_the_refusals_come_in_the_origin_order(self):
         self.assertEqual(self.codes(self.edit, d.tr(effect="nope", easing="bogus", from_id="zz")), ["UNKNOWN_EFFECT", "UNKNOWN_KEYFRAME_EASING", "UNKNOWN_SHOT"])
         self.assertEqual(self.codes(self.edit, d.tr(effect="vignette", easing="bogus")), ["WRONG_FAMILY", "UNKNOWN_KEYFRAME_EASING"])
@@ -662,11 +668,12 @@ class AlphaAndTargetFactTests(unittest.TestCase):
         self.assertEqual(expected["validation"]["schema"]["issues"][0]["message"], "Dissolve transitions are not supported in pilot MVP")
         self.assertTrue(FACTS["dissolve_unsupported_in_parser"] and FACTS["premultiplied_refused"])
 
-    def test_keys_are_refused_by_the_destination_plan_and_hidden_false_is_undecided(self):
+    def test_keys_and_explicit_hidden_false_are_refused_by_the_destination_contract(self):
         keys = CORPUS["keys_hidden_seed"]["keys"]
         self.assertIn("FX_TRANSITION_KEYS_NOT_YET", keys["destination_plan"])
         hidden = CORPUS["keys_hidden_seed"]["hidden"]
-        self.assertIn("UNDECIDED", hidden["destination"])
+        self.assertIn("DECIDED", hidden["destination"])
+        self.assertIn("structural refusal", hidden["destination"])
         self.assertIn("refused", hidden["cases"][2]["origin"])
 
 
@@ -1207,6 +1214,19 @@ class TamperAndCliTests(unittest.TestCase):
         self.assertIn("a transcribed line changed", err)
         self.assertFalse(target.exists())
 
+    def test_require_pin_offline_is_exit_4_for_verify_and_generate_check(self):
+        # Exercise main/CLI without mocking the origin verifier, including missing output paths.
+        for argv in (["verify", "--require-pin"], ["generate", "--check", "--require-pin"]):
+            code, out, err = run_main(*argv)
+            self.assertEqual(code, d.EXIT_PIN_UNVERIFIED)
+            self.assertIn("needs --origin", err)
+            self.assertNotIn("verified", out)
+
+    def test_digests_requires_an_origin_as_a_usage_error(self):
+        with self.assertRaises(SystemExit) as caught, redirect_stderr(io.StringIO()):
+            d.main(["digests"])
+        self.assertEqual(caught.exception.code, 2)
+
     def test_require_pin_exits_4_only_for_the_pin_and_1_when_anything_else_is_wrong(self):
         with patch.object(d, "check_origin", return_value=(["PIN_UNVERIFIED"], ["PIN_COMMIT_ABSENT: x"])):
             code, _, err = self.verify("--origin", "unused", "--require-pin")
@@ -1245,6 +1265,13 @@ class InterpreterTests(unittest.TestCase):
         self.assertIsNone(d.interpreter_problem(real_store, (3, 13), 100))
         self.assertIsNone(d.interpreter_problem(r"C:\Users\x\AppData\Local\Programs\Python\Python313\python.exe", (3, 13), 100))
         self.assertIsNone(d.interpreter_problem("/usr/bin/python3", (3, 9), 100))
+
+    def test_a_running_real_store_package_alias_may_have_zero_bytes(self):
+        alias = r"C:\Users\x\AppData\Local\Microsoft\WindowsApps\PythonSoftwareFoundation.Python.3.13_pkg\python.exe"
+        self.assertIsNone(d.interpreter_problem(alias, (3, 13), 0))
+        # sys.version is supplied by the running interpreter, so an old package is still refused.
+        self.assertIsNotNone(d.interpreter_problem(alias, (3, 8), 0))
+        self.assertIsNotNone(d.interpreter_problem(self.STORE_STUBS[0], (3, 13), 0))
 
     def test_an_empty_executable_a_zero_byte_file_and_an_old_python_are_refused(self):
         self.assertIsNotNone(d.interpreter_problem("", (3, 13), 100))
@@ -1355,6 +1382,17 @@ class OriginVerifierTests(unittest.TestCase):
         self.assertEqual(findings, ["PIN_UNVERIFIED"])
         findings, _ = self.run_check(require_pin=True)  # the pin is present: nothing to refuse
         self.assertEqual(findings, [])
+
+    def test_strict_pin_refuses_even_when_all_attested_blobs_are_present_by_id(self):
+        # This is a real git repository. a.ts is identical at both refs and old b.ts is still
+        # present by object id; none of this proves membership in the requested absent commit.
+        for pin_blob, _ in self.attested.values():
+            self.assertTrue(git(self.repo, "cat-file", "-t", pin_blob) == "blob")
+        findings, warnings = self.run_check(require_pin=True, PIN="0" * 10)
+        self.assertEqual(findings, ["PIN_UNVERIFIED"])
+        self.assertTrue(any(w.startswith("PIN_COMMIT_ABSENT:") for w in warnings))
+        self.assertTrue(any(w.startswith("PIN_BLOB_PRESENT_BY_ID: b.ts") for w in warnings))
+        self.assertEqual(self.run_check(require_pin=True), ([], []))
 
     def test_a_pin_blob_different_from_the_attested_one_is_a_finding_when_the_pin_is_present(self):
         attested = dict(self.attested, **{"a.ts": ("d" * 40, self.attested["a.ts"][1])})

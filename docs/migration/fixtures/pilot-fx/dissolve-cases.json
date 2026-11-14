@@ -803,6 +803,40 @@
         {
           "code": "PARAM_OUT_OF_RANGE",
           "hint": "intensity: number 0..1, default 1 ratio.",
+          "message": "Transition tr: Parameter intensity is 2, outside what it accepts",
+          "transitionId": "tr"
+        }
+      ],
+      "kind": "origin-formula",
+      "name": "param-range-intensity-integral-float",
+      "transitions": [
+        {
+          "alignment": "center",
+          "durationFrames": 12,
+          "easing": "easeInOutCubic",
+          "effect": "crossDissolve",
+          "fromShotId": "s1",
+          "handles": "hold",
+          "id": "tr",
+          "params": {
+            "intensity": 2.0
+          },
+          "toShotId": "s2"
+        }
+      ]
+    },
+    {
+      "codes": [
+        "PARAM_OUT_OF_RANGE"
+      ],
+      "covers": [
+        "T02"
+      ],
+      "edit": "spec",
+      "issues": [
+        {
+          "code": "PARAM_OUT_OF_RANGE",
+          "hint": "intensity: number 0..1, default 1 ratio.",
           "message": "Transition tr: Parameter intensity is -0.25, outside what it accepts",
           "transitionId": "tr"
         }
@@ -2362,7 +2396,7 @@
       "covers": [
         "T04"
       ],
-      "destination": "UNDECIDED: the plan's example writes `hidden: false`, which the origin schema refuses; S1a must decide to omit it or to accept false",
+      "destination": "DECIDED: transitions accept true or an absent hidden field, matching the origin; explicit false is a structural refusal before explain (S1a). Existing look clips keep their current contract.",
       "kind": "origin-formula",
       "origin_schema": "hidden: z.literal(true).optional(): `true` or absent"
     },

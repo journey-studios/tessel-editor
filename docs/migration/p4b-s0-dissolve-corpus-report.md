@@ -65,7 +65,7 @@ half-up `floor(x·255+0,5)` com guarda de empate 1e-6. Intensidade 0 **não** é
 | `KEYS_REFUSED` | Keyframes de transição recusados (`FX_TRANSITION_KEYS_NOT_YET`) |
 | `NARRATION_OUT_OF_SCOPE` | Diferença de narração em `render-bundle.schema` fora do escopo; é decisão registrada |
 | `LEGACY_FIXTURES_UNTOUCHED` | Corpus legado de P0/P2/P3/S10 intocado (nova faixa S6) |
-| `HIDDEN_FALSE` | `hidden:false` **indeciso** (não afirmado) |
+| `HIDDEN_FALSE` | decidido: hidden true ou ausente nas transições; false recusado estruturalmente na S1a |
 | `STRICT_INTEGERS` | Inteiros estritos (sem bool/float/str; 2^53−1; i64) |
 | `DURATION_CHECKED_FIRST` | `D ≤ edit` verificado antes da aritmética; janela inválida é recusada, nunca clampada |
 
@@ -127,7 +127,7 @@ Evidência de força do oráculo:
 
 ## 8. Linhas para o coordenador (não editei `backlog.md`, `features/README.md` nem `docs/README.md`)
 
-**BL082.4.1** (S0): status → *implementado, validado no Windows com os limites do §7*; evidência: este relatório, o
+**BL082.4.1** (S0): status → **A validar**, até as correções de pin e de cobertura analítica da revisão fecharem; evidência: este relatório, o
 commit/PR da branch `feat/p4b-s0-dissolve-corpus`, `scripts/pilot-dissolve-corpus.py` e `.spec.py` (161 testes),
 `dissolve-cases.json`/`dissolve-manifest.json`. Pendências herdadas: Mac cross-host `--check`; pin inverificável.
 
@@ -136,3 +136,28 @@ validados (Windows); documento [fx-transitions.md](../features/fx-transitions.md
 
 **BL167.5** (parcial): setup do Python real concluído (3.13.17, stub da Store recusado pelo oráculo, §3); build de
 release e provas ao vivo seguem **pendentes**.
+
+## 9. Revisão independente e atualização de pin
+
+O resultado original em `173f5f4` não foi aprovado como S0 completa. A revisão confirmou a
+matemática por Decimal, mas encontrou `--require-pin` aceitando verificação offline ou só blobs
+sem commit. O coordenador fechou esses caminhos com exit 4 e testes de Git real, sem mockar
+`check_origin` (fixture com blob comum à ponta e blob antigo presente por id). Os nomes de tiers
+agora distinguem pin-commit verificado de mera atestação.
+
+Também corrigiu uso de `digests`, alias legítimo da Store e valor integral `2.0` na mensagem, além
+de declarar a força real da checagem textual. O corpus ganhou esse vetor e a decisão hidden,
+sem mudar fórmulas, tolerâncias nem fixtures legados. Contagens de 161/hashes de §6 são históricos
+da versão original; as novas execuções serão identificadas separadamente.
+
+**Pendente nesta atualização:** sondas analíticas X para hold misto e relógio da luz. O X atual
+cobre estados temporais e cores constantes, não pixels de decks texturizados nesses casos.
+A linha F064 existe na matriz com todas as superfícies de produto Pending; BL082.4.1 fica
+A validar e BL167.5 só tem setup de Python, sem release/janela.
+
+Execução da correção pelo coordenador no macOS, Python 3.14.3: spec com origem **166/166**
+nos modos normal e `-O`; `generate --check` byte a byte; verificação estrita com origem **exit 0**
+(commit do pin presente: 21 fontes atestadas e 5 só da ponta). Specs de tabelas do backlog
+**19/19**, higiene **13/13**, `git diff --check` limpo. Não houve Cargo, engine ou GPU nesta rodada.
+A atualização incorpora o plano final da PR58 (`002fe9f`, merge `1796107`); o relato de §2
+continua identificando a versão anterior lida na implementação original.
