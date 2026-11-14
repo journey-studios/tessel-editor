@@ -213,7 +213,7 @@ atendida pela thread principal do GPUI, medida a cada 100 ms.
   cujo custo aparece no perfil como `taffy`/`bounds_tree`, poucas amostras).
 - O monitor é a WebView nativa pintada sobre o GPUI: trânsito da ponte p50 ≈ 0,9 ms (p95 ≈ 3,7), `presented_after_done` p50 0 ms;
   plano, serialização, despacho e aceitação < 0,1 ms. Não há leitura de pixels nem JPEG no caminho interativo.
-- **Binário do usuário:** `/Users/wallyssonnunes/www/tessel-video-splat/bin/tessel-editor` (141 MB) contém as strings de overflow-check
+- **Binário do usuário:** `~/www/tessel-video-splat/bin/tessel-editor` (141 MB) contém as strings de overflow-check
   (`attempt to add with overflow`) que o meu release (35 MB) não tem e o meu debug (135 MB) tem. Forte indício de **build debug**
   (não confirmei pelo processo, só pelo arquivo; não toquei na instância).
   Efeito medido do debug: UI 15× mais lenta a responder (RTT 14 ms contra 0,85 ms), CPU 20 % parado, metade dos repaints.

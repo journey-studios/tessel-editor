@@ -11,7 +11,8 @@ tracked file of the feature, compressed ones decompressed, and fails with `file:
 
 Three shared documents are read too (BL015.38): they are not the feature's, but they were where a
 real home path reached the public repository. They are scanned for the machine data only (see
-`SHARED_FORBIDDEN`).
+`SHARED_FORBIDDEN`). And the whole repository is read for the developer's name (BL164): only the JSON
+evidence files, which carry hashes and provenance, keep it.
 
 It only needs `git` and the standard library. A `git` that fails is an error of the spec, never a
 file list that happens to be empty, and the controls below prove that the scan CAN fail: the
@@ -111,6 +112,33 @@ class TheSharedDocuments(unittest.TestCase):
                 self.assertEqual([name], tracked(name), f'`{name}` is not a tracked file')
                 found = scan(name, (ROOT / name).read_bytes(), SHARED_FORBIDDEN)
                 self.assertEqual([], found, 'development-machine data in a shared document:\n' + '\n'.join(found))
+
+
+# BL164 (the owner's choice (a), 2026-11-14): no tracked text file names the developer, except the JSON evidence files,
+# which keep their recorded bytes because they carry hashes and provenance. Every other file of the repository is read.
+USER_NAME = FORBIDDEN[2]
+NOT_EVIDENCE = (':(exclude)*.json',)
+
+
+def files_naming(pattern, *pathspecs):
+    """Tracked text files (binary ones skipped) whose working copy contains `pattern`, any case. `git grep` exits 1 when
+    nothing matches; anything else but 0 is an error of the scan, never a clean answer."""
+    found = subprocess.run(['git', 'grep', '-l', '-I', '-i', '-F', '-e', pattern, '--', '.', *pathspecs],
+                           cwd=ROOT, capture_output=True)
+    if found.returncode not in (0, 1):
+        raise subprocess.CalledProcessError(found.returncode, found.args, found.stdout, found.stderr)
+    return found.stdout.decode('utf-8').split('\n')[:-1] if found.returncode == 0 else []
+
+
+class TheWholeRepository(unittest.TestCase):
+    def test_no_tracked_file_but_the_json_evidence_names_the_developer(self):
+        self.assertEqual([], files_naming(USER_NAME, *NOT_EVIDENCE),
+                         "the developer's name in tracked files (BL164): use `~` or a marker")
+
+    def test_the_repository_scan_reads_the_files_it_must(self):
+        # A pathspec that excluded everything would pass the test above by reading nothing.
+        self.assertIn('scripts/gizmo-perf/hygiene.spec.py', files_naming('NOT_EVIDENCE', *NOT_EVIDENCE))
+        self.assertEqual([], [name for name in files_naming('{', *NOT_EVIDENCE) if name.endswith('.json')])
 
 
 class TheControls(unittest.TestCase):

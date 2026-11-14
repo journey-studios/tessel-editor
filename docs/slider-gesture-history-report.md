@@ -92,7 +92,7 @@ Docs: `docs/features/properties.md`, `docs/features/history.md`, `docs/features/
   para o passo do slider (o teste "voltar ao original" assume zoom 100 = (100-10)/390 da largura).
 - Mouse físico **não** é provado por teste (BL043 continua aberto); só a entrada simulada do GPUI.
 
-Gate (pelo coordenador, serial): `python3 /Users/wallyssonnunes/.cache/tessel-editor/cargo-serial.py test -p
+Gate (pelo coordenador, serial): `python3 ~/.cache/tessel-editor/cargo-serial.py test -p
 tessel-editor-core --locked` (e `-p tessel-editor-desktop`), clippy `-D warnings`, `fmt --check`.
 Formatado com `rustfmt --edition 2024` apenas os arquivos novos e `tests/slider_gesture.rs`.
 

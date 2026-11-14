@@ -310,7 +310,7 @@ testadas sem GPUI; headless N/A). Não validado: ver [limites](#limites).
   pequena (`3,9 fps · pior 267 ms`) e não "parado". A origem desse repaint não foi
   investigada aqui.
 - **Captura nativa, head `17d73f0`:** `/tmp/pr18/logs/native/shots/` (fora do repositório, efêmera).
-- **Captura nativa anterior (histórico):** `/Users/wallyssonnunes/www/tessel-video-splat/previews/perf-meter-bl145/`
+- **Captura nativa anterior (histórico):** `~/www/tessel-video-splat/previews/perf-meter-bl145/`
   (`perf-meter-playing.png`, `-default.png`, `-inspector-closed.png`,
   `-monitor-maximized.png`, `-real-project.png`), fora do repositório.
 

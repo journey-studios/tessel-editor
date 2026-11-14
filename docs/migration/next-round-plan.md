@@ -46,7 +46,7 @@ Matriz/índices/backlog são integrados pelo coordenador a partir das linhas pro
 Toda chamada Cargo nesta rodada passa pela fila local:
 
 ```sh
-python3 /Users/wallyssonnunes/.cache/tessel-editor/cargo-serial.py test -p tessel-editor-core --locked
+python3 ~/.cache/tessel-editor/cargo-serial.py test -p tessel-editor-core --locked
 ```
 
 O helper executa `./scripts/cargo` no worktree corrente, com lock de arquivo e
