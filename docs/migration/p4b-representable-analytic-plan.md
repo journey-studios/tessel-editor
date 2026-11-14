@@ -67,12 +67,15 @@ Constantes comuns: transição `crossDissolve`, `durationFrames 12`, `easing eas
 | `rep-b2-tail-instance-edge-camera-runs` | pos | 24/1 | start `[30,42)` | 30 | 60 | 0, 4, 39, 0, 48 | 30, 0, 60, 0, 40 |
 | `rep-c-head-both-held-light` | lit | 24/1 | end `[463,475)` | 475 | 535 | 0, 0, 475, 0, 475 | 475, 0, 60, 0, 60 |
 | `rep-d-ntsc-tail-held-light` | lit | 30000/1001 | start `[1800,1812)` | 1800 | 3600 | 0, 0, 1800, 0, 1800 | 1800, 0, 1800, 0, 1800 |
-| `rep-x-center-both-mixed` (extra) | both | 24/1 | center `[24,36)` | 30 | 60 | 0, 4, 60, 0, 30 | 30, 0, 60, 12, 40 |
-| `rep-ctl-real-both` (controle, `handles use`) | both | 24/1 | center `[24,36)` | 30 | 60 | 0, 4, 60, 0, 40 | 30, 10, 60, 12, 40 |
+| `rep-x-center-both-mixed` (extra) | both | 24/1 | center `[24,36)` | 30 | 60 | 0, 4, 60, 0, 30 | 30, 0, 60, 12, 42 |
+| `rep-ctl-real-both` (controle, `handles use`) | both | 24/1 | center `[24,36)` | 30 | 60 | 0, 4, 60, 0, 40 | 30, 10, 60, 12, 42 |
 
-Cada shot tem comprimento `len = end − start` e `inst-frames ≥ inst-start + len`; `cam-frames` pode ser menor que
-`cam-in + len` somente quando o importador aceita a câmera curta (**nenhum** cenário depende disso: todas as câmeras acima
-cobrem o shot).
+Cada shot tem comprimento `len = end − start`, `inst-frames ≥ inst-start + len` e `cam-frames ≥ cam-in + len`: **toda
+câmera cobre o seu shot** (o importador não exige a câmera, mas nenhum cenário depende de uma câmera curta).
+
+**Emenda antes da primeira execução (registrada, nenhum produto nem gerador existia):** o rascunho deste plano dava
+`cam-frames 40` ao shot B de `x` e `ctl` (herdado do layout S0), que não cobre `cam-in 12 + len 30 = 42`. Corrigido para 42
+antes de qualquer código; nada mais mudou.
 
 Estados esperados que cada linha **obriga** (todos conferidos pelo gerador, quadro a quadro):
 
