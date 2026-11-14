@@ -645,6 +645,11 @@ fn a_plan_never_nests_and_a_neighbour_with_a_transition_is_refused_before_it_is_
     let inner = plan.clone();
     plan.transition.as_mut().unwrap().other.transition = inner.transition;
     assert!(plan.resource_union().is_ok());
+    // The validator refuses it on its own, without going through the reader.
+    assert_eq!(
+        pointer_of(plan.validate().unwrap_err()),
+        "/transition/other/transition"
+    );
     let wire = plan.to_json();
     assert_eq!(refused(&wire), "/transition/other/transition");
 }
