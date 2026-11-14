@@ -598,3 +598,10 @@ Dois mutantes foram detectados: resumir sem encerrar e ignorar cancelamento; o p
 falha em5s com limpeza antes da asserção, o segundo após o prazo de20s. Fontes restauradas,
 regressões2/2 novamente verdes. Esses controles provam o harness, sem medir desempenho do
 produto. Windows/revisão independente pendentes; esta prova não promove a UI.
+
+Windows validado por revisão independente em806be31:15/15, fmt/clippy do alvo,
+mutantes de expiração/cancelamento detectados e fontes restauradas. A prova é
+Child.kill+wait liberar o lock real; SIGSTOP continua Unix. Na falha por panic,
+o scope aguarda até20s para o watchdog matar/recolher o peer e só então relança.
+Essa latência de falha é um limite aceito do harness, não um vazamento nem um
+orçamento do produto. Só conclusão normal cancela o watchdog sem matar o peer.

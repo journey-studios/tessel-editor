@@ -2156,10 +2156,24 @@ Código de produto, orçamento20ms e critério100ms não mudam.
 
 | ID | Área | Pendência | Status | Dependências | Responsável | Aceite e evidência |
 |---|---|---|---|---|---|---|
-| BL167.6.10 | Testes / watchdog | Watchdog não libera o peer com lock se o poll regredir e bloquear | A validar — Mac15/15, Windows pendente | BL167.6, BL112.3 | Coordenador | Helper por handle do Child próprio, SIGCONT Unix seguido de término e wait, cancelamento quando trabalho acaba; teste real de liberação de lock e controle de cancelamento, ambos com limpeza própria. Mac/Windows a validar; não é mudança de produto/performance. |
+| BL167.6.10 | Testes / watchdog | Watchdog não libera o peer com lock se o poll regredir e bloquear | Validado Mac/Windows — revisão806be31 aprovada | BL167.6, BL112.3 | Coordenador | Helper por handle do Child próprio, SIGCONT Unix seguido de término e wait, cancelamento quando trabalho acaba; teste real de liberação de lock e controle de cancelamento, ambos com limpeza própria. Mac/Windows a validar; não é mudança de produto/performance. |
 
 BL167.6.10, código67ba3a6: Mac job_discard_claims15/15; clippy do alvo com-Dwarnings
 exit0 e fmt passam. Dois mutantes compilados falham por asserção: sóCONT sem término
 (novo controle falha em5s, limpando peer/waiter antes da asserção) e ignorar cancelamento
 (falha após20s, peer recolhido). Fontes restauradas por bytes/SHA e regressões2/2 verdes.
 Não se alterou produto/Cargo.lock/orçamentos. Validação/review Windows pendente.
+
+BL167.6.10: revisão independente Windows aprovou806be31 sem bloqueio. Executou
+fmt/clippy do alvo e15/15, dois mutantes mortos por asserção (expiração~5,1s,
+cancelamento~20,1s), fontes restauradas porSHA e15/15 novamente verde após
+recompilação. Uma rodada14/15 foi descartada: binário do mutante reaproveitado
+porque a restauração preservou mtime; bytes foram conferidos, mtime atualizado,
+recompilação e15/15 encerraram o artefato inválido. SIGSTOP não roda no Windows;
+Child.kill+wait libera lock real. Não é prova de causa NTFS ou desempenho.
+
+Decisão de escopo: trabalho que termina NORMALMENTE cancela o watchdog. Panic
+no trabalho aguarda até20s, então encerra/recolhe o peer antes de relançar.
+Atraso da falha é P3 aceito nesta entrega; cancelar sem matar em unwind vazaria
+peer, e não foi feito. Melhorar latência preservando limpeza continua como
+resíduo do mesmo BL167.6.10, sem bloquear a correção validada.
