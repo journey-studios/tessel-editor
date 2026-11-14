@@ -322,3 +322,20 @@ anterior (BL082.4.13). Somam-se às divergências 1–6 acima.
 - W1/W2 (PR59/PR60) e as outras features fora do escopo de S1a.
 - S1b (avaliação, `ScenePlan.transition`), S2 (runtime/shader/export), S3 (operações), S4 (UI): **nenhuma habilitada**.
 - Status de produto de F064: **P** em todas as superfícies. BL082.4.2: **A validar**.
+
+## Correção posterior: expressão `const {}` no scanner (BL082.4.2)
+
+Um comentário novo apontou que `item_end` confundia uma expressão `const {}` sem
+ponto e vírgula com uma declaração `const NAME = ...;`. Depois de `#[cfg(test)]`,
+a busca pelo ponto e vírgula podia remover também a expressão de produção seguinte.
+A leitura do scanner confirmou o caso; o coordenador corrigiu a classificação do
+bloco, sem mudar código de produção.
+
+A regressão `a_test_only_const_block_keeps_the_following_production_expression`
+exige preservar e sinalizar `TransitionAdmission::Accept` depois do bloco, com e
+sem ponto e vírgula. Inclui controles para declaração `const` e referência também
+sob `cfg(test)`. Não transforma o scanner em barreira de segurança.
+
+No macOS, `cargo fmt --all -- --check` e `git diff --check` passaram. A regressão
+Rust e a mutação inversa ainda precisam de execução no Windows pela revisão R2
+em andamento; os 60 testes de `517946a` não validam esta mudança posterior.

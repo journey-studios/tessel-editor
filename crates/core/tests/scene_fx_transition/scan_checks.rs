@@ -270,6 +270,29 @@ fn KEEP_Z() {}
 }
 
 #[test]
+fn a_test_only_const_block_keeps_the_following_production_expression() {
+    for ending in ["", ";"] {
+        let sample = format!(
+            "fn f() {{ #[cfg(test)] const {{ HIDDEN_BLOCK; }}{ending} \
+             TransitionAdmission::Accept; \
+             #[cfg(test)] const HIDDEN_VALUE: () = {{ HIDDEN_INITIALIZER; }}; \
+             KEEP_AFTER; }}"
+        );
+        let code = production_text(&sample);
+        assert!(code.contains("TransitionAdmission::Accept"), "{code}");
+        assert!(code.contains("KEEP_AFTER"), "{code}");
+        assert!(!code.contains("HIDDEN"), "{code}");
+        assert!(
+            !violations(&[("core/src/lib.rs", &sample)]).is_empty(),
+            "the gate must flag the production expression after a const block"
+        );
+    }
+    let control = "fn f() { #[cfg(test)] const {} \
+                   #[cfg(test)] TransitionAdmission::Accept; }";
+    assert!(violations(&[("core/src/lib.rs", control)]).is_empty());
+}
+
+#[test]
 fn comments_and_docs_are_not_code_but_a_string_is() {
     let code = production_text(
         "/// TransitionAdmission::Accept in a doc\n\

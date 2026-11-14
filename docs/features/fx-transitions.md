@@ -408,3 +408,10 @@ ordem de autoria da origem e foi mantida. Nada aqui afirma runtime, GPU, Mac ou 
 
 **Pendente:** nova revisão independente; core completo com 2 falhas de base; workspace inteiro não rodado; S1b, S2, S3 e S4.
 Status de produto de F064: **P** em todas as superfícies. BL082.4.2 permanece **A validar** até essa revisão.
+
+**Correção posterior ao reforço (BL082.4.2).** O scanner distingue expressão
+`const {}` de declaração `const NAME = ...;`, para não remover a expressão de
+produção seguinte a um bloco sob `cfg(test)`. A regressão inclui os controles
+com/sem ponto e vírgula e referência também condicionada a testes. A execução
+Windows deste ajuste está pendente na revisão R2; os resultados de `517946a`
+continuam atribuídos àquele head. Nenhum comportamento de produto mudou.

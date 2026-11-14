@@ -2004,3 +2004,12 @@ RegressõesassimétricasTOO_LONG/ordemcronológicainversa/sobreposição detecta
 
 Essasprovas são do implementador, não aprovação independente. Nova revisão deve conferir
 source/dev-dep, mutantes e gates nohead final, sempromovercore/workspacea verde ou produtoF064.
+
+### PR62: correção pequena do scanner durante R2 — 2026-11-14
+
+BL082.4.2 continua A validar. Novo comentário sobre `const {}` sem ponto e vírgula
+confirmado por leitura: `item_end` podia remover a expressão de produção seguinte
+a um bloco sob `cfg(test)`. Coordenador distingue bloco de declaração e adiciona
+regressão discriminante com controles. Produção inalterada; fmt e diff-check no
+Mac passam, execução Rust e mutação inversa ficam com a revisão R2 em andamento.
+Os 60 testes de517946a não são prova deste ajuste posterior.

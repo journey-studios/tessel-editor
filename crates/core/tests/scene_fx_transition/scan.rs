@@ -229,10 +229,13 @@ fn item_end(tokens: &[TokenTree], from: usize) -> usize {
             "fn" | "impl" | "trait" | "struct" | "enum" | "union" | "mod" | "macro_rules" | "macro"
         )
     );
-    let ends_at_semicolon = matches!(
-        keyword.as_deref(),
-        Some("const" | "static" | "type" | "use" | "let" | "crate")
-    );
+    let const_block = keyword.as_deref() == Some("const")
+        && matches!(tokens.get(at + 1), Some(TokenTree::Group(group)) if group.delimiter() == Delimiter::Brace);
+    let ends_at_semicolon = !const_block
+        && matches!(
+            keyword.as_deref(),
+            Some("const" | "static" | "type" | "use" | "let" | "crate")
+        );
     for (index, token) in tokens.iter().enumerate().skip(from) {
         match token {
             TokenTree::Punct(punct) if punct.as_char() == ';' => return index + 1,
