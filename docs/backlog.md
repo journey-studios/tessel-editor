@@ -1607,7 +1607,7 @@ correções de revisão, não gate do código corrigido.
 | BL081.2 | Corte / envelope | Fades atravessando o ponto do corte não são representáveis em duas rampas atuais | Pendente — recusa explícita implementada | BL081, BL142 | — | Preservar envelope/amostras e quadro sem aproximar; enquanto isso split_unsupported com motivo |
 | BL081.3 | Documentação | Incluir clip.split no vocabulário F015 | Corrigido pela coordenação | BL081 | Coordenador | Linha no contrato project-creation aponta F017 e argumentos absolutos; sem mudar outras operações |
 | BL081.4 | Windows / cache | Artefato debug GPUI reaproveita CARGO_MANIFEST_DIR de W: após mudança para E:; shader não abre | Pendente | BL167.4 | — | Invalidar por caminho ou incorporar HLSL sem tocar cache global; provar janela de debug em outro checkout. Executor atualizou mtime do build.rs, sem diff, apenas como contorno |
-| BL081.5 | Áudio / continuidade do corte | Preservar fase em grades fracionárias e faixas de mix arbitrárias | A validar — implementação e revisão concluídas; Mac verde; rechecagem Windows final pendente | BL081, BL016 | Cursor Sonnet5.5 Windows; coordenador revisa e integra | Relógio absoluto e fase racional, sem metadado novo persistido; PCM inteiro/corte/blocos/faixas idêntico sob modelo corrigido; compatibilidade inteira legada e mudança fracionária declarada. Mac core1455/7 ignorados/0 falhas, desktop4+2, export13 e provas nativas. [Relatório](migration/clip-split-audio-continuity-report.md) |
+| BL081.5 | Áudio / continuidade do corte | Preservar fase em grades fracionárias e faixas de mix arbitrárias | Concluído localmente — validado Windows/Mac; publicação pendente | BL081, BL016 | Cursor Sonnet5.5 Windows; revisão e integração coordenador | Código46506ac. Mac core1455/7 ignorados existentes/0 falhas, desktop4+2, export13 e provas headless/janela. Windows77 testes dirigidos,0falhas/0skips e fmt/check/clippy/no-run/build exit0. WAVs de mix/corte/blocos/export idênticos; PCM fracionário legado corrigido intencionalmente. Desempenho BL081.7 e fades atravessados BL081.2 continuam pendentes. [Relatório](migration/clip-split-audio-continuity-report.md) |
 | BL081.6 | Revisão / atomicidade | Split inválido liquidava gesto de slider aberto antes de recusar | Corrigido e validado Windows/Mac | BL081 | Coordenador | Preflight antes de liquidar gesto; recusa mantém gesture/history/revision/documento. Regressão falha no código entregue e passa corrigida; split válido mantém política de liquidação existente |
 
 Controles de revisão:22 testes no alvo clip_split —20 antigos passam e2 novos
@@ -1734,7 +1734,7 @@ atribuição automática ou alteração no aceite anterior.
 |---|---|---|---|---|---|---|
 | BL081.7 | Áudio / custo | Medir custo do SourceCursor exato contra mixer anterior em export longo | Pendente — sem desempenho aceito | BL081.5 | — | Corpus pareado, builds identificados e lock de desempenho; não inferir regressão só pelo uso de i128 nem aprovar sem medir |
 | BL081.8 | Áudio / prova | Reexecutar audio-fades-proof.py depois da mudança de relógio | Validado no Mac — 23/23 headless e28/28 janela,0skips | BL081.5, BL142 | Coordenador | Prova funcional headless+janela com binários identificados; sem promover PCM a som ouvido; sem lock de desempenho se roteiro for só funcional |
-| BL081.9 | Export / integração | Provar export real NTSC cortado e inteiro com WAV idêntico | Validado no Mac; Windows final pendente | BL081.5 | Coordenador | Teste media/export com range nãozero e fronteiras de bloco; mesma contagem e PCM, não apenas prova de core |
+| BL081.9 | Export / integração | Provar export real NTSC cortado e inteiro com WAV idêntico | Validado Windows/Mac | BL081.5 | Coordenador | Teste media/export com range nãozero e fronteiras de bloco; mesma contagem e PCM, não apenas prova de core |
 | BL081.10 | Docs / histórico | Atualizar referências antigas de tolerância de uma amostra e relatório inicial do corte | Corrigido na integração local | BL081.5 | Coordenador | Contratos atuais coerentes e histórico identificado, sem apagar provas anteriores nem manter fila em relatório |
 
 
@@ -1752,8 +1752,8 @@ Sem áudio ouvido, ponteiro físico, pixels equivalentes ou desempenho aceitos.
 
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
-| BL081.11 | Revisão / export | Alvo final usava S(to-from) e adicionava/cortava uma amostra de cauda em NTSC com from>0 | Corrigido e validado no Mac; Windows final pendente | BL081.5, BL081.9 | Coordenador | Controle1..2:1602 errado contra1601. Com FPS igual usar S(to)-S(from); overrides seguem duração codificada. Teste50faixas e6exports reais com WAV doencoder igual ao mix inteiro, faixascurtas e maior que10s |
-| BL081.12 | Revisão / testes | Bordas da fonte/carry exato/erro de plano manual e arquivo1107linhas sem separação | Corrigido e validado no Mac; Windows final pendente | BL081.5 | Coordenador |2testes de borda+carryunitário;14casos de fase preservados em5módulos, raiz429linhas efilhos103–222; sem relaxar tolerância ou alterar oráculo |
+| BL081.11 | Revisão / export | Alvo final usava S(to-from) e adicionava/cortava uma amostra de cauda em NTSC com from>0 | Corrigido e validado Windows/Mac | BL081.5, BL081.9 | Coordenador | Controle1..2:1602 errado contra1601. Com FPS igual usar S(to)-S(from); overrides seguem duração codificada. Teste50faixas e6exports reais com WAV doencoder igual ao mix inteiro, faixascurtas e maior que10s |
+| BL081.12 | Revisão / testes | Bordas da fonte/carry exato/erro de plano manual e arquivo1107linhas sem separação | Corrigido e validado Windows/Mac | BL081.5 | Coordenador |2testes de borda+carryunitário;14casos de fase preservados em5módulos, raiz429linhas efilhos103–222; sem relaxar tolerância ou alterar oráculo |
 
 [Rechecagem Windows do patch de revisão](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:3a303a871c3f3de78e2a39e4311e4f10948394ad13ee6cedbc2cdb0d735dfb8e)
 iniciada por novo delegate_task Cursor Sonnet5.5, sem opções extras; não é
@@ -1763,3 +1763,58 @@ Patch72257B SHA256 3b9f54c772e451e0c6ed44198af4e43365fb70a8346ea25767e6401b7cddb
 em review-corrections.diff no diretório durável do SSD. Retorno por evento, sempolling.
 BL081.5 segueAvalidar até a nova provaWindows dos bytes corrigidos; provas originais
 não foram herdadas como gates da correção de export e testesnovos. Sem push/PR/merge.
+
+
+### BL081.5 — falha de transporte e nova rechecagem por arquivo (2026-11-14)
+
+A tentativa de rechecagem do patch inline terminou sem reconstruir os bytes:
+base64 retranscrito perdeu caractere/repetiu trechos. Nenhum apply ou gate rodou;
+essa tentativa não é evidência de código nem objeção de revisão. Readiness e índice
+foram conferidos iguais; manifesto18 não foi confirmado nessa tentativa. Registro
+ABORTED.txt e arquivos corrompidos permanecem nos logs Windows como histórico.
+Não houve alteração de código/HEAD/status pelos comandos dessa execução.
+
+Coordenador substituiu a retranscrição por transferência binária pontual na rede
+local: servidor serve somente o patch72257B de SHA256
+3b9f54c772e451e0c6ed44198af4e43365fb70a8346ea25767e6401b7cddbed4,
+encerra após o primeiro download ou em10min, sem publicar branch/PR/artefato em
+serviço externo. Sem diretório listado ou outros arquivos servidos. Metadados e
+log de transporte ficam fora do repo em tessel-bl0815-coordination/ no SSD.
+
+Nova [rechecagem Windows com patch em arquivo](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:9cdcc3990116d459cbc3fcbf68ccd73d6640d8735588357a43f4e08491bd25cd)
+iniciada por delegate_task Cursor Sonnet5.5, sem opções extras. Task
+node:delegated-task:command%3Amcp%3A77122fb9-fe19-4ca6-b856-7beca247f3a3%3Aremote-delegate%3Abl0815-windows-direct-file-recheck-20261114.
+Baixar direto para disco por curl binário, conferir tamanho/hash antes de apply e
+gates; sem tentativa de adivinhar bytes, sem revisão/implementação concorrente.
+O código local46506ac e suas provas Mac permanecem válidos e inalterados. BL081.5
+segue Avalidar enquanto o Windows não confirmar os bytes e executar os gates.
+
+
+### BL081.5 — fechamento local Windows/Mac (2026-11-14)
+
+A [rechecagem por arquivo](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:9cdcc3990116d459cbc3fcbf68ccd73d6640d8735588357a43f4e08491bd25cd)
+baixou o patch72257B por curl binário na primeira tentativa, SHA256exato,
+git apply --check/apply exit0. Gates fmt/checkworkspacealltargets/clippyalltargets
+-Dwarnings/no-run/build exit0. Windows77testes direcionados passam,0falhas e0skips:
+fase14,bordas2,split22,fades8,video_sound8,audio_clock4,desktop4+2,export11+2.
+FFmpeg real; nenhum workspace/core completo ou desempenho foi repetido.
+Manifesto B1/B2:18fontes idênticas;readiness/índice intactos;main@ead9ca2 preservada.
+Logs direct-* em C:\Users\wally\tessel-readiness-logs\2026-11-14-bl081-5-review\.
+
+Reconciliação da única divergência: split_tests.rs Windows11275B SHA256
+0c4ab12901ad787c96e17c65d273eb856531ca266a04f9f9f1fec3ceaa47743e;
+Mac11274B SHA2561dbacb59cabf1682f8f6957771d1e978abfc334510c361e706377d781b1687f7.
+[Transporte somente leitura dos bytes](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:6e2c4c38b650dd5e87c9fb02ef51b08f5d0a2525713c687ea59f8576c80b0387)
+permitiu comparar: somenteCRLF na última linhaWindows versusLF noMac. Após
+normalizar essa quebra, bytes idênticos;18/19fontes eram byte-match bruto e a19ª
+está reconciliada por encoding, sem mudar arquivoWindows ou reescrever a evidência.
+Auditoria ebytesoriginais em tessel-bl0815-coordination/ noSSD. Os testesDesktop
+passaram nas respectivas versões; não se alega que os hashes brutos são iguais.
+
+Código funcional salvo46506ac; todas asprovasMac antesregistradas continuam no
+mesmo código. A provaWindows de janela da implementação original não foi repetida:
+o novo patch muda produção só no export, com teste real novo. Janela Mac final e
+modelo de áudio originais Windows foram provados semanticamente, sem áudio ouvido
+nem ponteiro físico. Desempenho não medido e fade atravessado seguem .7 e.2.
+Servidor temporário de transferência encerrou após umGET200, sem serviço pendente.
+BL081.5 encerra localmente;nenhuma delegação ativa,nenhum push/PR/merge autorizado.

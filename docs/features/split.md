@@ -2,7 +2,7 @@
 
 ## Status
 
-**BL081 validado Windows/Mac; continuidade fracionária BL081.5 em revisão.** Entregue em biblioteca, CLI headless (processo JSONL) e janela. Evidência e limites em
+**BL081 e continuidade fracionária BL081.5 validados Windows/Mac, dentro dos limites abaixo.** Entregue em biblioteca, CLI headless (processo JSONL) e janela. Evidência e limites em
 [clip-split-report.md](../migration/clip-split-report.md). Sem ponteiro físico, sem áudio ouvido e sem pixels: a prova da
 janela é semântica (`ui get/set/invoke/op`).
 
@@ -52,7 +52,7 @@ Cada frame da sequência lê, depois do corte, o mesmo tempo de fonte, câmera, 
 | Ken Burns (só imagem estática, `ken_burns` ligado, `end_zoom ≠ zoom`) | esquerda termina em `z0 + (z1−z0)(k−1)/(D−1)`; direita começa em `z0 + (z1−z0)k/(D−1)` e mantém `end_zoom`. Valores gravados **sem arredondar** |
 | Fade-in | a esquerda mantém o fade; a direita fica com 0 |
 | Fade-out | a direita mantém o fade; a esquerda fica com 0 |
-| Áudio (BL081.5) | Mesmas amostras antes/depois do corte sob o relógio absoluto e fase racional, inclusive nas grades fracionárias; implementação Windows recebida, revisão/Mac pendentes |
+| Áudio (BL081.5) | Mesmas amostras antes/depois do corte sob o relógio absoluto e fase racional, inclusive nas grades fracionárias; validado Windows/Mac, ver relatório |
 
 ### Erros tipados (atômicos)
 
@@ -73,7 +73,7 @@ Fade que cruza o corte não é aproximado: uma rampa não pode ser dividida em d
 `frames_antes < fade_in` e fade-out se `frames_depois + 1 < fade_out`; áudio, fade-out se `frames_depois < fade_out`.
 Dois fades de áudio cuja soma excede o clipe (o mixer os encurta) são recusados.
 
-### Áudio em grade fracionária (BL081.5 — a validar)
+### Áudio em grade fracionária (BL081.5 — validado Windows/Mac)
 
 A recusa `audio_sample_grid` e `SplitBlock::AudioSampleGrid` foram removidos nesta
 implementação. O relógio do core usa `S(f)=round(f·den·48000/num)` como fronteira

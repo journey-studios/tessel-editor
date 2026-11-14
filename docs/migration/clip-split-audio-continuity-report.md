@@ -5,6 +5,10 @@ Contrato: [split.md](../features/split.md) ("Áudio em grade fracionária"), [au
 compatibilidade e as evidências executadas. Status e atribuição vivem só em [backlog.md](../backlog.md) (não editado aqui:
 propostas no fim). Nenhum commit, push, PR ou merge; tudo a validar pela revisão do coordenador (incluindo o Mac).
 
+**Estado atual:** BL081.5 validado localmente Windows/Mac, código `46506ac`; sem publicação/PR/merge.
+Limites restantes: desempenho não medido (BL081.7) e fade atravessado fora desta fatia (BL081.2).
+As rodadas e tentativas abaixo preservam a proveniência; o fechamento está ao final.
+
 ## Base e ambiente
 
 - Windows (10.0.26200), PowerShell, Rust 1.99.1, **só** `./scripts/cargo` (Git Bash/mbx, alvo padrão; sem
@@ -250,3 +254,56 @@ SHA256 3b9f54c772e451e0c6ed44198af4e43365fb70a8346ea25767e6401b7cddbed4.
 Retorno ainda pendente. As provas originais Windows não são gates herdados
 para a correção de export e os testes acrescentados depois. Sem commit/push/PR
 pelo executor; publicação da coordenação também não autorizada neste item.
+
+
+### Rechecagem Windows: correção do transporte
+
+A primeira rechecagem do patch de revisão terminou sem conseguir reconstruir o
+base64 retranscrito. Nada aplicado, nenhum gate executado; o status/HEAD/índice e
+o readiness permaneceram iguais. Não se interpreta isso como reprovação do código
+nem como prova Windows dos novos testes. Os artefatos ABORTED.txt e probes foram
+preservados no logdir da tentativa.
+
+A coordenação iniciou nova delegate_task com arquivo binário baixado diretamente
+por transferência temporária na rede local. Só o patch exato é servido; servidor
+encerra após download ou prazo de10min. O executor verifica os72257B/SHA256 antes
+de aplicar; nenhum blob será reparado por tentativa e erro. Execução atual:
+[patch em arquivo](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:9cdcc3990116d459cbc3fcbf68ccd73d6640d8735588357a43f4e08491bd25cd).
+Retorno ainda pendente, sem polling. Código46506ac e provas Mac inalterados.
+
+
+## Fechamento local após rechecagem Windows (2026-11-14)
+
+Status funcional: **validado no Windows e Mac**, código46506ac. A rechecagem
+por arquivo obteve os72257B/SHA256exatos e aplicou o patch sem conflito. Gates
+fmt/checkworkspacealltargets/clippyalltargets-Dwarnings/workspacenorun/build exit0.
+Os77testes direcionados passaram sem falhas/skips: fase14,bordas2,split22,fades8,
+video_sound8,audio_clock4,desktop4+2,mediaexport11+novoexport2. FFmpeg real nos exports.
+O core completo e workspace inteiro não foram repetidos nesta rodada Windows.
+
+Logs novos direct-* em C:\Users\wally\tessel-readiness-logs\2026-11-14-bl081-5-review\,
+com direct-SUMMARY.txt, direct-sources-after.txt e direct-media-export-phase.log.
+Índice real/readiness e18fontes B1/B2 preservados;Windows continua main@ead9ca2 com
+overlay autorizado. Nenhum commit/push/PR pelo executor. A transferência temporária
+serviu um únicoGET200 e o servidor encerrou;nenhum serviço ficou em execução.
+
+### Auditoria da fonte desktop divergente
+
+O manifesto bruto conferiu18/19fontes. split_tests.rs Windows tem11275B ehash
+0c4ab12901ad787c96e17c65d273eb856531ca266a04f9f9f1fec3ceaa47743e;
+a cópiaGit/Mac tem11274B ehash
+1dbacb59cabf1682f8f6957771d1e978abfc334510c361e706377d781b1687f7.
+Uma tarefa somente de transporte leu ReadAllBytes no Windows sem alterar arquivo.
+Bytes recuperados pelo transcript conferiram com seu hash; a comparação mostrou
+somenteCRLF na última linha no Windows, contraLF noMac. Removido esseCR, os bytes
+são idênticos. Não se promove esse fato a igualdade de hashes brutos; a prova dos
+4testesDesktop é das versões respectivas com conteúdo igual. Evidência durável:
+split_tests.windows-exact.rs e split-tests-line-ending-audit.json no diretórioSSD.
+
+A janela Windows não foi repetida após a correção de export; o modelo/handler de
+produção do core não mudou semanticamente em relação à provaWindows original.
+O export modificado recebeu teste real novo; a janelaMac final e as seisWAVs
+idênticas estão registradas acima. Sem áudio ouvido, ponteiro físico ou desempenho
+aceito. BL081.7 (custo do mixer) e BL081.2 (fade atravessado) permanecem abertos.
+A revisão, as validações e o transporte estão concluídos; nenhum executor ativo.
+Sem push, PR ou merge. O backlog centraliza os status eIDs finais.
