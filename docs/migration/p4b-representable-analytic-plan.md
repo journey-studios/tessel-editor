@@ -99,6 +99,22 @@ Estados esperados que cada linha **obriga** (todos conferidos pelo gerador, quad
 * **ctl** (controle): nada preso (`handles use`): o grampo conjunto coincide com a verdade; o relógio da luz da instância
   difere de `f / fps`.
 
+### Câmera cobre o shot, hold só como vizinho (descoberta da S1b, BL082.4.23)
+
+A S1b encontrou que o plano primário legado preserva `cameraIn + delta` bruto mesmo além de uma câmera curta, enquanto
+`evaluate_shot_at_offset` prende (kit antigo `lit-center-held`, f = 23: plano primário com `camera_clip_frame 23`, oráculo e
+offset com 11, pose de hold). Isto é divergência **legada**, registrada como BL082.4.23; **não** se altera produção nem o corpus
+antigo. Nos kits **novos** ela não pode aparecer, por desenho, e o gerador **recusa** o que a reabriria:
+
+* toda câmera cobre o próprio shot (`cam-in + len ≤ cam-frames`, recusa `REP_CAMERA_SHORT`), como já vale para a instância
+  (`REP_SHOT_EXCEEDS_INSTANCE`); assim, para o deck **primário**, o quadro bruto `cam-in + delta` e o quadro preso coincidem em
+  todo quadro gravado (`REP_PRIMARY_CLAMPED` caso contrário) e o estado do plano primário é comparável sem a divergência;
+* o hold de instância e/ou câmera só existe no deck **vizinho, fora do intervalo do seu shot** (cauda ou cabeça);
+* instância e câmera continuam discriminadas separadamente: **b/b2** mantêm "câmera andando, instância presa" (o grampo
+  conjunto e a troca de relógios são rejeitados), **a/c/d** prendem as duas, **x** prende de forma mista nos dois lados.
+  Não há cenário "instância andando, câmera presa" com câmera curta: o espelho (`x`, cauda de A: instância real, câmera presa
+  no último quadro do clipe que cobre o shot exatamente) cobre essa direção sem uma câmera mais curta que o shot.
+
 ### Kits (dados, sem assets privados)
 
 * `lit` (cores novas, escolhidas **antes** de qualquer execução para que o pixel iluminado fique ≈ 0,9 linear no nível 1 do
