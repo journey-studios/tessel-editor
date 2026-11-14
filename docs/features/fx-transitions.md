@@ -163,9 +163,13 @@ da origem escreve 1,0), não medida. O dissolve legado segue `DISSOLVE_UNSUPPORT
   pacote, `render`). O candidato de **toda** edição (`scene.edit`, `scene.fx.edit`) herda a política da cena
   (`DirectedScene::reimport`): uma edição nunca abre nem fecha o portão. `Accept` e os importadores `*_admitting` são
   `#[doc(hidden)]`, existem para os testes e o corpus do core e **não** têm flag, variável de ambiente, socket nem
-  arquivo que os alcance. O teste `boundary` varre as fontes de produção de todos os crates (sem comentários nem itens
-  `#[cfg(test)]`) e exige: nenhuma menção fora do importador, nenhuma passagem de `Accept` dentro dele e o inventário
-  fechado dos pontos que criam ou reidratam uma cena (todos `Refuse`).
+  arquivo que os alcance. O teste `boundary` varre as fontes de produção de `crates/*/src` com o lexer do Rust
+  (`proc-macro2`, só dev-dependency; sem comentários nem itens `cfg(test)` **provadamente** falsos; o nome de um arquivo
+  nunca o exclui, só a declaração por um módulo de teste; `cfg` ambíguo conta como produção; falha de lexer fecha) e
+  exige: nenhuma menção fora do importador, nenhuma passagem de `Accept` dentro dele e o inventário fechado dos pontos
+  que criam ou reidratam uma cena (todos `Refuse`). É **auxiliar textual, não barreira de segurança**: não vê macros que
+  geram código, `include!`, `cfg_attr` nem `#[path]` em módulo em linha. A prova que não depende do scanner são os testes
+  dinâmicos `reload` (abrir, recarregar e anexar por arquivo recusam e mantêm estado, revisão e histórico).
 - **Modelo:** `Fx.transitions: Vec<FxTransition>` (`id`, `effect`, `from_shot_id`, `to_shot_id`, `duration_frames`,
   `alignment`, `handles`, `easing`, `params`, `seed`, `hidden`), preenchido só sob `Accept` e só quando nada foi recusado;
   `Fx::to_json` **não muda**. Tabela própria `transition_catalog()` (só `crossDissolve`, família `transition`,
@@ -205,9 +209,10 @@ tem controle de transição (lacuna registrada), e um documento com transição 
 Situação por superfície (S1a): **L implementado (modelo, leitura, `explain`, janela, avisos; só com a política `Accept`
 dos testes) · H só a recusa (`tessel-headless` real) · UI só a recusa e a ausência de controle · Oráculo Python:
 implementado e validado no Windows (abaixo)**. Portão público: até a S2A a admissão recusa `transitions` com
-`FX_TRANSITION_NOT_YET`. Evidência da S1a (teste `crates/core/tests/scene_fx_transition.rs`, 46 testes; 2 em
-`scene_project::admission_tests`; 2 GPUI em `scene_fx_transition_tests`; corpus lido em Rust sem Python) e
-mutantes detectados: no relatório da S1a.
+`FX_TRANSITION_NOT_YET`. Evidência da S1a **por head de código** (teste `crates/core/tests/scene_fx_transition.rs`:
+46 testes em `5e21e09`, 47 em `449054a`, **60 em `517946a`**; `scene_fx` 25; 2 em `scene_project::admission_tests`;
+GPUI `scene_fx` 80, 2 deles em `scene_fx_transition_tests`; corpus lido em Rust sem Python) e mutantes detectados: no
+relatório da S1a, seção «Reforço de 517946a». Um número de um head não vale para outro.
 
 **S0 — o que roda, versão original** (Windows x64, Python **3.13.17 real**, nenhum stub; ver o relatório
 [p4b-s0-dissolve-corpus-report.md](../migration/p4b-s0-dissolve-corpus-report.md)):
@@ -387,4 +392,19 @@ E0583 no módulo do teste movido foi corrigido com path explícito. Essa correç
 reexecução Windows. Os erros de params das transições agora têm ordem lexical por chave,
 independente de serde_json/preserve_order; o documento não é reordenado. A ordem difere da
 ordem de autoria da origem, mas o veredito e os valores não mudam. Looks mantêm a regra atual,
-registrada como dívida em BL082.4.13. A compilação/cobertura reforçada permanece A validar.
+registrada como dívida em BL082.4.13.
+
+**Reforço de `517946a` (BL082.4.2).** E0583 foi introduzido pelo coordenador (movimentação do teste de catálogo sem
+`#[path]`) e corrigido em `449054a`; a correção de produção verificada antes **não é prova de integração**: cada head tem
+a sua prova (relatório, seção «Reforço de 517946a»). Em `517946a`, com a árvore limpa: fmt, `check` e `clippy
+--all-targets` do workspace, `scene_fx` 25, `scene_fx_transition` 60, GPUI `scene_fx` 80, processo `tessel-headless`
+real, `--no-run` do workspace e `build -p tessel-editor` saíram 0; o core completo (`--no-fail-fast`) tem 1524 ok e as 2
+falhas de gizmo que já existem na base, sem relaxá-las. O workspace inteiro **não** foi executado (claims de mídia,
+BL167.6). Acrescentou-se: testes dinâmicos de abertura/recarga/anexo por arquivo; scanner com lexer real; `TOO_LONG` por
+lado (mata a troca antes↔depois); janelas em ordem cronológica inversa válidas e sobrepostas reais (matam a remoção da
+ordenação e da checagem de sobreposição); e o teste da ordem dos params nos perfis Cargo, em que o núcleo isolado é
+**cego** (o mutante «sem ordenação» só morre sob `preserve_order`). A ordem lexical dos params das transições diverge da
+ordem de autoria da origem e foi mantida. Nada aqui afirma runtime, GPU, Mac ou interface física.
+
+**Pendente:** nova revisão independente; core completo com 2 falhas de base; workspace inteiro não rodado; S1b, S2, S3 e S4.
+Status de produto de F064: **P** em todas as superfícies. BL082.4.2 permanece **A validar** até essa revisão.
