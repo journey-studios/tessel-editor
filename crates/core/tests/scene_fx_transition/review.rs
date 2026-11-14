@@ -112,12 +112,12 @@ fn a_camera_offset_past_its_end_cannot_supply_real_head_handles() {
     for camera_in in [49, 60] {
         let edit = camera_head(camera_in);
         for handles in ["use", "refuse"] {
-            let error = admit(with_transitions(
+            let Err(error) = admit(with_transitions(
                 edit.bundle(),
                 vec![tr(json!({"handles": handles}))],
-            ))
-            .err()
-            .expect("the incoming head asks for a camera frame past its end");
+            )) else {
+                panic!("the incoming head asks for a camera frame past its end");
+            };
             assert_eq!(
                 codes(&error),
                 ["TRANSITION_NO_HANDLES"],
