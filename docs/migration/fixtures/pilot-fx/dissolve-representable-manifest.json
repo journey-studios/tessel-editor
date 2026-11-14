@@ -1,0 +1,144 @@
+{
+  "assets": [
+    {
+      "bytes": 72,
+      "file": "dissolve-representable-assets/flat-141c2c.png",
+      "sha256": "6dc64f95194df9d40b9670d9604310bde48bf88160cfedf6fe14c5ed462b0106"
+    },
+    {
+      "bytes": 72,
+      "file": "dissolve-representable-assets/flat-14302c.png",
+      "sha256": "711181479b02f4151dd3ceb9755f8aa929eb394c702c29d7208519e88a93aca7"
+    },
+    {
+      "bytes": 72,
+      "file": "dissolve-representable-assets/flat-182860.png",
+      "sha256": "37038ee12831ba84e3612bb56614eaefdfb3380a87b3333fcd2d48c3a360f960"
+    },
+    {
+      "bytes": 72,
+      "file": "dissolve-representable-assets/flat-20c8a0.png",
+      "sha256": "c215e6f0bb55b5648c2f6a5915a7b5e2189768d1255cec48776bfd91d8b06ff1"
+    },
+    {
+      "bytes": 72,
+      "file": "dissolve-representable-assets/flat-282c14.png",
+      "sha256": "30817a217dabf93631ce3b5def02d29d41f60da59288f31832d4fed3b5beb400"
+    },
+    {
+      "bytes": 72,
+      "file": "dissolve-representable-assets/flat-2c1c14.png",
+      "sha256": "2cd68710c20c326a546a4f7e9b955e959f7a9e402234d0aa9750b8036afcac09"
+    },
+    {
+      "bytes": 72,
+      "file": "dissolve-representable-assets/flat-404c61.png",
+      "sha256": "73d751a272bc1691a14577427ebe1f2977abb5a78d8f2262a6e3ea16826a3683"
+    },
+    {
+      "bytes": 72,
+      "file": "dissolve-representable-assets/flat-526078.png",
+      "sha256": "efdcb7f2e31f38259a1a8397ee202945b047c313f7ce5f8972054fe6a6ed541b"
+    },
+    {
+      "bytes": 72,
+      "file": "dissolve-representable-assets/flat-602818.png",
+      "sha256": "31a288daf14a0158675bd5d06357ebd19cf0df301898025ba936022d4f316a3c"
+    },
+    {
+      "bytes": 72,
+      "file": "dissolve-representable-assets/flat-634d41.png",
+      "sha256": "d6188a2f14fe2d5f9e6e4a0ead58e4fd5bd2b2c4064e53826e01690967ef522e"
+    },
+    {
+      "bytes": 72,
+      "file": "dissolve-representable-assets/flat-695344.png",
+      "sha256": "91bff178251232f4aee6e753275bdce989d0bc9af9d1bee4b641cdc049b654a8"
+    },
+    {
+      "bytes": 72,
+      "file": "dissolve-representable-assets/flat-e8b820.png",
+      "sha256": "b0b4748bf4b3fd4a4f71e74673c232c4c5e154103e267c17a9b98a30308f1c58"
+    }
+  ],
+  "blockers": [
+    {
+      "consequence": "`origin-blob verified` is not `origin executed`.",
+      "detail": "Expectations are transcribed formulas evaluated here, not the origin's outputs.",
+      "id": "ORIGIN_NOT_EXECUTED"
+    },
+    {
+      "consequence": "Pixel equivalence is origin-formula, never golden equivalence.",
+      "detail": "No origin golden was read or compared; the origin harness was never run.",
+      "id": "ORIGIN_GOLDEN_NOT_COMPARABLE"
+    },
+    {
+      "consequence": "A ready oracle is not S2-validated; S1b/S2 consume it, and T06/T10/X may claim the A-pixel hold for these scenarios only after that.",
+      "detail": "No consumer evaluated two decks or rendered a pixel against this data.",
+      "id": "ORACLE_NOT_S2_VALIDATED"
+    },
+    {
+      "consequence": "No held-outside-shot evaluation by the core, no ScenePlan.transition, no pixel.",
+      "detail": "The Rust test proves that the bundles import under the hidden admission policy and that bounds, light and inside-shot mapping match; the public gate still refuses.",
+      "id": "RUST_PROVES_IMPORTABILITY_ONLY"
+    },
+    {
+      "consequence": "Both plan states are comparable on these scenarios; the legacy divergence is tracked as BL082.4.23 and untouched here.",
+      "detail": "The legacy primary plan keeps raw cameraIn + delta past a short camera; evaluate_shot_at_offset clamps. The new kits never use a short camera (REP_CAMERA_SHORT).",
+      "id": "LEGACY_PRIMARY_CAMERA_CLAMP_BL082_4_23"
+    }
+  ],
+  "corpus": {
+    "check": "scripts/pilot_dissolve_representable.py generate --check   (writes nothing; offline)",
+    "counts": {"assets": 12, "bundles": 7, "frames": 98, "hypotheses": 12, "probes": 390, "scenarios": 7},
+    "file": "dissolve-representable-cases.json",
+    "generator": "scripts/pilot_dissolve_representable.py",
+    "regenerate": "scripts/pilot_dissolve_representable.py generate --origin <path to the origin repo>",
+    "sha256": "cf220e9cfa6e7fbc14f070f85376aee3ce5010b470fde220a80c1280439a3135",
+    "spec": "scripts/pilot_dissolve_representable.spec.py"
+  },
+  "exit_codes": {
+    "0": "verified",
+    "1": "finding",
+    "2": "usage",
+    "3": "ORIGIN_UNAVAILABLE",
+    "4": "PIN_UNVERIFIED (with --require-pin)",
+    "5": "INTERPRETER_NOT_REAL"
+  },
+  "expectation_kinds": {
+    "destination-validity-checked": "the bundles import with the real core (Rust test); that checks importability and bounds only",
+    "origin-formula": "the S0 kernels evaluated here; the origin was not run"
+  },
+  "purpose": "Provenance of dissolve-representable-cases.json (BL082.4.17): valid synthetic scenarios with the neighbour held outside its range. Oracle + importability; not the feature, not S2-validated.",
+  "schema": 1,
+  "source_pins": {
+    "note": "The kernels are the S0 transcription of the origin text at the pinned tip; the 33 sources and their blob digests are those of the S0 manifest. No new origin source was read for this delivery, and the origin repository was never modified, installed or executed. The destination files in `destination_reads` were READ in this repository.",
+    "pin_status": "the pin d40ac3f7c0 may be absent from a clone: `verify --origin` reports PIN_COMMIT_ABSENT instead of claiming it verified; a blob read at the tip is not an origin execution",
+    "s0_manifest": {
+      "cases_sha256_actual": "67d3314f66aa0512666e93e515de0d66393298489168999172d7e37123d393d9",
+      "cases_sha256_recorded": "67d3314f66aa0512666e93e515de0d66393298489168999172d7e37123d393d9",
+      "file": "dissolve-manifest.json",
+      "manifest_sha256": "77c4d7bc5f7b95adc37d2ec1560adffb7772c3aa6ee805079ffdb9f0a392ce42",
+      "pin_named_by_the_plan": "d40ac3f7c0",
+      "sources": 33,
+      "tip": "365579076782c1fc19c6464f3bc0199b30c0ab8f"
+    }
+  },
+  "thresholds": {
+    "agree_max_codes": 1,
+    "flat_margin_px": 6,
+    "flat_max_code_spread": 6,
+    "min_rejecting_frames": 2,
+    "min_rejecting_probes": 3,
+    "min_separation_codes": 4,
+    "probe": "a (frame, pixel) pair; one pixel with two roles is one probe; a marker pixel that is not flat in both decks is listed in `skipped_probes`, never replaced",
+    "state_hypothesis_rule": "FLG rejects when at least one recorded deck state has a different held flag",
+    "status": "pre-registered in docs/migration/p4b-representable-analytic-plan.md before this generator existed; the S0 numbers, never retuned after a result",
+    "tie_margin": 1e-06,
+    "tolerance_for_the_implementation": {
+      "max_abs_delta_8bit": 1,
+      "max_abs_mean_signed_delta_8bit": 0.25,
+      "source": "dissolve-cases.json tolerances.monitor_and_render (plan section 12), imported, not derived from any result"
+    }
+  }
+}

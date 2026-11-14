@@ -177,7 +177,14 @@ muda. Hipótese que **deve** concordar e discorda: `REP_CONTROL_DISAGREES`.
 | c | `LIN`, `LCC`, `LCE`, `LSR`, `DSW`, `NOH`, `FLG` | `LNF` (24/1), `PIN`, `SWP`, `PRI`, `UNH` (cena estática) |
 | d | `LNF`, `LIN`, `LCC`, `LCE`, `DSW`, `NOH`, `FLG` | `LSR` (A começa em 0), `PIN`, `SWP`, `PRI`, `UNH` |
 | x | `PIN`, `SWP`, `PRI`, `DSW`, `NOH` | (nenhum; luz e `UNH` só são **reportados**: peso baixo no centro) |
-| ctl | `SWP`, `PRI`, `LIN`, `DSW`, `NOH` | `PIN`, `UNH` (nada preso) |
+| ctl | `SWP`, `PRI`, `DSW`, `NOH` | `PIN`, `UNH` (nada preso) |
+
+**Emenda após a primeira execução do gerador (registrada; limiares intactos):** o rascunho alegava também `LIN` como `rejects`
+no controle `ctl`. O gerador o recusou (`REP_NO_REFUSAL_POWER`: 3 sondas em 1 quadro, máximo 8 códigos, abaixo das 2 quadros
+exigidos), porque o vizinho tem peso baixo no centro: exatamente o que a decisão 3 do coordenador avisa. A alegação foi
+**retirada** de `ctl` (o controle existe para `PIN`/`UNH` concordarem e as hipóteses de posição rejeitarem); `LIN`/`LCC`
+passam a ser **só reportadas** como `partial`. Nenhum limiar, quadro, pixel ou número de desenho mudou, e as alegações de
+luz seguem exigidas nos cenários a, c e d, onde o peso do vizinho é alto.
 
 Toda hipótese, em todo cenário, entra na **matriz de hipóteses** do JSON com o estado medido (`rejects`, `agrees` ou
 `partial`, mais contagem de sondas e de quadros): as **variantes não discriminantes são reportadas**, não escondidas.
