@@ -137,8 +137,19 @@ fn the_item_ceiling_is_counted_from_the_arrays_before_any_item_is_read() {
     );
 }
 
+/// The bomb below is a thousand levels of JSON values; building, cloning and dropping it recurses
+/// in the test itself, so it runs on a big stack. The code under test never descends into it.
 #[test]
 fn nesting_and_hostile_shapes_are_refused_without_recursion_or_panic() {
+    std::thread::Builder::new()
+        .stack_size(64 << 20)
+        .spawn(nesting_and_hostile_shapes)
+        .unwrap()
+        .join()
+        .unwrap();
+}
+
+fn nesting_and_hostile_shapes() {
     let text = window_text();
     let value: Value = serde_json::from_str(&text).unwrap();
     // Depth 2.
