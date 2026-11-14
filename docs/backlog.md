@@ -1878,7 +1878,7 @@ concreto da S0, sem link para arquivo inexistente nem validação de lib/CLI/UI 
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
 | BL082.4.1 | P4b/S0 | Contrato F064 e corpus independente dissolve, fonte e X analítico | Concluído — somente S0 oráculo/contrato | BL082.4; setupPythonBL167.5 parcial | Coordenador / Cursor Sonnet5.5 | R3 independente aprova e4078ff no Windows; corpus167/analítico39 normal e-O, reprodução byte a byte e Mac equivalente. Produto lib/JSONL/UI permanece P; detalhes no relatório S0 §12. |
-| BL082.4.2 | P4b/S1a | Documento/janela/validação tipada e política de admissão fechada | A validar — PR62, revisão independente pendente | BL082.4.1/.11 concluídos | Cursor Sonnet5.5 / coordenador | Modelo, catálogo separado, Choice, leitura estrita, janela checked e política herdada por candidatos. Autor Windows:46integração/2core/2GPUI e processoheadlessreal; gatesestáticos/build/norun. Duasfalhasgizmo tambémna base; workspacecompleto/Mac pendentes. Movimentação de teste do coordenador ainda não compilada. |
+| BL082.4.2 | P4b/S1a | Documento/janela/validação tipada e política de admissão fechada | A validar — revisão não aprova72c9fe2, correções em curso | BL082.4.1/.11 concluídos | Coordenador / Cursor Sonnet5.5 | Domínio e admissão conferidos, mas E0583 no teste movido; path corrigido. Ordem lexical de parâmetros e nova regressão ainda não compiladas; faltam provas dinâmicas permanentes e robustez do scanner. Produto continua P. |
 | BL082.4.3 | P4b/S1b | Avaliação dos dois decks e plano, recursosporassetId/used_bysemambiguidade | Pendente | BL082.4.2 | Não atribuído | Recurso próprio por deck euniãoderivadaestável, clock/handlessemunderflow, parserprofundidadelimitada |
 | BL082.4.4 | P4b/S2 | Runtime/renderer/mistura e lifecycle/cache | Pendente | BL082.4.3; S2A também BL082.4.5/S3a | Não atribuído | Cor8bits/alpha declarados, capability, dois splats/leases/contextloss/dispose e pixelsindependentes |
 | BL082.4.5 | P4b/S3 | Ops/gestos/inspector/persistência ecoreparser/nós | Pendente | BL082.4.3 | Não atribuído | Atomicidade/revisão/undo, módulossemcrescerarquivosproibidos; dividirS3aseS3bseútil |
@@ -1960,3 +1960,24 @@ A auditoria identificou o teste como arquivo que cresceu acima de1000, não a UI
 Trailersdeassistente nos2commitspublicados serão omitidos da mensagem do squash, semforce.
 Divergências deoráculo/legacy/IDs/corpus declaradas no relatório são objeto da revisão, não
 aceitas por padrão. BL082.4.2 permaneceAvalidar; S1b nãoiniciada ePR62semmerge.
+
+
+### PR62: revisão não aprova72c9fe2 — 2026-11-14
+
+E0583 introduzido pelo coordenador ao mover teste: mod procura arquivo na raiztests, faltava
+path explícito. Correção de uma linha feita; com patch temporário o revisor viu25scene_fx,
+clippy e coreexceto2gizmos. Noheadliteral46transition/2incrate/80GPUI passaram. Fonteprodução
+foi aprovada porleitura/probes, sembypass,12.474 combinaçõesi128 e testesdinâmicos extras.
+
+Coordenador também fixa ordem dos diagnósticos de params de transições por chave lexical,
+sem globalpreserve_order/sem mudar looks/documentos; teste em trêsordens eValue/texto escrito,
+ainda não compilado. Permanecem BL082.4.2: scanner com nome-test/brace-string blindspots,
+regressões permanentes reload/open/attach-file, TOO_LONGassimétrico e transiçõesforadeordem.
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL082.4.13 | Revisão PR62 / looks | Diagnósticos de parâmetros dos looks variam com serde_json/preserve_order | Pendente | BL082 | Não atribuído | Definir ordenação estável e provar coreisolado/workspace sem reordenar documento ou alterar vereditos. Transições corrigidas nesta S1a. |
+| BL082.4.14 | Oráculo S0 / variante camera-short | Pré-condição de duração instância+offset não satisfeita na projeção para bundle | Pendente | BL082.4.1 | Não atribuído | Reconciliar inst-b60+offset10 vs duração60 sem mudar a expectativa semântica nem forçar o importador; manter proveniência e divergência explícitas. Rustusa70justificadamente. |
+
+Erro estrutural em transição posterior ocultaearlyissuesanteriores: veredito igual, lista diferente,
+divergência agora explícita. Nãoherdar gates compatchtemporário para novaárvore. Semmerge/S1b.

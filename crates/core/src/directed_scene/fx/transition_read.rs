@@ -108,7 +108,9 @@ fn early_issue(
     Issue::new(code, path, message).with_details(details)
 }
 
-/// Step 2 for a known transition effect: the parameters, in document order.
+/// Step 2 for a known transition effect: parameters in lexical key order, regardless of
+/// serde_json's workspace-unified `preserve_order` feature. This only orders diagnostics;
+/// values remain indexed by their catalog parameter, and the authored document is untouched.
 fn read_params(
     spec: &'static EffectSpec,
     raw: Option<&Map<String, Value>>,
@@ -130,7 +132,9 @@ fn read_params(
         .map(|param| param.id)
         .collect::<Vec<_>>()
         .join(", ");
-    for (name, value) in raw {
+    let mut ordered: Vec<_> = raw.iter().collect();
+    ordered.sort_unstable_by_key(|(name, _)| *name);
+    for (name, value) in ordered {
         let at = child(path, name);
         let Some((index, param)) = spec.param(name) else {
             early.push(early_issue(

@@ -13,6 +13,8 @@ mod boundary;
 mod corpus;
 #[path = "scene_fx_transition/document.rs"]
 mod document;
+#[path = "scene_fx_transition/parameter_order.rs"]
+mod parameter_order;
 #[path = "scene_fx_transition/public.rs"]
 mod public;
 #[path = "scene_fx_transition/support.rs"]

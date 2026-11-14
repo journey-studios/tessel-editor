@@ -21,6 +21,7 @@ use tessel_editor_core::scene_plan::{Capability, PlanTimeline, ScenePlan};
 use tessel_editor_core::state::ProjectSettings;
 use tessel_editor_core::{CommandError, EditorState, headless, persist};
 
+#[path = "scene_fx/runtime_catalog.rs"]
 mod runtime_catalog;
 
 /// Two shots over 96 frames, a complete plan at every frame (no deferred domain in use).

@@ -99,7 +99,8 @@ Não houve mutante sobrevivente entre os listados. O mutante «`#[default]` remo
 3. **`variant-only-the-camera-is-short`:** no Rust a instância `inst-b` ganha 70 quadros (o importador exige que ela
    cubra o plano com `instanceStartFrame` 10).
 4. As recusas de efeito/família/parâmetro/easing/enums (passos 2-3) só aparecem depois que o bundle é estruturalmente
-   válido; um erro estrutural para na leitura, como nas outras seções.
+   válido. Um erro estrutural em qualquer transição também oculta as questões semânticas iniciais de transições
+   anteriores. A lista/primeiro erro pode diferir do oráculo; o veredito de recusa é o mesmo.
 5. `hidden: false` em um **look** já era recusado por `opt_true`; mantido. Nas transições é `INVALID_VALUE` explícito.
 6. `fx` sem a chave `transitions` continua `MISSING_FIELD` (comportamento anterior, igual nas duas políticas).
 
@@ -126,7 +127,7 @@ A movimentação de teste é posterior aos gates do implementador e aguarda comp
 | `./scripts/cargo build -p tessel-editor --locked` | 0 |
 | `./scripts/cargo tree -p tessel-editor-core --locked` | 0; **0** ocorrências de `gpui`/`wry` |
 | `./scripts/cargo test -p tessel-editor-core --locked --no-fail-fast` | 101: 60 binários ok; **2 falhas externas** (abaixo) |
-| `… --test scene_fx_transition --test scene_fx` (após o commit) | 0 (46 e 25 ok) |
+| `… --test scene_fx_transition --test scene_fx` (autor, antes da movimentação em72c9fe2) | 0 (46 e 25 ok) |
 | `-p tessel-editor --bin tessel-editor scene_fx` (GPUI, 80 testes, 2 novos) | 0 |
 | `./scripts/cargo test --workspace --locked --no-run` | 0 |
 
@@ -155,3 +156,37 @@ movimentação de teste e aguarda rechecagem no Windows, sem herdar aqueles gate
 Os dois commits publicados pelo implementador têm trailers de coautoria injetados pelo wrapper.
 Não foram reescritos nem enviados com force. A integração, se aprovada, usará squash com mensagem
 explícita sem atribuição a assistentes. Isso não é aprovação da PR nem remove o histórico da branch.
+
+
+## Revisão independente de72c9fe2 e correções posteriores
+
+A revisão **não aprovou** o head: o coordenador moveu o teste de catálogo mas esqueceu o
+atributo path na raiz do teste de integração. E0583 impediu scene_fx, clippy all-targets e
+workspace --no-run. A correção é #[path = "scene_fx/runtime_catalog.rs"] antes do mod.
+A revisão aplicou essa linha temporariamente: scene_fx25 e clippy passaram, e o core completo
+ficou só com os dois gizmos da base. Isso é prova com patch temporário, não gate do head limpo.
+
+No72c9fe2, a revisão executou scene_fx_transition46, dois testes de admissão em crate e
+GPUIscene_fx80 com sucesso, além de probes próprias de12.474 combinações de janela pori128,
+reload/open/attach-file e preservação de Accept em no-op/dry-run/remover último look/undo/redo.
+Não encontrou bypass de admissão nem erro real da janela/validação. Restam coberturas a tornar
+permanentes: caminhos dinâmicos de abertura e arquivo, TOO_LONG assimétrico e ordem cronológica
+inversa. A revisão matou mutantes adicionais e identificou dois sobreviventes nesses casos.
+
+Outro achado válido: a ordem das mensagens de parâmetros dependia de serde_json/preserve_order,
+ligada no workspace mas não no core isolado. O coordenador fixa, **somente nas transições**,
+a ordem lexical das chaves de params, sem alterar o documento ou os valores no catálogo.
+É divergência explícita da ordem de autoria da origem; evita variar diagnósticos conforme o
+chamador sem ativar uma feature global de serde_json. O comportamento preexistente dos looks
+fica em BL082.4.13. Novo teste cobre três ordens de autoria e importação Value/texto, a executar
+nos dois perfis Cargo. Nenhum oráculo foi alterado para concordar com a implementação.
+
+O scanner é auxiliar textual, não barreira. A revisão demonstrou dois pontos cegos: exclusão
+por nome *_tests.rs sem verificar cfg(test), e chaves em strings de um item cfg(test) engolindo
+código posterior. Os arquivos atuais não abrem o gate. Fortalecimento e testes negativos ficam
+no aceite de BL082.4.2, junto aos testes dinâmicos permanentes, antes de encerrar a fase.
+A pré-condição da variante only-the-camera-is-short do oráculo fica em BL082.4.14.
+
+A correção de path e a ordem lexical são posteriores às provas acima. Mac só tem fmt e checagens
+documentais; compilação e regressões requerem nova execução Windows. A PR continua A validar,
+sem runtime/engine/produto público habilitado e sem merge.

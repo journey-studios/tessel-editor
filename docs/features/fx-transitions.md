@@ -273,7 +273,7 @@ de T32 em L, H e G (`1a ✓` no texto abaixo da tabela). `T02` em H/G, e as dema
 | T32 | Portão público (8.4) | 1a○→2A | 1a○→2A | 1a○→2A | | | 2○ | | |
 | T33 | Alpha: `straight` aceito e desenhado opaco | 1b | | | | 2 | 2 | | 0 |
 
-**S1a ✓ (BL082.4.2, a validar no CI):** T01 L, T02 L, T03 L (avisos), T05 L, T28 L (limites do documento), T32 L/H/G
+**Evidência S1a anterior à revisão de72c9fe2 (BL082.4.2, ainda A validar):** T01 L, T02 L, T03 L (avisos), T05 L, T28 L (limites do documento), T32 L/H/G
 (portão público recusa, estado intacto, catálogo de 3 looks, sem controle novo). Sem lock de GPU: nada aqui mede desempenho.
 `scene_gizmo_rotation` e `scene_gizmo_scale` falham **também** na base (diferença de último bit e cisalhamento de gizmo,
 fora desta entrega); a suíte do workspace inteiro não foi rodada (só `--no-run`).
@@ -336,7 +336,8 @@ reproduzir. **Quadros texturizados só se tornam reais na S2**; o gate `FX_TRANS
 medido nem executado; a origem não foi executada nem seu golden comparado. **A validar** pela revisão independente.
 
 **`hidden` (contrato futuro do destino):** uma transição aceita `hidden: true` ou ausente; `hidden: false` explícito é recusa estrutural
-na S1a, independente de `explain`. O importador Rust de hoje **não** faz isso; é decisão registrada para a S1a, não comportamento atual.
+na S1a, independente de `explain`. A entrada interna `Accept` da S1a já valida isso; a entrada
+pública continua recusando qualquer transição com `FX_TRANSITION_NOT_YET`, antes dessa leitura.
 
 **Resultados da entrega `9399642`** (Windows x64, Python 3.13.17; históricos após a correção abaixo): spec do corpus 167 testes (offline `OK (skipped=2)`; com `TESSEL_ORIGIN_PATH`
 `OK`), spec analítica 36 testes `OK`, ambas também com `-O`; `generate --check` byte a byte; `verify` offline e `--origin` exit 0; `--require-pin`
@@ -377,3 +378,13 @@ A R3 independente aprovou a S0 no head `e4078ff`, com corpus 167 e analítico 39
 no Windows, normal e `-O`, mais controles negativos de intensidade e fronteira de câmera.
 A aprovação cobre oráculo e contrato; todas as superfícies de produto continuam Pending,
 sem engine, golden da origem ou textura executados. O relato completo está no relatório, §12.
+
+
+### S1a: revisão e estabilidade dos diagnósticos
+
+A revisão de72c9fe2 confirmou o portão e as regras de domínio, mas não aprovou os gates:
+E0583 no módulo do teste movido foi corrigido com path explícito. Essa correção ainda exige
+reexecução Windows. Os erros de params das transições agora têm ordem lexical por chave,
+independente de serde_json/preserve_order; o documento não é reordenado. A ordem difere da
+ordem de autoria da origem, mas o veredito e os valores não mudam. Looks mantêm a regra atual,
+registrada como dívida em BL082.4.13. A compilação/cobertura reforçada permanece A validar.
