@@ -80,6 +80,7 @@ plano/relatório continuam como histórico; o contrato atual fica em `features/`
 - [Plano de execução da paridade do piloto](migration/pilot-parity-execution-plan.md): fases P0–P8 e briefing da primeira entrega Cursor Sonnet 5.5.
 - [Inspector neutro de efeitos e o `fade` (F057)](features/fx-inspector.md) e o [smoke de integração antes/depois de P2](migration/p2-integration-smoke-2026-11-10.md).
 - [P4a — efeitos no escopo de plano `shot`](migration/p4a-shot-scope-fx-plan.md): brief da entrega (BL082.3), composição em etapas e a costura para as transições (P4b).
+- [P4b — crossDissolve entre dois decks](migration/p4b-cross-dissolve-plan.md): plano revisado e fases com portão de ativação; somente S0 iniciada, sem transição habilitada por esta documentação.
 
 G1 (PR #40): rotação local/mundo implementada, **a validar** no head final;
 os gates históricos de S8 acima não validam os anéis de rotação.
