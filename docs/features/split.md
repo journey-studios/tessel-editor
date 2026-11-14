@@ -2,7 +2,7 @@
 
 ## Status
 
-**A validar (BL081).** Entregue em biblioteca, CLI headless (processo JSONL) e janela. Evidência e limites em
+**Validado no Windows e Mac, dentro dos limites abaixo (BL081).** Entregue em biblioteca, CLI headless (processo JSONL) e janela. Evidência e limites em
 [clip-split-report.md](../migration/clip-split-report.md). Sem ponteiro físico, sem áudio ouvido e sem pixels: a prova da
 janela é semântica (`ui get/set/invoke/op`).
 
@@ -88,6 +88,7 @@ Dois fades de áudio cuja soma excede o clipe (o mixer os encurta) são recusado
 - Áudio (inclusive embutido em vídeo) exige um número inteiro de amostras de saída e de fonte por quadro, considerando a velocidade. A grade fracionária é recusada com `split_unsupported` / `audio_sample_grid`, para não deslocar amostras. Exemplo: áudio em 30000/1001 fps ainda não pode ser cortado. Vídeo sem áudio não tem essa restrição.
 - O Ken Burns e a órbita são recalculados em `f64` (propriedades do inspetor são `f64`); o tempo de fonte e a divisão do tempo
   são exatos.
+- A guarda de áudio é conservadora: em 30000/1001 fps recusa também cortes em múltiplos de 5, embora a posição isolada possa cair numa amostra inteira. A 100% de velocidade, áudio de 44,1 kHz a 24 fps também é recusado (1837,5 amostras por quadro); a 25, 30 e 60 fps passa pela guarda. Mute de track/clip e ganho não retiram essa restrição: a existência do stream mantém a regra. Suporte mais amplo está em BL081.5.
 - A direita herda o nome do clipe (não é renomeada).
 - Sem atalho de teclado, sem corte por clique na timeline e sem corte em lote (a op é por clipe).
 - Selecionar de volta o clipe original depois de undo/redo não é automático (seleção é de sessão).

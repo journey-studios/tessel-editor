@@ -1,7 +1,8 @@
 # Dividir clipe (F017 / BL081) — relatório de entrega
 
 Contrato e limites por superfície: [split.md](../features/split.md). Este relatório registra o que foi executado, onde e com
-que resultado. Nenhum commit, push ou PR; tudo a validar até a revisão independente.
+que resultado. Código integrado localmente em `c0f7e24`, validado Windows/Mac; sem push, PR ou merge.
+As seções da entrega Windows original abaixo são históricas; o fechamento da revisão está ao final.
 
 ## Base e ambiente
 
@@ -80,15 +81,11 @@ compartilhado tinha `W:\www\tessel-editor\vendor\…` embutido (drive que não t
 - Sem prova em macOS/Linux; sem medição de desempenho.
 - O WebView/monitor da janela não foi inspecionado visualmente neste corte.
 
-## Propostas de backlog (o coordenador integra; `docs/backlog.md` não foi editado)
+## Achados registrados no backlog comum
 
-| ID | Proposta |
-|---|---|
-| BL081 | **A validar** — entregue em lib, headless (processo JSONL) e janela por `ui`; ver evidências acima. Aceite pendente: revisão independente e, se desejado, ponteiro físico (BL043). |
-| BL081.1 (novo) | Corte em lote/por múltiplos clipes e atalho de teclado (hoje fora do escopo). |
-| BL081.2 (novo) | Fade que cruza o corte: decidir se deve ser suportado (dividir a rampa em duas com ganho equivalente) ou mantido recusado. |
-| BL081.3 (novo) | `docs/features/project-creation.md` lista o vocabulário de ops e não cita `clip.split` (arquivo fora do ownership desta tarefa): acrescentar a linha `clip.split {clip, frame, new_id?}`. |
-| BL081.4 (novo) | Artefato de debug do `gpui-pre-windows` com `CARGO_MANIFEST_DIR` de outro drive (`W:\`) vindo do cache compartilhado: a janela de debug não abre até recompilar a caixa. Considerar embutir o HLSL ou invalidar o cache por caminho. |
+Os achados da entrega original foram integrados a `docs/backlog.md` como BL081.1–.4;
+a revisão acrescentou BL081.5/.6. O backlog é a autoridade de status/atribuição.
+O vocabulário de `clip.split` em F015 já foi corrigido pela coordenação (BL081.3).
 
 `docs/ui-automation.md:174` (`timeline.tool.*` desabilitados) continua correto: só o nó `timeline.tool.razor` foi substituído por
 `timeline.split` (habilitado quando há corte possível); `timeline.tool.select` e `timeline.tool.delete` seguem desabilitados.
@@ -148,5 +145,41 @@ B1/B2 continuam intactas. Patch de revisão8327bytes, SHA256
 bfc5ba52f361a4546305f71bfcdca463e2783eacd16aeed2f759501baca35cc6.
 Uma nova [rechecagem Windows das correções](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:17b83891c96d66a070df0b763d6f78dc8532b75ce0657ccc492972d16d845f01)
 foi iniciada por delegate_task, Cursor Sonnet5.5, somente4paths e gates/testes
-dirigidos. Seu retorno ainda é pendente: a entrega Windows original não valida
-por herança as correções posteriores da coordenação. Sem push/PR/merge.
+dirigidos. O retorno concluído está na tabela de fechamento abaixo; os gates foram refeitos
+no patch corrigido, sem herdar a prova Windows original. Sem push/PR/merge.
+
+## Fechamento da revisão Windows/Mac (2026-11-14)
+
+A rechecagem Windows final concluiu com os quatro hashes iguais ao manifesto da
+correção integrada em `c0f7e24`. Patch8327bytes SHA256
+bfc5ba52f361a4546305f71bfcdca463e2783eacd16aeed2f759501baca35cc6,
+git apply --check/apply exit0. Revisão focada não encontrou objeção bloqueante.
+
+| Check Windows no código corrigido | Resultado |
+|---|---|
+| fmt/check workspace/clippy alltargets -D warnings | exit0 |
+| workspace test --no-run; build desktop | exit0 |
+| clip_split (inclui processo headless e regressões novas) |22/22 |
+| desktop split_tests |3/3 |
+| janela própria, comandos semânticos |corte/undo/redo/recusa passaram; fechada por window.close |
+| integridade |18fontes B1/B2 idênticas; readiness e índice real intactos; HEAD ead9ca2 inalterado |
+
+Logs: `C:\Users\wally\tessel-readiness-logs\2026-11-14-bl081-review\`
+(`patch4.diff`, `gates.log`, `clip-split.log`, `desktop-split.log`, `ui.log`,
+`four-final.txt`, `manifest-*.log`, `index.before`). Sem execução do workspace
+completo, core inteiro ou desempenho nesta rechecagem. As falhas Windows de
+claims e de gizmos continuam nos respectivos IDs, sem promoção da suíte a verde.
+O novo disabled_reason de áudio foi verificado pelo core, não pela janela Windows.
+
+Limite conservador de BL081.5: a guarda olha a grade por quadro, não só a posição
+de um corte. Em30000/1001 recusa também múltiplos de5. A100% de velocidade,
+44,1kHz/24fps recusa (1837,5 amostras/quadro);44,1kHz/25,30,60fps passa.
+Flags de mute e ganho não isentam um stream da guarda. Isso evita mudar conteúdo
+caso o som seja reativado, mas restringe cortes que poderiam ser possíveis com
+um modelo de fase fracionária. O contrato explicita a restrição; expansão segue
+no backlog, sem ampliar o mixer nesta fatia.
+
+BL081 validado localmente nas superfícies previstas dentro desses limites.
+Código `c0f7e24` preservado; esta atualização altera apenas docs/status.
+Sem push, PR, merge, ponteiro físico, pixels, áudio ouvido ou desempenho aceitos.
+As duas tarefas Windows estão concluídas, sem executor continuando em segundo plano.

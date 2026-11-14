@@ -289,7 +289,7 @@ regressão falhando antes e passando depois; não permanece como alternativa de 
 
 | ID | Área | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
-| BL081 | F017 | Dividir clipe/corte interno no core, CLI e UI | A validar — implementação Windows recebida, revisão e regressão Mac em execução | Modelo de timeline; base65ea9a4 (B1/B2) | Cursor Sonnet5.5 Windows; coordenador revisa e integra | Command::SplitClip, clip.split, timeline.split; undo único, erros atômicos, source_start racional. Windows20+3 testes e janela semântica; correções Mac de recusa/gesto e grade de áudio (.5/.6), rechecagem final pendente. [Relatório](migration/clip-split-report.md) |
+| BL081 | F017 | Dividir clipe/corte interno no core, CLI e UI | Concluído localmente — fatia validada Windows/Mac; publicação pendente | Modelo de timeline; base65ea9a4 (B1/B2) | Implementação Cursor Sonnet5.5 Windows; revisão e integração coordenador | Código c0f7e24; lib/headless22 e desktop3 passam em ambos, janela semântica corte/undo/redo/recusa em ambos. Mac core1435/7 ignorados existentes. Gates fmt/check/clippy/no-run/build exit0 Windows/Mac. Limites de fades e áudio em BL081.2/.5; sem publicação, ponteiro físico, pixels ou áudio ouvido. [Relatório](migration/clip-split-report.md) |
 | BL082 | F016 | Efeitos de clipe e regras compartilhadas de processamento | A validar — primeira fatia (vinheta, escopo de saída) em lib, JSONL e janela; P0+P1 (BL082.6/.16/.17) entregues no branch `t3/fx-candidate-preview`; restante em BL082.1–BL082.5; revisão R1 em BL082.7–BL082.15 | BL004/BL006 aplicáveis | Sub-agente de efeitos (branch `t3/implement-vignette-effects`) | Domínio decidido: `fx` no documento do bundle dirigido (um só modelo, sem cópia na sequência), edição atômica `scene.fx.edit` com uma entrada de undo, `Fx::resolve` por quadro, `ScenePlan.fx` + `Capability::OutputFx`, runtime só desenha. **Executado (head 32860ec)**: core `scene_fx` 16 + 5 unitários da referência; runtime `node --test` 186/186 (efeito: 5 puros + 2 em Chrome); renderer `scene_fx` 3 (54 sondas por quadro contra a referência do core); export `scene_fx_export` 1 (FFmpeg real, pior 7/255, maior mudança 69); janela GPUI 7; janela real `scripts/scene-fx-ui-proof.py` 70/70 (monitor, controles, recusa tipada, undo, salvar/reabrir, dois exports pelo diálogo). **Correção R1 (este head)**: runtime executado (11 puros + 7 em Chrome); `scene-fx-ui-proof.spec.py` 23/23; **Rust (core e GPUI) escrito, só `fmt`, sem compilar** (BL082.17). Limites: nenhum ponteiro físico (BL043); P0+P1: prévia ao vivo, teclado do adaptador, inserção no quadro exibido e aviso visível entregues (ver BL082.6/.16/.17). [Contrato](features/effects.md) **P2 (branch `t3/fx-inspector-fade-p2`, F057):** segundo look `fade` e inspector neutro, 2 de 59 efeitos, Provado no head de código do branch (macOS/SwiftShader); integração com `main`, Windows e aceite humano pendentes. |
 | BL082.1 | F016 | Demais efeitos do catálogo do piloto (59 shaders): cada um é uma entrada no catálogo, um shader no runtime, um teste de pixel e uma linha de UI | Parcial — 3 de 59 (P3, revisão independente em74dc1b9) | BL082, BL036 | — | Efeito só entra com referência independente, plano, runtime, lib/JSONL/janela e prova de pixel no monitor e no export; sem portar famílias inteiras de uma vez **P2:** `fade` entrou (referência independente em Python `scripts/pilot-fade-corpus.py`, plano, runtime, lib/JSONL/janela, pixels no monitor e no export); `vignette` + `fade` = 2 de 59, os outros 57 seguem pendentes e sem controle habilitado. |
 | BL082.2 | F016 | Animação de parâmetros por chaves (`keys`) e `seed` | Validado no head74dc1b9; sem merge | BL082 | Coordenador | Chaves/easing/seed em lib, JSONL e UI; persistência/undo/export e provas nativas no head limpo; F058/F059 e PR42. Timeline P6, ponteiro físico, GPU real e Windows permanecem pendentes |
@@ -1607,8 +1607,8 @@ correções de revisão, não gate do código corrigido.
 | BL081.2 | Corte / envelope | Fades atravessando o ponto do corte não são representáveis em duas rampas atuais | Pendente — recusa explícita implementada | BL081, BL142 | — | Preservar envelope/amostras e quadro sem aproximar; enquanto isso split_unsupported com motivo |
 | BL081.3 | Documentação | Incluir clip.split no vocabulário F015 | Corrigido pela coordenação | BL081 | Coordenador | Linha no contrato project-creation aponta F017 e argumentos absolutos; sem mudar outras operações |
 | BL081.4 | Windows / cache | Artefato debug GPUI reaproveita CARGO_MANIFEST_DIR de W: após mudança para E:; shader não abre | Pendente | BL167.4 | — | Invalidar por caminho ou incorporar HLSL sem tocar cache global; provar janela de debug em outro checkout. Executor atualizou mtime do build.rs, sem diff, apenas como contorno |
-| BL081.5 | Revisão / amostras | Novo segmento de áudio pode mudar fase em grade fracionária, mesmo com source_start racional | Parcial — guardado com recusa explícita; suporte pleno pendente | BL081, BL016 | Coordenador (guarda); expansão não atribuída | Caso real de lib:30000/1001fps, clipe de áudio movido ao frame1 e cortado no2 muda PCM em0.020370752. Só aceitar grades com amostras inteiras de saída/fonte por quadro (com velocidade); demais recusam audio_sample_grid sem mutação. Modelo futuro deve preservar fase fracionária e equivalência de mix em qualquer faixa |
-| BL081.6 | Revisão / atomicidade | Split inválido liquidava gesto de slider aberto antes de recusar | Corrigido no Mac; rechecagem Windows pendente | BL081 | Coordenador | Preflight antes de liquidar gesto; recusa mantém gesture/history/revision/documento. Regressão falha no código entregue e passa corrigida; split válido mantém política de liquidação existente |
+| BL081.5 | Revisão / amostras | Novo segmento de áudio pode mudar fase em grade fracionária, mesmo com source_start racional | Parcial — guardado com recusa explícita; suporte pleno pendente | BL081, BL016 | Coordenador (guarda); expansão não atribuída | Caso real de lib:30000/1001fps, clipe de áudio movido ao frame1 e cortado no2 muda PCM em0.020370752. Só aceitar grades com amostras inteiras de saída/fonte por quadro (com velocidade); demais recusam audio_sample_grid sem mutação. Modelo futuro deve preservar fase fracionária e equivalência de mix em qualquer faixa. Guarda conservadora: NTSC recusa mesmo múltiplos de5;44,1kHz/24fps recusa a100%; mute/ganho não isentam stream. Rechecagem Windows confirmou22/22 |
+| BL081.6 | Revisão / atomicidade | Split inválido liquidava gesto de slider aberto antes de recusar | Corrigido e validado Windows/Mac | BL081 | Coordenador | Preflight antes de liquidar gesto; recusa mantém gesture/history/revision/documento. Regressão falha no código entregue e passa corrigida; split válido mantém política de liquidação existente |
 
 Controles de revisão:22 testes no alvo clip_split —20 antigos passam e2 novos
 reprovam na entrega original (áudio em grade fracionária e gesto aberto). Corrigidos
@@ -1628,3 +1628,28 @@ Rechecagem Windows final iniciada com novo delegate_task:
 [BL081 — rechecagem Windows das correções de revisão](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:17b83891c96d66a070df0b763d6f78dc8532b75ce0657ccc492972d16d845f01).
 Task node:delegated-task:command%3Amcp%3A77122fb9-fe19-4ca6-b856-7beca247f3a3%3Aremote-delegate%3Abl081-windows-review-recheck-20261114.
 Retorno por evento, sem polling; BL081 permanece A validar até essa rechecagem.
+
+
+### BL081 — fechamento local após rechecagem Windows (2026-11-14)
+
+A [rechecagem final](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:17b83891c96d66a070df0b763d6f78dc8532b75ce0657ccc492972d16d845f01)
+concluiu: patch de revisão8327bytes aplicado com SHA256 exato;4fontes iguais
+às do código local c0f7e24 antes/depois dos testes. Nenhuma objeção bloqueante.
+Windows fmt/check/clippy alltargets/no-run/build exit0; clip_split22/22 e
+split_tests3/3, incluindo as duas regressões novas. Janela própria abriu uma vez,
+cortou basalt-cliffs no600 (504..600/600..696), undo/redo e recusa na borda
+preservaram revisão; fechou por window.close. Guarda de áudio validada no core,
+sem inspeção do seu disabled_reason na janela Windows; isso não é ponteiro físico.
+
+Manifesto18fontes B1/B2 sem divergências; readiness e índice real intactos.
+HEAD Windows continua ead9ca2 com overlay autorizado, sem commit/push/PR.
+Logs remotos: C:\Users\wally\tessel-readiness-logs\2026-11-14-bl081-review\.
+Mac validado no mesmo código: core1435/7 ignorados existentes/0 falhas, desktop3,
+gates e janela semântica. A correção funcional está salva em c0f7e24; esta atualização
+fecha apenas documentação/status, sem alterar fonte nem herdar novos gates.
+
+BL081 fecha a fatia de corte dentro do contrato; BL081.1/.2/.4/.5 continuam
+pendentes ou parciais como descritos nas linhas. A guarda de áudio recusa todo
+stream em grade fracionária mesmo mudo e mesmo num corte isolado alinhado;
+essa restrição é explícita, sem aproximação do PCM. Sem publicação/PR/merge,
+sem aceite físico, pixels, áudio ouvido ou desempenho. Não há executor ativo.
