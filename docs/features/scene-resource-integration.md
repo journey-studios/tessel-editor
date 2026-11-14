@@ -583,3 +583,12 @@ para falha de forget de pasta após remoção parcial de diretórios.
 Após a revisão, os contratos de 46 funções receberam docstrings: identidade de holders,
 validação do ledger, leases, publicação/cleanup, import e consumo de resultados pelo host.
 A alteração é documental; o percentual de cobertura depende da nova medição do CodeRabbit.
+
+### Watchdog do harness de descarte (BL167.6.10)
+
+O watchdog de job_discard_claims recebe o handle do processo criado pelo próprio teste.
+Ao expirar, envia SIGCONT no Unix e encerra/recolhe o peer em todos os sistemas. Retomar
+sozinho não libera o arquivo que o peer conserva enquanto espera outro comando. O escopo
+é só teste; operações, orçamento do tick e limite de100ms não mudam. Testes novos exercitam
+lock real/liberação por término e cancelamento do watchdog, com limpeza mesmo na falha.
+Validação Mac e Windows pendente nesta edição; sem nova evidência de janela ou desempenho.

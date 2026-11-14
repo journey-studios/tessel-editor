@@ -2145,3 +2145,15 @@ gates no código0f; core1528/0/7 em89. São heads distintos, expressamente manti
 
 O fechamento desta revisão muda só documentação. Nenhuma nova prova de
 workspace inteiro, performance, ReFS/rede, mecanismo NTFS, janela/GPU ou áudio.
+
+### Comentário tardio PR60: watchdog do teste de tick
+
+O comentário4575757170 do CodeRabbit é válido, restrito ao teste: no Windows
+kill -CONT não encerra o peer. Por leitura, retomar no Unix também não solta o
+handle _held enquanto o peer espera nova entrada. A correção preserva SIGCONT
+Unix e encerra/recolhe o processo próprio por Child, em ambos os sistemas.
+Código de produto, orçamento20ms e critério100ms não mudam.
+
+| ID | Área | Pendência | Status | Dependências | Responsável | Aceite e evidência |
+|---|---|---|---|---|---|---|
+| BL167.6.10 | Testes / watchdog | Watchdog não libera o peer com lock se o poll regredir e bloquear | Em andamento — follow-up separado após merge PR60 | BL167.6, BL112.3 | Coordenador | Helper por handle do Child próprio, SIGCONT Unix seguido de término e wait, cancelamento quando trabalho acaba; teste real de liberação de lock e controle de cancelamento, ambos com limpeza própria. Mac/Windows a validar; não é mudança de produto/performance. |
