@@ -492,7 +492,14 @@ transição (digests de planos sem transição ficam idênticos; teste de ouro s
   Isso **não** serve para hold misto (instância presa, câmera correndo) nem para o relógio da luz em f: podem
   não corresponder a nenhum quadro puro. Para esses casos, S0 fixa estados temporais esperados e sondas
   analíticas independentes de cenas simples (marcadores/cores/luz conhecidos), quantizados a 8 bits; S2 compara
-  a projeção/cor dessas sondas e o plano a X. Sem esse oráculo, o caso continua A validar e bloqueia seu aceite;
+  as cores nas posições de pixel prescritas e os estados temporais do plano a X. `centre_px` e `rect_px`
+  são coordenadas diagnósticas, sem portão numérico próprio de aceitação; erros de posição devem ser
+  discriminados pelas sondas de cor, não por uma tolerância de coordenadas inventada após medir.
+  A referência atual isola erros do relógio da luz **só no vizinho** nas janelas `start`/`end`;
+  os casos `center` não demonstram sozinhos essa discriminação (peso baixo do vizinho). A comparação
+  dos estados de cada deck permanece obrigatória; S2 não deve atribuir isolamento de pixel a esses casos.
+  As lâmpadas sintéticas respeitam intensidade `[0,20]`, cor/flicker `[0,1]`, raio positivo e até quatro luzes.
+  Sem esse oráculo, o caso continua A validar e bloqueia seu aceite;
   não fabricar um quadro puro equivalente nem obter ambos os lados pelo mesmo avaliador de transição. O teste Rust
   `crates/core/tests/pilot_dissolve_corpus.rs` **só lê o JSON** (roda no Windows sem Python), como `pilot_fx_corpus.rs`.
 - **Nenhum `Domain` novo.** `PlanError::Unsupported` só aceita `Domain::ALL` (13 valores: `weather` … `relief`) e a

@@ -1139,6 +1139,10 @@ def deck_resources(bundle, shot_id):
 
 ANALYTIC_DESTINATION_LINES = [
     # (file key, what the destination text must still say for the analytic kernels to be reconciled with it, READ only)
+    ("lighting_rs", "pub const MAX_INTENSITY: f64 = 20.0;", "synthetic lamps must fit the core intensity limit"),
+    ("runtime_scene", "const MAX_LIGHT_INTENSITY = 20;", "synthetic lamps must fit the runtime intensity limit"),
+    ("lighting_rs", "pub const MAX_SCENE_LIGHTS: usize = 4;", "synthetic decks have at most four lamps"),
+    ("runtime_scene", "export const MAX_POINT_LIGHTS = 4;", "the runtime has the same four-lamp limit"),
     ("runtime_scene", "mesh.renderOrder = index;", "planes are drawn in plan order (a painter's queue), as the kernels assume"),
     ("runtime_scene", "Position in the painter's queue = position in the plan. No depth sort decides anything.", "no depth test decides which plane wins"),
     ("runtime_scene", "const camera = new THREE.PerspectiveCamera(spec.camera.fov, spec.output.width / spec.output.height, NEAR, FAR);", "a vertical fov with aspect width / height"),

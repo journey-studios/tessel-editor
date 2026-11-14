@@ -86,7 +86,7 @@
       "path": "docs/migration/fixtures/bundles/valid-cut-instance-offsets.bundle.json",
       "sha256": "43fd1a5568a63745c1043eab45cae028fa03a772eea11c9d0bac43e808718e2b"
     },
-    "sha256": "e5f40f70ccdb069196224d45c8df09cbaec7539eedc06ea350e65de7966cd011"
+    "sha256": "67d3314f66aa0512666e93e515de0d66393298489168999172d7e37123d393d9"
   },
   "documented_differences": [
     {

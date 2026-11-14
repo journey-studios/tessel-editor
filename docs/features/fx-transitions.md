@@ -231,8 +231,9 @@ estão Pendentes**, exceto a coluna `X` marcada `0`, que o corpus desta S0 cobre
 
 **A validar / lacunas registradas:** (a) as tolerâncias e os tetos são contrato pré-registrado, sem pixel nem plano
 medidos; (b) `hidden: false` será recusado nas transições e a ordem de used_by será qualificada por deck; (c) a divergência de veredito do alpha
-aguarda a revisão de design (Q3); (d) o `--check` em macOS/Linux não foi rodado; (e) o pin não é verificável neste
-clone; (f) BL167.5 permanece **parcial** (só a preparação do interpretador): build release, provas vivas e janela D3D11
+aguarda a revisão de design (Q3); (d) reprodução Python Windows/Mac passou em `9399642`, Linux não foi rodado;
+(e) o pin não existe no clone Windows, mas foi verificado no Mac; isso não executa a origem;
+(f) BL167.5 permanece **parcial** (só a preparação do interpretador): build release, provas vivas e janela D3D11
 seguem dependendo de BL167.1–.4.
 
 ### Revisão independente da S0 e correções do coordenador
@@ -277,7 +278,7 @@ Cada cena declara o que deve rejeitar (separação ≥ 4 códigos em ≥ 3 sonda
 (≤ 1 código); o gerador recusa (`ORACLE_ANALYTIC_*`) uma cena sem poder de recusa. Cenas: hold misto nos dois lados do corte com
 janelas `center`/`end`/`start`, o limite do primeiro quadro preso, controles sem hold e com os dois presos, luz com os dois
 relógios presos, `instance_start`/`camera_in` distintos do início do plano (relógio de edição contra relógio do clipe), 30000/1001 com a
-janela em 1794..1806 e posição mais luz juntas. A spec (`scripts/pilot_dissolve_analytic.spec.py`, 36 testes) refaz tudo com um avaliador
+janela em 1794..1806 e posição mais luz juntas. A spec (`scripts/pilot_dissolve_analytic.spec.py`, 36 testes em `9399642`, 39 na correção abaixo) refaz tudo com um avaliador
 independente (`ctypes`, matriz do Three.js, `Fraction`, `Decimal`), aplica o portão a produtos falsos (os que implementam cada hipótese
 falham; os controles e a verdade passam; um produto que trunca falha pelo viés em todas as cenas) e roda 19 mutantes do próprio oráculo.
 
@@ -288,8 +289,40 @@ medido nem executado; a origem não foi executada nem seu golden comparado. **A 
 **`hidden` (contrato futuro do destino):** uma transição aceita `hidden: true` ou ausente; `hidden: false` explícito é recusa estrutural
 na S1a, independente de `explain`. O importador Rust de hoje **não** faz isso; é decisão registrada para a S1a, não comportamento atual.
 
-**Resultados desta revisão** (Windows x64, Python 3.13.17): spec do corpus 167 testes (offline `OK (skipped=2)`; com `TESSEL_ORIGIN_PATH`
+**Resultados da entrega `9399642`** (Windows x64, Python 3.13.17; históricos após a correção abaixo): spec do corpus 167 testes (offline `OK (skipped=2)`; com `TESSEL_ORIGIN_PATH`
 `OK`), spec analítica 36 testes `OK`, ambas também com `-O`; `generate --check` byte a byte; `verify` offline e `--origin` exit 0; `--require-pin`
 sem origem e com origem sem o commit do pin exit 4; `digests` sem `--origin` exit 2. Hashes: `dissolve-cases.json`
 `e5f40f70ccdb069196224d45c8df09cbaec7539eedc06ea350e65de7966cd011` (539 508 bytes), `dissolve-manifest.json`
 `5368450f0df266a5d4375adafcd73a82ccf9bc9d519ff2138ae0dc1129e644dd` (27 892 bytes); os números das seções acima (161 testes, 26 fontes) são o histórico da versão original.
+
+### Correção após a revisão R2: representabilidade e alcance do X
+
+A revisão **não aprovou** `9399642`: as lâmpadas de intensidade 24 excediam o limite 20 do
+core/runtime, tornando seis cenas de luz inalcançáveis no destino. A correção usa intensidade
+**20**, acrescenta às leituras do destino os limites de intensidade e de quatro luzes e testa
+todos os kits: intensidade `[0,20]`, cor/flicker `[0,1]`, raio positivo, números finitos e até
+quatro luzes. É correção de representabilidade; fórmulas e limiares de rejeição não mudaram.
+Os kits agora trazem `initialFovDeg: 50` e saída 640×360 explicitamente.
+
+**Posição:** `centre_px` e `rect_px` são coordenadas diagnósticas, sem tolerância própria de
+aceitação em pixels. O aceite de S2 compara estados temporais e cores nos pixels prescritos;
+as hipóteses de posição são discriminadas pelas sondas de cor. Isso não alega precisão medida
+de posição em GPU.
+
+**Luz só no vizinho:** a nova spec isola esse erro mantendo o primário correto. Em `lit-end-held`,
+as hipóteses LIN/LSR/LCC/LCE têm pelo menos três sondas em dois quadros; em `lit-start-held`,
+LIN/LCC também. Com intensidade 20, foram 8/12/8/5 sondas em 2/3/2/2 quadros no primeiro caso,
+e 7 sondas em 3 quadros no segundo. As janelas `center` não demonstram isoladamente esse poder:
+podem rejeitar pelo primário ou ter só até duas sondas em um quadro. O erro de fps nominal é
+global. S2 deve respeitar esse alcance e comparar os estados de cada deck separadamente.
+
+O teste de câmera ganhou o quadro exato 40 e dois segmentos com `previousEnd` e com retorno
+à pose `initial`. O mutante `<` → `<=` não ultrapassa o fim de um clipe único porque `ease`
+limita a progressão a `[0,1]`; ele é detectado no limite entre segmentos que voltam à pose
+inicial. Isso corrige a interpretação de overshoot da revisão, mantendo uma regressão útil.
+`shot_numbers` foi removido e o nome da separação mínima dos decoys foi esclarecido. A diferença
+de cerca de 1e-14 entre segundos racionais do destino e divisão da origem não altera os códigos
+de 8 bits destes vetores. O módulo analítico ainda exige separação em módulos se crescer na S2.
+
+Esta correção permanece **A validar** até rechecagem Windows; todas as superfícies de produto
+continuam Pending, sem engine, golden da origem ou textura executados.

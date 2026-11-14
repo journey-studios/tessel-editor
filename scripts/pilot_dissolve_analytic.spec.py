@@ -400,7 +400,7 @@ def hand_problems(mod):
         problems.append("the marker centre pixel is not 448")
     clip = {"position": [-2.0, 0.0, 6.0], "target": [-2.0, 0.0, 0.0],
             "segments": [{"recipe": "truckRight", "frames": 40, "from": "initial", "distance": 0.36 * 39, "easing": "linear"}]}
-    for frame, x_expected in ((0, -2.0), (12, 2.32), (39, 12.04), (55, 12.04)):
+    for frame, x_expected in ((0, -2.0), (12, 2.32), (39, 12.04), (40, 12.04), (55, 12.04)):
         got = mod.camera_pose(clip, frame)[0][0]
         if abs(got - x_expected) > 1e-9:
             problems.append("truck x at clip frame %d: %r vs %r" % (frame, got, x_expected))
@@ -448,6 +448,21 @@ HAND_CLOCKS = [
 
 
 class HandVectorTests(unittest.TestCase):
+    def test_camera_segment_boundaries_and_previous_end_are_continuous(self):
+        clip = {"position": [-2.0, 0.0, 6.0], "target": [-2.0, 0.0, 0.0], "segments": [
+            {"recipe": "truckRight", "frames": 3, "from": "initial", "distance": 2.0, "easing": "linear"},
+            {"recipe": "truckLeft", "frames": 3, "from": "previousEnd", "distance": 4.0, "easing": "linear"},
+        ]}
+        for frame, x in ((0, -2.0), (1, -1.0), (2, 0.0), (3, 0.0), (4, -2.0), (5, -4.0), (6, -4.0)):
+            position, target = m.camera_pose(clip, frame)
+            self.assertEqual(position, (x, 0.0, 6.0), frame)
+            self.assertEqual(target, (x, 0.0, 0.0), frame)
+        # A segment starting from the initial pose intentionally resets at the exact boundary.
+        # Unlike the continuous previousEnd case, this distinguishes `< end_pose` from `<=`.
+        clip["segments"][1] = dict(clip["segments"][1], **{"from": "initial"})
+        for frame, x in ((3, -2.0), (4, -4.0), (5, -6.0), (6, -6.0)):
+            self.assertEqual(m.camera_pose(clip, frame)[0], (x, 0.0, 6.0), frame)
+
     def test_the_module_matches_every_hand_vector(self):
         self.assertEqual(hand_problems(m), [])
 
@@ -590,6 +605,31 @@ class ReferenceTests(unittest.TestCase):
 
 
 class GateTests(unittest.TestCase):
+    def test_neighbour_only_light_faults_are_separated_in_start_and_end_windows(self):
+        # Central windows do not isolate the neighbour's light strongly. These are the explicit
+        # isolation cases: corrupt only its light clock, keeping the primary deck correct.
+        for scenario_id, rules in (("lit-end-held", ("LIN", "LSR", "LCC", "LCE")),
+                                   ("lit-start-held", ("LIN", "LCC"))):
+            sc = SCENARIOS[scenario_id]
+            for rule in rules:
+                hits, frames = 0, set()
+                for frame in sc["frames"]:
+                    for probe in frame.get("probes", []):
+                        f = frame["edit_frame"]
+                        states = r_states(sc, f, None)
+                        neighbour = frame["neighbour"]
+                        states[neighbour] = r_states(sc, f, rule)[neighbour]
+                        x, y = parse_pixel(probe["pixel"])
+                        a8 = r_deck_code(sc, "A", states["A"], x, y, FloatBackend)[1]
+                        b8 = r_deck_code(sc, "B", states["B"], x, y, FloatBackend)[1]
+                        wrong = r_mix(a8, b8, r_weight(sc, frame["k"]), FloatBackend)[0]
+                        truth = [int(probe["expected"][n:n + 2], 16) for n in (1, 3, 5)]
+                        if max(abs(a - b) for a, b in zip(wrong, truth)) >= 4:
+                            hits += 1
+                            frames.add(f)
+                self.assertGreaterEqual(hits, 3, (scenario_id, rule))
+                self.assertGreaterEqual(len(frames), 2, (scenario_id, rule))
+
     def test_the_truth_passes_the_gate_in_every_scenario(self):
         for scenario in SECTION["scenarios"]:
             self.assertEqual(gate(scenario, product_with(scenario, None)), [], scenario["id"])
@@ -736,6 +776,29 @@ class MutantTests(unittest.TestCase):
 
 
 class StructureTests(unittest.TestCase):
+    def test_all_kit_lamps_fit_the_destination_contract(self):
+        for kits in (SECTION["kits"], m.kit_documents()):
+            for kit_id, kit in kits.items():
+                self.assertEqual(kit["initialFovDeg"], 50.0)
+                self.assertEqual(kit["output"], {"width": 640, "height": 360})
+                for deck_id, deck in kit["decks"].items():
+                    where = (kit_id, deck_id)
+                    self.assertLessEqual(len(deck["lights"]), 4, where)
+                    for lamp in deck["lights"]:
+                        self.assertTrue(0 <= lamp["intensity"] <= 20, where)
+                        self.assertTrue(0 <= lamp["flicker"] <= 1, where)
+                        self.assertGreater(lamp["radius"], 0, where)
+                        self.assertEqual(len(lamp["colour"]), 3, where)
+                        self.assertEqual(len(lamp["position"]), 3, where)
+                        for channel in lamp["colour"]:
+                            self.assertTrue(0 <= channel <= 1, where)
+                        for number in [lamp["intensity"], lamp["flicker"], lamp["radius"], *lamp["colour"], *lamp["position"]]:
+                            self.assertNotIsInstance(number, bool, where)
+                            self.assertTrue(math.isfinite(number), where)
+        read_lines = {row["line"] for row in SECTION["destination_reads"]["lines"]}
+        self.assertTrue({"pub const MAX_INTENSITY: f64 = 20.0;", "const MAX_LIGHT_INTENSITY = 20;",
+                         "pub const MAX_SCENE_LIGHTS: usize = 4;", "export const MAX_POINT_LIGHTS = 4;"} <= read_lines)
+
     def test_the_corpus_section_is_what_the_generator_produces_today(self):
         self.assertEqual(json.loads(json.dumps(m.build_section())), EXPECTED_SECTION)
 

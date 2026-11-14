@@ -61,7 +61,7 @@ MIN_REJECTING_FRAMES = 2
 AGREE_MAX_CODES = 1  # a control that must agree: no probe moves by more than the tolerance
 TIE_MARGIN = 1e-6  # an unrounded 8-bit value this close to a rounding tie is refused (host independence)
 CLIP_MARGIN = 1e-9  # a lit linear value above 1 (clamped by the runtime) would flatten a discrimination: refused
-MAX_PROBE_PIXEL_SHIFT = 2  # decoys: the hypothesised marker centre must differ from the true one by > 2 * margin
+MIN_DECOY_SEPARATION_MARGINS = 2  # the hypothesised marker centre must differ by more than twice the flat margin
 
 TOLERANCE_REFERENCE = {
     "max_abs_delta_8bit": 1,
@@ -313,10 +313,6 @@ HYPOTHESES = {
         "clock": HypothesisClock(light="nominal_fps"),
     },
 }
-
-
-def shot_numbers(shot, primary):
-    return primary if primary is not None else shot
 
 
 def clocks_of(edit, shot_id, f, hypothesis=None, primary_id=None):
@@ -600,11 +596,11 @@ def backdrop(colour):
     return {"id": "backdrop", "colour8": colour, "width": 60.0, "height": 12.0, "position": [0.0, 0.0, -2.0], "render_order": 0}
 
 
-# a lamp two scene units in front of the marker's plane, a large radius and an intensity of 4: the light is a
-# multiplier of about 2.5 to 4.5 on the unlit colour, and the flicker moves that multiplier by tens of codes
+# A lamp two scene units in front of the marker's plane, with a large radius and intensity 20:
+# within both destination limits. This corrects fixture representability; rejection thresholds stay fixed.
 LAMPS = {
-    "A": {"id": "lamp-a", "position": [-1.5, 1.0, 2.0], "colour": [1.0, 0.7, 0.4], "intensity": 24.0, "radius": 20.0, "flicker": 1.0},
-    "B": {"id": "lamp-b", "position": [1.0, 1.5, 2.0], "colour": [0.4, 0.7, 1.0], "intensity": 24.0, "radius": 20.0, "flicker": 1.0},
+    "A": {"id": "lamp-a", "position": [-1.5, 1.0, 2.0], "colour": [1.0, 0.7, 0.4], "intensity": 20.0, "radius": 20.0, "flicker": 1.0},
+    "B": {"id": "lamp-b", "position": [1.0, 1.5, 2.0], "colour": [0.4, 0.7, 1.0], "intensity": 20.0, "radius": 20.0, "flicker": 1.0},
 }
 
 KIT_COLOURS = {
@@ -871,7 +867,7 @@ def build_frame(scenario, edit, decks, transition, f):
                 continue
             hyp_states, _, _ = deck_states(edit, f, hypothesis)
             hx, hy, _ = marker_pixel(decks[neighbour], hyp_states[neighbour])
-            if abs(hx - true_x) > MAX_PROBE_PIXEL_SHIFT * FLAT_MARGIN_PX or abs(hy - true_y) > MAX_PROBE_PIXEL_SHIFT * FLAT_MARGIN_PX:
+            if abs(hx - true_x) > MIN_DECOY_SEPARATION_MARGINS * FLAT_MARGIN_PX or abs(hy - true_y) > MIN_DECOY_SEPARATION_MARGINS * FLAT_MARGIN_PX:
                 if (hx, hy) not in [p for _, p in points] and (hx, hy) not in [p for _, p in decoys]:
                     if is_flat(decks, states, hx, hy) and is_flat(decks, hyp_states, hx, hy):
                         decoys.append(("decoy_of_%s" % HYPOTHESES[name]["short"], (hx, hy)))
@@ -944,7 +940,8 @@ def kit_documents():
         for shot_id in ("A", "B"):
             deck = build_deck(kit, shot_id, "mixed")
             decks[shot_id] = {"planes": deck["planes"], "lights": deck["lights"], "camera_clip_of_layout_mixed": deck["camera"]}
-        out[kit] = {"doc": spec["doc"], "decks": decks}
+        out[kit] = {"doc": spec["doc"], "initialFovDeg": FOV_DEG,
+                    "output": {"width": VIEWPORT[0], "height": VIEWPORT[1]}, "decks": decks}
     return out
 
 
@@ -952,6 +949,7 @@ def conventions():
     return {
         "projection": "Three.js PerspectiveCamera(vertical fov %s deg, aspect = %d / %d), lookAt(target), up (0, 1, 0); viewport %dx%d" % (
             FOV_DEG, VIEWPORT[0], VIEWPORT[1], VIEWPORT[0], VIEWPORT[1]),
+        "position_acceptance": "centre_px and rect_px are diagnostic coordinates, not a separate pixel-position acceptance gate. S2 compares the prescribed pixel colours and temporal states; position faults are discriminated by colour probes. No measured position tolerance is claimed.",
         "compact": "tuples are strings: colours \"#rrggbb\", pixels \"x,y\", points \"a,b[,c]\" and rectangles \"left,top,right,bottom\" (9 decimals at most), a probe's deck as \"<plane id or None> #rrggbb\"",
         "pixels": "the centre of pixel index i is i + 0.5; ndc_x = (x + 0.5) / W * 2 - 1, ndc_y = 1 - (y + 0.5) / H * 2; `centre_px` and `rect_px` are continuous (edge convention: pixel i covers [i, i + 1))",
         "planes": "image planes facing +z, no rotation or scale, flat opaque 8-bit sRGB colour, drawn in render_order (a painter's queue: the later one wins where both cover; no depth test decides)",

@@ -1877,7 +1877,7 @@ concreto da S0, sem link para arquivo inexistente nem validação de lib/CLI/UI 
 
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
-| BL082.4.1 | P4b/S0 | Contrato F064 e corpus independente dissolve, fonte pinada e diferenças alfa/quantização explícitas | A validar — entregue PR61 em173f5f4, relato Windows161/161 normal e -O | BL082.4; setupPythonBL167.5 parcial | Cursor Sonnet5.5 / S0 abaixo | Corpus/scripts e specs normal/-O/verify/originblob verificável, vetoresdiscriminantes, sem alterar Rust/runtime/fixtureslegadas nem marcarfeature lib/JSONL/UIpronta |
+| BL082.4.1 | P4b/S0 | Contrato F064 e corpus independente dissolve, fonte e X analítico | A validar; lâmpadas corrigidas, rechecagem Windows pendente | BL082.4; setupPythonBL167.5 parcial | Coordenador / rechecagem Windows | X de 12 cenas/451 sondas e 33 fontes. Lâmpadas 24→20 e limites do destino corrigidos; Mac corpus167/analítico39 normal e-O. Aceite por cor/estados e isolamento do vizinho explícitos; aguarda revisão Windows. Produto lib/JSONL/UI continua pendente. |
 | BL082.4.2 | P4b/S1a | Documento/janela/validação tipada e ativação pública failclosed | Pendente | BL082.4.1/.11 | Não atribuído | Contrato corrigido B3; nenhumhardcutfallback/exportfalhandonomeio, erro existente/tipado |
 | BL082.4.3 | P4b/S1b | Avaliação dos dois decks e plano, recursosporassetId/used_bysemambiguidade | Pendente | BL082.4.2 | Não atribuído | Recurso próprio por deck euniãoderivadaestável, clock/handlessemunderflow, parserprofundidadelimitada |
 | BL082.4.4 | P4b/S2 | Runtime/renderer/mistura e lifecycle/cache | Pendente | BL082.4.3; S2A também BL082.4.5/S3a | Não atribuído | Cor8bits/alpha declarados, capability, dois splats/leases/contextloss/dispose e pixelsindependentes |
@@ -1906,3 +1906,22 @@ Revisão S0/PR61 em173f5f4 **não aprova BL082.4.1**: P2-1verificadorstrictpin e
 X faltantes; P2-3matrizagora F064com todasas superfíciesPendente. Coordenador corrigiuaCLIstrictpin
 paraexigirorigem+commit, com regressãogitreal; digestsusage e guardStorecorrigidos; exemplo hiddenfalse
 removido, escolhatrueouausentenastransições. A parteanalíticaaindapendente, S1nãoiniciada, semmergePR61.
+
+
+### PR61 R2: representabilidade das lâmpadas e contrato do X — 2026-11-14
+
+A revisão independente de9399642 não aprova aS0: seis cenas usam lâmpadas24 acima do limite20
+em core/runtime (P2-A). P2-1 e P2-3 fecham; a parteposição/hold deP2-2 é representável.
+O coordenador corrige intensidade para20 sem alterar limiares, lê os limites20/4 dosdois
+consumidores e acrescenta teste de contrato de todasaslâmpadas. Mantém BL082.4.1 A validar.
+
+P3-1/P3-2: coordenadas centre_px/rect_px são diagnósticas, aceite deS2 é pelos estados e
+cores nospixels prescritos. Isolamento da luz sódo vizinho é discriminante emstart/end;
+center não prova sozinho. Teste dedicado aplica erro apenas no vizinho. Plano7.3/F064 e
+matriz reconciliados. Texturas sónaS2, nenhuma superfícieproduto ou motor implementada.
+
+P3-3/nits: vetor dequadro40 e câmera com segmentos previousEnd/initial; o allegedovershoot
+singleclip não ocorre porque ease limita a[0,1], mas o novo teste detecta o mutante noreset
+para poseinitial. shot_numbers morto removido, nome dosdecoys esclarecido, initialFovDeg50
+esaída640×360 explícitos. Diferença float/racional1e-14 documentada; módulo1022linhas precisa
+ser dividido se crescer naS2. Esses ajustes reutilizam BL082.4.1, sem outra fila de execução.

@@ -136,6 +136,7 @@
       "lighting": "unlit plane: the 8-bit colour as it is. lit plane: encode(clamp(decode(base) * (1 + sum_i colour_i * effective_intensity_i * max(0, n . l) * falloff_i^2), 0, 1)), falloff = 1 / (1 + (d / radius)^2) applied twice, n facing the camera, ambient 1",
       "pixels": "the centre of pixel index i is i + 0.5; ndc_x = (x + 0.5) / W * 2 - 1, ndc_y = 1 - (y + 0.5) / H * 2; `centre_px` and `rect_px` are continuous (edge convention: pixel i covers [i, i + 1))",
       "planes": "image planes facing +z, no rotation or scale, flat opaque 8-bit sRGB colour, drawn in render_order (a painter's queue: the later one wins where both cover; no depth test decides)",
+      "position_acceptance": "centre_px and rect_px are diagnostic coordinates, not a separate pixel-position acceptance gate. S2 compares the prescribed pixel colours and temporal states; position faults are discriminated by colour probes. No measured position tolerance is claimed.",
       "projection": "Three.js PerspectiveCamera(vertical fov 50.0 deg, aspect = 640 / 360), lookAt(target), up (0, 1, 0); viewport 640x360",
       "scene_clock": "the light's seconds = f / (numerator / denominator) with the REAL edit frame f, never limited to the shot or the instance (D17; origin: `editFrameToSeconds(editFrame, fps)`)",
       "transition": {
@@ -150,6 +151,30 @@
     },
     "destination_reads": {
       "lines": [
+        {
+          "file": "crates/core/src/directed_scene/lighting.rs",
+          "line": "pub const MAX_INTENSITY: f64 = 20.0;",
+          "present": true,
+          "reconciled": "synthetic lamps must fit the core intensity limit"
+        },
+        {
+          "file": "runtime/src/directed-scene.js",
+          "line": "const MAX_LIGHT_INTENSITY = 20;",
+          "present": true,
+          "reconciled": "synthetic lamps must fit the runtime intensity limit"
+        },
+        {
+          "file": "crates/core/src/directed_scene/lighting.rs",
+          "line": "pub const MAX_SCENE_LIGHTS: usize = 4;",
+          "present": true,
+          "reconciled": "synthetic decks have at most four lamps"
+        },
+        {
+          "file": "runtime/src/directed-scene.js",
+          "line": "export const MAX_POINT_LIGHTS = 4;",
+          "present": true,
+          "reconciled": "the runtime has the same four-lamp limit"
+        },
         {
           "file": "runtime/src/directed-scene.js",
           "line": "mesh.renderOrder = index;",
@@ -296,7 +321,7 @@
                 ],
                 "flicker": 1.0,
                 "id": "lamp-a",
-                "intensity": 24.0,
+                "intensity": 20.0,
                 "position": [
                   -1.5,
                   1.0,
@@ -380,7 +405,7 @@
                 ],
                 "flicker": 1.0,
                 "id": "lamp-b",
-                "intensity": 24.0,
+                "intensity": 20.0,
                 "position": [
                   1.0,
                   1.5,
@@ -434,7 +459,12 @@
             ]
           }
         },
-        "doc": "the moving marker of `pos` with the truck and a flickering lamp per deck: positions and light together"
+        "doc": "the moving marker of `pos` with the truck and a flickering lamp per deck: positions and light together",
+        "initialFovDeg": 50.0,
+        "output": {
+          "height": 360,
+          "width": 640
+        }
       },
       "lit": {
         "decks": {
@@ -467,7 +497,7 @@
                 ],
                 "flicker": 1.0,
                 "id": "lamp-a",
-                "intensity": 24.0,
+                "intensity": 20.0,
                 "position": [
                   -1.5,
                   1.0,
@@ -540,7 +570,7 @@
                 ],
                 "flicker": 1.0,
                 "id": "lamp-b",
-                "intensity": 24.0,
+                "intensity": 20.0,
                 "position": [
                   1.0,
                   1.5,
@@ -585,7 +615,12 @@
             ]
           }
         },
-        "doc": "a backdrop and a static marker lit by one flickering lamp per deck; a static camera: only the scene clock moves"
+        "doc": "a backdrop and a static marker lit by one flickering lamp per deck; a static camera: only the scene clock moves",
+        "initialFovDeg": 50.0,
+        "output": {
+          "height": 360,
+          "width": 640
+        }
       },
       "pos": {
         "decks": {
@@ -724,7 +759,12 @@
             ]
           }
         },
-        "doc": "a backdrop and a marker that moves up on its instance clock; the camera trucks right on its own clip; no light"
+        "doc": "a backdrop and a marker that moves up on its instance clock; the camera trucks right on its own clip; no light",
+        "initialFovDeg": 50.0,
+        "output": {
+          "height": 360,
+          "width": 640
+        }
       }
     },
     "plan_sections": [
@@ -5531,14 +5571,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 16.059592272,
+                  "effective_intensity": 13.38299356,
                   "flicker_level": 0.669149678,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 16.623442594,
+                  "effective_intensity": 13.852868828,
                   "flicker_level": 0.692643441,
                   "id": "lamp-b"
                 }
@@ -5573,14 +5613,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 16.188476585,
+                  "effective_intensity": 13.490397154,
                   "flicker_level": 0.674519858,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 15.54857607,
+                  "effective_intensity": 12.957146725,
                   "flicker_level": 0.647857336,
                   "id": "lamp-b"
                 }
@@ -5590,41 +5630,41 @@
             "primary": "A",
             "probes": [
               {
-                "deck_a": "marker #77703d",
-                "deck_b": "marker #457ea8",
-                "expected": "#77703d",
+                "deck_a": "marker #6e6839",
+                "deck_b": "marker #40759c",
+                "expected": "#6e6839",
                 "id": "marker_of_primary_A",
                 "pixel": "416,212",
                 "rejects": "DSW,LCC,LIN"
               },
               {
-                "deck_a": "marker #77703d",
-                "deck_b": "marker #457ea8",
-                "expected": "#77703d",
+                "deck_a": "marker #6e6839",
+                "deck_b": "marker #40759c",
+                "expected": "#6e6839",
                 "id": "marker_of_neighbour_B",
                 "pixel": "416,212",
                 "rejects": "DSW,LCC,LIN"
               },
               {
-                "deck_a": "backdrop #71766f",
-                "deck_b": "backdrop #5f645f",
-                "expected": "#71766f",
+                "deck_a": "backdrop #686d67",
+                "deck_b": "backdrop #595d58",
+                "expected": "#686d67",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90",
                 "rejects": "DSW,LCC,LIN"
               },
               {
-                "deck_a": "backdrop #5a5f5b",
-                "deck_b": "backdrop #686e69",
-                "expected": "#5a5f5b",
+                "deck_a": "backdrop #535855",
+                "deck_b": "backdrop #616661",
+                "expected": "#535855",
                 "id": "backdrop_near_lamp_b",
                 "pixel": "500,70",
                 "rejects": "DSW,LCC,LIN"
               },
               {
-                "deck_a": "backdrop #595e5a",
-                "deck_b": "backdrop #4e504b",
-                "expected": "#595e5a",
+                "deck_a": "backdrop #535754",
+                "deck_b": "backdrop #494a45",
+                "expected": "#535754",
                 "id": "backdrop_far",
                 "pixel": "60,320",
                 "rejects": "DSW,LCC,LIN"
@@ -5662,14 +5702,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 15.31968303,
+                  "effective_intensity": 12.766402525,
                   "flicker_level": 0.638320126,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 14.65310844,
+                  "effective_intensity": 12.2109237,
                   "flicker_level": 0.610546185,
                   "id": "lamp-b"
                 }
@@ -5679,41 +5719,41 @@
             "primary": "A",
             "probes": [
               {
-                "deck_a": "marker #746d3c",
-                "deck_b": "marker #447ba4",
-                "expected": "#746d3d",
+                "deck_a": "marker #6c6638",
+                "deck_b": "marker #3f7298",
+                "expected": "#6c6639",
                 "id": "marker_of_primary_A",
                 "pixel": "416,212",
                 "rejects": "DSW,LCC,LIN"
               },
               {
-                "deck_a": "marker #746d3c",
-                "deck_b": "marker #447ba4",
-                "expected": "#746d3d",
+                "deck_a": "marker #6c6638",
+                "deck_b": "marker #3f7298",
+                "expected": "#6c6639",
                 "id": "marker_of_neighbour_B",
                 "pixel": "416,212",
                 "rejects": "DSW,LCC,LIN"
               },
               {
-                "deck_a": "backdrop #6e736c",
-                "deck_b": "backdrop #5d625d",
-                "expected": "#6e736c",
+                "deck_a": "backdrop #666b65",
+                "deck_b": "backdrop #575b56",
+                "expected": "#666b65",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90",
                 "rejects": "DSW,LCC,LIN"
               },
               {
-                "deck_a": "backdrop #585d59",
-                "deck_b": "backdrop #666c67",
-                "expected": "#585d59",
+                "deck_a": "backdrop #515653",
+                "deck_b": "backdrop #5f645f",
+                "expected": "#515653",
                 "id": "backdrop_near_lamp_b",
                 "pixel": "500,70",
                 "rejects": "DSW,LCC,LIN"
               },
               {
-                "deck_a": "backdrop #575c58",
-                "deck_b": "backdrop #4c4e49",
-                "expected": "#575c58",
+                "deck_a": "backdrop #515653",
+                "deck_b": "backdrop #484944",
+                "expected": "#515653",
                 "id": "backdrop_far",
                 "pixel": "60,320",
                 "rejects": "DSW,LCC,LIN"
@@ -5751,14 +5791,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 15.74945816,
+                  "effective_intensity": 13.124548467,
                   "flicker_level": 0.656227423,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 18.066061711,
+                  "effective_intensity": 15.055051426,
                   "flicker_level": 0.752752571,
                   "id": "lamp-b"
                 }
@@ -5768,41 +5808,41 @@
             "primary": "A",
             "probes": [
               {
-                "deck_a": "marker #766e3d",
-                "deck_b": "marker #4a86b3",
-                "expected": "#727156",
+                "deck_a": "marker #6d6739",
+                "deck_b": "marker #447ca6",
+                "expected": "#696a50",
                 "id": "marker_of_primary_A",
                 "pixel": "416,212",
                 "rejects": "DSW,LCC,LIN"
               },
               {
-                "deck_a": "marker #766e3d",
-                "deck_b": "marker #4a86b3",
-                "expected": "#727156",
+                "deck_a": "marker #6d6739",
+                "deck_b": "marker #447ca6",
+                "expected": "#696a50",
                 "id": "marker_of_neighbour_B",
                 "pixel": "416,212",
                 "rejects": "DSW,LCC,LIN"
               },
               {
-                "deck_a": "backdrop #6f746d",
-                "deck_b": "backdrop #656b66",
-                "expected": "#6e736c",
+                "deck_a": "backdrop #676c66",
+                "deck_b": "backdrop #5e635e",
+                "expected": "#666b65",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90",
                 "rejects": "DSW,LCC,LIN"
               },
               {
-                "deck_a": "backdrop #595e5a",
-                "deck_b": "backdrop #6e7571",
-                "expected": "#5c615d",
+                "deck_a": "backdrop #525754",
+                "deck_b": "backdrop #676d68",
+                "expected": "#555a57",
                 "id": "backdrop_near_lamp_b",
                 "pixel": "500,70",
                 "rejects": "DSW,LCC,LIN"
               },
               {
-                "deck_a": "backdrop #585d59",
-                "deck_b": "backdrop #525550",
-                "expected": "#575c58",
+                "deck_a": "backdrop #525654",
+                "deck_b": "backdrop #4d4f4a",
+                "expected": "#515553",
                 "id": "backdrop_far",
                 "pixel": "60,320",
                 "rejects": "DSW,LCC,LIN"
@@ -5840,14 +5880,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 16.81611638,
+                  "effective_intensity": 14.013430317,
                   "flicker_level": 0.700671516,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 17.160258817,
+                  "effective_intensity": 14.300215681,
                   "flicker_level": 0.715010784,
                   "id": "lamp-b"
                 }
@@ -5857,41 +5897,41 @@
             "primary": "A",
             "probes": [
               {
-                "deck_a": "marker #79713e",
-                "deck_b": "marker #4883af",
-                "expected": "#6c7774",
+                "deck_a": "marker #70693a",
+                "deck_b": "marker #437aa2",
+                "expected": "#646f6b",
                 "id": "marker_of_primary_A",
                 "pixel": "416,212",
                 "rejects": "DSW,LCC,LIN"
               },
               {
-                "deck_a": "marker #79713e",
-                "deck_b": "marker #4883af",
-                "expected": "#6c7774",
+                "deck_a": "marker #70693a",
+                "deck_b": "marker #437aa2",
+                "expected": "#646f6b",
                 "id": "marker_of_neighbour_B",
                 "pixel": "416,212",
                 "rejects": "DSW,LCC,LIN"
               },
               {
-                "deck_a": "backdrop #737870",
-                "deck_b": "backdrop #636864",
-                "expected": "#6e736c",
+                "deck_a": "backdrop #6a6f68",
+                "deck_b": "backdrop #5c615c",
+                "expected": "#666b64",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90",
                 "rejects": "DSW,LCC,LIN"
               },
               {
-                "deck_a": "backdrop #5b605c",
-                "deck_b": "backdrop #6c736e",
-                "expected": "#616762",
+                "deck_a": "backdrop #555956",
+                "deck_b": "backdrop #656b66",
+                "expected": "#5b5f5c",
                 "id": "backdrop_near_lamp_b",
                 "pixel": "500,70",
-                "rejects": "DSW,LCC,LIN"
+                "rejects": "DSW"
               },
               {
-                "deck_a": "backdrop #5b5f5b",
-                "deck_b": "backdrop #50534e",
-                "expected": "#585b57",
+                "deck_a": "backdrop #545955",
+                "deck_b": "backdrop #4c4d48",
+                "expected": "#515551",
                 "id": "backdrop_far",
                 "pixel": "60,320",
                 "rejects": "DSW,LCC,LIN"
@@ -5929,14 +5969,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 17.252816071,
+                  "effective_intensity": 14.377346726,
                   "flicker_level": 0.718867336,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 16.804971023,
+                  "effective_intensity": 14.004142519,
                   "flicker_level": 0.700207126,
                   "id": "lamp-b"
                 }
@@ -5946,41 +5986,41 @@
             "primary": "B",
             "probes": [
               {
-                "deck_a": "marker #7a723f",
-                "deck_b": "marker #4782ad",
-                "expected": "#5c7d94",
+                "deck_a": "marker #716b3b",
+                "deck_b": "marker #4279a1",
+                "expected": "#55758a",
                 "id": "marker_of_primary_B",
                 "pixel": "416,212",
-                "rejects": "DSW,LCC,LIN"
+                "rejects": "DSW"
               },
               {
-                "deck_a": "marker #7a723f",
-                "deck_b": "marker #4782ad",
-                "expected": "#5c7d94",
+                "deck_a": "marker #716b3b",
+                "deck_b": "marker #4279a1",
+                "expected": "#55758a",
                 "id": "marker_of_neighbour_A",
                 "pixel": "416,212",
-                "rejects": "DSW,LCC,LIN"
+                "rejects": "DSW"
               },
               {
-                "deck_a": "backdrop #747971",
-                "deck_b": "backdrop #626863",
-                "expected": "#686e68",
+                "deck_a": "backdrop #6b706a",
+                "deck_b": "backdrop #5c605b",
+                "expected": "#616660",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90",
                 "rejects": "DSW"
               },
               {
-                "deck_a": "backdrop #5c615d",
-                "deck_b": "backdrop #6b726d",
-                "expected": "#666d68",
+                "deck_a": "backdrop #565a57",
+                "deck_b": "backdrop #646a65",
+                "expected": "#606561",
                 "id": "backdrop_near_lamp_b",
                 "pixel": "500,70",
-                "rejects": "DSW,LCC,LIN"
+                "rejects": "DSW"
               },
               {
-                "deck_a": "backdrop #5c605c",
-                "deck_b": "backdrop #50524d",
-                "expected": "#545752",
+                "deck_a": "backdrop #555a56",
+                "deck_b": "backdrop #4b4d48",
+                "expected": "#4e524d",
                 "id": "backdrop_far",
                 "pixel": "60,320",
                 "rejects": "DSW"
@@ -6018,14 +6058,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 17.208546117,
+                  "effective_intensity": 14.340455097,
                   "flicker_level": 0.717022755,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 16.050359392,
+                  "effective_intensity": 13.375299493,
                   "flicker_level": 0.668764975,
                   "id": "lamp-b"
                 }
@@ -6035,41 +6075,41 @@
             "primary": "B",
             "probes": [
               {
-                "deck_a": "marker #7a723f",
-                "deck_b": "marker #4680aa",
-                "expected": "#4e7ea2",
+                "deck_a": "marker #716a3b",
+                "deck_b": "marker #41769e",
+                "expected": "#497597",
                 "id": "marker_of_primary_B",
                 "pixel": "416,212",
                 "rejects": "DSW,LCC,LIN,LSR"
               },
               {
-                "deck_a": "marker #7a723f",
-                "deck_b": "marker #4680aa",
-                "expected": "#4e7ea2",
+                "deck_a": "marker #716a3b",
+                "deck_b": "marker #41769e",
+                "expected": "#497597",
                 "id": "marker_of_neighbour_A",
                 "pixel": "416,212",
                 "rejects": "DSW,LCC,LIN,LSR"
               },
               {
-                "deck_a": "backdrop #747971",
-                "deck_b": "backdrop #606661",
-                "expected": "#636863",
+                "deck_a": "backdrop #6b7069",
+                "deck_b": "backdrop #5a5e59",
+                "expected": "#5c605b",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90",
                 "rejects": "DSW,LCC,LIN,LSR"
               },
               {
-                "deck_a": "backdrop #5c615d",
-                "deck_b": "backdrop #69706b",
-                "expected": "#686e6a",
+                "deck_a": "backdrop #555a57",
+                "deck_b": "backdrop #626863",
+                "expected": "#616762",
                 "id": "backdrop_near_lamp_b",
                 "pixel": "500,70",
                 "rejects": "DSW,LCC,LIN,LSR"
               },
               {
-                "deck_a": "backdrop #5c605c",
-                "deck_b": "backdrop #4f514c",
-                "expected": "#51534e",
+                "deck_a": "backdrop #555a56",
+                "deck_b": "backdrop #4a4b46",
+                "expected": "#4b4d48",
                 "id": "backdrop_far",
                 "pixel": "60,320",
                 "rejects": "DSW,LCC,LIN"
@@ -6107,14 +6147,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 17.105571697,
+                  "effective_intensity": 14.254643081,
                   "flicker_level": 0.712732154,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 15.189435886,
+                  "effective_intensity": 12.657863238,
                   "flicker_level": 0.632893162,
                   "id": "lamp-b"
                 }
@@ -6124,41 +6164,41 @@
             "primary": "B",
             "probes": [
               {
-                "deck_a": "marker #7a723f",
-                "deck_b": "marker #457da6",
-                "expected": "#457da6",
+                "deck_a": "marker #716a3b",
+                "deck_b": "marker #40749a",
+                "expected": "#40749a",
                 "id": "marker_of_primary_B",
                 "pixel": "416,212",
                 "rejects": "DSW,LCC,LIN,LSR"
               },
               {
-                "deck_a": "marker #7a723f",
-                "deck_b": "marker #457da6",
-                "expected": "#457da6",
+                "deck_a": "marker #716a3b",
+                "deck_b": "marker #40749a",
+                "expected": "#40749a",
                 "id": "marker_of_neighbour_A",
                 "pixel": "416,212",
                 "rejects": "DSW,LCC,LIN,LSR"
               },
               {
-                "deck_a": "backdrop #737871",
-                "deck_b": "backdrop #5f635e",
-                "expected": "#5f635e",
+                "deck_a": "backdrop #6b7069",
+                "deck_b": "backdrop #585c57",
+                "expected": "#585c57",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90",
                 "rejects": "DSW,LCC,LIN,LSR"
               },
               {
-                "deck_a": "backdrop #5c615c",
-                "deck_b": "backdrop #676d68",
-                "expected": "#676d68",
+                "deck_a": "backdrop #555a57",
+                "deck_b": "backdrop #606560",
+                "expected": "#606560",
                 "id": "backdrop_near_lamp_b",
                 "pixel": "500,70",
                 "rejects": "DSW,LCC,LIN,LSR"
               },
               {
-                "deck_a": "backdrop #5b605c",
-                "deck_b": "backdrop #4d4f4a",
-                "expected": "#4d4f4a",
+                "deck_a": "backdrop #545956",
+                "deck_b": "backdrop #494a45",
+                "expected": "#494a45",
                 "id": "backdrop_far",
                 "pixel": "60,320",
                 "rejects": "DSW,LCC,LIN,LSR"
@@ -6196,14 +6236,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 17.771653339,
+                  "effective_intensity": 14.809711116,
                   "flicker_level": 0.740485556,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 18.179626592,
+                  "effective_intensity": 15.149688827,
                   "flicker_level": 0.757484441,
                   "id": "lamp-b"
                 }
@@ -6213,41 +6253,41 @@
             "primary": "B",
             "probes": [
               {
-                "deck_a": "marker #7c7440",
-                "deck_b": "marker #4a86b3",
-                "expected": "#4a86b3",
+                "deck_a": "marker #736c3b",
+                "deck_b": "marker #447da6",
+                "expected": "#447da6",
                 "id": "marker_of_primary_B",
                 "pixel": "416,212",
                 "rejects": "DSW"
               },
               {
-                "deck_a": "marker #7c7440",
-                "deck_b": "marker #4a86b3",
-                "expected": "#4a86b3",
+                "deck_a": "marker #736c3b",
+                "deck_b": "marker #447da6",
+                "expected": "#447da6",
                 "id": "marker_of_neighbour_A",
                 "pixel": "416,212",
                 "rejects": "DSW"
               },
               {
-                "deck_a": "backdrop #757a73",
-                "deck_b": "backdrop #656b66",
-                "expected": "#656b66",
+                "deck_a": "backdrop #6c716b",
+                "deck_b": "backdrop #5e635e",
+                "expected": "#5e635e",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90",
                 "rejects": "DSW"
               },
               {
-                "deck_a": "backdrop #5e625e",
-                "deck_b": "backdrop #6f7671",
-                "expected": "#6f7671",
+                "deck_a": "backdrop #575b58",
+                "deck_b": "backdrop #676d68",
+                "expected": "#676d68",
                 "id": "backdrop_near_lamp_b",
                 "pixel": "500,70",
                 "rejects": "DSW"
               },
               {
-                "deck_a": "backdrop #5d625d",
-                "deck_b": "backdrop #525550",
-                "expected": "#525550",
+                "deck_a": "backdrop #565b57",
+                "deck_b": "backdrop #4d4f4a",
+                "expected": "#4d4f4a",
                 "id": "backdrop_far",
                 "pixel": "60,320",
                 "rejects": "DSW"
@@ -6285,14 +6325,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 17.647415684,
+                  "effective_intensity": 14.706179736,
                   "flicker_level": 0.735308987,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 18.470494998,
+                  "effective_intensity": 15.392079165,
                   "flicker_level": 0.769603958,
                   "id": "lamp-b"
                 }
@@ -6351,8 +6391,8 @@
         ],
         "rejecting_probes": {
           "DECKS_SWAPPED_IN_THE_MIX": 40,
-          "LIGHT_ON_THE_CAMERA_CLIP_CLOCK": 33,
-          "LIGHT_ON_THE_INSTANCE_CLOCK": 33,
+          "LIGHT_ON_THE_CAMERA_CLIP_CLOCK": 29,
+          "LIGHT_ON_THE_INSTANCE_CLOCK": 29,
           "LIGHT_ON_THE_SHOT_RELATIVE_CLOCK": 9
         },
         "role": "light on the real clock with the neighbour held on both sides: only the scene clock moves (static camera, static marker)",
@@ -6406,14 +6446,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 14.063779679,
+                  "effective_intensity": 11.719816399,
                   "flicker_level": 0.58599082,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 16.950915165,
+                  "effective_intensity": 14.125762637,
                   "flicker_level": 0.706288132,
                   "id": "lamp-b"
                 }
@@ -6448,14 +6488,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 15.528344776,
+                  "effective_intensity": 12.940287313,
                   "flicker_level": 0.647014366,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 15.714223123,
+                  "effective_intensity": 13.095185936,
                   "flicker_level": 0.654759297,
                   "id": "lamp-b"
                 }
@@ -6465,41 +6505,41 @@
             "primary": "A",
             "probes": [
               {
-                "deck_a": "marker #756e3c",
-                "deck_b": "marker #457ea9",
-                "expected": "#756e3c",
+                "deck_a": "marker #6d6638",
+                "deck_b": "marker #41759c",
+                "expected": "#6d6638",
                 "id": "marker_of_primary_A",
                 "pixel": "416,212",
                 "rejects": "LCC,LIN"
               },
               {
-                "deck_a": "marker #756e3c",
-                "deck_b": "marker #457ea9",
-                "expected": "#756e3c",
+                "deck_a": "marker #6d6638",
+                "deck_b": "marker #41759c",
+                "expected": "#6d6638",
                 "id": "marker_of_neighbour_B",
                 "pixel": "416,212",
                 "rejects": "LCC,LIN"
               },
               {
-                "deck_a": "backdrop #6f746d",
-                "deck_b": "backdrop #606560",
-                "expected": "#6f746d",
+                "deck_a": "backdrop #666b65",
+                "deck_b": "backdrop #5a5d59",
+                "expected": "#666b65",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90",
                 "rejects": "LCC,LIN"
               },
               {
-                "deck_a": "backdrop #585d59",
-                "deck_b": "backdrop #696f6a",
-                "expected": "#585d59",
+                "deck_a": "backdrop #525754",
+                "deck_b": "backdrop #616762",
+                "expected": "#525754",
                 "id": "backdrop_near_lamp_b",
                 "pixel": "500,70",
                 "rejects": "LCC,LIN"
               },
               {
-                "deck_a": "backdrop #585c59",
-                "deck_b": "backdrop #4e504b",
-                "expected": "#585c59",
+                "deck_a": "backdrop #515653",
+                "deck_b": "backdrop #4a4b46",
+                "expected": "#515653",
                 "id": "backdrop_far",
                 "pixel": "60,320",
                 "rejects": "LCC,LIN"
@@ -6537,14 +6577,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 14.291232233,
+                  "effective_intensity": 11.909360194,
                   "flicker_level": 0.59546801,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 14.692801463,
+                  "effective_intensity": 12.244001219,
                   "flicker_level": 0.612200061,
                   "id": "lamp-b"
                 }
@@ -6554,41 +6594,41 @@
             "primary": "A",
             "probes": [
               {
-                "deck_a": "marker #716a3b",
-                "deck_b": "marker #447ba4",
-                "expected": "#716a3c",
+                "deck_a": "marker #696337",
+                "deck_b": "marker #3f7298",
+                "expected": "#696338",
                 "id": "marker_of_primary_A",
                 "pixel": "416,212",
                 "rejects": "LCC,LIN"
               },
               {
-                "deck_a": "marker #716a3b",
-                "deck_b": "marker #447ba4",
-                "expected": "#716a3c",
+                "deck_a": "marker #696337",
+                "deck_b": "marker #3f7298",
+                "expected": "#696338",
                 "id": "marker_of_neighbour_B",
                 "pixel": "416,212",
                 "rejects": "LCC,LIN"
               },
               {
-                "deck_a": "backdrop #6b7069",
-                "deck_b": "backdrop #5d625d",
-                "expected": "#6b7069",
+                "deck_a": "backdrop #636762",
+                "deck_b": "backdrop #575b56",
+                "expected": "#636762",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90",
                 "rejects": "LCC,LIN"
               },
               {
-                "deck_a": "backdrop #555a57",
-                "deck_b": "backdrop #666c67",
-                "expected": "#555a57",
+                "deck_a": "backdrop #4f5451",
+                "deck_b": "backdrop #5f645f",
+                "expected": "#4f5451",
                 "id": "backdrop_near_lamp_b",
                 "pixel": "500,70",
                 "rejects": "LCC,LIN"
               },
               {
-                "deck_a": "backdrop #555956",
-                "deck_b": "backdrop #4c4e49",
-                "expected": "#555956",
+                "deck_a": "backdrop #4e5351",
+                "deck_b": "backdrop #484944",
+                "expected": "#4e5351",
                 "id": "backdrop_far",
                 "pixel": "60,320",
                 "rejects": "LCC,LIN"
@@ -6626,14 +6666,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 15.878684035,
+                  "effective_intensity": 13.232236696,
                   "flicker_level": 0.661611835,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 17.382479246,
+                  "effective_intensity": 14.485399371,
                   "flicker_level": 0.724269969,
                   "id": "lamp-b"
                 }
@@ -6643,41 +6683,41 @@
             "primary": "A",
             "probes": [
               {
-                "deck_a": "marker #766f3d",
-                "deck_b": "marker #4884b0",
-                "expected": "#727255",
+                "deck_a": "marker #6e6739",
+                "deck_b": "marker #437aa3",
+                "expected": "#6a694f",
                 "id": "marker_of_primary_A",
                 "pixel": "416,212",
                 "rejects": "LCC,LIN"
               },
               {
-                "deck_a": "marker #766f3d",
-                "deck_b": "marker #4884b0",
-                "expected": "#727255",
+                "deck_a": "marker #6e6739",
+                "deck_b": "marker #437aa3",
+                "expected": "#6a694f",
                 "id": "marker_of_neighbour_B",
                 "pixel": "416,212",
                 "rejects": "LCC,LIN"
               },
               {
-                "deck_a": "backdrop #70756e",
-                "deck_b": "backdrop #636964",
-                "expected": "#6f746d",
+                "deck_a": "backdrop #676c66",
+                "deck_b": "backdrop #5d615d",
+                "expected": "#666b65",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90",
                 "rejects": "LCC,LIN"
               },
               {
-                "deck_a": "backdrop #595e5a",
-                "deck_b": "backdrop #6d746f",
-                "expected": "#5c615d",
+                "deck_a": "backdrop #535754",
+                "deck_b": "backdrop #656b66",
+                "expected": "#555a56",
                 "id": "backdrop_near_lamp_b",
                 "pixel": "500,70",
                 "rejects": "LCC,LIN"
               },
               {
-                "deck_a": "backdrop #585d59",
-                "deck_b": "backdrop #51534e",
-                "expected": "#575c58",
+                "deck_a": "backdrop #525754",
+                "deck_b": "backdrop #4c4e49",
+                "expected": "#515653",
                 "id": "backdrop_far",
                 "pixel": "60,320",
                 "rejects": "LCC,LIN"
@@ -6715,14 +6755,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 16.059592272,
+                  "effective_intensity": 13.38299356,
                   "flicker_level": 0.669149678,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 16.623442594,
+                  "effective_intensity": 13.852868828,
                   "flicker_level": 0.692643441,
                   "id": "lamp-b"
                 }
@@ -6732,41 +6772,41 @@
             "primary": "A",
             "probes": [
               {
-                "deck_a": "marker #776f3d",
-                "deck_b": "marker #4781ad",
-                "expected": "#6a7572",
+                "deck_a": "marker #6e6839",
+                "deck_b": "marker #4278a0",
+                "expected": "#626e6a",
                 "id": "marker_of_primary_A",
                 "pixel": "416,212",
                 "rejects": "LCC,LIN,LSR"
               },
               {
-                "deck_a": "marker #776f3d",
-                "deck_b": "marker #4781ad",
-                "expected": "#6a7572",
+                "deck_a": "marker #6e6839",
+                "deck_b": "marker #4278a0",
+                "expected": "#626e6a",
                 "id": "marker_of_neighbour_B",
                 "pixel": "416,212",
                 "rejects": "LCC,LIN,LSR"
               },
               {
-                "deck_a": "backdrop #70756e",
-                "deck_b": "backdrop #626762",
-                "expected": "#6c716a",
+                "deck_a": "backdrop #686d67",
+                "deck_b": "backdrop #5b605b",
+                "expected": "#646963",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90",
                 "rejects": "LCC,LIN"
               },
               {
-                "deck_a": "backdrop #5a5e5a",
-                "deck_b": "backdrop #6b716d",
-                "expected": "#606561",
+                "deck_a": "backdrop #535855",
+                "deck_b": "backdrop #646964",
+                "expected": "#595e5a",
                 "id": "backdrop_near_lamp_b",
                 "pixel": "500,70",
                 "rejects": "LCC,LIN"
               },
               {
-                "deck_a": "backdrop #595e5a",
-                "deck_b": "backdrop #50524d",
-                "expected": "#565a56",
+                "deck_a": "backdrop #525754",
+                "deck_b": "backdrop #4b4c47",
+                "expected": "#505450",
                 "id": "backdrop_far",
                 "pixel": "60,320",
                 "rejects": "LCC,LIN"
@@ -6804,14 +6844,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 16.188476585,
+                  "effective_intensity": 13.490397154,
                   "flicker_level": 0.674519858,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 15.54857607,
+                  "effective_intensity": 12.957146725,
                   "flicker_level": 0.647857336,
                   "id": "lamp-b"
                 }
@@ -6821,41 +6861,41 @@
             "primary": "A",
             "probes": [
               {
-                "deck_a": "marker #77703d",
-                "deck_b": "marker #457ea8",
-                "expected": "#597a90",
+                "deck_a": "marker #6e6839",
+                "deck_b": "marker #40759c",
+                "expected": "#537185",
                 "id": "marker_of_primary_A",
                 "pixel": "416,212",
                 "rejects": "LCC,LCE,LIN,LSR"
               },
               {
-                "deck_a": "marker #77703d",
-                "deck_b": "marker #457ea8",
-                "expected": "#597a90",
+                "deck_a": "marker #6e6839",
+                "deck_b": "marker #40759c",
+                "expected": "#537185",
                 "id": "marker_of_neighbour_B",
                 "pixel": "416,212",
                 "rejects": "LCC,LCE,LIN,LSR"
               },
               {
-                "deck_a": "backdrop #71766f",
-                "deck_b": "backdrop #5f645f",
-                "expected": "#656a65",
+                "deck_a": "backdrop #686d67",
+                "deck_b": "backdrop #595d58",
+                "expected": "#5e635d",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90",
                 "rejects": "LCC,LIN,LSR"
               },
               {
-                "deck_a": "backdrop #5a5f5b",
-                "deck_b": "backdrop #686e69",
-                "expected": "#646965",
+                "deck_a": "backdrop #535855",
+                "deck_b": "backdrop #616661",
+                "expected": "#5d625d",
                 "id": "backdrop_near_lamp_b",
                 "pixel": "500,70",
                 "rejects": "LCC,LIN,LSR"
               },
               {
-                "deck_a": "backdrop #595e5a",
-                "deck_b": "backdrop #4e504b",
-                "expected": "#525550",
+                "deck_a": "backdrop #535754",
+                "deck_b": "backdrop #494a45",
+                "expected": "#4c4f4a",
                 "id": "backdrop_far",
                 "pixel": "60,320",
                 "rejects": "LCC,LIN,LSR"
@@ -6893,14 +6933,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 15.626361016,
+                  "effective_intensity": 13.021967513,
                   "flicker_level": 0.651098376,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 14.973663048,
+                  "effective_intensity": 12.47805254,
                   "flicker_level": 0.623902627,
                   "id": "lamp-b"
                 }
@@ -6910,41 +6950,41 @@
             "primary": "A",
             "probes": [
               {
-                "deck_a": "marker #756e3d",
-                "deck_b": "marker #447ca5",
-                "expected": "#4c7a9d",
+                "deck_a": "marker #6d6639",
+                "deck_b": "marker #3f7399",
+                "expected": "#467292",
                 "id": "marker_of_primary_A",
                 "pixel": "416,212",
                 "rejects": "LCC,LCE,LIN,LSR"
               },
               {
-                "deck_a": "marker #756e3d",
-                "deck_b": "marker #447ca5",
-                "expected": "#4c7a9d",
+                "deck_a": "marker #6d6639",
+                "deck_b": "marker #3f7399",
+                "expected": "#467292",
                 "id": "marker_of_neighbour_B",
                 "pixel": "416,212",
                 "rejects": "LCC,LCE,LIN,LSR"
               },
               {
-                "deck_a": "backdrop #6f746d",
-                "deck_b": "backdrop #5e635e",
-                "expected": "#606560",
+                "deck_a": "backdrop #676b66",
+                "deck_b": "backdrop #585c57",
+                "expected": "#5a5e59",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90",
-                "rejects": "LCC,LCE,LIN,LSR"
+                "rejects": "LCC,LIN,LSR"
               },
               {
-                "deck_a": "backdrop #595d59",
-                "deck_b": "backdrop #676d68",
-                "expected": "#666b66",
+                "deck_a": "backdrop #525754",
+                "deck_b": "backdrop #606560",
+                "expected": "#5f645f",
                 "id": "backdrop_near_lamp_b",
                 "pixel": "500,70",
                 "rejects": "LCC,LCE,LIN,LSR"
               },
               {
-                "deck_a": "backdrop #585d59",
-                "deck_b": "backdrop #4d4f4a",
-                "expected": "#4e514c",
+                "deck_a": "backdrop #515653",
+                "deck_b": "backdrop #494944",
+                "expected": "#4a4b46",
                 "id": "backdrop_far",
                 "pixel": "60,320",
                 "rejects": "LCC,LIN,LSR"
@@ -6982,14 +7022,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 15.434935338,
+                  "effective_intensity": 12.862446115,
                   "flicker_level": 0.643122306,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 16.981468722,
+                  "effective_intensity": 14.151223935,
                   "flicker_level": 0.707561197,
                   "id": "lamp-b"
                 }
@@ -6999,37 +7039,37 @@
             "primary": "A",
             "probes": [
               {
-                "deck_a": "marker #756e3c",
-                "deck_b": "marker #4882ae",
-                "expected": "#4882ae",
+                "deck_a": "marker #6c6638",
+                "deck_b": "marker #4379a1",
+                "expected": "#4379a1",
                 "id": "marker_of_primary_A",
                 "pixel": "416,212"
               },
               {
-                "deck_a": "marker #756e3c",
-                "deck_b": "marker #4882ae",
-                "expected": "#4882ae",
+                "deck_a": "marker #6c6638",
+                "deck_b": "marker #4379a1",
+                "expected": "#4379a1",
                 "id": "marker_of_neighbour_B",
                 "pixel": "416,212"
               },
               {
-                "deck_a": "backdrop #6e736c",
-                "deck_b": "backdrop #636863",
-                "expected": "#636863",
+                "deck_a": "backdrop #666b65",
+                "deck_b": "backdrop #5c605c",
+                "expected": "#5c605c",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90"
               },
               {
-                "deck_a": "backdrop #585d59",
-                "deck_b": "backdrop #6c726e",
-                "expected": "#6c726e",
+                "deck_a": "backdrop #525653",
+                "deck_b": "backdrop #646a65",
+                "expected": "#646a65",
                 "id": "backdrop_near_lamp_b",
                 "pixel": "500,70"
               },
               {
-                "deck_a": "backdrop #575c58",
-                "deck_b": "backdrop #50534e",
-                "expected": "#50534e",
+                "deck_a": "backdrop #515653",
+                "deck_b": "backdrop #4b4d48",
+                "expected": "#4b4d48",
                 "id": "backdrop_far",
                 "pixel": "60,320"
               }
@@ -7066,14 +7106,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 16.81611638,
+                  "effective_intensity": 14.013430317,
                   "flicker_level": 0.700671516,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 17.160258817,
+                  "effective_intensity": 14.300215681,
                   "flicker_level": 0.715010784,
                   "id": "lamp-b"
                 }
@@ -7083,37 +7123,37 @@
             "primary": "A",
             "probes": [
               {
-                "deck_a": "marker #79713e",
-                "deck_b": "marker #4883af",
-                "expected": "#4883af",
+                "deck_a": "marker #70693a",
+                "deck_b": "marker #437aa2",
+                "expected": "#437aa2",
                 "id": "marker_of_primary_A",
                 "pixel": "416,212"
               },
               {
-                "deck_a": "marker #79713e",
-                "deck_b": "marker #4883af",
-                "expected": "#4883af",
+                "deck_a": "marker #70693a",
+                "deck_b": "marker #437aa2",
+                "expected": "#437aa2",
                 "id": "marker_of_neighbour_B",
                 "pixel": "416,212"
               },
               {
-                "deck_a": "backdrop #737870",
-                "deck_b": "backdrop #636864",
-                "expected": "#636864",
+                "deck_a": "backdrop #6a6f68",
+                "deck_b": "backdrop #5c615c",
+                "expected": "#5c615c",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90"
               },
               {
-                "deck_a": "backdrop #5b605c",
-                "deck_b": "backdrop #6c736e",
-                "expected": "#6c736e",
+                "deck_a": "backdrop #555956",
+                "deck_b": "backdrop #656b66",
+                "expected": "#656b66",
                 "id": "backdrop_near_lamp_b",
                 "pixel": "500,70"
               },
               {
-                "deck_a": "backdrop #5b5f5b",
-                "deck_b": "backdrop #50534e",
-                "expected": "#50534e",
+                "deck_a": "backdrop #545955",
+                "deck_b": "backdrop #4c4d48",
+                "expected": "#4c4d48",
                 "id": "backdrop_far",
                 "pixel": "60,320"
               }
@@ -7150,14 +7190,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 17.252816071,
+                  "effective_intensity": 14.377346726,
                   "flicker_level": 0.718867336,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 16.804971023,
+                  "effective_intensity": 14.004142519,
                   "flicker_level": 0.700207126,
                   "id": "lamp-b"
                 }
@@ -7216,7 +7256,7 @@
         ],
         "rejecting_probes": {
           "LIGHT_ON_THE_CAMERA_CLIP_CLOCK": 30,
-          "LIGHT_ON_THE_CLAMPED_EDIT_FRAME": 6,
+          "LIGHT_ON_THE_CLAMPED_EDIT_FRAME": 5,
           "LIGHT_ON_THE_INSTANCE_CLOCK": 30,
           "LIGHT_ON_THE_SHOT_RELATIVE_CLOCK": 12
         },
@@ -7271,14 +7311,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 16.81611638,
+                  "effective_intensity": 14.013430317,
                   "flicker_level": 0.700671516,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 17.160258817,
+                  "effective_intensity": 14.300215681,
                   "flicker_level": 0.715010784,
                   "id": "lamp-b"
                 }
@@ -7313,14 +7353,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 17.252816071,
+                  "effective_intensity": 14.377346726,
                   "flicker_level": 0.718867336,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 16.804971023,
+                  "effective_intensity": 14.004142519,
                   "flicker_level": 0.700207126,
                   "id": "lamp-b"
                 }
@@ -7330,44 +7370,42 @@
             "primary": "B",
             "probes": [
               {
-                "deck_a": "marker #7a723f",
-                "deck_b": "marker #4782ad",
-                "expected": "#7a723f",
+                "deck_a": "marker #716b3b",
+                "deck_b": "marker #4279a1",
+                "expected": "#716b3b",
                 "id": "marker_of_primary_B",
                 "pixel": "416,212",
                 "rejects": "LCC,LIN"
               },
               {
-                "deck_a": "marker #7a723f",
-                "deck_b": "marker #4782ad",
-                "expected": "#7a723f",
+                "deck_a": "marker #716b3b",
+                "deck_b": "marker #4279a1",
+                "expected": "#716b3b",
                 "id": "marker_of_neighbour_A",
                 "pixel": "416,212",
                 "rejects": "LCC,LIN"
               },
               {
-                "deck_a": "backdrop #747971",
-                "deck_b": "backdrop #626863",
-                "expected": "#747971",
+                "deck_a": "backdrop #6b706a",
+                "deck_b": "backdrop #5c605b",
+                "expected": "#6b706a",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90",
                 "rejects": "LCC,LIN"
               },
               {
-                "deck_a": "backdrop #5c615d",
-                "deck_b": "backdrop #6b726d",
-                "expected": "#5c615d",
+                "deck_a": "backdrop #565a57",
+                "deck_b": "backdrop #646a65",
+                "expected": "#565a57",
                 "id": "backdrop_near_lamp_b",
-                "pixel": "500,70",
-                "rejects": "LCC,LIN"
+                "pixel": "500,70"
               },
               {
-                "deck_a": "backdrop #5c605c",
-                "deck_b": "backdrop #50524d",
-                "expected": "#5c605c",
+                "deck_a": "backdrop #555a56",
+                "deck_b": "backdrop #4b4d48",
+                "expected": "#555a56",
                 "id": "backdrop_far",
-                "pixel": "60,320",
-                "rejects": "LCC,LIN"
+                "pixel": "60,320"
               }
             ],
             "states": {
@@ -7402,14 +7440,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 17.193579275,
+                  "effective_intensity": 14.327982729,
                   "flicker_level": 0.716399136,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 15.695172866,
+                  "effective_intensity": 13.079310721,
                   "flicker_level": 0.653965536,
                   "id": "lamp-b"
                 }
@@ -7419,44 +7457,42 @@
             "primary": "B",
             "probes": [
               {
-                "deck_a": "marker #7a723f",
-                "deck_b": "marker #457ea8",
-                "expected": "#7a7240",
+                "deck_a": "marker #716a3b",
+                "deck_b": "marker #41759c",
+                "expected": "#716a3c",
                 "id": "marker_of_primary_B",
                 "pixel": "416,212",
                 "rejects": "LCC,LIN"
               },
               {
-                "deck_a": "marker #7a723f",
-                "deck_b": "marker #457ea8",
-                "expected": "#7a7240",
+                "deck_a": "marker #716a3b",
+                "deck_b": "marker #41759c",
+                "expected": "#716a3c",
                 "id": "marker_of_neighbour_A",
                 "pixel": "416,212",
                 "rejects": "LCC,LIN"
               },
               {
-                "deck_a": "backdrop #747971",
-                "deck_b": "backdrop #606560",
-                "expected": "#747971",
+                "deck_a": "backdrop #6b7069",
+                "deck_b": "backdrop #595d59",
+                "expected": "#6b7069",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90",
                 "rejects": "LCC,LIN"
               },
               {
-                "deck_a": "backdrop #5c615d",
-                "deck_b": "backdrop #686f6a",
-                "expected": "#5c615d",
+                "deck_a": "backdrop #555a57",
+                "deck_b": "backdrop #616762",
+                "expected": "#555a57",
                 "id": "backdrop_near_lamp_b",
-                "pixel": "500,70",
-                "rejects": "LCC,LIN"
+                "pixel": "500,70"
               },
               {
-                "deck_a": "backdrop #5c605c",
-                "deck_b": "backdrop #4e504b",
-                "expected": "#5c605c",
+                "deck_a": "backdrop #555a56",
+                "deck_b": "backdrop #4a4b46",
+                "expected": "#555a56",
                 "id": "backdrop_far",
-                "pixel": "60,320",
-                "rejects": "LCC,LIN"
+                "pixel": "60,320"
               }
             ],
             "states": {
@@ -7491,14 +7527,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 17.36381015,
+                  "effective_intensity": 14.469841791,
                   "flicker_level": 0.72349209,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 16.337480036,
+                  "effective_intensity": 13.614566696,
                   "flicker_level": 0.680728335,
                   "id": "lamp-b"
                 }
@@ -7508,40 +7544,40 @@
             "primary": "B",
             "probes": [
               {
-                "deck_a": "marker #7a733f",
-                "deck_b": "marker #4780ab",
-                "expected": "#757555",
+                "deck_a": "marker #726b3b",
+                "deck_b": "marker #42779f",
+                "expected": "#6e6c4f",
                 "id": "marker_of_primary_B",
                 "pixel": "416,212",
                 "rejects": "LCC,LIN"
               },
               {
-                "deck_a": "marker #7a733f",
-                "deck_b": "marker #4780ab",
-                "expected": "#757555",
+                "deck_a": "marker #726b3b",
+                "deck_b": "marker #42779f",
+                "expected": "#6e6c4f",
                 "id": "marker_of_neighbour_A",
                 "pixel": "416,212",
                 "rejects": "LCC,LIN"
               },
               {
-                "deck_a": "backdrop #747972",
-                "deck_b": "backdrop #616661",
-                "expected": "#727770",
+                "deck_a": "backdrop #6b706a",
+                "deck_b": "backdrop #5b5f5a",
+                "expected": "#696e68",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90",
                 "rejects": "LCC,LIN"
               },
               {
-                "deck_a": "backdrop #5d615d",
-                "deck_b": "backdrop #6a716c",
-                "expected": "#5f635f",
+                "deck_a": "backdrop #565b57",
+                "deck_b": "backdrop #636864",
+                "expected": "#585d59",
                 "id": "backdrop_near_lamp_b",
                 "pixel": "500,70"
               },
               {
-                "deck_a": "backdrop #5c615c",
-                "deck_b": "backdrop #4f514c",
-                "expected": "#5b5f5a",
+                "deck_a": "backdrop #555a56",
+                "deck_b": "backdrop #4b4c47",
+                "expected": "#545954",
                 "id": "backdrop_far",
                 "pixel": "60,320"
               }
@@ -7578,14 +7614,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 17.771653339,
+                  "effective_intensity": 14.809711116,
                   "flicker_level": 0.740485556,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 18.179626592,
+                  "effective_intensity": 15.149688827,
                   "flicker_level": 0.757484441,
                   "id": "lamp-b"
                 }
@@ -7595,37 +7631,37 @@
             "primary": "B",
             "probes": [
               {
-                "deck_a": "marker #7c7440",
-                "deck_b": "marker #4a86b3",
-                "expected": "#6f7a77",
+                "deck_a": "marker #736c3b",
+                "deck_b": "marker #447da6",
+                "expected": "#66726e",
                 "id": "marker_of_primary_B",
                 "pixel": "416,212"
               },
               {
-                "deck_a": "marker #7c7440",
-                "deck_b": "marker #4a86b3",
-                "expected": "#6f7a77",
+                "deck_a": "marker #736c3b",
+                "deck_b": "marker #447da6",
+                "expected": "#66726e",
                 "id": "marker_of_neighbour_A",
                 "pixel": "416,212"
               },
               {
-                "deck_a": "backdrop #757a73",
-                "deck_b": "backdrop #656b66",
-                "expected": "#70756f",
+                "deck_a": "backdrop #6c716b",
+                "deck_b": "backdrop #5e635e",
+                "expected": "#686d67",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90"
               },
               {
-                "deck_a": "backdrop #5e625e",
-                "deck_b": "backdrop #6f7671",
-                "expected": "#646965",
+                "deck_a": "backdrop #575b58",
+                "deck_b": "backdrop #676d68",
+                "expected": "#5d615e",
                 "id": "backdrop_near_lamp_b",
                 "pixel": "500,70"
               },
               {
-                "deck_a": "backdrop #5d625d",
-                "deck_b": "backdrop #525550",
-                "expected": "#5a5e59",
+                "deck_a": "backdrop #565b57",
+                "deck_b": "backdrop #4d4f4a",
+                "expected": "#535753",
                 "id": "backdrop_far",
                 "pixel": "60,320"
               }
@@ -7662,14 +7698,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 17.647415684,
+                  "effective_intensity": 14.706179736,
                   "flicker_level": 0.735308987,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 18.470494998,
+                  "effective_intensity": 15.392079165,
                   "flicker_level": 0.769603958,
                   "id": "lamp-b"
                 }
@@ -7679,37 +7715,37 @@
             "primary": "B",
             "probes": [
               {
-                "deck_a": "marker #7b7340",
-                "deck_b": "marker #4a87b4",
-                "expected": "#5e819a",
+                "deck_a": "marker #726b3b",
+                "deck_b": "marker #457da7",
+                "expected": "#57778f",
                 "id": "marker_of_primary_B",
                 "pixel": "416,212"
               },
               {
-                "deck_a": "marker #7b7340",
-                "deck_b": "marker #4a87b4",
-                "expected": "#5e819a",
+                "deck_a": "marker #726b3b",
+                "deck_b": "marker #457da7",
+                "expected": "#57778f",
                 "id": "marker_of_neighbour_A",
                 "pixel": "416,212"
               },
               {
-                "deck_a": "backdrop #757a72",
-                "deck_b": "backdrop #666c67",
-                "expected": "#6b716b",
+                "deck_a": "backdrop #6c716a",
+                "deck_b": "backdrop #5f645f",
+                "expected": "#646963",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90"
               },
               {
-                "deck_a": "backdrop #5d625e",
-                "deck_b": "backdrop #6f7772",
-                "expected": "#69716c",
+                "deck_a": "backdrop #565b58",
+                "deck_b": "backdrop #686e69",
+                "expected": "#626864",
                 "id": "backdrop_near_lamp_b",
                 "pixel": "500,70"
               },
               {
-                "deck_a": "backdrop #5d615d",
-                "deck_b": "backdrop #525550",
-                "expected": "#565955",
+                "deck_a": "backdrop #565a57",
+                "deck_b": "backdrop #4e4f4b",
+                "expected": "#51534f",
                 "id": "backdrop_far",
                 "pixel": "60,320"
               }
@@ -7746,14 +7782,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 17.536986891,
+                  "effective_intensity": 14.614155742,
                   "flicker_level": 0.730707787,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 18.766024315,
+                  "effective_intensity": 15.638353596,
                   "flicker_level": 0.78191768,
                   "id": "lamp-b"
                 }
@@ -7763,39 +7799,39 @@
             "primary": "B",
             "probes": [
               {
-                "deck_a": "marker #7b733f",
-                "deck_b": "marker #4b88b5",
-                "expected": "#5286ac",
+                "deck_a": "marker #726b3b",
+                "deck_b": "marker #457ea8",
+                "expected": "#4c7ca0",
                 "id": "marker_of_primary_B",
                 "pixel": "416,212",
                 "rejects": "LCC,LIN,LSR"
               },
               {
-                "deck_a": "marker #7b733f",
-                "deck_b": "marker #4b88b5",
-                "expected": "#5286ac",
+                "deck_a": "marker #726b3b",
+                "deck_b": "marker #457ea8",
+                "expected": "#4c7ca0",
                 "id": "marker_of_neighbour_A",
                 "pixel": "416,212",
                 "rejects": "LCC,LIN,LSR"
               },
               {
-                "deck_a": "backdrop #757a72",
-                "deck_b": "backdrop #666c67",
-                "expected": "#686e68",
+                "deck_a": "backdrop #6c716a",
+                "deck_b": "backdrop #606460",
+                "expected": "#616661",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90"
               },
               {
-                "deck_a": "backdrop #5d625d",
-                "deck_b": "backdrop #707772",
-                "expected": "#6e7570",
+                "deck_a": "backdrop #565b57",
+                "deck_b": "backdrop #686f6a",
+                "expected": "#666d68",
                 "id": "backdrop_near_lamp_b",
                 "pixel": "500,70"
               },
               {
-                "deck_a": "backdrop #5c615d",
-                "deck_b": "backdrop #535651",
-                "expected": "#545752",
+                "deck_a": "backdrop #555a57",
+                "deck_b": "backdrop #4e504b",
+                "expected": "#4f514c",
                 "id": "backdrop_far",
                 "pixel": "60,320"
               }
@@ -7832,14 +7868,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 20.78831922,
+                  "effective_intensity": 17.32359935,
                   "flicker_level": 0.866179967,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 22.571080339,
+                  "effective_intensity": 18.809233616,
                   "flicker_level": 0.940461681,
                   "id": "lamp-b"
                 }
@@ -7849,39 +7885,39 @@
             "primary": "B",
             "probes": [
               {
-                "deck_a": "marker #847b44",
-                "deck_b": "marker #5193c4",
-                "expected": "#5193c4",
+                "deck_a": "marker #7a733f",
+                "deck_b": "marker #4b88b6",
+                "expected": "#4b88b6",
                 "id": "marker_of_primary_B",
                 "pixel": "416,212",
                 "rejects": "LCC,LIN,LSR"
               },
               {
-                "deck_a": "marker #847b44",
-                "deck_b": "marker #5193c4",
-                "expected": "#5193c4",
+                "deck_a": "marker #7a733f",
+                "deck_b": "marker #4b88b6",
+                "expected": "#4b88b6",
                 "id": "marker_of_neighbour_A",
                 "pixel": "416,212",
                 "rejects": "LCC,LIN,LSR"
               },
               {
-                "deck_a": "backdrop #7e837a",
-                "deck_b": "backdrop #6e7570",
-                "expected": "#6e7570",
+                "deck_a": "backdrop #747972",
+                "deck_b": "backdrop #666c68",
+                "expected": "#666c68",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90"
               },
               {
-                "deck_a": "backdrop #646963",
-                "deck_b": "backdrop #79817c",
-                "expected": "#79817c",
+                "deck_a": "backdrop #5d615d",
+                "deck_b": "backdrop #707773",
+                "expected": "#707773",
                 "id": "backdrop_near_lamp_b",
                 "pixel": "500,70"
               },
               {
-                "deck_a": "backdrop #636863",
-                "deck_b": "backdrop #595c57",
-                "expected": "#595c57",
+                "deck_a": "backdrop #5c615c",
+                "deck_b": "backdrop #535651",
+                "expected": "#535651",
                 "id": "backdrop_far",
                 "pixel": "60,320"
               }
@@ -7918,14 +7954,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 18.052515735,
+                  "effective_intensity": 15.043763113,
                   "flicker_level": 0.752188156,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 19.604189205,
+                  "effective_intensity": 16.336824337,
                   "flicker_level": 0.816841217,
                   "id": "lamp-b"
                 }
@@ -7935,37 +7971,37 @@
             "primary": "B",
             "probes": [
               {
-                "deck_a": "marker #7c7540",
-                "deck_b": "marker #4c8ab9",
-                "expected": "#4c8ab9",
+                "deck_a": "marker #736c3c",
+                "deck_b": "marker #4780ab",
+                "expected": "#4780ab",
                 "id": "marker_of_primary_B",
                 "pixel": "416,212"
               },
               {
-                "deck_a": "marker #7c7540",
-                "deck_b": "marker #4c8ab9",
-                "expected": "#4c8ab9",
+                "deck_a": "marker #736c3c",
+                "deck_b": "marker #4780ab",
+                "expected": "#4780ab",
                 "id": "marker_of_neighbour_A",
                 "pixel": "416,212"
               },
               {
-                "deck_a": "backdrop #767b73",
-                "deck_b": "backdrop #686e69",
-                "expected": "#686e69",
+                "deck_a": "backdrop #6d726b",
+                "deck_b": "backdrop #616661",
+                "expected": "#616661",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90"
               },
               {
-                "deck_a": "backdrop #5e635e",
-                "deck_b": "backdrop #727a75",
-                "expected": "#727a75",
+                "deck_a": "backdrop #575c58",
+                "deck_b": "backdrop #6a716c",
+                "expected": "#6a716c",
                 "id": "backdrop_near_lamp_b",
                 "pixel": "500,70"
               },
               {
-                "deck_a": "backdrop #5d625e",
-                "deck_b": "backdrop #545752",
-                "expected": "#545752",
+                "deck_a": "backdrop #565b58",
+                "deck_b": "backdrop #4f514c",
+                "expected": "#4f514c",
                 "id": "backdrop_far",
                 "pixel": "60,320"
               }
@@ -8002,14 +8038,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 19.613767169,
+                  "effective_intensity": 16.344805975,
                   "flicker_level": 0.817240299,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 20.707232242,
+                  "effective_intensity": 17.256026868,
                   "flicker_level": 0.862801343,
                   "id": "lamp-b"
                 }
@@ -8066,8 +8102,8 @@
           41
         ],
         "rejecting_probes": {
-          "LIGHT_ON_THE_CAMERA_CLIP_CLOCK": 17,
-          "LIGHT_ON_THE_INSTANCE_CLOCK": 17,
+          "LIGHT_ON_THE_CAMERA_CLIP_CLOCK": 13,
+          "LIGHT_ON_THE_INSTANCE_CLOCK": 13,
           "LIGHT_ON_THE_SHOT_RELATIVE_CLOCK": 4
         },
         "role": "window [30, 42): the neighbour is A after its end, held; the light follows the real edit frame",
@@ -8121,14 +8157,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 16.059592272,
+                  "effective_intensity": 13.38299356,
                   "flicker_level": 0.669149678,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 16.623442594,
+                  "effective_intensity": 13.852868828,
                   "flicker_level": 0.692643441,
                   "id": "lamp-b"
                 }
@@ -8163,14 +8199,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 16.188476585,
+                  "effective_intensity": 13.490397154,
                   "flicker_level": 0.674519858,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 15.54857607,
+                  "effective_intensity": 12.957146725,
                   "flicker_level": 0.647857336,
                   "id": "lamp-b"
                 }
@@ -8180,37 +8216,37 @@
             "primary": "A",
             "probes": [
               {
-                "deck_a": "marker #77703d",
-                "deck_b": "marker #457ea8",
-                "expected": "#77703d",
+                "deck_a": "marker #6e6839",
+                "deck_b": "marker #40759c",
+                "expected": "#6e6839",
                 "id": "marker_of_primary_A",
                 "pixel": "416,212"
               },
               {
-                "deck_a": "marker #77703d",
-                "deck_b": "marker #457ea8",
-                "expected": "#77703d",
+                "deck_a": "marker #6e6839",
+                "deck_b": "marker #40759c",
+                "expected": "#6e6839",
                 "id": "marker_of_neighbour_B",
                 "pixel": "416,212"
               },
               {
-                "deck_a": "backdrop #71766f",
-                "deck_b": "backdrop #5f645f",
-                "expected": "#71766f",
+                "deck_a": "backdrop #686d67",
+                "deck_b": "backdrop #595d58",
+                "expected": "#686d67",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90"
               },
               {
-                "deck_a": "backdrop #5a5f5b",
-                "deck_b": "backdrop #686e69",
-                "expected": "#5a5f5b",
+                "deck_a": "backdrop #535855",
+                "deck_b": "backdrop #616661",
+                "expected": "#535855",
                 "id": "backdrop_near_lamp_b",
                 "pixel": "500,70"
               },
               {
-                "deck_a": "backdrop #595e5a",
-                "deck_b": "backdrop #4e504b",
-                "expected": "#595e5a",
+                "deck_a": "backdrop #535754",
+                "deck_b": "backdrop #494a45",
+                "expected": "#535754",
                 "id": "backdrop_far",
                 "pixel": "60,320"
               }
@@ -8247,14 +8283,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 15.31968303,
+                  "effective_intensity": 12.766402525,
                   "flicker_level": 0.638320126,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 14.65310844,
+                  "effective_intensity": 12.2109237,
                   "flicker_level": 0.610546185,
                   "id": "lamp-b"
                 }
@@ -8264,41 +8300,41 @@
             "primary": "A",
             "probes": [
               {
-                "deck_a": "marker #746d3c",
-                "deck_b": "marker #447ba4",
-                "expected": "#746d3d",
+                "deck_a": "marker #6c6638",
+                "deck_b": "marker #3f7298",
+                "expected": "#6c6639",
                 "id": "marker_of_primary_A",
                 "pixel": "416,212",
                 "rejects": "LIN"
               },
               {
-                "deck_a": "marker #746d3c",
-                "deck_b": "marker #447ba4",
-                "expected": "#746d3d",
+                "deck_a": "marker #6c6638",
+                "deck_b": "marker #3f7298",
+                "expected": "#6c6639",
                 "id": "marker_of_neighbour_B",
                 "pixel": "416,212",
                 "rejects": "LIN"
               },
               {
-                "deck_a": "backdrop #6e736c",
-                "deck_b": "backdrop #5d625d",
-                "expected": "#6e736c",
+                "deck_a": "backdrop #666b65",
+                "deck_b": "backdrop #575b56",
+                "expected": "#666b65",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90",
                 "rejects": "LIN"
               },
               {
-                "deck_a": "backdrop #585d59",
-                "deck_b": "backdrop #666c67",
-                "expected": "#585d59",
+                "deck_a": "backdrop #515653",
+                "deck_b": "backdrop #5f645f",
+                "expected": "#515653",
                 "id": "backdrop_near_lamp_b",
                 "pixel": "500,70",
                 "rejects": "LIN"
               },
               {
-                "deck_a": "backdrop #575c58",
-                "deck_b": "backdrop #4c4e49",
-                "expected": "#575c58",
+                "deck_a": "backdrop #515653",
+                "deck_b": "backdrop #484944",
+                "expected": "#515653",
                 "id": "backdrop_far",
                 "pixel": "60,320",
                 "rejects": "LIN"
@@ -8336,14 +8372,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 15.74945816,
+                  "effective_intensity": 13.124548467,
                   "flicker_level": 0.656227423,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 18.066061711,
+                  "effective_intensity": 15.055051426,
                   "flicker_level": 0.752752571,
                   "id": "lamp-b"
                 }
@@ -8353,41 +8389,40 @@
             "primary": "A",
             "probes": [
               {
-                "deck_a": "marker #766e3d",
-                "deck_b": "marker #4a86b3",
-                "expected": "#727156",
+                "deck_a": "marker #6d6739",
+                "deck_b": "marker #447ca6",
+                "expected": "#696a50",
                 "id": "marker_of_primary_A",
                 "pixel": "416,212",
                 "rejects": "LIN"
               },
               {
-                "deck_a": "marker #766e3d",
-                "deck_b": "marker #4a86b3",
-                "expected": "#727156",
+                "deck_a": "marker #6d6739",
+                "deck_b": "marker #447ca6",
+                "expected": "#696a50",
                 "id": "marker_of_neighbour_B",
                 "pixel": "416,212",
                 "rejects": "LIN"
               },
               {
-                "deck_a": "backdrop #6f746d",
-                "deck_b": "backdrop #656b66",
-                "expected": "#6e736c",
+                "deck_a": "backdrop #676c66",
+                "deck_b": "backdrop #5e635e",
+                "expected": "#666b65",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90",
                 "rejects": "LIN"
               },
               {
-                "deck_a": "backdrop #595e5a",
-                "deck_b": "backdrop #6e7571",
-                "expected": "#5c615d",
+                "deck_a": "backdrop #525754",
+                "deck_b": "backdrop #676d68",
+                "expected": "#555a57",
                 "id": "backdrop_near_lamp_b",
-                "pixel": "500,70",
-                "rejects": "LIN"
+                "pixel": "500,70"
               },
               {
-                "deck_a": "backdrop #585d59",
-                "deck_b": "backdrop #525550",
-                "expected": "#575c58",
+                "deck_a": "backdrop #525654",
+                "deck_b": "backdrop #4d4f4a",
+                "expected": "#515553",
                 "id": "backdrop_far",
                 "pixel": "60,320",
                 "rejects": "LIN"
@@ -8425,14 +8460,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 16.81611638,
+                  "effective_intensity": 14.013430317,
                   "flicker_level": 0.700671516,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 17.160258817,
+                  "effective_intensity": 14.300215681,
                   "flicker_level": 0.715010784,
                   "id": "lamp-b"
                 }
@@ -8442,41 +8477,41 @@
             "primary": "A",
             "probes": [
               {
-                "deck_a": "marker #79713e",
-                "deck_b": "marker #4883af",
-                "expected": "#6c7774",
+                "deck_a": "marker #70693a",
+                "deck_b": "marker #437aa2",
+                "expected": "#646f6b",
                 "id": "marker_of_primary_A",
                 "pixel": "416,212",
                 "rejects": "LIN"
               },
               {
-                "deck_a": "marker #79713e",
-                "deck_b": "marker #4883af",
-                "expected": "#6c7774",
+                "deck_a": "marker #70693a",
+                "deck_b": "marker #437aa2",
+                "expected": "#646f6b",
                 "id": "marker_of_neighbour_B",
                 "pixel": "416,212",
                 "rejects": "LIN"
               },
               {
-                "deck_a": "backdrop #737870",
-                "deck_b": "backdrop #636864",
-                "expected": "#6e736c",
+                "deck_a": "backdrop #6a6f68",
+                "deck_b": "backdrop #5c615c",
+                "expected": "#666b64",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90",
                 "rejects": "LIN"
               },
               {
-                "deck_a": "backdrop #5b605c",
-                "deck_b": "backdrop #6c736e",
-                "expected": "#616762",
+                "deck_a": "backdrop #555956",
+                "deck_b": "backdrop #656b66",
+                "expected": "#5b5f5c",
                 "id": "backdrop_near_lamp_b",
                 "pixel": "500,70",
                 "rejects": "LIN"
               },
               {
-                "deck_a": "backdrop #5b5f5b",
-                "deck_b": "backdrop #50534e",
-                "expected": "#585b57",
+                "deck_a": "backdrop #545955",
+                "deck_b": "backdrop #4c4d48",
+                "expected": "#515551",
                 "id": "backdrop_far",
                 "pixel": "60,320"
               }
@@ -8513,14 +8548,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 17.252816071,
+                  "effective_intensity": 14.377346726,
                   "flicker_level": 0.718867336,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 16.804971023,
+                  "effective_intensity": 14.004142519,
                   "flicker_level": 0.700207126,
                   "id": "lamp-b"
                 }
@@ -8530,41 +8565,41 @@
             "primary": "B",
             "probes": [
               {
-                "deck_a": "marker #7a723f",
-                "deck_b": "marker #4782ad",
-                "expected": "#5c7d94",
+                "deck_a": "marker #716b3b",
+                "deck_b": "marker #4279a1",
+                "expected": "#55758a",
                 "id": "marker_of_primary_B",
                 "pixel": "416,212",
                 "rejects": "LIN"
               },
               {
-                "deck_a": "marker #7a723f",
-                "deck_b": "marker #4782ad",
-                "expected": "#5c7d94",
+                "deck_a": "marker #716b3b",
+                "deck_b": "marker #4279a1",
+                "expected": "#55758a",
                 "id": "marker_of_neighbour_A",
                 "pixel": "416,212",
                 "rejects": "LIN"
               },
               {
-                "deck_a": "backdrop #747971",
-                "deck_b": "backdrop #626863",
-                "expected": "#686e68",
+                "deck_a": "backdrop #6b706a",
+                "deck_b": "backdrop #5c605b",
+                "expected": "#616660",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90",
                 "rejects": "LIN"
               },
               {
-                "deck_a": "backdrop #5c615d",
-                "deck_b": "backdrop #6b726d",
-                "expected": "#666d68",
+                "deck_a": "backdrop #565a57",
+                "deck_b": "backdrop #646a65",
+                "expected": "#606561",
                 "id": "backdrop_near_lamp_b",
                 "pixel": "500,70",
                 "rejects": "LIN"
               },
               {
-                "deck_a": "backdrop #5c605c",
-                "deck_b": "backdrop #50524d",
-                "expected": "#545752",
+                "deck_a": "backdrop #555a56",
+                "deck_b": "backdrop #4b4d48",
+                "expected": "#4e524d",
                 "id": "backdrop_far",
                 "pixel": "60,320",
                 "rejects": "LIN"
@@ -8602,14 +8637,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 17.208546117,
+                  "effective_intensity": 14.340455097,
                   "flicker_level": 0.717022755,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 16.050359392,
+                  "effective_intensity": 13.375299493,
                   "flicker_level": 0.668764975,
                   "id": "lamp-b"
                 }
@@ -8619,41 +8654,41 @@
             "primary": "B",
             "probes": [
               {
-                "deck_a": "marker #7a723f",
-                "deck_b": "marker #4680aa",
-                "expected": "#4e7ea2",
+                "deck_a": "marker #716a3b",
+                "deck_b": "marker #41769e",
+                "expected": "#497597",
                 "id": "marker_of_primary_B",
                 "pixel": "416,212",
                 "rejects": "LIN,LSR"
               },
               {
-                "deck_a": "marker #7a723f",
-                "deck_b": "marker #4680aa",
-                "expected": "#4e7ea2",
+                "deck_a": "marker #716a3b",
+                "deck_b": "marker #41769e",
+                "expected": "#497597",
                 "id": "marker_of_neighbour_A",
                 "pixel": "416,212",
                 "rejects": "LIN,LSR"
               },
               {
-                "deck_a": "backdrop #747971",
-                "deck_b": "backdrop #606661",
-                "expected": "#636863",
+                "deck_a": "backdrop #6b7069",
+                "deck_b": "backdrop #5a5e59",
+                "expected": "#5c605b",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90",
                 "rejects": "LIN,LSR"
               },
               {
-                "deck_a": "backdrop #5c615d",
-                "deck_b": "backdrop #69706b",
-                "expected": "#686e6a",
+                "deck_a": "backdrop #555a57",
+                "deck_b": "backdrop #626863",
+                "expected": "#616762",
                 "id": "backdrop_near_lamp_b",
                 "pixel": "500,70",
                 "rejects": "LIN,LSR"
               },
               {
-                "deck_a": "backdrop #5c605c",
-                "deck_b": "backdrop #4f514c",
-                "expected": "#51534e",
+                "deck_a": "backdrop #555a56",
+                "deck_b": "backdrop #4a4b46",
+                "expected": "#4b4d48",
                 "id": "backdrop_far",
                 "pixel": "60,320",
                 "rejects": "LIN"
@@ -8691,14 +8726,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 17.105571697,
+                  "effective_intensity": 14.254643081,
                   "flicker_level": 0.712732154,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 15.189435886,
+                  "effective_intensity": 12.657863238,
                   "flicker_level": 0.632893162,
                   "id": "lamp-b"
                 }
@@ -8708,41 +8743,41 @@
             "primary": "B",
             "probes": [
               {
-                "deck_a": "marker #7a723f",
-                "deck_b": "marker #457da6",
-                "expected": "#457da6",
+                "deck_a": "marker #716a3b",
+                "deck_b": "marker #40749a",
+                "expected": "#40749a",
                 "id": "marker_of_primary_B",
                 "pixel": "416,212",
                 "rejects": "LIN,LSR"
               },
               {
-                "deck_a": "marker #7a723f",
-                "deck_b": "marker #457da6",
-                "expected": "#457da6",
+                "deck_a": "marker #716a3b",
+                "deck_b": "marker #40749a",
+                "expected": "#40749a",
                 "id": "marker_of_neighbour_A",
                 "pixel": "416,212",
                 "rejects": "LIN,LSR"
               },
               {
-                "deck_a": "backdrop #737871",
-                "deck_b": "backdrop #5f635e",
-                "expected": "#5f635e",
+                "deck_a": "backdrop #6b7069",
+                "deck_b": "backdrop #585c57",
+                "expected": "#585c57",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90",
                 "rejects": "LIN,LSR"
               },
               {
-                "deck_a": "backdrop #5c615c",
-                "deck_b": "backdrop #676d68",
-                "expected": "#676d68",
+                "deck_a": "backdrop #555a57",
+                "deck_b": "backdrop #606560",
+                "expected": "#606560",
                 "id": "backdrop_near_lamp_b",
                 "pixel": "500,70",
                 "rejects": "LIN,LSR"
               },
               {
-                "deck_a": "backdrop #5b605c",
-                "deck_b": "backdrop #4d4f4a",
-                "expected": "#4d4f4a",
+                "deck_a": "backdrop #545956",
+                "deck_b": "backdrop #494a45",
+                "expected": "#494a45",
                 "id": "backdrop_far",
                 "pixel": "60,320",
                 "rejects": "LIN,LSR"
@@ -8780,14 +8815,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 17.771653339,
+                  "effective_intensity": 14.809711116,
                   "flicker_level": 0.740485556,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 18.179626592,
+                  "effective_intensity": 15.149688827,
                   "flicker_level": 0.757484441,
                   "id": "lamp-b"
                 }
@@ -8797,41 +8832,41 @@
             "primary": "B",
             "probes": [
               {
-                "deck_a": "marker #7c7440",
-                "deck_b": "marker #4a86b3",
-                "expected": "#4a86b3",
+                "deck_a": "marker #736c3b",
+                "deck_b": "marker #447da6",
+                "expected": "#447da6",
                 "id": "marker_of_primary_B",
                 "pixel": "416,212",
                 "rejects": "LIN"
               },
               {
-                "deck_a": "marker #7c7440",
-                "deck_b": "marker #4a86b3",
-                "expected": "#4a86b3",
+                "deck_a": "marker #736c3b",
+                "deck_b": "marker #447da6",
+                "expected": "#447da6",
                 "id": "marker_of_neighbour_A",
                 "pixel": "416,212",
                 "rejects": "LIN"
               },
               {
-                "deck_a": "backdrop #757a73",
-                "deck_b": "backdrop #656b66",
-                "expected": "#656b66",
+                "deck_a": "backdrop #6c716b",
+                "deck_b": "backdrop #5e635e",
+                "expected": "#5e635e",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90",
                 "rejects": "LIN"
               },
               {
-                "deck_a": "backdrop #5e625e",
-                "deck_b": "backdrop #6f7671",
-                "expected": "#6f7671",
+                "deck_a": "backdrop #575b58",
+                "deck_b": "backdrop #676d68",
+                "expected": "#676d68",
                 "id": "backdrop_near_lamp_b",
                 "pixel": "500,70",
                 "rejects": "LIN"
               },
               {
-                "deck_a": "backdrop #5d625d",
-                "deck_b": "backdrop #525550",
-                "expected": "#525550",
+                "deck_a": "backdrop #565b57",
+                "deck_b": "backdrop #4d4f4a",
+                "expected": "#4d4f4a",
                 "id": "backdrop_far",
                 "pixel": "60,320",
                 "rejects": "LIN"
@@ -8869,14 +8904,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 17.647415684,
+                  "effective_intensity": 14.706179736,
                   "flicker_level": 0.735308987,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 18.470494998,
+                  "effective_intensity": 15.392079165,
                   "flicker_level": 0.769603958,
                   "id": "lamp-b"
                 }
@@ -8923,7 +8958,7 @@
         ],
         "neighbour_held_frames": [],
         "rejecting_probes": {
-          "LIGHT_ON_THE_INSTANCE_CLOCK": 34,
+          "LIGHT_ON_THE_INSTANCE_CLOCK": 33,
           "LIGHT_ON_THE_SHOT_RELATIVE_CLOCK": 9
         },
         "role": "control: the instance RUNS with a start different from the shot's, yet the light still follows the edit clock, not the instance clock",
@@ -8977,14 +9012,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 15.300090755,
+                  "effective_intensity": 12.750075629,
                   "flicker_level": 0.637503781,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 19.453638619,
+                  "effective_intensity": 16.211365516,
                   "flicker_level": 0.810568276,
                   "id": "lamp-b"
                 }
@@ -9019,14 +9054,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 14.927355306,
+                  "effective_intensity": 12.439462755,
                   "flicker_level": 0.621973138,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 19.262090039,
+                  "effective_intensity": 16.051741699,
                   "flicker_level": 0.802587085,
                   "id": "lamp-b"
                 }
@@ -9036,40 +9071,38 @@
             "primary": "A",
             "probes": [
               {
-                "deck_a": "marker #736c3c",
-                "deck_b": "marker #4c89b7",
-                "expected": "#736c3c",
+                "deck_a": "marker #6b6538",
+                "deck_b": "marker #4680aa",
+                "expected": "#6b6538",
                 "id": "marker_of_primary_A",
-                "pixel": "416,212",
-                "rejects": "LNF"
+                "pixel": "416,212"
               },
               {
-                "deck_a": "marker #736c3c",
-                "deck_b": "marker #4c89b7",
-                "expected": "#736c3c",
+                "deck_a": "marker #6b6538",
+                "deck_b": "marker #4680aa",
+                "expected": "#6b6538",
                 "id": "marker_of_neighbour_B",
-                "pixel": "416,212",
-                "rejects": "LNF"
+                "pixel": "416,212"
               },
               {
-                "deck_a": "backdrop #6d726b",
-                "deck_b": "backdrop #676e69",
-                "expected": "#6d726b",
+                "deck_a": "backdrop #656964",
+                "deck_b": "backdrop #606661",
+                "expected": "#656964",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90",
                 "rejects": "LNF"
               },
               {
-                "deck_a": "backdrop #575c58",
-                "deck_b": "backdrop #717974",
-                "expected": "#575c58",
+                "deck_a": "backdrop #505553",
+                "deck_b": "backdrop #69706b",
+                "expected": "#505553",
                 "id": "backdrop_near_lamp_b",
                 "pixel": "500,70"
               },
               {
-                "deck_a": "backdrop #565b57",
-                "deck_b": "backdrop #545752",
-                "expected": "#565b57",
+                "deck_a": "backdrop #505552",
+                "deck_b": "backdrop #4f514c",
+                "expected": "#505552",
                 "id": "backdrop_far",
                 "pixel": "60,320"
               }
@@ -9106,14 +9139,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 15.999249306,
+                  "effective_intensity": 13.332707755,
                   "flicker_level": 0.666635388,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 16.361224748,
+                  "effective_intensity": 13.634353957,
                   "flicker_level": 0.681717698,
                   "id": "lamp-b"
                 }
@@ -9123,37 +9156,37 @@
             "primary": "A",
             "probes": [
               {
-                "deck_a": "marker #766f3d",
-                "deck_b": "marker #4781ab",
-                "expected": "#766f3e",
+                "deck_a": "marker #6e6739",
+                "deck_b": "marker #42779f",
+                "expected": "#6e673a",
                 "id": "marker_of_primary_A",
                 "pixel": "416,212"
               },
               {
-                "deck_a": "marker #766f3d",
-                "deck_b": "marker #4781ab",
-                "expected": "#766f3e",
+                "deck_a": "marker #6e6739",
+                "deck_b": "marker #42779f",
+                "expected": "#6e673a",
                 "id": "marker_of_neighbour_B",
                 "pixel": "416,212"
               },
               {
-                "deck_a": "backdrop #70756e",
-                "deck_b": "backdrop #616662",
-                "expected": "#70756e",
+                "deck_a": "backdrop #686c66",
+                "deck_b": "backdrop #5b5f5a",
+                "expected": "#686c66",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90"
               },
               {
-                "deck_a": "backdrop #595e5a",
-                "deck_b": "backdrop #6a716c",
-                "expected": "#595e5a",
+                "deck_a": "backdrop #535855",
+                "deck_b": "backdrop #636864",
+                "expected": "#535855",
                 "id": "backdrop_near_lamp_b",
                 "pixel": "500,70"
               },
               {
-                "deck_a": "backdrop #595e5a",
-                "deck_b": "backdrop #4f514c",
-                "expected": "#595e5a",
+                "deck_a": "backdrop #525754",
+                "deck_b": "backdrop #4b4c47",
+                "expected": "#525754",
                 "id": "backdrop_far",
                 "pixel": "60,320"
               }
@@ -9190,14 +9223,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 13.947323369,
+                  "effective_intensity": 11.622769474,
                   "flicker_level": 0.581138474,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 16.324032296,
+                  "effective_intensity": 13.603360247,
                   "flicker_level": 0.680168012,
                   "id": "lamp-b"
                 }
@@ -9207,41 +9240,41 @@
             "primary": "A",
             "probes": [
               {
-                "deck_a": "marker #70693a",
-                "deck_b": "marker #4780ab",
-                "expected": "#6c6c52",
+                "deck_a": "marker #686236",
+                "deck_b": "marker #42779f",
+                "expected": "#65654c",
                 "id": "marker_of_primary_A",
                 "pixel": "416,212",
                 "rejects": "LNF"
               },
               {
-                "deck_a": "marker #70693a",
-                "deck_b": "marker #4780ab",
-                "expected": "#6c6c52",
+                "deck_a": "marker #686236",
+                "deck_b": "marker #42779f",
+                "expected": "#65654c",
                 "id": "marker_of_neighbour_B",
                 "pixel": "416,212",
                 "rejects": "LNF"
               },
               {
-                "deck_a": "backdrop #6a6e68",
-                "deck_b": "backdrop #616661",
-                "expected": "#696d67",
+                "deck_a": "backdrop #626661",
+                "deck_b": "backdrop #5b5f5a",
+                "expected": "#616560",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90",
                 "rejects": "LNF"
               },
               {
-                "deck_a": "backdrop #545956",
-                "deck_b": "backdrop #6a716c",
-                "expected": "#575c59",
+                "deck_a": "backdrop #4e5351",
+                "deck_b": "backdrop #636863",
+                "expected": "#515653",
                 "id": "backdrop_near_lamp_b",
                 "pixel": "500,70",
                 "rejects": "LNF"
               },
               {
-                "deck_a": "backdrop #545955",
-                "deck_b": "backdrop #4f514c",
-                "expected": "#535854",
+                "deck_a": "backdrop #4e5250",
+                "deck_b": "backdrop #4b4c47",
+                "expected": "#4e514f",
                 "id": "backdrop_far",
                 "pixel": "60,320",
                 "rejects": "LNF"
@@ -9279,14 +9312,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 14.1669479,
+                  "effective_intensity": 11.805789917,
                   "flicker_level": 0.590289496,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 17.035795058,
+                  "effective_intensity": 14.196495881,
                   "flicker_level": 0.709824794,
                   "id": "lamp-b"
                 }
@@ -9296,37 +9329,37 @@
             "primary": "A",
             "probes": [
               {
-                "deck_a": "marker #716a3a",
-                "deck_b": "marker #4883ae",
-                "expected": "#667372",
+                "deck_a": "marker #696337",
+                "deck_b": "marker #4379a2",
+                "expected": "#5e6b6a",
                 "id": "marker_of_primary_A",
                 "pixel": "416,212"
               },
               {
-                "deck_a": "marker #716a3a",
-                "deck_b": "marker #4883ae",
-                "expected": "#667372",
+                "deck_a": "marker #696337",
+                "deck_b": "marker #4379a2",
+                "expected": "#5e6b6a",
                 "id": "marker_of_neighbour_B",
                 "pixel": "416,212"
               },
               {
-                "deck_a": "backdrop #6a6f69",
-                "deck_b": "backdrop #636863",
-                "expected": "#686d67",
+                "deck_a": "backdrop #626762",
+                "deck_b": "backdrop #5c615c",
+                "expected": "#606560",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90"
               },
               {
-                "deck_a": "backdrop #555a56",
-                "deck_b": "backdrop #6c736e",
-                "expected": "#5d635f",
+                "deck_a": "backdrop #4f5451",
+                "deck_b": "backdrop #656a65",
+                "expected": "#575c58",
                 "id": "backdrop_near_lamp_b",
                 "pixel": "500,70"
               },
               {
-                "deck_a": "backdrop #545956",
-                "deck_b": "backdrop #50534e",
-                "expected": "#535753",
+                "deck_a": "backdrop #4e5351",
+                "deck_b": "backdrop #4c4d48",
+                "expected": "#4d514e",
                 "id": "backdrop_far",
                 "pixel": "60,320"
               }
@@ -9363,14 +9396,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 14.821529161,
+                  "effective_intensity": 12.3512743,
                   "flicker_level": 0.617563715,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 18.584687662,
+                  "effective_intensity": 15.487239718,
                   "flicker_level": 0.774361986,
                   "id": "lamp-b"
                 }
@@ -9380,44 +9413,43 @@
             "primary": "B",
             "probes": [
               {
-                "deck_a": "marker #736c3b",
-                "deck_b": "marker #4a87b5",
-                "expected": "#5a7f9a",
+                "deck_a": "marker #6b6437",
+                "deck_b": "marker #457ea8",
+                "expected": "#54768f",
                 "id": "marker_of_primary_B",
                 "pixel": "416,212",
                 "rejects": "LNF"
               },
               {
-                "deck_a": "marker #736c3b",
-                "deck_b": "marker #4a87b5",
-                "expected": "#5a7f9a",
+                "deck_a": "marker #6b6437",
+                "deck_b": "marker #457ea8",
+                "expected": "#54768f",
                 "id": "marker_of_neighbour_A",
                 "pixel": "416,212",
                 "rejects": "LNF"
               },
               {
-                "deck_a": "backdrop #6c716b",
-                "deck_b": "backdrop #666c67",
-                "expected": "#686e68",
+                "deck_a": "backdrop #646964",
+                "deck_b": "backdrop #5f645f",
+                "expected": "#616661",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90",
                 "rejects": "LNF"
               },
               {
-                "deck_a": "backdrop #575b58",
-                "deck_b": "backdrop #707772",
-                "expected": "#696f6a",
+                "deck_a": "backdrop #505552",
+                "deck_b": "backdrop #686e69",
+                "expected": "#616762",
                 "id": "backdrop_near_lamp_b",
                 "pixel": "500,70",
                 "rejects": "LNF"
               },
               {
-                "deck_a": "backdrop #565b57",
-                "deck_b": "backdrop #535551",
-                "expected": "#545753",
+                "deck_a": "backdrop #505452",
+                "deck_b": "backdrop #4e504b",
+                "expected": "#4f514d",
                 "id": "backdrop_far",
-                "pixel": "60,320",
-                "rejects": "LNF"
+                "pixel": "60,320"
               }
             ],
             "states": {
@@ -9452,14 +9484,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 15.532665215,
+                  "effective_intensity": 12.943887679,
                   "flicker_level": 0.647194384,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 19.072343048,
+                  "effective_intensity": 15.893619206,
                   "flicker_level": 0.79468096,
                   "id": "lamp-b"
                 }
@@ -9469,41 +9501,41 @@
             "primary": "B",
             "probes": [
               {
-                "deck_a": "marker #756e3c",
-                "deck_b": "marker #4b89b7",
-                "expected": "#5186ae",
+                "deck_a": "marker #6d6638",
+                "deck_b": "marker #467fa9",
+                "expected": "#4c7ca1",
                 "id": "marker_of_primary_B",
                 "pixel": "416,212",
                 "rejects": "LNF,LIN,LSR"
               },
               {
-                "deck_a": "marker #756e3c",
-                "deck_b": "marker #4b89b7",
-                "expected": "#5186ae",
+                "deck_a": "marker #6d6638",
+                "deck_b": "marker #467fa9",
+                "expected": "#4c7ca1",
                 "id": "marker_of_neighbour_A",
                 "pixel": "416,212",
                 "rejects": "LNF,LIN,LSR"
               },
               {
-                "deck_a": "backdrop #6f746d",
-                "deck_b": "backdrop #676d68",
-                "expected": "#686e69",
+                "deck_a": "backdrop #666b65",
+                "deck_b": "backdrop #606560",
+                "expected": "#616661",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90",
                 "rejects": "LNF"
               },
               {
-                "deck_a": "backdrop #585d59",
-                "deck_b": "backdrop #717873",
-                "expected": "#6e7570",
+                "deck_a": "backdrop #525754",
+                "deck_b": "backdrop #696f6a",
+                "expected": "#676d68",
                 "id": "backdrop_near_lamp_b",
                 "pixel": "500,70",
                 "rejects": "LNF"
               },
               {
-                "deck_a": "backdrop #585c59",
-                "deck_b": "backdrop #535651",
-                "expected": "#545752",
+                "deck_a": "backdrop #515653",
+                "deck_b": "backdrop #4e504c",
+                "expected": "#4e514d",
                 "id": "backdrop_far",
                 "pixel": "60,320"
               }
@@ -9540,14 +9572,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 18.581960058,
+                  "effective_intensity": 15.484966715,
                   "flicker_level": 0.774248336,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 20.095821084,
+                  "effective_intensity": 16.74651757,
                   "flicker_level": 0.837325879,
                   "id": "lamp-b"
                 }
@@ -9557,41 +9589,41 @@
             "primary": "B",
             "probes": [
               {
-                "deck_a": "marker #7e7641",
-                "deck_b": "marker #4d8cbb",
-                "expected": "#4d8cbb",
+                "deck_a": "marker #756e3c",
+                "deck_b": "marker #4782ad",
+                "expected": "#4782ad",
                 "id": "marker_of_primary_B",
                 "pixel": "416,212",
-                "rejects": "LNF,LIN,LSR"
+                "rejects": "LIN,LSR"
               },
               {
-                "deck_a": "marker #7e7641",
-                "deck_b": "marker #4d8cbb",
-                "expected": "#4d8cbb",
+                "deck_a": "marker #756e3c",
+                "deck_b": "marker #4782ad",
+                "expected": "#4782ad",
                 "id": "marker_of_neighbour_A",
                 "pixel": "416,212",
-                "rejects": "LNF,LIN,LSR"
+                "rejects": "LIN,LSR"
               },
               {
-                "deck_a": "backdrop #787d75",
-                "deck_b": "backdrop #696f6b",
-                "expected": "#696f6b",
+                "deck_a": "backdrop #6f736d",
+                "deck_b": "backdrop #626763",
+                "expected": "#626763",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90",
                 "rejects": "LIN,LSR"
               },
               {
-                "deck_a": "backdrop #5f645f",
-                "deck_b": "backdrop #737b76",
-                "expected": "#737b76",
+                "deck_a": "backdrop #585d59",
+                "deck_b": "backdrop #6b726d",
+                "expected": "#6b726d",
                 "id": "backdrop_near_lamp_b",
                 "pixel": "500,70",
                 "rejects": "LIN,LSR"
               },
               {
-                "deck_a": "backdrop #5f635f",
-                "deck_b": "backdrop #555853",
-                "expected": "#555853",
+                "deck_a": "backdrop #585c59",
+                "deck_b": "backdrop #50524d",
+                "expected": "#50524d",
                 "id": "backdrop_far",
                 "pixel": "60,320"
               }
@@ -9628,14 +9660,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 19.389886782,
+                  "effective_intensity": 16.158238985,
                   "flicker_level": 0.807911949,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 16.691930581,
+                  "effective_intensity": 13.909942151,
                   "flicker_level": 0.695497108,
                   "id": "lamp-b"
                 }
@@ -9645,41 +9677,41 @@
             "primary": "B",
             "probes": [
               {
-                "deck_a": "marker #807842",
-                "deck_b": "marker #4782ad",
-                "expected": "#4782ad",
+                "deck_a": "marker #77703d",
+                "deck_b": "marker #4278a0",
+                "expected": "#4278a0",
                 "id": "marker_of_primary_B",
                 "pixel": "416,212",
                 "rejects": "LNF,LIN,LSR"
               },
               {
-                "deck_a": "marker #807842",
-                "deck_b": "marker #4782ad",
-                "expected": "#4782ad",
+                "deck_a": "marker #77703d",
+                "deck_b": "marker #4278a0",
+                "expected": "#4278a0",
                 "id": "marker_of_neighbour_A",
                 "pixel": "416,212",
                 "rejects": "LNF,LIN,LSR"
               },
               {
-                "deck_a": "backdrop #7a7f77",
-                "deck_b": "backdrop #626762",
-                "expected": "#626762",
+                "deck_a": "backdrop #71766e",
+                "deck_b": "backdrop #5c605b",
+                "expected": "#5c605b",
                 "id": "backdrop_near_lamp_a",
                 "pixel": "160,90",
                 "rejects": "LNF"
               },
               {
-                "deck_a": "backdrop #616661",
-                "deck_b": "backdrop #6b726d",
-                "expected": "#6b726d",
+                "deck_a": "backdrop #5a5f5b",
+                "deck_b": "backdrop #646964",
+                "expected": "#646964",
                 "id": "backdrop_near_lamp_b",
                 "pixel": "500,70",
                 "rejects": "LNF"
               },
               {
-                "deck_a": "backdrop #606560",
-                "deck_b": "backdrop #50524d",
-                "expected": "#50524d",
+                "deck_a": "backdrop #595e5a",
+                "deck_b": "backdrop #4b4c47",
+                "expected": "#4b4c47",
                 "id": "backdrop_far",
                 "pixel": "60,320",
                 "rejects": "LNF"
@@ -9717,14 +9749,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 19.49097891,
+                  "effective_intensity": 16.242482425,
                   "flicker_level": 0.812124121,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 16.903409819,
+                  "effective_intensity": 14.086174849,
                   "flicker_level": 0.704308742,
                   "id": "lamp-b"
                 }
@@ -9781,7 +9813,7 @@
           1805
         ],
         "rejecting_probes": {
-          "LIGHT_ON_A_NOMINAL_FRAME_RATE": 24,
+          "LIGHT_ON_A_NOMINAL_FRAME_RATE": 19,
           "LIGHT_ON_THE_INSTANCE_CLOCK": 8,
           "LIGHT_ON_THE_SHOT_RELATIVE_CLOCK": 8
         },
@@ -9836,14 +9868,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 16.059592272,
+                  "effective_intensity": 13.38299356,
                   "flicker_level": 0.669149678,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 16.623442594,
+                  "effective_intensity": 13.852868828,
                   "flicker_level": 0.692643441,
                   "id": "lamp-b"
                 }
@@ -9890,14 +9922,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 16.188476585,
+                  "effective_intensity": 13.490397154,
                   "flicker_level": 0.674519858,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 15.54857607,
+                  "effective_intensity": 12.957146725,
                   "flicker_level": 0.647857336,
                   "id": "lamp-b"
                 }
@@ -9919,49 +9951,49 @@
             "primary": "A",
             "probes": [
               {
-                "deck_a": "marker #49471e",
-                "deck_b": "backdrop #5d5048",
-                "expected": "#49471e",
+                "deck_a": "marker #45431d",
+                "deck_b": "backdrop #574a43",
+                "expected": "#45431d",
                 "id": "marker_of_primary_A",
                 "pixel": "375,334",
                 "rejects": "DSW,SWP"
               },
               {
-                "deck_a": "backdrop #2d3441",
-                "deck_b": "marker #2b6f76",
-                "expected": "#2d3441",
+                "deck_a": "backdrop #2a313e",
+                "deck_b": "marker #28676e",
+                "expected": "#2a313e",
                 "id": "marker_of_neighbour_B",
                 "pixel": "451,334",
                 "rejects": "DSW,SWP"
               },
               {
-                "deck_a": "backdrop #515967",
-                "deck_b": "backdrop #53463f",
-                "expected": "#515967",
+                "deck_a": "backdrop #4b5260",
+                "deck_b": "backdrop #4e413a",
+                "expected": "#4b5260",
                 "id": "backdrop_clear",
                 "pixel": "48,24",
                 "rejects": "DSW,SWP"
               },
               {
-                "deck_a": "backdrop #363d4a",
-                "deck_b": "backdrop #5d4f48",
-                "expected": "#363d4a",
+                "deck_a": "backdrop #323946",
+                "deck_b": "backdrop #574942",
+                "expected": "#323946",
                 "id": "decoy_of_PIN",
                 "pixel": "312,334",
                 "rejects": "DSW,SWP"
               },
               {
-                "deck_a": "backdrop #272e3c",
-                "deck_b": "backdrop #5b4e47",
-                "expected": "#272e3c",
+                "deck_a": "backdrop #252c3a",
+                "deck_b": "backdrop #564941",
+                "expected": "#252c3a",
                 "id": "decoy_of_SWP",
                 "pixel": "590,180",
                 "rejects": "DSW"
               },
               {
-                "deck_a": "backdrop #535a68",
-                "deck_b": "backdrop #51443d",
-                "expected": "#535a68",
+                "deck_a": "backdrop #4c5461",
+                "deck_b": "backdrop #4d4039",
+                "expected": "#4c5461",
                 "id": "decoy_of_PRI",
                 "pixel": "34,25",
                 "rejects": "DSW,SWP"
@@ -9999,14 +10031,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 15.31968303,
+                  "effective_intensity": 12.766402525,
                   "flicker_level": 0.638320126,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 14.65310844,
+                  "effective_intensity": 12.2109237,
                   "flicker_level": 0.610546185,
                   "id": "lamp-b"
                 }
@@ -10028,33 +10060,33 @@
             "primary": "A",
             "probes": [
               {
-                "deck_a": "marker #48461e",
-                "deck_b": "backdrop #5b4e47",
-                "expected": "#48461e",
+                "deck_a": "marker #43421c",
+                "deck_b": "backdrop #554841",
+                "expected": "#43421c",
                 "id": "marker_of_primary_A",
                 "pixel": "329,334",
                 "rejects": "DSW,SWP"
               },
               {
-                "deck_a": "backdrop #2d3341",
-                "deck_b": "marker #2a6c73",
-                "expected": "#2d3341",
+                "deck_a": "backdrop #2a303e",
+                "deck_b": "marker #27656b",
+                "expected": "#2a303e",
                 "id": "marker_of_neighbour_B",
                 "pixel": "404,334",
                 "rejects": "DSW"
               },
               {
-                "deck_a": "backdrop #4c5461",
-                "deck_b": "backdrop #544740",
-                "expected": "#4c5461",
+                "deck_a": "backdrop #464e5b",
+                "deck_b": "backdrop #4f423b",
+                "expected": "#464e5b",
                 "id": "backdrop_clear",
                 "pixel": "48,24",
                 "rejects": "DSW,SWP,LIN"
               },
               {
-                "deck_a": "backdrop #252c3a",
-                "deck_b": "backdrop #574a43",
-                "expected": "#252c3a",
+                "deck_a": "backdrop #232a38",
+                "deck_b": "backdrop #51443d",
+                "expected": "#232a38",
                 "id": "decoy_of_SWP",
                 "pixel": "590,128",
                 "rejects": "DSW"
@@ -10092,14 +10124,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 15.74945816,
+                  "effective_intensity": 13.124548467,
                   "flicker_level": 0.656227423,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 18.066061711,
+                  "effective_intensity": 15.055051426,
                   "flicker_level": 0.752752571,
                   "id": "lamp-b"
                 }
@@ -10121,41 +10153,41 @@
             "primary": "A",
             "probes": [
               {
-                "deck_a": "marker #49471e",
-                "deck_b": "backdrop #695c54",
-                "expected": "#4d4a28",
+                "deck_a": "marker #45441d",
+                "deck_b": "backdrop #62554d",
+                "expected": "#494626",
                 "id": "marker_of_primary_A",
                 "pixel": "282,282",
                 "rejects": "DSW,SWP,PRI"
               },
               {
-                "deck_a": "backdrop #2e3542",
-                "deck_b": "marker #2e757d",
-                "expected": "#2e404c",
+                "deck_a": "backdrop #2b313f",
+                "deck_b": "marker #2b6d74",
+                "expected": "#2b3c48",
                 "id": "marker_of_neighbour_B",
                 "pixel": "358,334",
                 "rejects": "PIN,DSW,SWP,PRI"
               },
               {
-                "deck_a": "backdrop #4a515f",
-                "deck_b": "backdrop #5f514a",
-                "expected": "#4d515d",
+                "deck_a": "backdrop #444b58",
+                "deck_b": "backdrop #594b44",
+                "expected": "#474b56",
                 "id": "backdrop_clear",
                 "pixel": "48,24",
-                "rejects": "DSW,SWP"
+                "rejects": "DSW"
               },
               {
-                "deck_a": "backdrop #313745",
-                "deck_b": "backdrop #62554d",
-                "expected": "#393b46",
+                "deck_a": "backdrop #2d3441",
+                "deck_b": "backdrop #5c4f47",
+                "expected": "#353842",
                 "id": "decoy_of_PIN",
                 "pixel": "312,334",
-                "rejects": "PIN,DSW,PRI"
+                "rejects": "PIN,DSW"
               },
               {
-                "deck_a": "backdrop #242b39",
-                "deck_b": "backdrop #5a4c45",
-                "expected": "#2e303b",
+                "deck_a": "backdrop #222937",
+                "deck_b": "backdrop #544740",
+                "expected": "#2b2e38",
                 "id": "decoy_of_SWP",
                 "pixel": "590,77",
                 "rejects": "DSW,SWP,PRI"
@@ -10193,14 +10225,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 16.81611638,
+                  "effective_intensity": 14.013430317,
                   "flicker_level": 0.700671516,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 17.160258817,
+                  "effective_intensity": 14.300215681,
                   "flicker_level": 0.715010784,
                   "id": "lamp-b"
                 }
@@ -10222,33 +10254,33 @@
             "primary": "A",
             "probes": [
               {
-                "deck_a": "marker #4c491f",
-                "deck_b": "backdrop #6a5d55",
-                "expected": "#575038",
+                "deck_a": "marker #47451d",
+                "deck_b": "backdrop #63564e",
+                "expected": "#524b33",
                 "id": "marker_of_primary_A",
                 "pixel": "259,257",
                 "rejects": "DSW,SWP,LCC,PRI"
               },
               {
-                "deck_a": "backdrop #2f3643",
-                "deck_b": "marker #2d737b",
-                "expected": "#2e515a",
+                "deck_a": "backdrop #2c3340",
+                "deck_b": "marker #2a6b72",
+                "expected": "#2b4b55",
                 "id": "marker_of_neighbour_B",
                 "pixel": "335,334",
                 "rejects": "PIN,DSW,SWP,LCC,PRI"
               },
               {
-                "deck_a": "backdrop #4a525f",
-                "deck_b": "backdrop #5f524a",
-                "expected": "#525259",
+                "deck_a": "backdrop #444c59",
+                "deck_b": "backdrop #594c44",
+                "expected": "#4c4c53",
                 "id": "backdrop_clear",
                 "pixel": "48,24",
                 "rejects": "DSW,SWP,PRI"
               },
               {
-                "deck_a": "backdrop #242b39",
-                "deck_b": "backdrop #564941",
-                "expected": "#3a373c",
+                "deck_a": "backdrop #222937",
+                "deck_b": "backdrop #50433c",
+                "expected": "#363339",
                 "id": "decoy_of_SWP",
                 "pixel": "590,51",
                 "rejects": "DSW,SWP,PRI"
@@ -10286,14 +10318,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 17.252816071,
+                  "effective_intensity": 14.377346726,
                   "flicker_level": 0.718867336,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 16.804971023,
+                  "effective_intensity": 14.004142519,
                   "flicker_level": 0.700207126,
                   "id": "lamp-b"
                 }
@@ -10315,44 +10347,44 @@
             "primary": "B",
             "probes": [
               {
-                "deck_a": "backdrop #313845",
-                "deck_b": "marker #2c727a",
-                "expected": "#2e636c",
+                "deck_a": "backdrop #2e3542",
+                "deck_b": "marker #296a71",
+                "expected": "#2b5c64",
                 "id": "marker_of_primary_B",
                 "pixel": "312,334",
                 "rejects": "DSW,SWP,LCC,PRI"
               },
               {
-                "deck_a": "marker #4d4a1f",
-                "deck_b": "backdrop #6d5f57",
-                "expected": "#64594a",
+                "deck_a": "marker #48461e",
+                "deck_b": "backdrop #665850",
+                "expected": "#5d5344",
                 "id": "marker_of_neighbour_A",
                 "pixel": "259,231",
                 "rejects": "PIN,DSW,SWP,LCC,PRI"
               },
               {
-                "deck_a": "backdrop #4b5360",
-                "deck_b": "backdrop #60534b",
-                "expected": "#5a5353",
+                "deck_a": "backdrop #454c5a",
+                "deck_b": "backdrop #5a4d46",
+                "expected": "#544d4d",
                 "id": "backdrop_clear",
                 "pixel": "48,24",
                 "rejects": "DSW,SWP,PRI"
               },
               {
-                "deck_a": "backdrop #373e4b",
-                "deck_b": "backdrop #6a5c54",
-                "expected": "#5d5351",
+                "deck_a": "backdrop #333a47",
+                "deck_b": "backdrop #63554e",
+                "expected": "#574d4c",
                 "id": "decoy_of_PIN",
                 "pixel": "259,257",
                 "rejects": "PIN,DSW,SWP,LCC,PRI"
               },
               {
-                "deck_a": "backdrop #353c49",
-                "deck_b": "backdrop #60524b",
-                "expected": "#554c4a",
+                "deck_a": "backdrop #313845",
+                "deck_b": "backdrop #5a4c45",
+                "expected": "#4f4645",
                 "id": "decoy_of_SWP",
                 "pixel": "259,334",
-                "rejects": "DSW,SWP,PRI"
+                "rejects": "DSW,SWP,LCC,PRI"
               }
             ],
             "states": {
@@ -10387,14 +10419,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 17.208546117,
+                  "effective_intensity": 14.340455097,
                   "flicker_level": 0.717022755,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 16.050359392,
+                  "effective_intensity": 13.375299493,
                   "flicker_level": 0.668764975,
                   "id": "lamp-b"
                 }
@@ -10416,49 +10448,49 @@
             "primary": "B",
             "probes": [
               {
-                "deck_a": "backdrop #343a47",
-                "deck_b": "marker #2d747c",
-                "expected": "#2e6f77",
+                "deck_a": "backdrop #303744",
+                "deck_b": "marker #2a6c73",
+                "expected": "#2b686f",
                 "id": "marker_of_primary_B",
                 "pixel": "289,308",
                 "rejects": "DSW,SWP,LCC,LIN,LSR"
               },
               {
-                "deck_a": "marker #4d4a1f",
-                "deck_b": "backdrop #6e6058",
-                "expected": "#6b5e54",
+                "deck_a": "marker #48461e",
+                "deck_b": "backdrop #665951",
+                "expected": "#63574d",
                 "id": "marker_of_neighbour_A",
                 "pixel": "259,205",
                 "rejects": "DSW,SWP,LCC,LIN,LSR,PRI"
               },
               {
-                "deck_a": "backdrop #4b5260",
-                "deck_b": "backdrop #61534c",
-                "expected": "#5f534f",
+                "deck_a": "backdrop #454c5a",
+                "deck_b": "backdrop #5a4d46",
+                "expected": "#584d49",
                 "id": "backdrop_clear",
                 "pixel": "48,24",
+                "rejects": "DSW,SWP,LIN,LSR"
+              },
+              {
+                "deck_a": "backdrop #333a47",
+                "deck_b": "backdrop #61534c",
+                "expected": "#5d514b",
+                "id": "decoy_of_PIN",
+                "pixel": "259,257",
                 "rejects": "DSW,SWP,LCC,LIN,LSR"
               },
               {
-                "deck_a": "backdrop #373e4b",
-                "deck_b": "backdrop #685a52",
-                "expected": "#645751",
-                "id": "decoy_of_PIN",
-                "pixel": "259,257",
-                "rejects": "DSW,SWP,LCC,LIN,LSR,PRI"
-              },
-              {
-                "deck_a": "backdrop #353c49",
-                "deck_b": "backdrop #5e5149",
-                "expected": "#5a4f49",
+                "deck_a": "backdrop #313845",
+                "deck_b": "backdrop #584b44",
+                "expected": "#554944",
                 "id": "decoy_of_SWP",
                 "pixel": "259,334",
                 "rejects": "DSW,SWP,LCC,LIN,LSR"
               },
               {
-                "deck_a": "backdrop #222937",
-                "deck_b": "backdrop #483b34",
-                "expected": "#453934",
+                "deck_a": "backdrop #202735",
+                "deck_b": "backdrop #443730",
+                "expected": "#413531",
                 "id": "decoy_of_PRI",
                 "pixel": "630,334",
                 "rejects": "DSW,SWP,PRI"
@@ -10496,14 +10528,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 17.105571697,
+                  "effective_intensity": 14.254643081,
                   "flicker_level": 0.712732154,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 15.189435886,
+                  "effective_intensity": 12.657863238,
                   "flicker_level": 0.632893162,
                   "id": "lamp-b"
                 }
@@ -10525,41 +10557,41 @@
             "primary": "B",
             "probes": [
               {
-                "deck_a": "backdrop #383f4c",
-                "deck_b": "marker #307a83",
-                "expected": "#307a83",
+                "deck_a": "backdrop #343b48",
+                "deck_b": "marker #2c727a",
+                "expected": "#2c727a",
                 "id": "marker_of_primary_B",
                 "pixel": "242,257",
                 "rejects": "DSW,SWP,LIN,LSR"
               },
               {
-                "deck_a": "marker #4d4b1f",
-                "deck_b": "backdrop #6e6058",
-                "expected": "#6e6058",
+                "deck_a": "marker #48471e",
+                "deck_b": "backdrop #675951",
+                "expected": "#675951",
                 "id": "marker_of_neighbour_A",
                 "pixel": "259,154",
                 "rejects": "DSW,SWP,LIN,LSR"
               },
               {
-                "deck_a": "backdrop #4b5260",
-                "deck_b": "backdrop #62554d",
-                "expected": "#62554d",
+                "deck_a": "backdrop #454c59",
+                "deck_b": "backdrop #5c4f47",
+                "expected": "#5c4f47",
                 "id": "backdrop_clear",
                 "pixel": "48,24",
                 "rejects": "DSW,SWP,LIN,LSR"
               },
               {
-                "deck_a": "backdrop #353c49",
-                "deck_b": "backdrop #5c4e47",
-                "expected": "#5c4e47",
+                "deck_a": "backdrop #313845",
+                "deck_b": "backdrop #564942",
+                "expected": "#564942",
                 "id": "decoy_of_SWP",
                 "pixel": "259,334",
                 "rejects": "DSW,SWP,LIN,LSR"
               },
               {
-                "deck_a": "backdrop #242a38",
-                "deck_b": "backdrop #483b34",
-                "expected": "#483b34",
+                "deck_a": "backdrop #222837",
+                "deck_b": "backdrop #443730",
+                "expected": "#443730",
                 "id": "decoy_of_PRI",
                 "pixel": "583,334",
                 "rejects": "DSW,SWP,LIN,LSR"
@@ -10597,14 +10629,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 17.771653339,
+                  "effective_intensity": 14.809711116,
                   "flicker_level": 0.740485556,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 18.179626592,
+                  "effective_intensity": 15.149688827,
                   "flicker_level": 0.757484441,
                   "id": "lamp-b"
                 }
@@ -10626,49 +10658,49 @@
             "primary": "B",
             "probes": [
               {
-                "deck_a": "backdrop #3e4552",
-                "deck_b": "marker #388e99",
-                "expected": "#388e99",
+                "deck_a": "backdrop #3a404e",
+                "deck_b": "marker #34848d",
+                "expected": "#34848d",
                 "id": "marker_of_primary_B",
                 "pixel": "196,205",
                 "rejects": "DSW,SWP,LCC"
               },
               {
-                "deck_a": "marker #4e4c20",
-                "deck_b": "backdrop #74665e",
-                "expected": "#74665e",
+                "deck_a": "marker #4a471e",
+                "deck_b": "backdrop #6c5e57",
+                "expected": "#6c5e57",
                 "id": "marker_of_neighbour_A",
                 "pixel": "259,102",
                 "rejects": "DSW"
               },
               {
-                "deck_a": "backdrop #4c5461",
-                "deck_b": "backdrop #6d5f58",
-                "expected": "#6d5f58",
+                "deck_a": "backdrop #464d5b",
+                "deck_b": "backdrop #665851",
+                "expected": "#665851",
                 "id": "backdrop_clear",
                 "pixel": "48,24",
                 "rejects": "DSW,SWP"
               },
               {
-                "deck_a": "backdrop #383f4c",
-                "deck_b": "backdrop #6a5c54",
-                "expected": "#6a5c54",
+                "deck_a": "backdrop #343a48",
+                "deck_b": "backdrop #63554e",
+                "expected": "#63554e",
                 "id": "decoy_of_PIN",
                 "pixel": "259,257",
                 "rejects": "DSW"
               },
               {
-                "deck_a": "backdrop #363c49",
-                "deck_b": "backdrop #61534c",
-                "expected": "#61534c",
+                "deck_a": "backdrop #323846",
+                "deck_b": "backdrop #5a4d46",
+                "expected": "#5a4d46",
                 "id": "decoy_of_SWP",
                 "pixel": "259,334",
                 "rejects": "DSW"
               },
               {
-                "deck_a": "backdrop #262d3b",
-                "deck_b": "backdrop #4d4039",
-                "expected": "#4d4039",
+                "deck_a": "backdrop #242a38",
+                "deck_b": "backdrop #483b35",
+                "expected": "#483b35",
                 "id": "decoy_of_PRI",
                 "pixel": "537,334",
                 "rejects": "DSW,SWP"
@@ -10706,14 +10738,14 @@
             "lights": {
               "A": [
                 {
-                  "effective_intensity": 17.647415684,
+                  "effective_intensity": 14.706179736,
                   "flicker_level": 0.735308987,
                   "id": "lamp-a"
                 }
               ],
               "B": [
                 {
-                  "effective_intensity": 18.470494998,
+                  "effective_intensity": 15.392079165,
                   "flicker_level": 0.769603958,
                   "id": "lamp-b"
                 }
@@ -10784,11 +10816,11 @@
         "rejecting_probes": {
           "BOTH_CLOCKS_PINNED_TOGETHER": 5,
           "DECKS_SWAPPED_IN_THE_MIX": 41,
-          "INSTANCE_AND_CAMERA_CLOCKS_SWAPPED": 34,
+          "INSTANCE_AND_CAMERA_CLOCKS_SWAPPED": 33,
           "LIGHT_ON_THE_CAMERA_CLIP_CLOCK": 11,
           "LIGHT_ON_THE_INSTANCE_CLOCK": 11,
           "LIGHT_ON_THE_SHOT_RELATIVE_CLOCK": 10,
-          "NEIGHBOUR_ON_PRIMARY_CLOCKS": 16
+          "NEIGHBOUR_ON_PRIMARY_CLOCKS": 14
         },
         "role": "everything at once: held instance with running camera (and the reverse) under a lamp that flickers on the real edit frame",
         "shots": {

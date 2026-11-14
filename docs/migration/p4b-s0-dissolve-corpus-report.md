@@ -240,6 +240,51 @@ e5f40f70ccdb069196224d45c8df09cbaec7539eedc06ea350e65de7966cd011  dissolve-cases
   ou é prometida na S0.
 - **Nenhuma superfície de Rust, JSONL, UI ou motor** foi criada; o portão `FX_TRANSITION_NOT_YET` continua fechado até a S2A.
 - As sondas são **oráculo `origin-formula`** de uma cena sintética; nada foi renderizado, medido ou executado.
+
+## 11. Correção do coordenador após R2: lâmpadas representáveis
+
+A revisão independente de `9399642` não aprovou a S0: as lâmpadas de intensidade 24 excediam
+o máximo 20 do core e runtime. A correção usa **20**, sem alterar fórmulas ou limiares.
+`ANALYTIC_DESTINATION_LINES` agora tem 14 leituras, incluindo os limites 20 e quatro luzes
+nos dois consumidores. A spec confere todos os kits gerados e commitados: intensidade
+`[0,20]`, cor/flicker `[0,1]`, raio positivo, números finitos e até quatro luzes. Um controle
+temporário em memória com intensidade 24 foi recusado por essa nova checagem.
+
+O plano 7.3 e F064 esclarecem que `centre_px`/`rect_px` são diagnósticos, sem tolerância
+própria de posição medida. S2 compara os estados temporais e a cor nos pixels prescritos;
+as hipóteses de posição são discriminadas pelas sondas de cor. O teste novo isola relógios
+de luz errados **só no vizinho**, preservando o primário: `lit-end-held` discrimina
+LIN/LSR/LCC/LCE; `lit-start-held`, LIN/LCC. Com intensidade 20, são 8/12/8/5 sondas em
+2/3/2/2 quadros no primeiro caso e 7 sondas em três quadros no segundo. São contagens do
+modelo Python, não pixels produzidos. `center` não demonstra sozinho esse isolamento.
+
+O vetor de câmera inclui o quadro 40 e o teste de dois segmentos cobre `previousEnd` e
+`initial`. A leitura do suposto overshoot no clipe único não se confirmou: `ease` limita
+o valor a `[0,1]`, então o mutante `<` → `<=` é equivalente nesse caso. O novo caso de
+reset para a pose inicial discrimina o mesmo mutante e o controle negativo o recusou.
+Também foram removido `shot_numbers` e esclarecido o nome da separação mínima dos decoys;
+FOV 50 e saída 640×360 agora estão nos kits, além das convenções. A diferença de ~1e-14
+entre segundos racionais e a divisão da origem não muda os códigos destes vetores.
+Separar o módulo analítico se crescer na S2 continua como dívida, sem refatoração nesta correção.
+
+Execuções do coordenador em macOS, Python 3.14.3, sobre a fonte desta correção:
+
+- Corpus: **167/167**, normal e `-O`, com origem e sem skips.
+- Analítico: **39/39**, normal e `-O`.
+- `generate --check`: byte a byte; `verify --origin … --require-pin`: exit 0,
+  21 fontes atestadas do pin e 12 só da ponta, sem execução da origem.
+- Tabelas do backlog **19/19**, higiene **13/13**, `git diff --check` limpo.
+- Tolerâncias globais e thresholds analíticos comparados ao JSON de `9399642`: idênticos.
+
+```text
+67d3314f66aa0512666e93e515de0d66393298489168999172d7e37123d393d9  dissolve-cases.json     540725 bytes
+77c4d7bc5f7b95adc37d2ec1560adffb7772c3aa6ee805079ffdb9f0a392ce42  dissolve-manifest.json   27892 bytes
+```
+
+Windows ainda não reexecutado neste patch; a S0 segue **A validar** até nova rechecagem.
+Nenhum Cargo, Node, runtime, engine, GPU, FFmpeg, UI ou golden foi executado nesta correção.
+As superfícies de produto da matriz continuam Pending. Os resultados de §10 identificam
+a versão anterior `9399642` e não validam esta revisão por herança.
 - **`hidden`** é contrato **futuro** do destino: transições aceitam `hidden: true` ou ausente, e `hidden: false` explícito é recusa
   estrutural na S1a, independente de `explain`. O importador Rust de hoje **não** faz isso.
 
