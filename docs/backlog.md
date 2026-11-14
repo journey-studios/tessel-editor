@@ -1878,7 +1878,7 @@ concreto da S0, sem link para arquivo inexistente nem validação de lib/CLI/UI 
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
 | BL082.4.1 | P4b/S0 | Contrato F064 e corpus independente dissolve, fonte e X analítico | Concluído — somente S0 oráculo/contrato | BL082.4; setupPythonBL167.5 parcial | Coordenador / Cursor Sonnet5.5 | R3 independente aprova e4078ff no Windows; corpus167/analítico39 normal e-O, reprodução byte a byte e Mac equivalente. Produto lib/JSONL/UI permanece P; detalhes no relatório S0 §12. |
-| BL082.4.2 | P4b/S1a | Documento/janela/validação tipada e ativação pública failclosed | Pendente | BL082.4.1/.11 | Não atribuído | Contrato corrigido B3; nenhumhardcutfallback/exportfalhandonomeio, erro existente/tipado |
+| BL082.4.2 | P4b/S1a | Documento/janela/validação tipada e política de admissão fechada | Concluído no escopo interno; R2 aprova a752f0a | BL082.4.1/.11 concluídos | Coordenador / revisão Windows | R2:61transition/25scene_fx/80GPUI, processo headless real, perfis serde e mutantes dinâmicos/scanner/domínio. fmt/check/clippy/no-run/build passam. Core1525ok/2gizmosbase, workspaceexecutado/Mac pendentes. Produto P; IDgerado fica BL082.4.15/S3. |
 | BL082.4.3 | P4b/S1b | Avaliação dos dois decks e plano, recursosporassetId/used_bysemambiguidade | Pendente | BL082.4.2 | Não atribuído | Recurso próprio por deck euniãoderivadaestável, clock/handlessemunderflow, parserprofundidadelimitada |
 | BL082.4.4 | P4b/S2 | Runtime/renderer/mistura e lifecycle/cache | Pendente | BL082.4.3; S2A também BL082.4.5/S3a | Não atribuído | Cor8bits/alpha declarados, capability, dois splats/leases/contextloss/dispose e pixelsindependentes |
 | BL082.4.5 | P4b/S3 | Ops/gestos/inspector/persistência ecoreparser/nós | Pendente | BL082.4.3 | Não atribuído | Atomicidade/revisão/undo, módulossemcrescerarquivosproibidos; dividirS3aseS3bseútil |
@@ -1943,3 +1943,86 @@ comparar estados por deck e cores, com isolamento só-vizinho restrito aos casos
 A S2 traduz arrays compactos para os objetos do destino. R3 não é aprovação formal noGitHub;
 CodeRabbit ainda estava em andamento na consulta do revisor e terminou SUCCESS em e4078ff
 na consulta posterior do coordenador. Nenhuma reviewhumana foi alegada.
+
+
+### S1a entregue na PR62; reconciliação antes da revisão — 2026-11-14
+
+PR62 headoriginalbb43b16 (código5e21e0, basebb309a7): modelo/leitura/validação/janela e
+TransitionAdmissionRefuse padrão. Accept sóentrada doc(hidden) deensaios, não segurança;
+reimport herda política eboundaryvarreprodução/inventáriode5pontos. Autorreportou46integração,
+2testescore,2GPUI,11mutantes, processoheadlessrealexit1; fmt/check/clippy/build/tree/norunpassam.
+Corecompleto nãoverde por2gizmos tambémbaseW1; workspaceexecutado/Mac/runtime nãoexecutados.
+Nenhum efeito público novo, caps/versões/catálogo 3looks inalterados; produtoF064 continuaP.
+
+O coordenador completa linhas comuns não entregues, corrige nome do arquivo no relatório e
+move o teste de catálogo/runtime de core/tests/scene_fx.rs para módulo próprio, sem tocar produção.
+A auditoria identificou o teste como arquivo que cresceu acima de1000, não a UI. Correção aguarda revisão/compilação Windows.
+Trailersdeassistente nos2commitspublicados serão omitidos da mensagem do squash, semforce.
+Divergências deoráculo/legacy/IDs/corpus declaradas no relatório são objeto da revisão, não
+aceitas por padrão. BL082.4.2 permaneceAvalidar; S1b nãoiniciada ePR62semmerge.
+
+
+### PR62: revisão não aprova72c9fe2 — 2026-11-14
+
+E0583 introduzido pelo coordenador ao mover teste: mod procura arquivo na raiztests, faltava
+path explícito. Correção de uma linha feita; com patch temporário o revisor viu25scene_fx,
+clippy e coreexceto2gizmos. Noheadliteral46transition/2incrate/80GPUI passaram. Fonteprodução
+foi aprovada porleitura/probes, sembypass,12.474 combinaçõesi128 e testesdinâmicos extras.
+
+Coordenador também fixa ordem dos diagnósticos de params de transições por chave lexical,
+sem globalpreserve_order/sem mudar looks/documentos; teste em trêsordens eValue/texto escrito,
+ainda não compilado. Permanecem BL082.4.2: scanner com nome-test/brace-string blindspots,
+regressões permanentes reload/open/attach-file, TOO_LONGassimétrico e transiçõesforadeordem.
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL082.4.13 | Revisão PR62 / looks | Diagnósticos de parâmetros dos looks variam com serde_json/preserve_order | Pendente | BL082 | Não atribuído | Definir ordenação estável e provar coreisolado/workspace sem reordenar documento ou alterar vereditos. Transições corrigidas nesta S1a. |
+| BL082.4.14 | Oráculo S0 / variante camera-short | Pré-condição de duração instância+offset não satisfeita na projeção para bundle | Pendente | BL082.4.1 | Não atribuído | Reconciliar inst-b60+offset10 vs duração60 sem mudar a expectativa semântica nem forçar o importador; manter proveniência e divergência explícitas. Rustusa70justificadamente. |
+
+Erro estrutural em transição posterior ocultaearlyissuesanteriores: veredito igual, lista diferente,
+divergência agora explícita. Nãoherdar gates compatchtemporário para novaárvore. Semmerge/S1b.
+
+
+### PR62: reforço de517946a entregue, revisão final pendente — 2026-11-14
+
+Fonte de produção inalterada desde449054a; alterações desta rodada são testes, proc-macro2
+somente dev-dependency (+uma aresta no lock) e dois docs. Código517946ae4dd4ff28e5713c70d82c9a44dc2d3cf2,
+docs1f4883a5c747e10a83458b370bd56b11d5c9a951 (diff só F064/relatório). Semforce, commitsnovoslimpos;
+trailers antigos mantidos na branch, squash limpo previsto apenas se aprovado.
+
+Autor Windows:60transição,25scene_fx,80GPUI,dois testes admissão(+um perf_history no filtro),
+headlessreal,fmt/check/clippy/norun/build/tree passam. Corecompleto1524passam/2gizmosbasefalham;
+workspaceinteiro nãoexecutado porclaimsBL167.6. Cachembx no clippy declarado, não é falha.
+Ordemparams testada coreisolado, preserve_order explícito eworkspace. Mutante nosort sobrevive
+noisolado por mapa jáordenado; morre nosperfis discriminantes. EXPECT impede alegar perfilerrado.
+
+Portas reload/open/attach-file agora têm testes dinâmicos permanentes; mutantes Accept emstore/run
+falham semscanner. Lexerreal de testes substitui bracecounter, nome de arquivo nãoexclui código,
+cfgtresvalores descarta sóprovadamentefalso, segue módulos/path e falha fechada nolexer.
+Limites declarados: macros/include/cfg_attr ealgumascombinaçõesnãoanalisadas, não barreira.
+RegressõesassimétricasTOO_LONG/ordemcronológicainversa/sobreposição detectam mutantesanteriores.
+
+Essasprovas são do implementador, não aprovação independente. Nova revisão deve conferir
+source/dev-dep, mutantes e gates nohead final, sempromovercore/workspacea verde ou produtoF064.
+
+### PR62: correção pequena do scanner durante R2 — 2026-11-14
+
+BL082.4.2 continua A validar. Novo comentário sobre `const {}` sem ponto e vírgula
+confirmado por leitura: `item_end` podia remover a expressão de produção seguinte
+a um bloco sob `cfg(test)`. Coordenador distingue bloco de declaração e adiciona
+regressão discriminante com controles. Produção inalterada; fmt e diff-check no
+Mac passam, execução Rust e mutação inversa ficam com a revisão R2 em andamento.
+Os 60 testes de517946a não são prova deste ajuste posterior.
+
+### PR62: S1a aprovada pela revisão final — 2026-11-14
+
+R2 aprovoua752f0a no Windows:61transition/25scene_fx/80GPUI, fmt/check/clippy/no-run/build,
+processoheadless, três perfis serde e mutantes. Core1525ok/2gizmosbase, exit101;
+workspace completo nãoexecutado. Const-bloco comprovado com mutação inversa.
+Correção documental desta integração não muda crates, lock ou testes do head aprovado.
+Alias/macros não são cobertos de forma geral pelo scanner; path não tratado é o
+atributo no próprio módulo em linha, não a declaração externa dentro dele.
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL082.4.15 | PR62 R2 / S3 | IDs automáticos de looks e trilhas ignoram IDs de transições | Pendente — incorporar à S3 | BL082.4.5 | Não atribuído | Incluir transitions no namespace de every_id; provar transições fx-1/fx-track-1, IDs automáticos distintos, recusa explícita atômica, undo/redo. Hoje apenas Accept: recusa segura, não corrupção, sem acesso público. Não bloqueia S1a. |

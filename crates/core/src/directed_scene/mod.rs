@@ -148,6 +148,9 @@ pub struct DirectedScene {
     document: Value,
     bundle: Bundle,
     notices: Vec<Notice>,
+    /// How this scene was read (and how every edit candidate of it is read): see
+    /// [`fx::TransitionAdmission`]. Every public importer is `Refuse`.
+    admission: fx::TransitionAdmission,
 }
 
 fn exceeds_depth(root: &Value, max: usize) -> bool {
@@ -172,6 +175,18 @@ impl DirectedScene {
     }
 
     pub fn import_str_with(text: &str, limits: &Limits) -> Result<Self, ImportError> {
+        Self::import_str_admitting(text, limits, fx::TransitionAdmission::Refuse)
+    }
+
+    /// [`Self::import_str_with`] under an explicit transition policy. **Hidden on purpose**: for
+    /// the core's own tests and the equivalence corpus, not an editor API (F064, P4b S1a; see
+    /// [`fx::TransitionAdmission`]). No production handler calls it.
+    #[doc(hidden)]
+    pub fn import_str_admitting(
+        text: &str,
+        limits: &Limits,
+        admission: fx::TransitionAdmission,
+    ) -> Result<Self, ImportError> {
         if text.len() > limits.max_bytes {
             return Err(ImportError::TooLarge {
                 bytes: text.len(),
@@ -183,7 +198,7 @@ impl DirectedScene {
             line: error.line(),
             column: error.column(),
         })?;
-        Self::import_value_with(value, limits)
+        Self::import_value_admitting(value, limits, admission)
     }
 
     /// Validates a JSON tree the caller already has (an `ops` payload, a package entry).
@@ -192,6 +207,30 @@ impl DirectedScene {
     }
 
     pub fn import_value_with(value: Value, limits: &Limits) -> Result<Self, ImportError> {
+        Self::import_value_admitting(value, limits, fx::TransitionAdmission::Refuse)
+    }
+
+    /// How this scene reads `fx.transitions` (and how its edit candidates do).
+    pub fn admission(&self) -> fx::TransitionAdmission {
+        self.admission
+    }
+
+    /// The candidate of an edit: a re-read of `value` under **this scene's own** policy, so an
+    /// edit can neither open the transition gate on a refusing scene nor close it on an
+    /// admitting one. Every edit path (`scene.edit`, `scene.fx.edit`, gestures) uses this and
+    /// never `import_value_with`, which is always `Refuse`.
+    pub(crate) fn reimport(&self, value: Value, limits: &Limits) -> Result<Self, ImportError> {
+        Self::import_value_admitting(value, limits, self.admission)
+    }
+
+    /// [`Self::import_value_with`] under an explicit transition policy: the one implementation
+    /// of every importer. **Hidden on purpose**, see [`Self::import_str_admitting`].
+    #[doc(hidden)]
+    pub fn import_value_admitting(
+        value: Value,
+        limits: &Limits,
+        admission: fx::TransitionAdmission,
+    ) -> Result<Self, ImportError> {
         if exceeds_depth(&value, limits.max_depth) {
             return Err(ImportError::Syntax {
                 message: format!("nesting is deeper than {} levels", limits.max_depth),
@@ -200,7 +239,7 @@ impl DirectedScene {
             });
         }
         let sink = read::Sink::new(limits.max_items);
-        let draft = parse::read_bundle(&value, &sink);
+        let draft = parse::read_bundle(&value, admission, &sink);
         let (mut issues, notices) = sink.into_parts();
         let Some(draft) = draft.filter(|_| issues.is_empty()) else {
             if issues.is_empty() {
@@ -227,7 +266,7 @@ impl DirectedScene {
         if !issues.is_empty() {
             return Err(ImportError::Invalid { issues });
         }
-        let bundle = Bundle {
+        let mut bundle = Bundle {
             bundle_id: draft.bundle_id,
             revision_id: draft.revision_id,
             fps: draft.fps,
@@ -243,10 +282,19 @@ impl DirectedScene {
             audio: draft.audio,
             fx: draft.fx,
         };
+        // The transitions are judged against the whole bundle (shots, instances, cameras), so
+        // they are the last rule of the import; any finding refuses the bundle whole.
+        if !draft.transitions.is_empty() {
+            match fx::transition_issues(&bundle, &draft.transitions) {
+                Ok(transitions) => bundle.fx.transitions = transitions,
+                Err(issues) => return Err(ImportError::Invalid { issues }),
+            }
+        }
         Ok(Self {
             document: value,
             bundle,
             notices,
+            admission,
         })
     }
 
@@ -289,6 +337,12 @@ impl DirectedScene {
         let mut text = serde_json::to_string_pretty(&self.document).unwrap_or_default();
         text.push('\n');
         text
+    }
+
+    /// Warnings of an admitted scene's transitions (`TRANSITION_ON_CONTINUOUS`,
+    /// `TRANSITION_SPLAT_COST`); never a refusal. Empty for every scene read under `Refuse`.
+    pub fn transition_warnings(&self) -> Vec<Issue> {
+        fx::transition_warnings(&self.bundle)
     }
 
     /// The structural rules of the cuts between shots (the origin's `validateEditJoins`, minus

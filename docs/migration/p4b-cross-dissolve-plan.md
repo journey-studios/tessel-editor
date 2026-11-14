@@ -241,7 +241,9 @@ erro ser previsível; a S0 confere a ordem contra `fx-explain-transitions.ts` e 
 
 1. estrutura e tipos (objeto, inteiros estritos, `seed` uint32) → recusa com o caminho JSON, no mesmo formato dos demais
    campos de `fx` (a S1a copia o mecanismo de `read.rs`);
-2. efeito e família (`UNKNOWN_EFFECT`, `WRONG_FAMILY`), depois parâmetros;
+2. efeito e família (`UNKNOWN_EFFECT`, `WRONG_FAMILY`), depois parâmetros; dentro de `params`, o Tessel usa ordem lexical
+   por chave para os diagnósticos, independente de `serde_json/preserve_order` (diferença explícita
+   da ordem de autoria da origem; documento e valores não são reordenados);
 3. easing e enums;
 4. existência dos shots (`UNKNOWN_SHOT`, um por shot ausente);
 5. adjacência (`TRANSITION_NOT_AT_CUT`);

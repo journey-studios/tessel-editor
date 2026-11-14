@@ -255,6 +255,7 @@ impl ParamAnimation {
                 FxValue::Bool(_) => "boolean",
                 FxValue::Color { .. } => "color",
                 FxValue::Point { .. } => "point",
+                FxValue::Choice(_) => "choice",
             },
             "base": self.base.to_json(),
             "animated": self.animated,

@@ -99,6 +99,13 @@ pub enum ParamKind {
     },
     /// `true | false` (the pilot's `boolean`). A number is never a boolean: `0`/`1` are refused.
     Bool { default: bool },
+    /// One of a closed list of names (the pilot's `enum`, F064): `options` are the accepted
+    /// spellings, exactly, and `default` is one of them. A name outside the list is out of range
+    /// (`PARAM_OUT_OF_RANGE`); a value that is not a string is the wrong type (`PARAM_TYPE`).
+    Choice {
+        options: &'static [&'static str],
+        default: &'static str,
+    },
 }
 
 impl ParamKind {
@@ -108,6 +115,7 @@ impl ParamKind {
             Self::Color { .. } => "color",
             Self::Point { .. } => "vec2",
             Self::Bool { .. } => "boolean",
+            Self::Choice { .. } => "choice",
         }
     }
 
@@ -124,6 +132,7 @@ impl ParamKind {
                 y: default[1],
             },
             Self::Bool { default } => FxValue::Bool(default),
+            Self::Choice { default, .. } => FxValue::Choice(default),
         }
     }
 }
@@ -132,7 +141,8 @@ impl ParamKind {
 #[derive(Debug, PartialEq)]
 pub struct EffectSpec {
     pub id: &'static str,
-    /// `look`: a pass over the picture (the pilot also has `transition`, not entered yet).
+    /// `look`: a pass over the picture, listed by [`catalog`]. `transition`: an effect between two
+    /// shots (F064), listed only by the separate table of `transition_catalog`.
     pub family: &'static str,
     pub label: Labels,
     pub summary: Labels,
@@ -193,6 +203,10 @@ fn param_json(param: &ParamSpec) -> Value {
         ParamKind::Bool { default } => json!({
             "id": param.id, "label": param.label.to_json(), "kind": "boolean",
             "default": default,
+        }),
+        ParamKind::Choice { options, default } => json!({
+            "id": param.id, "label": param.label.to_json(), "kind": "choice",
+            "options": options, "default": default,
         }),
     }
 }
