@@ -77,7 +77,7 @@ pilha de 64 MiB.
 
 1. **Cenas `lit-*-held` (3)**: o oráculo dá ao shot A uma instância de 12 quadros sob um shot de 30; a origem tolera
    (prende), o importador do Tessel recusa (`SHOT_EXCEEDS_INSTANCE_DURATION`, contrato da S1a). O teste recusa isso e
-   reconstrói a cena com instância que cobre o shot, comparando só o que não depende do comprimento (luz no quadro real,
+   reconstrói a cena com instância que cobre o shot, comparando só o que não depende do comprimento (câmera/heldCamera de A, luz no quadro real,
    `progress`, `amount`, janela, relógios do vizinho não alterado).
 2. **Linha `covers-and-reaches-before-the-shot` do clipe de plano**: o importador recusa um clipe `shot` que sai do
    próprio shot (F062); o caso da origem não tem documento de destino e é **pulado** (asserido por nome).
@@ -136,3 +136,26 @@ a mesmabase. Produção não mudou; o head limpo será validado antes do push.
 Linux não foi executado nem esses perfis constituem paridade multiplataforma
 com o motor de origem. O ajuste não fecha BL082.4.17: três kitslit-held e
 o clipe fora do shot continuam com limites de evidência declarados acima.
+
+## 6. Revisão independente e reforço do coordenador
+
+A revisão Windows de73775c3 executou106transições/10corpus/594lib e80GPUI, estáticos,
+no-run/build; core1584passaram e2gizmos da base falharam. Achados: baselineMac ausente,
+aceitação indevida de dois None por overflow, três guardas sem teste e contexto do vizinho.
+Nenhum resultado de runtime ou pixels reais. A aprovação é condicionada e só interna.
+
+No head limpo dd92281, o coordenador executou no Mac106transições/10corpus/baseline1 em
+debug e baseline1 em release; check/clippy/build passaram. A correção posterior de produção
+não herda esses gates. Ela adiciona regressões do overflow, dos três guardas e de versão/splat
+em ambos os decks, e migra todos os orçamentos para pass_budget_in. A câmera e heldCamera de A
+nos30 quadros adaptados passam a ser comparados; só instanceFrame/heldInstance ficam de fora.
+A nova referência representável tem ownership separado (BL082.4.17); a S0 fica intacta.
+
+Os erros do vizinho passam a Invalid com ponteiro do deck; a transformação de splat do topo
+preserva seu erro original. O wire não carrega C: a S2 precisa fechar o contrato de validação
+de primary antes de aceitar planos externos (BL082.4.20). Os limites de bytes são conferidos
+no texto com chave literal, ou depois do parse se escapada; itens/profundidade são conferidos
+na árvore. Não se provou plano válido aceito de exatamente20000 itens (.21).
+
+BL082.4.18/.19/.22 estão em correção pelo coordenador. Testes/gates do novo head e rechecagem
+independente continuam a validar. S2 e S3a não foram iniciadas; F064 permanece P.

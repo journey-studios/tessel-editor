@@ -2061,3 +2061,27 @@ generadores temporários removidos. Nenhuma mudança emcrates/core/src.
 Gates do head limpo ainda serão rodados antes de publicar o ajuste. F064
 produtoP, reviewWindows fonte737em andamento, divergênciaX(.17) nãoresolvida
 por este ajuste. Sem Linux ouruntime/pixels/aceitehumano.
+
+### PR63: reforço após revisão independente; referência representável iniciada
+
+R1 Windows em 73775c3 aprovou o core interno com condição de baseline Mac e achados baixos.
+Baseline corrigida em dd92281: Mac limpo passou106transições/10corpus e baseline debug/release,
+check/clippy/build. Referência capturada em e3c20cb separado; perfis Windows preservados.
+O coordenador iniciou os ajustes pequenos de validação, contexto de deck e orçamento na PR63;
+não são gates herdados do head737. S2/S3a continuam não iniciadas e F064 produto P.
+
+BL082.4.17 está em implementação Windows com Cursor Sonnet5.5 defaults:
+[P4b X: oráculo representável de hold e luz para S2](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:67711dc2ee2161709e5694a6f305ba4d0b7e70ac9dec806217509ddb22f166e6).
+Checkout próprio E:/www/tessel-p4b-representable-x-20261114, base main b6cf304.
+Ownership: scripts pilot_dissolve_representable.py/spec, corpus/manifesto novos, teste de
+importabilidade real e plano/relatório próprios. Não altera produção, corpus S0, origem,
+backlog, matriz ou índice. Instâncias cobrem seus shots; ambos os decks têm estados completos;
+luz usa quadro real e o vizinho tem discriminante próprio. Review independente futura.
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL082.4.18 | PR63 / validador | Overflow e três guardas sem regressão discriminante | Em andamento | BL082.4.3 | Coordenador | Recusar conversão/soma inválidas; testes de tempo real divergente, clipId repetido entre decks e luzes no pré-check; matar os mutantes da revisão e revalidar Windows/Mac. |
+| BL082.4.19 | PR63 / erros | Versão e transformação de splat do vizinho sem deck no erro | Em andamento | BL082.4.3 | Coordenador | Ponteiro /transition/other em planos tipados e JSON, inclusive versão/splat; manter contrato do topo e testar ids colidentes. |
+| BL082.4.20 | S2 / contrato do plano | Wire sem C e comprimentos não permite validar toda a escolha temporal de primary/held | Pendente | BL082.4.3/.4.4 | Dono de S2 a atribuir | Fixar contrato de validação de planos externos antes do runtime; separar escolha correta do construtor da capacidade do validador isolado. |
+| BL082.4.21 | Validação do teto de itens | Não há plano válido aceito de exatamente 20000 itens sob o teto de bytes | Pendente | BL082.4.3 | Não atribuído | Provar interação dos dois tetos com plano válido representável ou documentar formalmente por que a combinação é impossível; pré-check de arrays não é aceite completo. |
+| BL082.4.22 | PR63 / orçamento | Edit/inspect/gesto/UI ainda usam orçamento que ignora transição | Em andamento | BL082.4.3 | Coordenador | Migrar chamadas restantes para pass_budget_in e discriminar 8 looks mais mistura em respostas compartilhadas; sem abrir Refuse. |

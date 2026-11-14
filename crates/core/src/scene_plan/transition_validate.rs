@@ -22,13 +22,19 @@ fn invalid(pointer: &str, message: impl Into<String>) -> PlanError {
 }
 
 /// An error of the neighbour deck, seen from the top: the pointer moves under `/transition/other`.
-fn within_other(error: PlanError) -> PlanError {
+pub(super) fn within_other(error: PlanError) -> PlanError {
     match error {
         PlanError::Invalid { pointer, message } => PlanError::Invalid {
             pointer: format!("/transition/other{pointer}"),
             message,
         },
-        other => other,
+        error @ PlanError::UnsupportedVersion { .. } => {
+            invalid("/transition/other/planVersion", error.to_string())
+        }
+        error @ PlanError::SplatTransform { .. } => {
+            invalid("/transition/other/nodes", error.to_string())
+        }
+        error => invalid("/transition/other", error.to_string()),
     }
 }
 
@@ -156,7 +162,10 @@ impl ScenePlan {
             ));
         }
         let edit_frame = i64::try_from(self.frame.edit_frame).ok();
-        if edit_frame != t.start_frame.checked_add(t.frame_in_window) {
+        if !matches!(
+            (edit_frame, t.start_frame.checked_add(t.frame_in_window)),
+            (Some(frame), Some(in_window)) if frame == in_window
+        ) {
             return Err(invalid(
                 "/transition/frameInWindow",
                 "must be the edit frame minus startFrame",

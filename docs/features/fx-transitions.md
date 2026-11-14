@@ -461,3 +461,13 @@ sobre a basee3c20cb sem mudança de produção, preservando as referências
 Windows. Candidato+dados corrigidos passam106/10e baseline emdebug/release.
 Esta é prova de compatibilidade de plano/core, sem runtime oupixelsreais,
 e não resolve as divergências de kitsX (BL082.4.17) em revisão.
+
+### Reforço do coordenador após review S1b
+
+BL082.4.18/.19/.22: o validador recusa a relação de quadro com overflow, qualifica erros do deck
+vizinho (incluindo versão e splat), e edit/inspect/gesto/UI usam o mesmo orçamento com shots e mistura.
+Regressões novas cobrem tempo real diferente, clipId repetido entre decks e luzes no teto de itens.
+A adaptação dos três kits lit-held passa a conferir também câmera e heldCamera de A; só os estados de
+instância que dependem do comprimento adaptado ficam sem comparação. BL082.4.17 adiciona referência
+representável separada; o acervo S0 permanece intacto. Nenhuma dessas correções abre a admissão.
+Os testes novos e os gates do novo head ainda precisam de execução e review. F064 permanece P.

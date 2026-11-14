@@ -202,11 +202,10 @@ impl EditorState {
         let outcome = scene_edit::apply_fx(&current, ops)?;
         let summary = outcome.summary;
         let clips = outcome.candidate.bundle().fx.clip_count();
-        let budget = outcome
-            .candidate
-            .bundle()
-            .fx
-            .pass_budget(outcome.candidate.bundle().edit_duration_frames);
+        let budget = outcome.candidate.bundle().fx.pass_budget_in(
+            &outcome.candidate.bundle().shots,
+            outcome.candidate.bundle().edit_duration_frames,
+        );
         let mut warnings = budget.warnings();
         warnings.extend(summary.warnings());
         if dry_run {

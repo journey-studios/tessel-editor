@@ -104,8 +104,19 @@ antes de ser lido. A saída (`fx` de escopo `output`) age uma vez, no topo, e n�
 `resource_union()` é **derivada, não serializada**: por `assetId`, com `used_by` qualificado por deck (`primary`,
 depois `other`); o mesmo `assetId` com conteúdo diferente é inválido em `/transition/other/resources/N`. `requires`
 ganha `fxTransition` (14ª `Capability`, **ausente** da lista `SCENE_CAPABILITIES` do JS até a S2) e a união das
-capacidades dos dois decks. Tetos de entrada hostil, medidos no texto antes de parsear: 4 194 304 bytes, 20 000 itens
-(contados pelos comprimentos dos arrays dos dois decks) e profundidade 1. Os planos reais do corpus têm ~6 KB.
+capacidades dos dois decks. Tetos: 4 194 304 bytes, 20 000 itens e profundidade 1.
+O teto de bytes é verificado antes do parse quando a chave `transition` está literal; uma chave com escape
+é conferida depois. Itens (incluindo luzes) e profundidade são verificados na árvore JSON antes de ler os
+itens de cada deck; o parser de texto também mantém o limite de recursão do serde. `from_json(Value)`
+não mede bytes de texto. Os planos reais do corpus têm ~6 KB.
+
+A relação `editFrame = startFrame + frameInWindow` exige conversão e soma representáveis; dois overflows
+não são igualdade. Erros do vizinho têm ponteiro `/transition/other` (versão: `planVersion`, transformação
+de splat: `nodes`), inclusive em planos montados à mão; estes erros são `Invalid`, e o erro de splat do
+topo preserva o contrato existente. O construtor escolhe `primary` pelo corte. O validador isolado confere
+os shotIds dos decks e a cabeça presa, mas não recebe o quadro C do corte nem os comprimentos dos clipes;
+não prova a coerência temporal completa de `primary` ou da cauda. A S2 precisa fechar esse contrato antes
+que um runtime aceite planos externos (BL082.4.20).
 
 ### Políticas
 

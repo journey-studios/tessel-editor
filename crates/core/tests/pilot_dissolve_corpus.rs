@@ -326,14 +326,6 @@ fn deck_matches(
         1e-9,
         what,
     );
-    if skip_instance_clocks {
-        return;
-    }
-    assert_eq!(
-        deck.frame.instance_frame as i64,
-        int(&state["instance_frame"]),
-        "{what}: instance"
-    );
     assert_eq!(
         deck.frame.camera_clip_frame as i64,
         int(&state["camera_clip_frame"]),
@@ -341,15 +333,22 @@ fn deck_matches(
     );
     let held = scene.bundle().evaluate_shot_at_offset(shot, frame).unwrap();
     assert_eq!(
-        held.held_instance,
-        state["held_instance"] == true,
-        "{what}: held instance"
-    );
-    assert_eq!(
         held.held_camera,
         state["held_camera"] == true,
         "{what}: held camera"
     );
+    if !skip_instance_clocks {
+        assert_eq!(
+            deck.frame.instance_frame as i64,
+            int(&state["instance_frame"]),
+            "{what}: instance"
+        );
+        assert_eq!(
+            held.held_instance,
+            state["held_instance"] == true,
+            "{what}: held instance"
+        );
+    }
 }
 
 fn lights_match(deck: &ScenePlan, expected: &Value, what: &str) {

@@ -238,7 +238,10 @@ impl ScenePlan {
             }
         }
         match &self.transition {
-            Some(transition) => transition.other.check_splat_transforms(),
+            Some(transition) => transition
+                .other
+                .check_splat_transforms()
+                .map_err(super::transition_validate::within_other),
             None => Ok(()),
         }
     }
