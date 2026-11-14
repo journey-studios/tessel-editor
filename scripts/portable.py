@@ -7,6 +7,10 @@
   `TESSEL_FFPROBE`, then `PATH`, then the WinGet Gyan package), never assumed to be on `PATH`.
 * `kill_tree(process)` / `kill_group(pid)`: ends a process and what it started (on Windows the WebView2
   helpers too); `kill_group` is `killpg(SIGKILL)` on Unix.
+* `program(path, *args)`: the command line that starts `path`. Windows cannot start a `#!` script (the
+  proofs' stand-in editors), so there one runs under its interpreter, and is still the process started.
+* `alive(pid)` / `process_tree(pid)`: whether a process runs, and the processes it started, read without
+  sending anything (on Windows `os.kill(pid, 0)` is not a probe: it sends CTRL+C to the console).
 * `TEMP` / `temp_path(name)`: `/tmp` on Unix, exactly as the scripts always used it (short socket paths on
   macOS), and the system's temporary folder on Windows, where there is no `/tmp`.
 * `executable(path)`: `path`, or `path.exe` on Windows when only that exists.
@@ -83,7 +87,10 @@ def processes():
 
 
 def kill_group(pid, quiet=True):
-    """`killpg(pid, SIGKILL)` on Unix; on Windows the whole process tree (`taskkill /T /F`)."""
+    """`killpg(pid, SIGKILL)` on Unix; on Windows the whole process tree (`taskkill /T /F`).
+
+    `taskkill /T` finds the descendants through the leader, so once the leader is gone it finds nothing:
+    then what is left of the tree (`process_tree`, which still sees the orphans) is ended by PID."""
     if not WINDOWS:
         import signal
         try:
@@ -93,8 +100,221 @@ def kill_group(pid, quiet=True):
                 raise
         return
     done = subprocess.run(['taskkill', '/T', '/F', '/PID', str(pid)], capture_output=True, timeout=30)
+    if done.returncode == 0:
+        return
+    left = process_tree(pid)
+    if left:
+        done = subprocess.run(['taskkill', '/F', *(word for member in left for word in ('/PID', str(member)))],
+                              capture_output=True, timeout=30)
     if done.returncode != 0 and not quiet:
         raise OSError(f"taskkill /T /F /PID {pid}: {done.stderr.decode('oem', errors='replace').strip()[:120]}")
+
+
+def program(path, *args):
+    """The command line that starts the program at `path` with `args`: `[path, *args]`.
+
+    On Unix that is all (the kernel reads a script's `#!`), and on Windows too for a real executable.
+    Windows cannot start a script: there a file whose `#!` names Python runs under this Python (in
+    UTF-8 mode, like the editor; the shebang's own options kept) and one whose `#!` names `sh`/`bash`
+    under Git's `sh`. The process started is that interpreter running the script, so its `pid`,
+    `terminate()` and `kill()` reach the script itself, not a wrapper around it."""
+    if not WINDOWS:
+        return [path, *args]
+    if os.path.dirname(str(path)):
+        # A path (not a bare name looked up on PATH): `target/debug/tessel-editor` is `...\tessel-editor.exe` there.
+        path = executable(path)
+    command = [path, *args]
+    interpreter = _shebang(path)
+    if not interpreter:
+        return command
+    name = os.path.basename(interpreter[0]).lower()
+    if name.endswith('.exe'):
+        name = name[:-4]
+    if name.startswith('python'):
+        # A venv's `python.exe` is a launcher that starts the base interpreter as a SECOND process; the
+        # stand-ins only need the standard library, so the base interpreter runs them directly.
+        python = getattr(sys, '_base_executable', None) or sys.executable
+        return [python, '-X', 'utf8', *interpreter[1:], *command]
+    if name in ('sh', 'bash'):
+        return [git_sh(), *interpreter[1:], *command]
+    return command
+
+
+def _shebang(path):
+    """The interpreter and its options from the `#!` line of the file at `path`, or `None` (no such
+    file, a binary such as a PE `MZ` executable, no `#!`). `#!/usr/bin/env NAME` names `NAME`."""
+    try:
+        with open(path, 'rb') as handle:
+            head = handle.read(512)
+    except OSError:
+        return None
+    if not head.startswith(b'#!'):
+        return None
+    line = head[2:].split(b'\n', 1)[0].decode('utf-8', errors='replace').strip()
+    if os.path.isfile(line):
+        return [line]           # an interpreter path with spaces (`C:\Program Files\...\python.exe`)
+    words = line.split()
+    if words and os.path.basename(words[0]).lower() in ('env', 'env.exe'):
+        words = words[1:]
+        while words and words[0].startswith('-'):
+            words = words[1:]   # `env -S python3 -u`: the options of `env`, not of the program
+    return words or None
+
+
+def suspend(pid):
+    """Stops every thread of process `pid` until `resume(pid)`: `SIGSTOP` on Unix; on Windows, which has no such signal,
+    `NtSuspendProcess` (the process is frozen the same way: it neither runs nor answers)."""
+    _suspend_or_resume(pid, 'NtSuspendProcess', 'SIGSTOP')
+
+
+def resume(pid):
+    """Lets a process stopped by `suspend` run again: `SIGCONT` on Unix, `NtResumeProcess` on Windows."""
+    _suspend_or_resume(pid, 'NtResumeProcess', 'SIGCONT')
+
+
+def _suspend_or_resume(pid, call, signal_name):
+    if not WINDOWS:
+        import signal
+        os.kill(pid, getattr(signal, signal_name))
+        return
+    import ctypes
+    from ctypes import wintypes
+    kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    process_suspend_resume = 0x0800
+    handle = kernel32.OpenProcess(process_suspend_resume, False, pid)
+    if not handle:
+        raise OSError(ctypes.get_last_error(), f'OpenProcess({pid}) for {call} failed')
+    try:
+        function = getattr(ctypes.WinDLL('ntdll'), call)
+        function.restype = ctypes.c_long
+        function.argtypes = (wintypes.HANDLE,)
+        status = function(handle)
+        if status != 0:
+            raise OSError(f'{call}({pid}) failed: NTSTATUS {status & 0xFFFFFFFF:#010x}')
+    finally:
+        kernel32.CloseHandle(wintypes.HANDLE(handle))
+
+
+def alive(pid):
+    """Whether the process `pid` runs. Unix: `kill(pid, 0)`. Windows: a wait of zero on its handle;
+    there `os.kill(pid, 0)` is NOT a probe, it sends CTRL+C (`CTRL_C_EVENT` is 0) to the console."""
+    if not WINDOWS:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        return True
+    kernel32, wintypes = _kernel32()
+    handle = kernel32.OpenProcess(0x00100000 | 0x1000, False, pid)  # SYNCHRONIZE | QUERY_LIMITED_INFORMATION
+    if not handle:
+        return False
+    try:
+        return kernel32.WaitForSingleObject(handle, 0) == 0x102  # WAIT_TIMEOUT: still running
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def process_tree(pid):
+    """`pid` while it runs and every running process it started, directly or not, as sorted PIDs. Sends
+    nothing to any process.
+
+    Unix: by parent id from `processes()` (an orphan is re-parented to init and leaves the tree).
+    Windows: by parent id from a Toolhelp snapshot. Windows does not re-parent, so the children of a
+    leader that already ended are still found while its PID is not reused (a `Popen` that has not been
+    collected keeps it). A process counts as a child only if it started after its parent (or, when the
+    parent's start is unknown, after the nearest known ancestor's), so a recycled PID never adopts
+    another program's processes. A grandchild whose own parent already ended is not found."""
+    parents = _windows_parents() if WINDOWS else {row['pid']: row['ppid'] for row in processes()}
+    started = {}
+    found = {pid} if pid in parents else set()
+    frontier = [(pid, _started(pid, started))]
+    while frontier:
+        parent, bound = frontier.pop()
+        for child, of in parents.items():
+            if of != parent or child == pid or child in found:
+                continue
+            born = _started(child, started)
+            if bound is not None and born is not None and born < bound:
+                continue    # older than its "parent": the child of an earlier owner of that PID
+            found.add(child)
+            frontier.append((child, born if born is not None else bound))
+    return sorted(found)
+
+
+def _started(pid, cache):
+    """Windows: when `pid` started (FILETIME ticks), or `None` when it cannot be opened. Unix: `None`."""
+    if not WINDOWS:
+        return None
+    if pid not in cache:
+        import ctypes
+        kernel32, wintypes = _kernel32()
+        handle = kernel32.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        cache[pid] = None
+        if handle:
+            try:
+                times = [wintypes.FILETIME() for _ in range(4)]
+                if kernel32.GetProcessTimes(handle, *(ctypes.byref(item) for item in times)):
+                    cache[pid] = (times[0].dwHighDateTime << 32) | times[0].dwLowDateTime
+            finally:
+                kernel32.CloseHandle(handle)
+    return cache[pid]
+
+
+_KERNEL32 = []
+
+
+def _kernel32():
+    """This module's own `kernel32` (not `ctypes.windll`'s, whose prototypes other code may set)."""
+    import ctypes
+    from ctypes import wintypes
+    if _KERNEL32:
+        return _KERNEL32[0], wintypes
+    kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.WaitForSingleObject.restype = wintypes.DWORD
+    kernel32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    kernel32.GetProcessTimes.restype = wintypes.BOOL
+    kernel32.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    kernel32.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
+    kernel32.Process32FirstW.argtypes = [wintypes.HANDLE, ctypes.c_void_p]
+    kernel32.Process32NextW.argtypes = [wintypes.HANDLE, ctypes.c_void_p]
+    _KERNEL32.append(kernel32)
+    return kernel32, wintypes
+
+
+def _windows_parents():
+    """`{pid: parent pid}` of every running process (a Toolhelp snapshot: fast, no PowerShell)."""
+    import ctypes
+    kernel32, wintypes = _kernel32()
+
+    class ProcessEntry(ctypes.Structure):
+        _fields_ = [('dwSize', wintypes.DWORD), ('cntUsage', wintypes.DWORD), ('th32ProcessID', wintypes.DWORD),
+                    ('th32DefaultHeapID', ctypes.c_size_t), ('th32ModuleID', wintypes.DWORD),
+                    ('cntThreads', wintypes.DWORD), ('th32ParentProcessID', wintypes.DWORD),
+                    ('pcPriClassBase', ctypes.c_long), ('dwFlags', wintypes.DWORD),
+                    ('szExeFile', ctypes.c_wchar * 260)]
+
+    snapshot = kernel32.CreateToolhelp32Snapshot(0x2, 0)  # TH32CS_SNAPPROCESS
+    if snapshot is None or snapshot == ctypes.c_void_p(-1).value:
+        raise OSError(ctypes.get_last_error(), 'CreateToolhelp32Snapshot failed')
+    parents = {}
+    try:
+        entry = ProcessEntry()
+        entry.dwSize = ctypes.sizeof(entry)
+        more = kernel32.Process32FirstW(snapshot, ctypes.byref(entry))
+        while more:
+            parents[entry.th32ProcessID] = entry.th32ParentProcessID
+            more = kernel32.Process32NextW(snapshot, ctypes.byref(entry))
+    finally:
+        kernel32.CloseHandle(snapshot)
+    return parents
 
 
 def lock_file(handle, blocking=True):
@@ -107,7 +327,7 @@ def lock_file(handle, blocking=True):
     import msvcrt
     while True:
         try:
-            handle.seek(0)
+            os.lseek(handle.fileno(), _LOCK_OFFSET, os.SEEK_SET)
             msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
             return
         except OSError as error:
@@ -122,8 +342,14 @@ def unlock_file(handle):
         fcntl.flock(handle, fcntl.LOCK_UN)
         return
     import msvcrt
-    handle.seek(0)
+    os.lseek(handle.fileno(), _LOCK_OFFSET, os.SEEK_SET)
     msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+
+
+# Windows locks are mandatory: a lock on the first byte made every READ of a held lock file fail (`PermissionError`). The
+# byte locked is far past the end instead (as SQLite does), so the file's content stays readable while it is held. Every
+# script locks through `lock_file`, so they all agree on this byte (it must fit the CRT's 32-bit `_locking` offset).
+_LOCK_OFFSET = 0x7FFFFFFE
 
 
 def ui_socket_path():
@@ -300,7 +526,7 @@ public static class TesselCapture {
 }
 "@
 $window = (Get-Process -Id $env:TESSEL_CAPTURE_PID).MainWindowHandle
-if ($window -eq [IntPtr]::Zero) { Write-Output 'no main window for this PID'; exit 0 }
+if ($window -eq [IntPtr]::Zero) { Write-Output 'no on-screen window for this PID'; exit 0 }
 Write-Output ([TesselCapture]::Save($window, $env:TESSEL_CAPTURE_PATH))
 '''
 

@@ -410,7 +410,7 @@ def make_scenario(fixtures, variants):
                   {k: r['state'] for k, r in reports.items() if r['state'] != 'ready'})
             for id_, report in reports.items():
                 check(f'{id_}: the picture is inside this project\'s workspace cache',
-                      report['path'].startswith(str(workspace)) and '/.tessel/cache/' in report['path'], report['path'])
+                      report['path'].startswith(str(workspace)) and '/.tessel/cache/' in Path(report['path']).as_posix(), report['path'])
                 check(f'{id_}: the picture file exists and is {report["width"]}x{report["height"]}',
                       Path(report['path']).is_file() and (report['width'], report['height']) == (WIDTH, HEIGHT), report)
             return reports[SCENE_ID]['path'], reports[SPLAT_ID]['path'], reports[FAR_ID]['path'], reports

@@ -360,7 +360,7 @@ def run_time(exe, report, out, name):
 def main(argv=None):
     harness.install_termination_handlers()
     parser = argparse.ArgumentParser()
-    parser.add_argument('--out', default='/tmp/gizmo-perf-mutants')
+    parser.add_argument('--out', default=harness.portable.temp_path('gizmo-perf-mutants'))
     # A name that names no mutant is a usage error here, before a lock is taken or the checkout is read (it was a `KeyError`
     # on `MUTANTS[name]`, after both, with a traceback and no manifest).
     parser.add_argument('--only', nargs='*', choices=sorted(MUTANTS), metavar='MUTANT',

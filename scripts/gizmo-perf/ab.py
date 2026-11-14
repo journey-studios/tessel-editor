@@ -484,7 +484,7 @@ def main(argv=None):
     parser.add_argument('--allow-other-baseline', action='store_true',
                         help='compare against a ref other than the pinned `cbe9e1b` (recorded as such)')
     parser.add_argument('--rounds', type=int, default=4)
-    parser.add_argument('--out', default='/tmp/gizmo-perf-ab')
+    parser.add_argument('--out', default=harness.portable.temp_path('gizmo-perf-ab'))
     parser.add_argument('--phase', choices=['build', 'measure'], required=True,
                         help='`build`: both release builds and the executables copied to --out/exes (a build leaves the '
                              'machine loaded, which the guard refuses); `measure`: the guard, the lock and the rounds '
@@ -683,7 +683,7 @@ def run_phase(args, out):
             for side in ('baseline', 'candidate'):
                 done = run_once(exes[side], out / f'warmup-{side}.json')
                 runs.append({'side': side, 'kept': False, 'warmup': True, **done.record(),
-                             'load_after': os.getloadavg()})
+                             'load_after': harness.portable.loadavg()})
                 problem = run_is_clean(done, out / f'warmup-{side}.json')
                 if problem:
                     manifest.update(status='FAIL', reason=f'warmup ({side}) failed: {problem}')
@@ -695,7 +695,7 @@ def run_phase(args, out):
                 harness.write_text(out / f'round{index:02d}-{side}.stdout.txt', done.stdout)
                 runs.append({'side': side, 'kept': True, 'index': index, **done.record(), 'report': path.name,
                              'report_sha256': harness.sha256(path) if path.exists() else None,
-                             'load_after': os.getloadavg(), 'thermal': harness.machine()['thermal'][:300]})
+                             'load_after': harness.portable.loadavg(), 'thermal': harness.machine()['thermal'][:300]})
                 problem = run_is_clean(done, path)
                 if problem:
                     manifest.update(status='FAIL', reason=f'round {index} ({side}) failed: {problem}')

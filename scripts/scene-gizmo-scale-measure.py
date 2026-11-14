@@ -3,8 +3,9 @@
 
     python3 scripts/scene-gizmo-scale-measure.py [--headless target/debug/tessel-headless] [--n 1500] [--out m.json]
 
-This is a PERFORMANCE measurement, so it takes the shared GPU/bench lock (`/tmp/tessel-scene-gpu.lock`, the one
-`scripts/directed-scene-proof/with-gpu-lock.py` takes) with `LOCK_NB`: if somebody else holds it, the script writes
+This is a PERFORMANCE measurement, so it takes the shared GPU/bench lock (`/tmp/tessel-scene-gpu.lock`, in the system's
+temporary folder on Windows: the one `scripts/directed-scene-proof/with-gpu-lock.py` takes) with `LOCK_NB`: if somebody
+else holds it, the script writes
 `{"measured": false, "reason": "lock_busy"}` and exits 3 WITHOUT waiting, deleting the lock or touching the holder.
 The functional proofs never take the lock.
 
@@ -17,7 +18,6 @@ Limits, on purpose: a DEBUG binary; no window, no WebView and no page rasterizat
 figure is not a scale figure and neither proves the page's cost. The report keeps every round, never "cost zero".
 """
 import argparse
-import fcntl
 import importlib.util
 import json
 from pathlib import Path
@@ -27,8 +27,11 @@ import sys
 import tempfile
 import time
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import portable  # noqa: E402  (BL168.8: the lock and the temporary folder on Windows)
+
 ROOT = Path(__file__).resolve().parent.parent
-LOCK = '/tmp/tessel-scene-gpu.lock'
+LOCK = portable.temp_path('tessel-scene-gpu.lock')
 
 
 def load(name, file):
@@ -46,7 +49,7 @@ def percentile(values, q):
 
 def main(argv=None):
     parser = argparse.ArgumentParser()
-    parser.add_argument('--headless', default=str(ROOT / 'target/debug/tessel-headless'))
+    parser.add_argument('--headless', default=portable.executable(ROOT / 'target/debug/tessel-headless'))
     parser.add_argument('--n', type=int, default=1500)
     parser.add_argument('--out')
     args = parser.parse_args(argv)
@@ -60,7 +63,7 @@ def main(argv=None):
 
     lock = open(LOCK, 'a')
     try:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        portable.lock_file(lock, blocking=False)
     except OSError:
         lock.close()
         report['reason'] = 'lock_busy'
@@ -70,7 +73,7 @@ def main(argv=None):
     surface = None
     try:
         s8 = load('scene_gizmo_proof', 'scene-gizmo-proof.py')
-        work = tempfile.mkdtemp(prefix='te-g12-perf-', dir='/tmp')
+        work = tempfile.mkdtemp(prefix='te-g12-perf-', dir=portable.TEMP)
         surface = s8.Headless(args.headless, work)
         def ok(request):
             good, payload = surface.op(request)
@@ -110,7 +113,7 @@ def main(argv=None):
                 if work is not None:
                     shutil.rmtree(work, ignore_errors=True)
             finally:
-                fcntl.flock(lock, fcntl.LOCK_UN)
+                portable.unlock_file(lock)
                 lock.close()
     return finish(0)
 

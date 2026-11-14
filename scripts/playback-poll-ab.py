@@ -82,7 +82,7 @@ POLLS_PER_CHANGE_RANGE = (1.9, 2.15)
 LAG_PAIR_CONSISTENCY = 0.9
 
 
-RULE_PATH = pathlib.Path("docs") / "viewport-real-latency-ab-results" / "poll-ab" / "rule.txt"
+RULE_PATH = pathlib.PurePosixPath("docs", "viewport-real-latency-ab-results", "poll-ab", "rule.txt")  # as Git and the docstring name it, on every OS
 
 
 def rule_state():

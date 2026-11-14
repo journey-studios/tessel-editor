@@ -1087,6 +1087,9 @@ class LinkScope(unittest.TestCase):
             shims = pathlib.Path(folder) / "shims"
             shims.mkdir()
             for tool in ("rustc", "node"):
+                if os.name == "nt":  # no `sh` script runs by name on Windows: a `.cmd` that prints its working directory
+                    (shims / f"{tool}.cmd").write_text("@echo %CD%\n")
+                    continue
                 shim = shims / tool
                 shim.write_text('#!/bin/sh\necho "$(pwd -P)"\n')
                 shim.chmod(0o755)
@@ -1094,9 +1097,11 @@ class LinkScope(unittest.TestCase):
             outside.mkdir()
             here = os.getcwd()
             os.chdir(outside)
-            self.addCleanup(os.chdir, here)
-            with patch.dict(os.environ, {"PATH": f"{shims}:{os.environ['PATH']}"}):
-                tools = link.tool_versions()
+            try:
+                with patch.dict(os.environ, {"PATH": f"{shims}{os.pathsep}{os.environ['PATH']}"}):
+                    tools = link.tool_versions()
+            finally:
+                os.chdir(here)  # before the folder is removed: Windows cannot remove a working directory
         self.assertEqual(tools, {"rustc": str(link.ROOT.resolve()), "node": str(link.ROOT.resolve())})
 
 
@@ -1510,12 +1515,23 @@ class ToolsAbsent(unittest.TestCase):
         self.tmp = pathlib.Path(tempfile.mkdtemp(prefix="s10-no-tools-")).resolve()
         self.addCleanup(shutil.rmtree, self.tmp, True)
         (self.tmp / "bin").mkdir()
-        (self.tmp / "bin" / "git").symlink_to(shutil.which("git"))  # the only tool on PATH: no node, no ffmpeg
+        git = shutil.which("git")
+        self.path = str(self.tmp / "bin")
+        if os.name == "nt":
+            # A symlink needs a privilege there and a copy of `git.exe` cannot find its installation: PATH takes Git's own folder
+            # instead, which must hold no node, ffmpeg or ffprobe, so git is still the only tool on PATH.
+            folder = str(pathlib.Path(git).parent)
+            self.assertEqual([t for t in ("node", "ffmpeg", "ffprobe") if shutil.which(t, path=folder)], [], folder)
+            self.path = os.pathsep.join([self.path, folder])
+        else:
+            (self.tmp / "bin" / "git").symlink_to(git)  # the only tool on PATH: no node, no ffmpeg
         (self.tmp / "main.py").write_text(ABSENT_TOOLS_MAIN.format(acc=str(HERE)))
 
     def main(self, phases):
         report = self.tmp / "report.json"
-        env = {"PATH": str(self.tmp / "bin"), "PYTHONDONTWRITEBYTECODE": "1", "HOME": os.environ.get("HOME", str(self.tmp))}
+        env = {"PATH": self.path, "PYTHONDONTWRITEBYTECODE": "1", "HOME": os.environ.get("HOME", str(self.tmp))}
+        if os.name == "nt":  # Python itself needs these there (random seed, temp folder)
+            env.update({name: os.environ[name] for name in ("SYSTEMROOT", "TEMP", "TMP") if name in os.environ})
         # `--gpu-lock-held`: this test runs without a GPU, and a phase that (wrongly) started would otherwise wait for the shared lock that
         # the caller may hold; the timeout turns any such hang into a failure instead of a stalled run.
         result = subprocess.run([sys.executable, "-B", str(self.tmp / "main.py"), "--gpu-lock-held", "--phases", phases, "--report", str(report)],

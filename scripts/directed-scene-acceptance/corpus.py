@@ -539,7 +539,7 @@ def check(directory):
     directory = pathlib.Path(directory)
     wanted = build()
     problems = []
-    present = {str(p.relative_to(directory)) for p in directory.rglob("*") if p.is_file()}
+    present = {p.relative_to(directory).as_posix() for p in directory.rglob("*") if p.is_file()}
     for relative, data in wanted.items():
         path = directory / relative
         if not path.is_file():
