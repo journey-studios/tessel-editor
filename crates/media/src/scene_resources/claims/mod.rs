@@ -90,6 +90,7 @@
 //! a project that died with the process).
 
 mod ledger;
+mod retry_wait;
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -216,3 +217,9 @@ pub fn tracked_under(root: &Path) -> usize {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod retry_tests;
+
+#[cfg(all(test, windows))]
+mod denied_budget_tests;
