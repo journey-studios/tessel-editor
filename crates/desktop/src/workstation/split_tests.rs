@@ -264,3 +264,67 @@ fn invoke_and_the_op_run_the_same_cut_and_a_refusal_changes_nothing(cx: &mut Tes
     );
     assert_eq!(clips(&view, cx), count + 2);
 }
+
+#[gpui_kit::test]
+fn audio_on_a_fractional_grid_is_offered_cut_and_keeps_the_sound(cx: &mut TestAppContext) {
+    // BL081.5: this cut used to be disabled (`SplitBlock::AudioSampleGrid`). The window asks the
+    // core, and the core now carries the sample phase of each half.
+    use tessel_editor_core::audio::{AudioBackend, OfflineMixer};
+    let (view, cx) = fixture(cx);
+    let dir = std::env::temp_dir().join(format!("tessel-split-ui-audio-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let wav = dir.join("tone.wav");
+    std::fs::write(
+        &wav,
+        tessel_editor_core::fixtures::tone_wav(44_100, 2.0, 440.0, 0.5, 2),
+    )
+    .unwrap();
+    view.update(cx, |view, _| {
+        for request in [
+            json!({"op":"project.create","name":"Ntsc","sequence":"main",
+                "rate":{"num":30000,"den":1001},"width":64,"height":36,"length":96}),
+            json!({"op":"asset.add","kind":"audio","id":"tone","name":"Tone","path":wav}),
+            json!({"op":"track.add","id":"a1","name":"A1","kind":"audio"}),
+            json!({"op":"clip.add","id":"snd","track":"a1","asset":"tone","start":1,"duration":47}),
+        ] {
+            tessel_editor_core::headless::execute(&mut view.state, &request).unwrap();
+        }
+    });
+    settle(cx);
+    let mix = |view: &Entity<Workstation>, cx: &mut VisualTestContext| {
+        view.read_with(cx, |view, _| {
+            let plan = view.state.plan_audio(0, 96).unwrap();
+            OfflineMixer::default().mix(&plan).unwrap().samples
+        })
+    };
+    let before = mix(&view, cx);
+    assert!(before.iter().any(|sample| sample.abs() > 0.01));
+    run(
+        &view,
+        cx,
+        Command::SelectClip {
+            clip: "snd".to_string(),
+        },
+    )
+    .unwrap();
+    playhead(&view, cx, 2);
+    assert_eq!(
+        node(&view, cx, "timeline.split")["enabled"],
+        true,
+        "{}",
+        node(&view, cx, "timeline.split")
+    );
+    let at = button_center(&view, cx);
+    cx.simulate_click(at, Default::default());
+    settle(cx);
+    assert_eq!(span(&view, cx, "snd"), (1, 2));
+    assert_eq!(span(&view, cx, "snd-split-1"), (2, 48));
+    let after = mix(&view, cx);
+    assert!(
+        before
+            .iter()
+            .zip(&after)
+            .all(|(a, b)| a.to_bits() == b.to_bits()),
+        "the click did not change one sample"
+    );
+}

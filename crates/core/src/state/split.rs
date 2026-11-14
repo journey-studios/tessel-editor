@@ -64,8 +64,6 @@ pub enum SplitBlock {
     PlayheadOutside,
     /// A fade ramp straddles the cut and cannot be written as two ramps.
     FadeCrossesCut,
-    /// The mixer would round a new segment to a different sample phase.
-    AudioSampleGrid,
     /// Any other refusal of [`EditorState::plan_split`] (overflow, ID policy): run `clip.split`
     /// to read the typed error.
     Refused,
@@ -80,9 +78,6 @@ impl SplitBlock {
             }
             Self::FadeCrossesCut => {
                 "A fade of the clip spans the playhead: move the playhead or shorten the fade"
-            }
-            Self::AudioSampleGrid => {
-                "This audio cannot be split at this frame rate without changing the sound"
             }
             Self::Refused => "The core refuses a cut here: run clip.split to read the reason",
         }
@@ -217,9 +212,12 @@ impl EditorState {
             .source_start
             .add(shift)
             .ok_or_else(|| overflow("The source time of the cut overflows"))?;
-        // The mixer starts each segment on an integer source sample. A new segment on a
-        // fractional frame/sample grid can change its phase, even with exact source seconds.
-        // Until that model can carry a fractional phase, accept sound only on integral grids.
+        // Sound needs no rewriting (BL081.5): the mixer reads output sample `n` at the exact
+        // source time `source_start + (n / 48000 - start / rate) * speed` (`audio_clock`), and the
+        // right half's `source_start` is exactly what that formula gives for the whole clip at
+        // the cut. Both halves therefore read the same sample positions as the whole clip, on any
+        // frame rate, source rate and speed. What must hold is that the formula is computable
+        // there (no overflow), so a split never leaves a clip the mixer cannot place.
         let audio_stream = if matches!(entry.kind, ClipKind::Audio | ClipKind::Video) {
             entry
                 .media
@@ -235,25 +233,22 @@ impl EditorState {
             None
         };
         if let Some(stream) = audio_stream {
-            let frame_time = rate.frame_to_time(1);
-            let output_step = frame_time
-                .mul_int(i64::from(crate::plan::MIX_SAMPLE_RATE))
-                .ok_or_else(|| overflow("The output sample step overflows"))?;
-            let source_step = frame_time
-                .mul(self.clip_speed(entry))
-                .and_then(|time| time.mul_int(i64::from(stream.sample_rate)))
-                .ok_or_else(|| overflow("The source sample step overflows"))?;
-            if output_step.den() != 1 || source_step.den() != 1 {
-                return Err(CommandError::new(
-                    "split_unsupported",
-                    "The audio sample grid cannot be split without changing its sample phase",
+            let placed = crate::audio_clock::sample_at(rate, frame).and_then(|sample| {
+                crate::audio_clock::source_position(
+                    rate,
+                    frame,
+                    right_source_start,
+                    self.clip_speed(entry),
+                    stream.offset,
+                    stream.sample_rate,
+                    sample,
                 )
-                .target(target.clone())
-                .details(json!({"reason":"audio_sample_grid", "frame":frame,
-                        "output_samples_per_frame":output_step.to_json(),
-                        "source_samples_per_frame":source_step.to_json()})));
+            });
+            if placed.is_none() {
+                return Err(overflow("The sound position of the cut overflows"));
             }
         }
+
         // An orbiting camera counts seconds from the clip's start, so the right half starts
         // where the orbit already is; keyed cameras read absolute scene time and need nothing.
         let right_camera = entry.camera.map(|camera| {
@@ -388,15 +383,6 @@ impl EditorState {
             },
             Err(error) => SplitAvailability::Blocked(match error.code {
                 "out_of_bounds" | "invalid_duration" => SplitBlock::PlayheadOutside,
-                "split_unsupported"
-                    if error
-                        .details
-                        .as_ref()
-                        .and_then(|details| details["reason"].as_str())
-                        == Some("audio_sample_grid") =>
-                {
-                    SplitBlock::AudioSampleGrid
-                }
                 "split_unsupported" => SplitBlock::FadeCrossesCut,
                 _ => SplitBlock::Refused,
             }),

@@ -198,7 +198,7 @@ fn speed_makes_the_mix_read_faster_through_the_source() {
         json!({"duration":24,"properties":{"speed":200}}),
     );
     let plan = state.plan_audio(0, 24).unwrap();
-    assert_eq!(plan.segments[0].speed, 2.0);
+    assert_eq!(plan.segments[0].speed, Ratio::from_int(2));
     let pcm = mix(&state, 0, 24);
     // 0.5 s of timeline = 1 s of source: output sample 24 000 is source sample 48 000.
     assert!((pcm.sample(24_000, 0) - centered(48_000.0)).abs() < 1e-3);

@@ -28,6 +28,12 @@ clipes, fade de pan/volume, envelope por keyframe nem fade em mídia de vídeo c
   Por isso **um mix em pedaços é o mix inteiro**: antes um fade que cruzava um corte do intervalo (o export mixa em
   blocos de 10 s) voltava a ganho cheio ou recomeçava no corte; hoje cada pedaço sabe onde está dentro do clipe
   (teste `a_mix_in_chunks_is_the_mix_in_one_piece_even_when_a_fade_crosses_the_cuts`, com mutação).
+- **Relógio absoluto (BL081.5).** Rampas, `clip_offset` e `clip_frames` são medidos no relógio de saída **absoluto** da sequência
+  (`S(f) = round(f·den·48000/num)`, `crates/core/src/audio_clock.rs`): `fade_in = S(start+fade) − S(start)`, `fade_out =
+  S(end) − S(end−fade)`, `clip_offset = S(início do segmento) − S(start)`. A 24 fps a 48 kHz (2000 amostras por quadro) nada
+  muda; em 24000/1001 e 30000/1001 o comprimento da rampa e o ponto de cada amostra deixaram de depender de onde o intervalo
+  pedido começa, e um mix em pedaços é o inteiro **bit a bit** (antes: dentro de um passo de envelope). Cortar o clipe fora das
+  rampas (F017) mantém o envelope amostra a amostra; cortar **dentro** de uma rampa continua recusado (BL081.2).
 - **Trim e mover.** Os fades ficam nas bordas **atuais** do clipe: cortar o início/fim ou mover recalcula
   `clip_offset`/`clip_frames` a partir de `clip.start`/`clip.end()` (teste `trimming_and_moving_the_clip_move_its_fades_with_its_edges`).
 - **Sobreposição** (`audio::resolve_fades`). Se `fade_in + fade_out` cabe no clipe, nada muda. Se passa, os dois são
@@ -83,7 +89,7 @@ O mix para tocar (`playback.*`) é preparado fora da thread da UI (a mesma taref
 
 | Superfície | Evidência | Resultado |
 |---|---|---|
-| Lib | `crates/core/tests/audio_fades.rs` (7): amostras exatas, RMS, blocos = inteiro, trim/mover, sobreposição, extremos/rejeição sem efeito, desfazer + salvar/reabrir; `video_sound.rs` (+1: som do vídeo sem fade); unitários de `inspector`/`tree` | passam; mutação (`clip_offset = 0`) quebra o teste de blocos |
+| Lib | `crates/core/tests/audio_fades.rs` (8): amostras exatas, RMS, blocos = inteiro, trim/mover, sobreposição, extremos/rejeição sem efeito, desfazer + salvar/reabrir, e (BL081.5) blocos em 24000/1001 e 30000/1001 **idênticos bit a bit** ao mix inteiro (antes: dentro de um passo de envelope); `video_sound.rs` (+1: som do vídeo sem fade); unitários de `inspector`/`tree` | passam; mutação (`clip_offset = 0`) quebra o teste de blocos |
 | Mídia | `crates/media/tests/export.rs::an_audio_fade_that_crosses_the_export_chunks_is_the_fade_of_the_whole_mix` (FFmpeg real): RMS do export em blocos = RMS do mix inteiro (< 1e-6) e o AAC decodificado sobe de forma monotônica atravessando o corte de 10 s | passa |
 | CLI headless | `scripts/audio-fades-proof.py`: processo `tessel-headless`, WAV de `render.audio` lido por Python (`wave`), 23 checks (rampa, RMS 1/√3, trim, sobreposição, recusas, desfazer, vídeo) | 23/23 |
 | Janela (CLI) | o mesmo roteiro por `tessel-editor ui op/get/set/invoke` com `HOME` próprio + nós `inspector.fades`/`property:fade_in` + captura nativa | 28/28 |
@@ -97,7 +103,7 @@ são mix offline; a escuta em hardware continua sem prova, como em F018).
 
 Revisão B e R2 (histórico): a prova usa o helper canônico da PR #20, roda cada superfície com relatório/cleanup e marca captura
 indisponível como SKIP; a checagem vazia no cruzamento zero do seno foi trocada por atenuação de uma janela com amostras não zero;
-casos 23.976/29.97 com erro permitido de uma amostra de envelope e a última amostra do fade conferida separadamente do silêncio.
+na rodada histórica, os casos 23.976/29.97 admitiam uma amostra de envelope. BL081.5 substitui essa tolerância pelo relógio absoluto: inteiro, blocos e metades preservam as mesmas amostras. A última amostra do fade continua conferida separadamente do silêncio.
 
 **Integração com `main` (PR #22, após os merges das PRs #20 e #23): gates reais executados** (17–18 GiB livres, piso de 12 GiB,
 runtime real, FFmpeg, Chrome). `TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test --workspace --locked --no-fail-fast`: **1646 passaram,

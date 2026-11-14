@@ -183,3 +183,13 @@ BL081 validado localmente nas superfícies previstas dentro desses limites.
 Código `c0f7e24` preservado; esta atualização altera apenas docs/status.
 Sem push, PR, merge, ponteiro físico, pixels, áudio ouvido ou desempenho aceitos.
 As duas tarefas Windows estão concluídas, sem executor continuando em segundo plano.
+
+
+## Seguimento BL081.5 — relógio de áudio
+
+A guarda conservadora descrita nas rodadas acima é histórica: BL081.5 passou a
+representar a fase racional e as fronteiras de amostra no relógio absoluto, sem
+metadado novo persistido no clipe. A restrição audio_sample_grid foi removida pelo
+modelo; fades atravessando o corte seguem recusados. Contrato/evidências atuais:
+[continuidade de áudio](clip-split-audio-continuity-report.md). Os resultados do
+BL081 original acima não são prova automática dessa alteração.

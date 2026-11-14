@@ -6,6 +6,7 @@
 //! and `docs/features/viewport.md` for the viewport pipeline.
 pub mod assets;
 pub mod audio;
+pub mod audio_clock;
 pub mod backend;
 pub mod bridge;
 pub mod camera_keys;

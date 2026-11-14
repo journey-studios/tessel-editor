@@ -43,9 +43,6 @@ fn split_block_reason(block: SplitBlock) -> &'static str {
             "posicione o playhead dentro do clipe selecionado, depois do primeiro quadro"
         }
         SplitBlock::FadeCrossesCut => "uma entrada ou saída (fade) do clipe atravessa o playhead",
-        SplitBlock::AudioSampleGrid => {
-            "este áudio não pode ser cortado nesta taxa de quadros sem alterar o som"
-        }
         SplitBlock::Refused => "o core recusa o corte aqui; use clip.split para ver o motivo",
     }
 }

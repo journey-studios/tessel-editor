@@ -1607,7 +1607,7 @@ correções de revisão, não gate do código corrigido.
 | BL081.2 | Corte / envelope | Fades atravessando o ponto do corte não são representáveis em duas rampas atuais | Pendente — recusa explícita implementada | BL081, BL142 | — | Preservar envelope/amostras e quadro sem aproximar; enquanto isso split_unsupported com motivo |
 | BL081.3 | Documentação | Incluir clip.split no vocabulário F015 | Corrigido pela coordenação | BL081 | Coordenador | Linha no contrato project-creation aponta F017 e argumentos absolutos; sem mudar outras operações |
 | BL081.4 | Windows / cache | Artefato debug GPUI reaproveita CARGO_MANIFEST_DIR de W: após mudança para E:; shader não abre | Pendente | BL167.4 | — | Invalidar por caminho ou incorporar HLSL sem tocar cache global; provar janela de debug em outro checkout. Executor atualizou mtime do build.rs, sem diff, apenas como contorno |
-| BL081.5 | Revisão / amostras | Novo segmento de áudio pode mudar fase em grade fracionária, mesmo com source_start racional | Parcial — guardado com recusa explícita; suporte pleno pendente | BL081, BL016 | Coordenador (guarda); expansão não atribuída | Caso real de lib:30000/1001fps, clipe de áudio movido ao frame1 e cortado no2 muda PCM em0.020370752. Só aceitar grades com amostras inteiras de saída/fonte por quadro (com velocidade); demais recusam audio_sample_grid sem mutação. Modelo futuro deve preservar fase fracionária e equivalência de mix em qualquer faixa. Guarda conservadora: NTSC recusa mesmo múltiplos de5;44,1kHz/24fps recusa a100%; mute/ganho não isentam stream. Rechecagem Windows confirmou22/22 |
+| BL081.5 | Áudio / continuidade do corte | Preservar fase em grades fracionárias e faixas de mix arbitrárias | A validar — implementação e revisão concluídas; Mac verde; rechecagem Windows final pendente | BL081, BL016 | Cursor Sonnet5.5 Windows; coordenador revisa e integra | Relógio absoluto e fase racional, sem metadado novo persistido; PCM inteiro/corte/blocos/faixas idêntico sob modelo corrigido; compatibilidade inteira legada e mudança fracionária declarada. Mac core1455/7 ignorados/0 falhas, desktop4+2, export13 e provas nativas. [Relatório](migration/clip-split-audio-continuity-report.md) |
 | BL081.6 | Revisão / atomicidade | Split inválido liquidava gesto de slider aberto antes de recusar | Corrigido e validado Windows/Mac | BL081 | Coordenador | Preflight antes de liquidar gesto; recusa mantém gesture/history/revision/documento. Regressão falha no código entregue e passa corrigida; split válido mantém política de liquidação existente |
 
 Controles de revisão:22 testes no alvo clip_split —20 antigos passam e2 novos
@@ -1653,3 +1653,113 @@ pendentes ou parciais como descritos nas linhas. A guarda de áudio recusa todo
 stream em grade fracionária mesmo mudo e mesmo num corte isolado alinhado;
 essa restrição é explícita, sem aproximação do PCM. Sem publicação/PR/merge,
 sem aceite físico, pixels, áudio ouvido ou desempenho. Não há executor ativo.
+
+
+### BL081.5 — continuidade de áudio autorizada (2026-11-14)
+
+Usuário pediu subagente Cursor Sonnet5.5 para a próxima implementação recomendada.
+Escopo: remover a restrição de grade fracionária do corte por modelo explícito de
+fase/origem de amostra no core, preservando mix em cortes e solicitações parciais.
+Base Mac ab2e8fa (códigoBL081 c0f7e24); Windows E:\www\tessel-editor main@ead9ca2
+com overlay B1/B2/BL081 corrigido e conhecido, índice real intacto. Essa diferença
+de HEAD/docs não bloqueia: confirmar hashes de código, sem reaplicar dependências,
+sem reset/stash/troca de branch nem descarte de mudanças. Readiness untracked
+conhecido continua intocado (18579bytes, AF30904C…6659).
+
+Ownership do implementador: modelo/aritmética/planejamento/mix/split no core,
+persistência e testes de continuidade, extraindo helpers coesos quando necessário;
+adapter crates/audio e export/media só se precisarem consumir o contrato do core,
+sem duplicar regras; desktop apenas para disponibilidade/motivo do corte e testes.
+Docs: F017 split, audio-fades se contrato afetado, respectivas linhas da matriz,
+e relatório novo docs/migration/clip-split-audio-continuity-report.md.
+Coordenador é dono exclusivo de docs/backlog.md; agente entrega propostas de linhas.
+Sem ampliar fade atravessado (BL081.2), batch/atalhos ou novos efeitos.
+
+Aceite: PCM antes/depois do corte sob mesmo contrato e conteúdo igual em faixas
+arbitrárias, mix em blocos igual ao inteiro, tempo racional e phase preservados;
+29,97/23,976/24/25/30/60fps,44,1/48kHz, deslocamento do clipe, source_start prévio,
+velocidade relevante, áudio próprio de vídeo, fades nas bordas externas, mute e
+reativação; save/reopen e undo/redo preservam. Oráculo independente/controles
+negativos devem discriminar perda de fase. Preservar comportamento inteiro legado;
+qualquer correção observável na grade fracionária antiga precisa ser declarada,
+sem prometer identidade com um mix que já arredondava errado. Mesma regra lib,
+headless e UI, sem medir performance ou declarar áudio ouvido/pixels.
+Sem commit/push/PR/merge pelo subagente; coordenador revisa e integra depois.
+
+
+Delegação BL081.5 iniciada: [BL081.5 — continuidade de áudio em cortes fracionários](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:5a106142d8a7defb78ca2726fa61b0c75b8dbea7639fe85c94a6366ccf26345a),
+Cursor claude-sonnet-5-5 no Computador, defaults sem opções extras.
+Task node:delegated-task:command%3Amcp%3A77122fb9-fe19-4ca6-b856-7beca247f3a3%3Aremote-delegate%3Abl0815-audio-phase-windows-20261114.
+Execução confirmada running pela delegação; manifesto15fontes de base salvo no
+Mac em /Volumes/Extreme Pro/tessel-bl0815-coordination/base-code-manifest.json.
+Mesma base Windows já preparada; não foi solicitada criação de worktree remoto
+nem transporte de pacotes grandes de dependências. Retorno por evento, sem polling.
+Implementação/revisão/provas finais ainda pendentes; nenhum commit desta feature.
+
+
+### BL081.5 — recebimento e revisão independente (2026-11-14)
+
+Entrega Windows recebida:17paths, diff120666bytes SHA256
+f654486e86b9c057cd8c8dd523aa5eeffaf16e4f7f3a7bd02876487229742998;
+gzip35891bytes SHA256
+8ed984f62030814be9022425d4e6bec1df8e88b41ea425eb653f1d86bc3d8dee.
+Quatro chunks recuperados do transcript e hashes/tamanhos conferidos no Mac;
+originais em /Volumes/Extreme Pro/tessel-bl0815-coordination/received/.
+Código aplicado sobreab2e8fa. Contextos de F017/matriz divergiam pelo fechamento
+local anterior: integradas somente linhas F017/F051 e contrato atual, preservando
+provas B2 e o aceite do BL081 dentro da fatia original. Documentação nova não
+é byte-match da versão Windows; fontes aplicadas sem conflito.
+
+Modelo entregue: relógio absoluto de saída, fase de fonte racional, cursor inteiro;
+sem metadado novo no clipe. Guard de áudio fracionário removido pelo modelo, não
+por tolerância maior. Export/media passou a usar o mesmo relógio para blocos.
+Windows reporta14novos testes de fase, clip_split22, desktop4, mediaexport11,
+lib580 e58alvoscoreok; exatamente2alvosgizmo falham (preexistentes). Fmt/check
+alltargets/clippy/no-run/build passam. Headless e janela geraram WAVs idênticos
+inteiro/cortes/undo/redo. Nenhuma prova Mac/performance/áudio ouvido foi executada
+nesta recepção. Backlog/índice/readiness/B1/B2 remotos permaneceram intactos.
+
+[Revisão independente do relógio e mixer](t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3A77122fb9-fe19-4ca6-b856-7beca247f3a3%3Adelegate-task%3Abl0815-audio-math-review-mac-20261114)
+iniciada por delegate_task Cursor Sonnet5.5, somente leitura compartilhada no Mac,
+herança limpa sem esforço/contexto definidos. Task node:delegated-task:command%3Amcp%3A77122fb9-fe19-4ca6-b856-7beca247f3a3%3Adelegate-task%3Abl0815-audio-math-review-mac-20261114.
+Retorno por evento, sem polling; testes/refatoração local depois da leitura.
+Arquivo novo clip_split_audio_phase.rs tem1107linhas; a coordenação vai separar
+helpers/provas por responsabilidade antes da entrega, preservando os14testes.
+
+IDs propostos pelo executor foram reconciliados: BL081.6 já existe e não é
+reutilizado para desempenho. IDs adicionais abaixo centralizam pendências, sem
+atribuição automática ou alteração no aceite anterior.
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL081.7 | Áudio / custo | Medir custo do SourceCursor exato contra mixer anterior em export longo | Pendente — sem desempenho aceito | BL081.5 | — | Corpus pareado, builds identificados e lock de desempenho; não inferir regressão só pelo uso de i128 nem aprovar sem medir |
+| BL081.8 | Áudio / prova | Reexecutar audio-fades-proof.py depois da mudança de relógio | Validado no Mac — 23/23 headless e28/28 janela,0skips | BL081.5, BL142 | Coordenador | Prova funcional headless+janela com binários identificados; sem promover PCM a som ouvido; sem lock de desempenho se roteiro for só funcional |
+| BL081.9 | Export / integração | Provar export real NTSC cortado e inteiro com WAV idêntico | Validado no Mac; Windows final pendente | BL081.5 | Coordenador | Teste media/export com range nãozero e fronteiras de bloco; mesma contagem e PCM, não apenas prova de core |
+| BL081.10 | Docs / histórico | Atualizar referências antigas de tolerância de uma amostra e relatório inicial do corte | Corrigido na integração local | BL081.5 | Coordenador | Contratos atuais coerentes e histórico identificado, sem apagar provas anteriores nem manter fila em relatório |
+
+
+### BL081.5 — revisão aplicada e validação Mac concluída (2026-11-14)
+
+Revisão independente Cursor Sonnet5.5 concluída sem erro bloqueante na matemática;
+o achado de export por faixa foi corrigido pela coordenação, junto das lacunas
+de borda. Validação Mac no código corrigido: fmt/check alltargets/clippy alltargets
+-Dwarnings/no-run/build exit0, core1455 passam/7 ignorados existentes/0 falhas,
+61resultados de alvos; splitUI4+fadesUI2; export11+novoexport_audio_phase2 reais;
+backlog19/19. Audio-fades-proof headless23/23 e janela28/28,0SKIP e capturaobtida.
+Prova própria adicional de fase30000/1001 com fonte44,1kHz:6WAVs idênticos entre
+headless/janela/inteiro/corte/undo/redo,15requisições, window.close na própriajanela.
+Sem áudio ouvido, ponteiro físico, pixels equivalentes ou desempenho aceitos.
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL081.11 | Revisão / export | Alvo final usava S(to-from) e adicionava/cortava uma amostra de cauda em NTSC com from>0 | Corrigido e validado no Mac; Windows final pendente | BL081.5, BL081.9 | Coordenador | Controle1..2:1602 errado contra1601. Com FPS igual usar S(to)-S(from); overrides seguem duração codificada. Teste50faixas e6exports reais com WAV doencoder igual ao mix inteiro, faixascurtas e maior que10s |
+| BL081.12 | Revisão / testes | Bordas da fonte/carry exato/erro de plano manual e arquivo1107linhas sem separação | Corrigido e validado no Mac; Windows final pendente | BL081.5 | Coordenador |2testes de borda+carryunitário;14casos de fase preservados em5módulos, raiz429linhas efilhos103–222; sem relaxar tolerância ou alterar oráculo |
+
+[Rechecagem Windows do patch de revisão](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:3a303a871c3f3de78e2a39e4311e4f10948394ad13ee6cedbc2cdb0d735dfb8e)
+iniciada por novo delegate_task Cursor Sonnet5.5, sem opções extras; não é
+reativação da implementação nem da revisão anterior. Task
+node:delegated-task:command%3Amcp%3A77122fb9-fe19-4ca6-b856-7beca247f3a3%3Aremote-delegate%3Abl0815-windows-final-export-recheck-20261114.
+Patch72257B SHA256 3b9f54c772e451e0c6ed44198af4e43365fb70a8346ea25767e6401b7cddbed4,
+em review-corrections.diff no diretório durável do SSD. Retorno por evento, sempolling.
+BL081.5 segueAvalidar até a nova provaWindows dos bytes corrigidos; provas originais
+não foram herdadas como gates da correção de export e testesnovos. Sem push/PR/merge.

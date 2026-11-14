@@ -860,7 +860,10 @@ fn the_headless_process_cuts_undoes_and_reports_refusals() {
 }
 
 #[test]
-fn an_unrepresentable_audio_sample_grid_is_refused_without_changing_the_sound() {
+fn audio_on_a_fractional_sample_grid_is_cut_and_keeps_its_sound() {
+    // BL081.5: this cut was refused (`audio_sample_grid`) because the mixer rounded each new
+    // segment to a whole source sample. The phase is now carried exactly, so it is accepted;
+    // `clip_split_audio_phase.rs` proves the sound sample by sample against an independent oracle.
     let mut state = ntsc("audio-ntsc-speed");
     state
         .execute(tessel_editor_core::Command::MoveClip {
@@ -871,24 +874,20 @@ fn an_unrepresentable_audio_sample_grid_is_refused_without_changing_the_sound() 
         })
         .unwrap();
     let before = mix(&state);
-    let untouched = fingerprint(&state);
-    let error = fail(
-        &mut state,
-        json!({"op":"clip.split","clip":"c-tone","frame":2}),
-    );
-    assert_eq!(error.code, "split_unsupported");
-    assert_eq!(
-        error.details.as_ref().unwrap()["reason"],
-        "audio_sample_grid"
-    );
-    assert_eq!(fingerprint(&state), untouched);
-    assert_same_sound(&before, &mix(&state));
-    state.timeline.selected_clip = state.timeline.clip("c-tone").map(|clip| clip.id);
+    let tone = state.timeline.clip("c-tone").unwrap().id;
+    state.timeline.selected_clip = Some(tone);
     state.timeline.playhead = 2;
     assert_eq!(
         state.split_availability(),
-        SplitAvailability::Blocked(SplitBlock::AudioSampleGrid)
+        SplitAvailability::Ready {
+            clip: tone,
+            frame: 2
+        }
     );
+    split(&mut state, "c-tone", 2);
+    assert_eq!(span(&state, "c-tone"), (1, 2));
+    assert_eq!(span(&state, "c-tone-split-1"), (2, 49));
+    assert_eq!(mix(&state).samples, before.samples, "bit for bit");
 }
 
 #[test]
