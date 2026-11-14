@@ -760,16 +760,20 @@ class BaselineTests(unittest.TestCase):
         self.assertIn("coordinator attested", json.dumps(origin).replace("what_the_coordinator_attested", "coordinator attested"))
         self.assertFalse(origin["observed_when_authoring"]["pin_commit_present"])
 
-    def test_the_manifest_records_the_21_blobs_with_pin_and_tip_and_the_five_tip_only_files(self):
+    def test_the_manifest_records_the_21_blobs_with_pin_and_tip_and_the_twelve_tip_only_files(self):
         attested = [item for item in MANIFEST["sources"] if "pin_blob_attested" in item]
         tip_only = [item for item in MANIFEST["sources"] if "pin_blob_attested" not in item]
-        self.assertEqual((len(attested), len(tip_only)), (21, 5))
+        self.assertEqual((len(attested), len(tip_only)), (21, 12))
         different = sorted(item["path"].split("/src/")[-1] for item in attested if not item["pin_equals_tip"])
         self.assertEqual(different, ["fx/fx-schema.ts", "schema/render-bundle.schema.ts"])
         for item in MANIFEST["sources"]:
             self.assertEqual(len(item["tip_blob"]), 40, item["path"])
             self.assertEqual(len(item["tip_sha256"]), 64, item["path"])
             self.assertTrue(re.fullmatch(r"[0-9a-f]{40}", item.get("pin_blob_attested", "0" * 40)), item["path"])
+        tip_names = {item["path"] for item in tip_only}
+        for needed in ("lighting/scene-lighting.ts", "weather/weather-model.ts", "camera/resolve-camera-clip.ts", "performance/resolve-performance.ts", "types/fps.ts",
+                       "runtime/plane-effects-material.ts", "runtime/three-scene-runtime.ts"):
+            self.assertIn(d.SE + needed, tip_names)  # read for the analytic X (P2-2) at the tip only: nobody compared them with the pin
         names = {item["path"] for item in attested}
         for needed in ("fx/resolve-fx-frame-transitions.spec.ts", "fx/fx-explain-legacy-dissolve.spec.ts", "fx/fx-explain-handles.spec.ts", "validate/edit-joins.ts",
                        "schema/render-bundle.schema.ts", "fx/fx-explain.ts", "fx/fx-windows.ts", "runtime/fx/shaders/crossDissolve.ts"):
@@ -783,6 +787,14 @@ class BaselineTests(unittest.TestCase):
 
     def test_the_manifest_records_the_plan_head_it_follows(self):
         self.assertEqual(MANIFEST["authoring"]["plan_head_read"], "2395719046875a06c4986e4e8a949a448bfcb9d3")
+
+    def test_the_manifest_records_the_final_plan_without_claiming_a_proof(self):
+        final = MANIFEST["authoring"]["final_plan_incorporation"]
+        self.assertEqual(final["plan_source_commit"], "002fe9fc101c438aa8a6da95b25aa320f8cb582b")
+        self.assertEqual(final["plan_merged_in_main_by"], "179610774b81984dce548154332c370d58ab24f4")
+        self.assertEqual(final["plan_contained_in_the_branch_head"], "58157abef1c0539889162182a0d36d886f57aaa5")
+        self.assertIn("not a proof", final["claim"])
+        self.assertEqual(MANIFEST["authoring"]["plan_head_read"], d.PLAN_HEAD)  # the history of the first plan head is kept
 
     def test_nothing_private_or_host_dependent_is_in_the_json(self):
         for raw in (PINNED, PINNED_MANIFEST):

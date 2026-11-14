@@ -7,7 +7,7 @@ misturam os **dois decks** (a imagem de cada plano antes da saída) em luz linea
 primeira entrega é `crossDissolve`. Quem calcula é o core; o plano carrega o resultado; o runtime só desenha.
 
 **Estado desta entrega (S0, BL082.4.1): somente contrato e oráculo.** Existem este documento, o corpus independente
-(`scripts/pilot-dissolve-corpus.py`, `dissolve-cases.json`, `dissolve-manifest.json`) e a spec Python. **Não existe
+(`scripts/pilot-dissolve-corpus.py`, `scripts/pilot_dissolve_analytic.py`, `dissolve-cases.json`, `dissolve-manifest.json`) e as specs Python. **Não existe
 Rust, JSONL, runtime nem UI de transição.** Hoje qualquer `transitions` não vazio continua `FX_TRANSITION_NOT_YET`; o
 catálogo, o seletor de clipe e os planos **não mudam**. Plano de trabalho (versão 2):
 [p4b-cross-dissolve-plan.md](../migration/p4b-cross-dissolve-plan.md), lido no head `2395719`. Um contrato em
@@ -33,8 +33,10 @@ Os dois que diferem são **notas, nunca ajuste silencioso**: `fx/fx-schema.ts` (
 `CLIP_PAST_END`) e `schema/render-bundle.schema.ts` (**comportamento da narração**: na ponta importa
 `editFrameToSeconds` e chama `explainNarration`). O contrato vale **sem narração** (o editor não tem narração).
 `origin-blob verified` **não** é `origin executed`. O golden `crossDissolve.png` da origem **não foi lido nem
-comparado** (`ORIGIN_GOLDEN_NOT_COMPARABLE`). O manifesto lista 21 fontes atestadas e 5 lidas só na ponta
-(`fx-explain-effects`, `fx-explain-context`, `fx-ids`, `narration-schema`, `catalog/vignette`).
+comparado** (`ORIGIN_GOLDEN_NOT_COMPARABLE`). O manifesto lista hoje **33 fontes: 21 atestadas e 12 lidas só na ponta**: as 5 originais
+(`fx-explain-effects`, `fx-explain-context`, `fx-ids`, `narration-schema`, `catalog/vignette`) e 7 da referência analítica
+(`scene-lighting`, `weather-model`, `resolve-camera-clip`, `resolve-performance`, `types/fps`, `plane-effects-material`,
+`three-scene-runtime`). Original: 26 (21 + 5).
 
 ## Contrato do core / biblioteca (fixado pela S0; **Pendente** no código)
 
@@ -165,12 +167,12 @@ tem controle de transição (lacuna registrada), e um documento com transição 
 Situação por superfície: **L Pendente · H Pendente · UI Pendente · Oráculo Python: implementado e validado no Windows
 (abaixo)**. Plano de portão público: até a S2A a admissão recusa `transitions` com `FX_TRANSITION_NOT_YET`.
 
-**S0 — o que roda** (Windows x64, Python **3.13.17 real**, nenhum stub; ver o relatório
+**S0 — o que roda, versão original** (Windows x64, Python **3.13.17 real**, nenhum stub; ver o relatório
 [p4b-s0-dissolve-corpus-report.md](../migration/p4b-s0-dissolve-corpus-report.md)):
 
 | Comando | Resultado |
 |---|---|
-| `python scripts/pilot-dissolve-corpus.spec.py` e `python -O …` | **161 testes: 159 ok e 2 pulados** (os 2 exigem `TESSEL_ORIGIN_PATH`); com o clone da origem apontado, **os 161 ok** |
+| `python scripts/pilot-dissolve-corpus.spec.py` e `python -O …` | **161 testes (versão original; 167 hoje, ver o fim do documento): 159 ok e 2 pulados** (os 2 exigem `TESSEL_ORIGIN_PATH`); com o clone da origem apontado, **os 161 ok** |
 | `python scripts/pilot-dissolve-corpus.py generate --check` | reproduz os dois JSON byte a byte; não escreve nada |
 | `… verify` / `verify --origin PATH` | offline e contra os blobs da ponta: ok; idempotente |
 | `… verify --origin PATH --require-pin` | **exit 4** (`PIN_UNVERIFIED`): o pin não pode ser conferido neste clone |
@@ -198,17 +200,17 @@ estão Pendentes**, exceto a coluna `X` marcada `0`, que o corpus desta S0 cobre
 | T03 | Avisos `ON_CONTINUOUS`, `SPLAT_COST` (1a); `FX_PASS_BUDGET` dois decks (1b) | 1a, 1b | 2A | 4b | 4b | | | | |
 | T04 | `hidden` e ausência = corte seco com os bytes de hoje | 1b | 2A | | | 2 | 2 | | 0 |
 | T05 | Janela: alinhamento/duração, bordas | 1a | 2A | | | | | | 0 |
-| T06 | FPS racional; relógio do vizinho em f/fps; X atual só estados temporais, sonda de cor pendente | 1b | 2A | | | | 2 | | 0 |
+| T06 | FPS racional; relógio do vizinho em f/fps; X: estados temporais **e** sondas analíticas de posição/cor em planos planos (30000/1001, `lit-ntsc-center`); textura só na S2 | 1b | 2A | | | | 2 | | 0 |
 | T07 | Progresso; `smooth` com `intensity` 0/0,5/1 = 162/165/168 | 1b | 2A | | | | | | 0 |
 | T08 | Planos sem transição idênticos ao `main` | 1b | 2A | | | | 2 | | |
 | T09 | Plano na janela, `requires`, adulterações | 1b | 2A | | | | | | |
-| T10 | Hold por instância/câmera; X atual só estados temporais, sonda analítica pendente | 1b | 2A | | | | 2 | | 0 |
+| T10 | Hold por instância/câmera; X: sondas analíticas de posição projetada e cor de hold misto, instância presa com câmera correndo e o inverso; textura só na S2 | 1b | 2A | | | | 2 | | 0 |
 | T11 | Clipe `shot` na borda segura o quadro | 1b | 2A | | | | 2 | | 0 |
 | T12 | Passe de saída depois da mistura | 1b | | | | 2 | 2 | | 0 |
 | T13 | `filmGrain` de saída: mesma semente com e sem transição | 1b | 2A | | | | 2 | | 0 |
 | T14 | Orçamento conta os dois decks e a mistura | 1b | 2A | 4b | | | | | |
 | T15 | Runtime sem `fxTransition` recusa | | | | | 2 | 2 | | |
-| T16 | X atual cobre só cor constante; analítico de hold misto e texturizado ainda pendentes | | | | | 2 | 2 | | 0 |
+| T16 | X: cor de 8 bits e posição projetada de hold misto e luz real (cenas planas, §abaixo); quadro **texturizado** só se torna real na S2 | | | | | 2 | 2 | | 0 |
 | T17 | Resize e perda de contexto na janela | | | | | 2 | 2 | | |
 | T18 | Erro de um deck e dispose dos dois | | | | | 2 | 2 | | |
 | T19 | Seek = sequencial; cache do vizinho | | | | | 2 | 2 | | |
@@ -245,14 +247,49 @@ ter alias de tamanho 0; um stub sem intérprete não executa o script e falha an
 Um vetor `intensity: 2.0` fixa a mensagem numérica integral `2`; a paridade de textos numéricos fora
 dos vetores do corpus não é prometida como implementação completa de String(number) do JS.
 
-**Ainda A validar:** X analítico para hold misto e relógio da luz. O X atual de T06/T10 é
-somente temporal e T16 só tem cores constantes; não atribuir pixel texturizado à S0 atual.
-As sondas faltantes bloqueiam o aceite correspondente de S2, e sua conclusão/revisão fecha S0.
+**A validar (P2-2, tratado em [p4b-s0-dissolve-corpus-report.md](../migration/p4b-s0-dissolve-corpus-report.md) §10):** a referência analítica
+de hold misto e do relógio real da luz **existe agora** (ver abaixo), mas aguarda revisão independente. Nada foi renderizado;
+quadro texturizado só se torna real na S2; o aceite de S0 depende da revisão.
 A linha F064 foi acrescentada à matriz com todas as superfícies de produto pendentes.
 
 Na atualização do coordenador, os **166 testes** passaram no macOS com Python 3.14.3,
 nos modos normal e `-O`, com origem. `generate --check` reproduziu os arquivos byte a byte;
 `verify --origin … --require-pin` confirmou o commit do pin neste clone (21 fontes do pin
 e 5 só da ponta). Isso atualiza a evidência histórica de 161 testes acima, sem provar o motor.
-O plano original lido pela autora foi `2395719`; esta atualização incorpora a versão final
-de PR58, fonte `002fe9f`, integrada em `1796107`, e mantém explícita a lacuna analítica.
+O plano original lido pela autora foi `2395719`; a versão final de PR58, fonte `002fe9f`, integrada em `1796107` e contida em
+`58157ab`, foi incorporada à seção analítica por leitura do documento, **sem afirmar prova**.
+
+### Referência analítica X de hold misto e relógio real da luz (P2-2)
+
+`scripts/pilot_dissolve_analytic.py` (só `math` e `fractions`; não importa o script do corpus) gera a seção `analytic_probes` de
+`dissolve-cases.json` (`kind: origin-formula`): 12 cenas sintéticas de **cor plana**, 116 quadros, **451 sondas** de posição
+projetada e de cor de 8 bits (1/255 por canal, \|média Δ\| ≤ 0,25, os portões pré-registrados do corpus, H.264 16 importado de F016 e
+nunca calibrado por resultado). As sondas ficam ≥ 6 px de qualquer borda, em área plana.
+
+| Regra verdadeira (D14, D15, D17) | Hipótese errada (mutante) que a cena precisa recusar |
+|---|---|
+| instância e câmera são grampeadas **cada uma** no seu clipe, cada uma com `held` próprio | pinagem conjunta dos relógios; instância/câmera trocadas |
+| o deck vizinho usa o início, `instance_start` e `camera_in` **do seu plano** | vizinho nos relógios do primário |
+| a mistura é `a·(1−w)+b·w` com `a` = plano antes do corte | decks trocados |
+| o relógio da luz é o quadro de edição **real** f/(num/den), mesmo com instância e câmera presas | luz no relógio da instância, do plano, do clipe de câmera, no quadro de edição limitado, no fps nominal |
+
+Cada cena declara o que deve rejeitar (separação ≥ 4 códigos em ≥ 3 sondas de ≥ 2 quadros) e o que deve concordar
+(≤ 1 código); o gerador recusa (`ORACLE_ANALYTIC_*`) uma cena sem poder de recusa. Cenas: hold misto nos dois lados do corte com
+janelas `center`/`end`/`start`, o limite do primeiro quadro preso, controles sem hold e com os dois presos, luz com os dois
+relógios presos, `instance_start`/`camera_in` distintos do início do plano (relógio de edição contra relógio do clipe), 30000/1001 com a
+janela em 1794..1806 e posição mais luz juntas. A spec (`scripts/pilot_dissolve_analytic.spec.py`, 36 testes) refaz tudo com um avaliador
+independente (`ctypes`, matriz do Three.js, `Fraction`, `Decimal`), aplica o portão a produtos falsos (os que implementam cada hipótese
+falham; os controles e a verdade passam; um produto que trunca falha pelo viés em todas as cenas) e roda 19 mutantes do próprio oráculo.
+
+**O que isto é e o que não é.** A S0 não tem Rust, JSONL, UI nem motor de transição: estas sondas são o **oráculo** que a S2 deve
+reproduzir. **Quadros texturizados só se tornam reais na S2**; o gate `FX_TRANSITION_NOT_YET` permanece até a S2A. Nada foi renderizado,
+medido nem executado; a origem não foi executada nem seu golden comparado. **A validar** pela revisão independente.
+
+**`hidden` (contrato futuro do destino):** uma transição aceita `hidden: true` ou ausente; `hidden: false` explícito é recusa estrutural
+na S1a, independente de `explain`. O importador Rust de hoje **não** faz isso; é decisão registrada para a S1a, não comportamento atual.
+
+**Resultados desta revisão** (Windows x64, Python 3.13.17): spec do corpus 167 testes (offline `OK (skipped=2)`; com `TESSEL_ORIGIN_PATH`
+`OK`), spec analítica 36 testes `OK`, ambas também com `-O`; `generate --check` byte a byte; `verify` offline e `--origin` exit 0; `--require-pin`
+sem origem e com origem sem o commit do pin exit 4; `digests` sem `--origin` exit 2. Hashes: `dissolve-cases.json`
+`e5f40f70ccdb069196224d45c8df09cbaec7539eedc06ea350e65de7966cd011` (539 508 bytes), `dissolve-manifest.json`
+`5368450f0df266a5d4375adafcd73a82ccf9bc9d519ff2138ae0dc1129e644dd` (27 892 bytes); os números das seções acima (161 testes, 26 fontes) são o histórico da versão original.

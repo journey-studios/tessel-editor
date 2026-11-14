@@ -12,10 +12,18 @@ Writes (`generate`) and checks (`verify`, `generate --check`), in `docs/migratio
                           which frame of each deck is drawn (instance and camera clamped apart, the real
                           edit clock kept), the shot-clip edge rule, the handle lacks, the ordered
                           refusals, ids/seeds/keys/hidden, the alpha verdict, and the tolerances
-                          registered BEFORE any pixel was produced.
+                          registered BEFORE any pixel was produced, and the ANALYTIC probes (below).
   dissolve-manifest.json  the provenance: the pin the plan names, the tip that was read, the blob id and
                           sha256 of every origin source, what the coordinator attested and what this
                           script re-checks, the documented differences and the blockers.
+
+ANALYTIC X (P2-2). A pure frame cannot stand for a MIXED HOLD (instance held while the camera runs, or the
+reverse) nor for the REAL light clock (the light flickers on the edit frame f over the rational fps even when the
+instance and the camera are held). `analytic_probes` fixes, with synthetic scenes (flat colours, a marker, a lamp, an
+explicit camera and projection), the expected temporal states and the expected projected position and 8-bit colour of
+probes in flat areas, plus the wrong rules (hypotheses) every scenario must refuse. It lives in the sibling module
+`scripts/pilot_dissolve_analytic.py` (no product transition evaluator, no Rust, no GLSL; kind `origin-formula`) and is
+checked by `scripts/pilot_dissolve_analytic.spec.py`. S0 only: no textured frame becomes real before S2.
 
 WHAT THIS IS NOT. It is a contract + oracle in Python. It is NOT the feature: there is no Rust, JSONL,
 runtime or UI for transitions (F064 stays Pending for them). THE ORIGIN IS NEVER INSTALLED, BUILT OR
@@ -41,6 +49,7 @@ No bare `assert` is used for validation: the file behaves the same under `python
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import math
 import re
@@ -84,6 +93,9 @@ def interpreter_problem(executable=None, version_info=None, size=None):
     return None
 
 PLAN_HEAD = "2395719046875a06c4986e4e8a949a448bfcb9d3"
+PLAN_FINAL_SOURCE = "002fe9fc101c438aa8a6da95b25aa320f8cb582b"  # docs(roadmap): Close review gaps and register P4b ownership
+PLAN_FINAL_MERGE = "179610774b81984dce548154332c370d58ab24f4"  # docs(roadmap): Reconcile migration and stage P4b (merged in main)
+PLAN_FINAL_BRANCH_BASE = "58157abef1c0539889162182a0d36d886f57aaa5"  # the branch head the P2-2 work started from
 F016_CODEC_QUOTE = "tolerância 16, maior mudança 69 — discrimina"  # the text of F016 (effects.md, Export) the codec limit is imported from
 PIN = "d40ac3f7c0"
 TIP = "365579076782c1fc19c6464f3bc0199b30c0ab8f"
@@ -151,11 +163,19 @@ TIP_ONLY = [
     ("fx/fx-ids.ts", "RESERVED_ID (lowercased compare) and DUPLICATE_ID"),
     ("narration/narration-schema.ts", "idSchema: ^[a-z0-9][a-z0-9_-]{0,63}$ (case-insensitive)"),
     ("fx/catalog/vignette.ts", "vignette is family `look` (the WRONG_FAMILY case)"),
+    ("lighting/scene-lighting.ts", "seedOf, noise, flickerLevel, lightAmount: the lamp's flicker and falloff (analytic X)"),
+    ("weather/weather-model.ts", "hash01: the 32-bit integer mix under the flicker noise (analytic X)"),
+    ("camera/resolve-camera-clip.ts", "truck, dolly and hold poses, progressAt and the pose held past the clip (analytic X)"),
+    ("performance/resolve-performance.ts", "the `event` channel that adds to a node's position (analytic X)"),
+    ("types/fps.ts", "editFrameToSeconds: frame / (numerator / denominator) (analytic X)"),
+    ("runtime/plane-effects-material.ts", "ambient * base + base * light, the lamp falloff squared (analytic X)"),
+    ("runtime/three-scene-runtime.ts", "weather and lights on the edit clock; PerspectiveCamera, lookAt, renderOrder (analytic X)"),
 ]
 
 # What a re-read of each tip blob must give: (tip blob id, sha256, bytes). Refresh with `digests`.
 TIP_DIGEST = {
     "camera/easing.ts": ("6d660fc81a3bd6c3adf9fbd6df44735b8f78d56b", "61acdcfbca0f7224696f370a1b77165210e7b36654c2f7ded3f7e82c71ed3abd", 952),
+    "camera/resolve-camera-clip.ts": ("04e5eaab05a2f9af1d83f28b300a34eb87f0a8a6", "0241aa815c0b5747872dc4b35e57a6e30846eb2729ba078678f9ef7127a0e1a4", 15085),
     "edit/resolve-shot-at-offset.ts": ("0851da51e1cc8c6a8961f4cd3dcc503382417cdb", "18e82cc298a29e3386c5328364503f31e75a26864a990542c045697c290ab047", 3275),
     "fx/catalog/crossDissolve.ts": ("f202c14a66b24429284fbf7f7eafa1d3c04cd1c7", "80cbc7310badd8bffbef931d2d6edbb3917745b754a4531657a7a7b15a50d0c4", 1287),
     "fx/catalog/fx-effect-meta.ts": ("999c2c67a77832349bcbb0209c62ac19d9d12cfe", "3e5e7d9b63896a61df5009ddc117987227d39adedf9214efd5edd60fb1146a19", 14960),
@@ -176,11 +196,17 @@ TIP_DIGEST = {
     "fx/fx-windows.ts": ("bcf38615372e8cf830ea21a87159e390f3a7674f", "55db48362fc406695cc2ff08e29cf79cfa7563f851b2f88e39c0a726d70c4bd3", 2524),
     "fx/resolve-fx-frame-transitions.spec.ts": ("adc745cb4db1c016fcb6440e65cc25fdbc3802b2", "10e9c31b5feb0260f04b26f62e9f9cbc7d5c2a021323d27513d69bca5962c240", 7612),
     "fx/resolve-fx-frame.ts": ("44c4c11f8725450e9c05bf835a273c57bcca8e0c", "20fac1cb27ac7d2cb77e2f93f2163312525057ac2defb2ff1bf986c5d015ea18", 4953),
+    "lighting/scene-lighting.ts": ("a85e0edd3a83e565d518dbbc1b2839be369e1c01", "78ba61253095cb120003ad56837b6e93c35af4da7c1f1934b76d94814c6aa151", 5374),
     "narration/narration-schema.ts": ("b9aee27cb16ade8599276e71556843e379586357", "0af031103fcef0eacb761d14342cebebff976253556a783baeaa2123e6fec461", 4093),
+    "performance/resolve-performance.ts": ("a5212bda7f4c966852584f07e5d048cbc808ee24", "3e3f2f4f888a48eddf00bae6d712995035f1e7e74dd58f938a003e6fabeedcc7", 3314),
     "runtime/fx/fx-compositor.ts": ("17ab35a3d6c8c4624e6abd56dc06bd7f30fab037", "ae9c446fbd02045b75723e75118e46bcb6b9b25815c216155575cba358753729", 12148),
     "runtime/fx/shaders/crossDissolve.ts": ("43b5427bd296c1d267744b5669ca3056a95fbb1f", "25cdcd1be3f4ccf209ce188dd030bbde3a534014457c11bd2bdc5d988449e62e", 939),
+    "runtime/plane-effects-material.ts": ("6a0ab8633507a5bea9a055fe4cc224d0c2d144cb", "0fab05d754a17af094325d31ba774738cb29c2a3446e111e87eb3695effe4ed6", 19570),
+    "runtime/three-scene-runtime.ts": ("b4d5b2ee3fa566460aca595d80e7e55445d45818", "763ad75648abe75b0ff6812ee579826e8bbd197629fef09ad2bec2765babf6af", 64318),
     "schema/render-bundle.schema.ts": ("11c3a49dc9963abaab5ed477fea54a299b835ec0", "21386068a759a8d7ef3f913146e5a6e520adf004260b89f48bb2afa20123e59b", 22781),
+    "types/fps.ts": ("208245ee6d4aeb793cf455941994fcc4de10bf4a", "dc36c3d16ec71953d7de1c857681cbb6c535e12dbf18f70faa924fc32e482e5b", 660),
     "validate/edit-joins.ts": ("98b08e5b311b38e42a1a31048d758e19b94e3b24", "cfcc1449f42614e48da39f650cef799452c038bacc4cabeb6e6f534a41f64b82", 7004),
+    "weather/weather-model.ts": ("f37233fb4786ce8eba99760bde494bf98d794704", "1596f8a8e3b48d9eefad4691fcc7a761bae64ade4d8615a57713fad63fcfbd87", 10388),
 }
 
 TARGET_FILES = {
@@ -190,6 +216,9 @@ TARGET_FILES = {
     "legacy_expected": "docs/migration/fixtures/expected/invalid-dissolve-transition.expected.json",
     "legacy_bundle": "docs/migration/fixtures/bundles/invalid-dissolve-transition.bundle.json",
     "effects_doc": "docs/features/effects.md",
+    "runtime_scene": "runtime/src/directed-scene.js",
+    "lighting_rs": "crates/core/src/directed_scene/lighting.rs",
+    "plan_build_rs": "crates/core/src/scene_plan/build.rs",
 }
 
 
@@ -400,6 +429,62 @@ def check_against(texts):
     ])
     need("narration/narration-schema.ts", ["/^[a-z0-9][a-z0-9_-]{0,63}$/i"])
     need("fx/catalog/vignette.ts", ['id: "vignette",\n  family: "look",'])
+    # analytic X (P2-2): the kernels of scripts/pilot_dissolve_analytic.py are these lines
+    need("edit/resolve-shot-at-offset.ts", ["light, weather and lightning run on the edit's clock, so the"])
+    need("lighting/scene-lighting.ts", [
+        "const smooth = (t: number) => t * t * (3 - 2 * t)",
+        "const i = Math.floor(seconds)\n  const f = seconds - i",
+        "return hash01(i, seed) + (hash01(i + 1, seed) - hash01(i, seed)) * smooth(f)",
+        "let seed = 7",
+        "seed = Math.imul(seed, 31) + (char.codePointAt(0) ?? 0)",
+        "const sway = noise(seconds * 3, seed)",
+        "const flutter = noise(seconds * 13, seed + 101)",
+        "return 1 - light.flicker * 0.45 * (0.6 * sway + 0.4 * flutter)",
+        "const level = light.intensity * flickerLevel(light, seconds)",
+        "const falloff = 1 / (1 + (distance / light.radius) ** 2)",
+        "return facing * falloff * falloff",
+    ])
+    need("weather/weather-model.ts", [
+        "let h = Math.imul(n | 0, 0x9e3779b1) ^ Math.imul(salt | 0, 0x85ebca6b)",
+        "h ^= h >>> 15\n  h = Math.imul(h, 0x2c1b3c6d)\n  h ^= h >>> 12\n  h = Math.imul(h, 0x297a2d39)\n  h ^= h >>> 15",
+        "return (h >>> 0) / 4294967296",
+    ])
+    need("camera/resolve-camera-clip.ts", [
+        "const t = localFrame / Math.max(1, segment.durationFrames - 1)",
+        'if (segment.recipe === "hold") {\n    return t\n  }\n  return applyEasing(t, segment.easing)',
+        "const up = { x: 0, y: 1, z: 0 }",
+        "x: fwd.y * up.z - fwd.z * up.y,",
+        "const delta = { x: rx * distance, y: ry * distance, z: rz * distance }",
+        'if (segment.recipe === "truckRight") {\n    return truckRight(start, segment.distanceSceneUnits)',
+        "position: lerpVec3(start.position, end.position, t),",
+        "total += seg.durationFrames",
+        "// WHY: past its last movement a clip holds its final pose",
+    ])
+    need("performance/resolve-performance.ts", [
+        "if (instanceFrame < start) {\n    return 0\n  }",
+        "if (instanceFrame >= end) {\n    return 1\n  }",
+        "return (instanceFrame - start) / duration",
+        'if (channel.kind === "event") {',
+        'if (property === "localPosition") {\n    return addVec3(base, override)',
+    ])
+    need("types/fps.ts", [
+        "return fps.numerator / fps.denominator",
+        "const rate = fpsToRate(fps)\n  return frame / rate",
+    ])
+    need("runtime/plane-effects-material.ts", [
+        "diffuseColor.rgb = diffuse * fxBase * uLtAmbient + fxBase * ltLight(vMapUv);",
+        "float falloff = 1.0 / (1.0 + (distance / lamp.w) * (distance / lamp.w));",
+        "light += uLtColors[i].rgb * max(dot(n, toLamp / distance), 0.0) * falloff * falloff;",
+    ])
+    need("runtime/three-scene-runtime.ts", [
+        "// Weather and lights run on the edit clock, so they carry on across a cut instead of restarting.",
+        "const seconds = editFrameToSeconds(editFrame, this.bundle.fps)",
+        "this.camera.fov = state.camera.fovDeg",
+        "mesh.renderOrder = node.renderOrder ?? 0",
+        "side: DoubleSide,",
+        "const geom = new PlaneGeometry(w, h)",
+        "this.camera = new PerspectiveCamera(",
+    ])
     return problems
 
 
@@ -1052,6 +1137,31 @@ def deck_resources(bundle, shot_id):
     return {"scene": definition["id"], "resources": table}
 
 
+ANALYTIC_DESTINATION_LINES = [
+    # (file key, what the destination text must still say for the analytic kernels to be reconciled with it, READ only)
+    ("runtime_scene", "mesh.renderOrder = index;", "planes are drawn in plan order (a painter's queue), as the kernels assume"),
+    ("runtime_scene", "Position in the painter's queue = position in the plan. No depth sort decides anything.", "no depth test decides which plane wins"),
+    ("runtime_scene", "const camera = new THREE.PerspectiveCamera(spec.camera.fov, spec.output.width / spec.output.height, NEAR, FAR);", "a vertical fov with aspect width / height"),
+    ("runtime_scene", "camera.up.set(0, 1, 0);", "up is (0, 1, 0)"),
+    ("runtime_scene", "outgoingLight = tesselEncode(clamp(tesselDecode(outgoingLight) * (vec3(1.0) + tesselLit), 0.0, 1.0));", "decode, multiply by (1 + L), clamp, encode"),
+    ("runtime_scene", "float once = 1.0 / (1.0 + (distanceToLight * distanceToLight) / (uTesselLightRadius[i] * uTesselLightRadius[i]));", "the falloff, applied twice"),
+    ("runtime_scene", "tesselLit += uTesselLightColor[i] * (facing * once * once);", "colour * intensity * facing * falloff squared"),
+    ("lighting_rs", "const FLICKER_DEPTH: f64 = 0.45;", "the flicker depth of the origin"),
+    ("lighting_rs", "1.0 - flicker * FLICKER_DEPTH * (0.6 * sway + 0.4 * flutter)", "the flicker level of the origin"),
+    ("plan_build_rs", "frame.mapping.edit_time.to_f64()", "the plan evaluates the lights on the real edit time of the frame"),
+]
+
+
+def analytic_destination_reads():
+    """Whether the destination text this corpus was reconciled with by READING still says what it said. Nothing of it is run."""
+    texts, rows = {}, []
+    for key, line, why in ANALYTIC_DESTINATION_LINES:
+        if key not in texts:
+            texts[key] = (ROOT / TARGET_FILES[key]).read_text(encoding="utf-8").replace("\r\n", "\n")
+        rows.append({"file": TARGET_FILES[key], "line": line, "reconciled": why, "present": line in texts[key]})
+    return rows
+
+
 def repo_facts():
     """What the corpus reads from this repository (never writes): the public fixture bundle and the facts about
     the destination the alpha cases state."""
@@ -1086,6 +1196,7 @@ def repo_facts():
         and "An H.264 CRF 18 round trip on both sides of the comparison, on top of 8-bit rounding." in export_text,
         "bundle_fps": bundle["fps"],
         "bundle_alpha_mode": bundle["renderProfile"]["alphaMode"],
+        "analytic_destination_reads": analytic_destination_reads(),
     }
 
 
@@ -1587,6 +1698,83 @@ def tracer_case(facts):
     }
 
 
+ANALYTIC_NAME = "pilot_dissolve_analytic"
+
+
+def load_analytic():
+    """The sibling module, loaded by path (this file has a hyphen: it is not importable), once."""
+    if ANALYTIC_NAME in sys.modules:
+        return sys.modules[ANALYTIC_NAME]
+    path = Path(__file__).resolve().with_name(ANALYTIC_NAME + ".py")
+    spec = importlib.util.spec_from_file_location(ANALYTIC_NAME, path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[ANALYTIC_NAME] = module
+    try:
+        spec.loader.exec_module(module)
+    except BaseException:
+        sys.modules.pop(ANALYTIC_NAME, None)
+        raise
+    return module
+
+
+def analytic_cross_check(analytic):
+    """The analytic module keeps its own copies of the window, progress, weight and mix (it shares nothing with this file);
+    they must agree with this file's where they overlap, so the two readings of the origin cannot drift apart."""
+    problems = []
+    for alignment in ALIGNMENTS:
+        for duration in (1, 2, 3, 5, 6, 11, 12, 13, 24):
+            ours = raw_window(48, duration, alignment)
+            theirs = analytic.window_of(48, duration, alignment)
+            if (ours["start"], ours["end"]) != tuple(theirs):
+                problems.append("window %s/%d: %r vs %r" % (alignment, duration, ours, theirs))
+    for easing in EASINGS:
+        for curve in CURVES:
+            for intensity in (0, 0.5, 1):
+                transition = {"duration": 12, "easing": easing, "curve": curve, "intensity": intensity}
+                for k in range(12):
+                    progress = progress_of(k, 12, easing)
+                    weight = weight_of(progress, curve, intensity)
+                    got = analytic.weight_for(k, transition)
+                    if abs(got[0] - progress) > 1e-15 or abs(got[3] - weight) > 1e-15:
+                        problems.append("progress/weight %s/%s/%s k=%d: %r vs %r" % (easing, curve, intensity, k, (progress, weight), got))
+    for a8, b8 in (([200, 0, 0], [40, 0, 0]), ([24, 40, 96], [96, 40, 24]), ([232, 184, 32], [32, 200, 160])):
+        for k in (0, 5, 6, 11):
+            transition = {"duration": 12, "easing": "easeInOutCubic", "curve": "smooth", "intensity": 1}
+            ours = mix_pixel(a8, b8, progress_of(k, 12, "easeInOutCubic"), "smooth", 1)["rgb8"]
+            try:
+                theirs = analytic.mix_codes(a8, b8, transition, k)
+            except analytic.Refusal:
+                continue
+            if ours != theirs:
+                problems.append("mix %r %r k=%d: %r vs %r" % (a8, b8, k, ours, theirs))
+    for code in range(0, 256, 5):
+        if abs(decode(code) - analytic.decode(code)) > 1e-15:
+            problems.append("decode(%d)" % code)
+    for step in range(0, 101, 5):
+        if abs(encode(step / 100.0) - analytic.encode(step / 100.0)) > 1e-15:
+            problems.append("encode(%d/100)" % step)
+    return problems
+
+
+def analytic_section(facts):
+    analytic = load_analytic()
+    problems = analytic_cross_check(analytic)
+    if problems:
+        raise Refusal("ORACLE_ANALYTIC_DISAGREES", "; ".join(problems[:5]))
+    missing = [row for row in facts["analytic_destination_reads"] if not row["present"]]
+    if missing:
+        raise Refusal("ORACLE_TARGET_FACT", "the destination text the analytic kernels were reconciled with changed: %s" % missing[0]["line"])
+    try:
+        section = analytic.build_section()
+    except analytic.Refusal as refusal:
+        raise Refusal("ORACLE_" + refusal.code, refusal.detail) from refusal
+    section["destination_reads"] = {
+        "status": "READ ONLY: the destination text the kernels were reconciled with; none of it was imported, executed or compared by pixels",
+        "lines": facts["analytic_destination_reads"],
+    }
+    return section
+
+
 def build_corpus(facts):
     problems = self_check()
     if problems:
@@ -1628,6 +1816,7 @@ def build_corpus(facts):
         "tracer_bullet": tracer_case(facts),
         "limits": limits_cases(),
         "resource_union": resource_union_cases(facts),
+        "analytic_probes": analytic_section(facts),
     }
 
 
@@ -1720,13 +1909,25 @@ def build_manifest(corpus_bytes, corpus, facts):
     counts["pixel_grid_probes"] = corpus["pixels"]["grid"]["probes_per_channel"]
     counts["window_rows"] = len(corpus["windows"]["raw"])
     counts["progress_tables"] = len(corpus["progress"]["tables"])
+    analytic = corpus["analytic_probes"]
+    counts["analytic_scenarios"] = len(analytic["scenarios"])
+    counts["analytic_frames"] = sum(len(item["frames"]) for item in analytic["scenarios"])
+    counts["analytic_probes"] = sum(len(frame.get("probes", [])) for item in analytic["scenarios"] for frame in item["frames"])
+    counts["analytic_hypotheses"] = len(analytic["hypotheses"])
     return {
         "schema": SCHEMA,
         "purpose": "Provenance of the pilot crossDissolve corpus (dissolve-cases.json): where each expectation comes from. An oracle for P4b-S0; not the feature.",
         "authoring": {
             "plan": "docs/migration/p4b-cross-dissolve-plan.md, version 2",
             "plan_head_read": PLAN_HEAD,
-            "plan_head_note": "the head of the PR #58 branch whose plan this corpus follows; a later plan head may change the contract and then this corpus is regenerated and re-reviewed, never edited",
+            "plan_head_note": "the head of the PR #58 branch whose plan this corpus was FIRST written against (history kept); a later plan head may change the contract and then this corpus is regenerated and re-reviewed, never edited",
+            "final_plan_incorporation": {
+                "plan_source_commit": PLAN_FINAL_SOURCE,
+                "plan_merged_in_main_by": PLAN_FINAL_MERGE,
+                "plan_contained_in_the_branch_head": PLAN_FINAL_BRANCH_BASE,
+                "what_was_read": "docs/migration/p4b-cross-dissolve-plan.md at those commits (7.3 independent reference X, D14, D15, D17, D19, T06, T10, T16, section 17 and the hidden decision), for the P2-2 fix",
+                "claim": "the text was incorporated into this corpus' analytic section and documents; this is a reading of a document, not a proof: nothing about the final plan was executed or validated here",
+            },
             "interpreter": "recorded in the S0 report (version, prefix, executable digest), not here: the JSON must not depend on the host",
         },
         "origin": {
@@ -1763,8 +1964,10 @@ def build_manifest(corpus_bytes, corpus, facts):
                                   "plan_ceilings": {key: TOLERANCES["plan_ceilings"][key] for key in ("MAX_TRANSITION_PLAN_BYTES", "MAX_TRANSITION_PLAN_ITEMS", "TRANSITION_PLAN_MAX_DEPTH")},
                                   "plan_ceilings_status": TOLERANCES["plan_ceilings"]["status"], "not_validated_on_pixels": True},
         "assumptions": [
-            {"id": "CAMERA_FRAMES_IS_SUM_OF_SEGMENT_DURATIONS", "detail": "camera/resolve-camera-clip.ts was not read; the origin handle spec is consistent with a clip of N poses having tail N - (cameraIn + shotLength), and the fixture bundle's clips have one segment."},
+            {"id": "CAMERA_FRAMES_IS_SUM_OF_SEGMENT_DURATIONS", "detail": "Written first without reading camera/resolve-camera-clip.ts (the origin handle spec was consistent with it). For P2-2 the file WAS read at the tip: `cameraClipFrames` is the largest of the sum of the main segments' durations and each layer's sum, so for a clip WITHOUT layers (every clip this corpus uses) the assumption is now a read fact; a clip with layers is not modelled."},
             {"id": "RECONSTRUCTED_SPEC_FIXTURE", "detail": "fx-test-bundle.ts was not read; the three-shot edit is rebuilt from the numbers the origin specs show and only those are claimed."},
+            {"id": "ANALYTIC_SCENES_NOT_RENDERED", "detail": "The analytic probes (analytic_probes) are formulas evaluated here on synthetic scenes: no frame was rendered, no runtime, Rust or GPU ran, and the destination's own text was only READ to reconcile the formulas (painter's order, decode * (1 + L) * encode, vertical fov, lights on the plan's edit time). Textured frames become real in S2; until then the probes are an expectation, not a validated pixel."},
+            {"id": "ANALYTIC_FLAT_PLANES_ONLY", "detail": "The kits use axis-aligned image planes facing the camera with flat colours, a camera that trucks along its own right axis or holds, one lamp per deck with ambient 1 and a normal facing +z. Normal maps, splats, camera layers, rotations, shadows, weather and hidden lights are not modelled and no claim is made for them."},
             {"id": "OUTPUT_ALPHA_255", "detail": "the shader writes alpha 1.0; the destination's output alpha is assumed opaque. Not measured."},
             {"id": "ROUNDING_HALF_UP", "detail": "decks and output are rounded half-up; GPU rounding is not modelled beyond the 1/255 + bias gate."},
         ],
@@ -1774,7 +1977,7 @@ def build_manifest(corpus_bytes, corpus, facts):
             {"id": "KEYS_REFUSED", "detail": "Keys on a transition are accepted by the origin and refused by the plan's destination (FX_TRANSITION_KEYS_NOT_YET)."},
             {"id": "NARRATION_OUT_OF_SCOPE", "detail": "At the tip, render-bundle.schema.ts imports editFrameToSeconds and calls explainNarration with the duration: the NARRATION behaviour differs from the pin (a behaviour difference, not a comment). The contract is valid WITHOUT narration (the editor has none: BL017/BL026); TRANSITION_OVER_SPEECH is N/A until narration exists. Every other rule used here is the same at the pin and at the tip."},
             {"id": "LEGACY_FIXTURES_UNTOUCHED", "detail": "The legacy corpus (invalid-dissolve-transition, DISSOLVE_UNSUPPORTED) is history of an older pin and is not edited; the legacy dissolve is a separate S6 track with its own oracle lane (plan D04, Q2). Nothing here changes a legacy byte."},
-            {"id": "HIDDEN_FALSE", "detail": "The coordinator chose true or absent for transition hidden, matching the origin. Explicit false must be refused structurally in S1a; look clip compatibility is unchanged."},
+            {"id": "HIDDEN_FALSE", "detail": "The coordinator chose true or absent for transition hidden, matching the origin (plan section 17: `hidden` accepts true or absence; making it visible removes the key). Explicit false is a FUTURE destination contract: a structural, typed refusal in S1a, independent of `explain`. Nothing in the Rust importer does it today and this corpus does not claim it does; look clip compatibility is unchanged."},
             {"id": "STRICT_INTEGERS", "detail": "The oracle refuses floats, booleans, strings and integers beyond 2^53 - 1 for frame fields (ORACLE_* codes); the origin's schema only requires `int()`."},
             {"id": "DURATION_CHECKED_FIRST", "detail": "D is compared with the edit before the window arithmetic (same code, TRANSITION_OUT_OF_RANGE, as the origin gives for any window that cannot fit)."},
         ],
@@ -1790,6 +1993,8 @@ def build_manifest(corpus_bytes, corpus, facts):
              "consequence": "`origin-blob verified` is not `origin executed`."},
             {"id": "PIN_COMMIT_ABSENT_FOR_THE_WINDOWS_AUTHOR", "detail": "The pin commit is not in the author's clone of the origin; the pin blob ids are the coordinator's attestation.",
              "consequence": "`verify --origin --require-pin` exits 4 where the pin cannot be checked."},
+            {"id": "TEXTURED_FRAMES_NOT_REAL_BEFORE_S2", "detail": "The textured reference of the plan (8-bit runtime bytes of PURE frames mixed in Python) cannot exist before S2: there is no runtime frame for a transition yet. The analytic probes cover the cases a pure frame cannot (mixed hold, the real light clock); the textured comparison stays A validar until S2.",
+             "consequence": "No pixel of any runtime was compared in S0; the public gate FX_TRANSITION_NOT_YET stays closed until S2A."},
             {"id": "NOT_THE_FEATURE", "detail": "No Rust, JSONL, runtime or UI exists for transitions. A Python oracle is not the library, the headless CLI or the window (F064 Pending there).",
              "consequence": "No parity is claimed for the destination."},
         ],

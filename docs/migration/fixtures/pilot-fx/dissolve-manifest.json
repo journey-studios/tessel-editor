@@ -1,12 +1,20 @@
 {
   "assumptions": [
     {
-      "detail": "camera/resolve-camera-clip.ts was not read; the origin handle spec is consistent with a clip of N poses having tail N - (cameraIn + shotLength), and the fixture bundle's clips have one segment.",
+      "detail": "Written first without reading camera/resolve-camera-clip.ts (the origin handle spec was consistent with it). For P2-2 the file WAS read at the tip: `cameraClipFrames` is the largest of the sum of the main segments' durations and each layer's sum, so for a clip WITHOUT layers (every clip this corpus uses) the assumption is now a read fact; a clip with layers is not modelled.",
       "id": "CAMERA_FRAMES_IS_SUM_OF_SEGMENT_DURATIONS"
     },
     {
       "detail": "fx-test-bundle.ts was not read; the three-shot edit is rebuilt from the numbers the origin specs show and only those are claimed.",
       "id": "RECONSTRUCTED_SPEC_FIXTURE"
+    },
+    {
+      "detail": "The analytic probes (analytic_probes) are formulas evaluated here on synthetic scenes: no frame was rendered, no runtime, Rust or GPU ran, and the destination's own text was only READ to reconcile the formulas (painter's order, decode * (1 + L) * encode, vertical fov, lights on the plan's edit time). Textured frames become real in S2; until then the probes are an expectation, not a validated pixel.",
+      "id": "ANALYTIC_SCENES_NOT_RENDERED"
+    },
+    {
+      "detail": "The kits use axis-aligned image planes facing the camera with flat colours, a camera that trucks along its own right axis or holds, one lamp per deck with ambient 1 and a normal facing +z. Normal maps, splats, camera layers, rotations, shadows, weather and hidden lights are not modelled and no claim is made for them.",
+      "id": "ANALYTIC_FLAT_PLANES_ONLY"
     },
     {
       "detail": "the shader writes alpha 1.0; the destination's output alpha is assumed opaque. Not measured.",
@@ -18,9 +26,16 @@
     }
   ],
   "authoring": {
+    "final_plan_incorporation": {
+      "claim": "the text was incorporated into this corpus' analytic section and documents; this is a reading of a document, not a proof: nothing about the final plan was executed or validated here",
+      "plan_contained_in_the_branch_head": "58157abef1c0539889162182a0d36d886f57aaa5",
+      "plan_merged_in_main_by": "179610774b81984dce548154332c370d58ab24f4",
+      "plan_source_commit": "002fe9fc101c438aa8a6da95b25aa320f8cb582b",
+      "what_was_read": "docs/migration/p4b-cross-dissolve-plan.md at those commits (7.3 independent reference X, D14, D15, D17, D19, T06, T10, T16, section 17 and the hidden decision), for the P2-2 fix"
+    },
     "interpreter": "recorded in the S0 report (version, prefix, executable digest), not here: the JSON must not depend on the host",
     "plan": "docs/migration/p4b-cross-dissolve-plan.md, version 2",
-    "plan_head_note": "the head of the PR #58 branch whose plan this corpus follows; a later plan head may change the contract and then this corpus is regenerated and re-reviewed, never edited",
+    "plan_head_note": "the head of the PR #58 branch whose plan this corpus was FIRST written against (history kept); a later plan head may change the contract and then this corpus is regenerated and re-reviewed, never edited",
     "plan_head_read": "2395719046875a06c4986e4e8a949a448bfcb9d3"
   },
   "blockers": [
@@ -40,6 +55,11 @@
       "id": "PIN_COMMIT_ABSENT_FOR_THE_WINDOWS_AUTHOR"
     },
     {
+      "consequence": "No pixel of any runtime was compared in S0; the public gate FX_TRANSITION_NOT_YET stays closed until S2A.",
+      "detail": "The textured reference of the plan (8-bit runtime bytes of PURE frames mixed in Python) cannot exist before S2: there is no runtime frame for a transition yet. The analytic probes cover the cases a pure frame cannot (mixed hold, the real light clock); the textured comparison stays A validar until S2.",
+      "id": "TEXTURED_FRAMES_NOT_REAL_BEFORE_S2"
+    },
+    {
       "consequence": "No parity is claimed for the destination.",
       "detail": "No Rust, JSONL, runtime or UI exists for transitions. A Python oracle is not the library, the headless CLI or the window (F064 Pending there).",
       "id": "NOT_THE_FEATURE"
@@ -48,6 +68,10 @@
   "corpus": {
     "check": "scripts/pilot-dissolve-corpus.py generate --check   (writes nothing; offline)",
     "counts": {
+      "analytic_frames": 116,
+      "analytic_hypotheses": 9,
+      "analytic_probes": 451,
+      "analytic_scenarios": 12,
       "explain": 32,
       "handles": 12,
       "pixel_cases": 15,
@@ -62,7 +86,7 @@
       "path": "docs/migration/fixtures/bundles/valid-cut-instance-offsets.bundle.json",
       "sha256": "43fd1a5568a63745c1043eab45cae028fa03a772eea11c9d0bac43e808718e2b"
     },
-    "sha256": "c02fa1d867defc060d8e6177fccd017c6115bdd3e6e9347c6e8e5117d0bb1d5a"
+    "sha256": "e5f40f70ccdb069196224d45c8df09cbaec7539eedc06ea350e65de7966cd011"
   },
   "documented_differences": [
     {
@@ -86,7 +110,7 @@
       "id": "LEGACY_FIXTURES_UNTOUCHED"
     },
     {
-      "detail": "The coordinator chose true or absent for transition hidden, matching the origin. Explicit false must be refused structurally in S1a; look clip compatibility is unchanged.",
+      "detail": "The coordinator chose true or absent for transition hidden, matching the origin (plan section 17: `hidden` accepts true or absence; making it visible removes the key). Explicit false is a FUTURE destination contract: a structural, typed refusal in S1a, independent of `explain`. Nothing in the Rust importer does it today and this corpus does not claim it does; look clip compatibility is unchanged.",
       "id": "HIDDEN_FALSE"
     },
     {
@@ -398,6 +422,62 @@
       "tip_blob": "95b137d2a386f6f75dc5bbdb1a89255ac6410684",
       "tip_bytes": 1883,
       "tip_sha256": "6bd55eb8c9c129e90ca0cd7a1e515090100cb5511dbabb12b401ca867a2255c8"
+    },
+    {
+      "group": "read-at-the-tip-only-not-compared-with-the-pin",
+      "path": "packages/scene-engine/src/lighting/scene-lighting.ts",
+      "role": "seedOf, noise, flickerLevel, lightAmount: the lamp's flicker and falloff (analytic X)",
+      "tip_blob": "a85e0edd3a83e565d518dbbc1b2839be369e1c01",
+      "tip_bytes": 5374,
+      "tip_sha256": "78ba61253095cb120003ad56837b6e93c35af4da7c1f1934b76d94814c6aa151"
+    },
+    {
+      "group": "read-at-the-tip-only-not-compared-with-the-pin",
+      "path": "packages/scene-engine/src/weather/weather-model.ts",
+      "role": "hash01: the 32-bit integer mix under the flicker noise (analytic X)",
+      "tip_blob": "f37233fb4786ce8eba99760bde494bf98d794704",
+      "tip_bytes": 10388,
+      "tip_sha256": "1596f8a8e3b48d9eefad4691fcc7a761bae64ade4d8615a57713fad63fcfbd87"
+    },
+    {
+      "group": "read-at-the-tip-only-not-compared-with-the-pin",
+      "path": "packages/scene-engine/src/camera/resolve-camera-clip.ts",
+      "role": "truck, dolly and hold poses, progressAt and the pose held past the clip (analytic X)",
+      "tip_blob": "04e5eaab05a2f9af1d83f28b300a34eb87f0a8a6",
+      "tip_bytes": 15085,
+      "tip_sha256": "0241aa815c0b5747872dc4b35e57a6e30846eb2729ba078678f9ef7127a0e1a4"
+    },
+    {
+      "group": "read-at-the-tip-only-not-compared-with-the-pin",
+      "path": "packages/scene-engine/src/performance/resolve-performance.ts",
+      "role": "the `event` channel that adds to a node's position (analytic X)",
+      "tip_blob": "a5212bda7f4c966852584f07e5d048cbc808ee24",
+      "tip_bytes": 3314,
+      "tip_sha256": "3e3f2f4f888a48eddf00bae6d712995035f1e7e74dd58f938a003e6fabeedcc7"
+    },
+    {
+      "group": "read-at-the-tip-only-not-compared-with-the-pin",
+      "path": "packages/scene-engine/src/types/fps.ts",
+      "role": "editFrameToSeconds: frame / (numerator / denominator) (analytic X)",
+      "tip_blob": "208245ee6d4aeb793cf455941994fcc4de10bf4a",
+      "tip_bytes": 660,
+      "tip_sha256": "dc36c3d16ec71953d7de1c857681cbb6c535e12dbf18f70faa924fc32e482e5b"
+    },
+    {
+      "group": "read-at-the-tip-only-not-compared-with-the-pin",
+      "path": "packages/scene-engine/src/runtime/plane-effects-material.ts",
+      "role": "ambient * base + base * light, the lamp falloff squared (analytic X)",
+      "tip_blob": "6a0ab8633507a5bea9a055fe4cc224d0c2d144cb",
+      "tip_bytes": 19570,
+      "tip_sha256": "0fab05d754a17af094325d31ba774738cb29c2a3446e111e87eb3695effe4ed6"
+    },
+    {
+      "group": "read-at-the-tip-only-not-compared-with-the-pin",
+      "path": "packages/scene-engine/src/runtime/three-scene-runtime.ts",
+      "role": "weather and lights on the edit clock; PerspectiveCamera, lookAt, renderOrder (analytic X)",
+      "tip_blob": "b4d5b2ee3fa566460aca595d80e7e55445d45818",
+      "tip_bytes": 64318,
+      "tip_sha256": "763ad75648abe75b0ff6812ee579826e8bbd197629fef09ad2bec2765babf6af"
     }
   ],
   "tolerances_registered": {
