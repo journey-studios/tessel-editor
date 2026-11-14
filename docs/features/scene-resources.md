@@ -50,8 +50,12 @@ diferente, caminhos que só diferem em caixa e "arquivo vs pasta" são `PathColl
 - PNG: assinatura e IHDR (dimensões declaradas), **sem decodificar pixels nem alfa**. SPZ via
   `splat::inspect`. Grade f32 e áudio: só hash.
 - `collision_key` usa minúsculas, **sem dobra de normalização Unicode**.
-- Identidade de arquivo aberto (dev/ino) é **unix**; sem equivalente Windows nesta fatia. Resta
-  uma janela TOCTOU para quem escreve na raiz concorrentemente; hardlinks não são detectáveis.
+- Identidade de arquivo aberto (dev/ino) da **materialização e dos carimbos** (`Stamp`) é **unix**;
+  sem equivalente Windows nesta fatia (BL078). Resta uma janela TOCTOU para quem escreve na raiz
+  concorrentemente; hardlinks não são detectáveis. O **ledger de claims** (BL111) é outra coisa:
+  no Windows a identidade do `ledger.lock` (volume + índice do arquivo) é conferida desde BL167.6,
+  e o diário aceita registros incompletos; limites e provas em
+  [windows-ledger-report](../migration/windows-ledger-report.md).
 - Cancelamento é observado entre blocos de cópia e antes de publicar, **não durante a publicação**
   (passo de publicação por hard links, parar no meio exigiria o mesmo rollback).
 - Campos desconhecidos e luz/clima/efeitos/rigs/paths/`frameAudit` não são varridos em busca de
@@ -125,7 +129,60 @@ O módulo puro não tem apresentação. O fluxo da janela usa o mesmo host F040;
 | Media | `directed_resources.rs` (19) e `directed_resources_transport.rs` (20) | Passaram via Cargo `--locked` em Unix; o teste de rollback pula se executado como root |
 | Qualidade/gate | `test --workspace --locked`, `clippy --workspace --all-targets --locked -- -D warnings`, fmt, check, release e `cargo tree -p tessel-editor-core` | Passaram localmente ([relatório](../migration/round-hijkl-report.md)); sem CI de testes e sem Windows |
 
-O comportamento de links usa unix; sem execução em Windows.
+O comportamento de links usa unix; os módulos de symlink continuam sem execução em Windows
+(criar link exige privilégio, BL167.1).
+
+### Claims no Windows (BL167.6)
+
+O ledger de claims que protege estes arquivos (`scene_resources::claims`, [F040](scene-resource-integration.md))
+foi executado no Windows real por esta fatia. Estado: **A validar; PR60 não aprovada em
+`0cea8d6` nem em `8cad5c2`** (revisão R2: o P1 do tick fechou, a corrida ainda falhou 5/320 por acesso
+negado ao criar a pasta do ledger). A correção em `2522290` está provada no Windows como descrito abaixo e
+no [relatório](../migration/windows-ledger-report.md), ainda sem revisão independente. Mac também precisa
+ser revalidado (a mudança de `claims.journal` roda no Unix).
+
+| Superfície | Evidência | Estado |
+|---|---|---|
+| Lib (core/media, sem janela) | módulo `claims` (54 testes em `2522290`; 48 antes de BL167.6.1/.2), entre eles `trackers_never_hold_an_emptied_and_refilled_ledger_at_the_same_time`, `a_lock_file_replaced_at_its_path_is_not_the_one_that_was_opened`, `an_emptied_and_refilled_ledger_reads_the_same_every_time` e a corrida `emptying_and_refilling_a_ledger_is_never_mistaken_for_damage` | Windows: passam; antes a corrida ficava mais de 30 min com CPU ocupada |
+| Dois processos reais | `scene_claims_processes` (14), `scene_claims_journal` (13, antes `cfg(unix)`), `job_discard_claims` (13), `scene_claims_integrity` (11), `scene_claims_jsonl` (6) | Windows: passam; `scene_claims_failure` depende do ajuste de `adopt.rs` que o [relatório](../migration/windows-ledger-report.md) propõe |
+| CLI headless / janela | Sem mudança de contrato; `scene.resources.*` já era coberto pelos testes acima (processos `tessel-media` reais) | Sem prova nova de janela no Windows |
+
+Limites que esta fatia **não** fecha: `scene_claims_budget` continua só Unix (mede tempo do tick, exigiria
+a rodada de desempenho com o lock de GPU); no Windows o peer de `a_peer_stopped_while_holding_the_ledger_lock…`
+segura o lock mas não é suspenso (sem `SIGSTOP`, e `unsafe` é proibido); `Stamp` continua sem
+dev/inode (BL078); o atraso com que o SO libera um lock ao fechar o arquivo não foi demonstrado.
+O `ledger.lock` é disputado por polling (`LOCK_POLL`), sem fila: sob contenção contínua um chamador pode
+esperar quase todo o orçamento de 1,5 s dos jobs (medido: até 1,3 s com retenções abaixo de 11 ms). É
+inanição, não violação de exclusão; o teste de exclusividade usa um orçamento próprio de 60 s e o limite de espera
+tem testes próprios. Um open que o Windows recusa com "acesso negado" (remoção pendente do arquivo) é repetido até
+50 vezes, **dentro do orçamento do chamador**, antes de a recusa ser acreditada. Sem prazo
+restante, a negação é devolvida imediatamente; cada pausa é limitada ao tempo restante.
+
+A revisão independente confirmou a identidade do lock e o journal no Windows, mas reproduziu
+121–126 ms em uma negação persistente, inclusive em `accept(wait=false)` (tick de 20 ms), e
+uma falha por inanição em 140 execuções da corrida. O coordenador acrescentou a guarda de prazo,
+limitou a pausa e separou o prazo de estresse da corrida (60 s, só em teste). Regressões Windows
+com arquivo somente-leitura e diretório em `ledger.lock` conferem ZERO/tick/accept, teto de
+100 ms e claims preservadas; a R2 em `8cad5c2` as executou e o P1 fechou. Não são prova de janela.
+A identidade por volume/índice foi exercitada em NTFS; ReFS e filesystems de rede continuam
+sem prova. O defeito equivalente de identidade do RootLease pertence a BL079/BL167.6.3.
+
+**BL167.6.2 (R2, 2522290).** Na R2 a corrida falhou 5/320 com PermissionDenied em
+`fs::create_dir`(.tessel-claims), antes do open. O create e o open do lock passam a usar a mesma
+política estreita (denial_is_transient): só PermissionDenied no Windows, até 50 tentativas
+**somadas**, só enquanto o prazo do chamador dura (ZERO nunca espera; a pausa nunca excede o
+restante; o prazo e o contador não são renovados). LOCK_WAIT (1,5 s), TICK_WAIT (20 ms) e a
+exclusão mútua fail-closed não mudaram; a remoção pendente é hipótese do mecanismo, não causa
+provada, e a falha não reproduziu aqui na base (8cad5c2: 0/320). Provas, sem confundir:
+**injeção** (CREATE_FOLDER, #[cfg(test)], erro 5 no create_dir) prova o controle das
+retentativas (volta ao lock após 5 recusas; ZERO 1 chamada; teto 51 chamadas), **não** o mecanismo
+do NTFS; uma **ACL real persistente** prova uma recusa real e o orçamento de ZERO/tick, **não** a
+recusa transitória. Um teste ACL transitório anterior (commit local não publicado 2d4f58b) falhou
+no gate e foi substituído por esses dois, não relaxado. Em 2522290: claims 54/54, processos 14,
+journal 13, integrity 11, jsonl 6, job_discard_claims 13, fmt/check/clippy -D warnings exit 0, corrida
+320/320 e exclusividade 40/40 (binário compilado do head), mutantes mortos; workspace inteiro não
+declarado verde. Mac/Unix não validados (`append_accept` com escrita + seek ainda precisa de Mac).
+BL167.6.2 permanece **A validar** até revisão independente.
 
 ## Integração pelo coordenador
 
@@ -138,3 +195,50 @@ rename. Uma regressão que falhava com o fallback confirma esse fechamento segur
 precisa controlar as raízes com exclusividade durante a operação; os testes de symlink não
 provam proteção contra troca hostil concorrente de diretórios-pais. PNG é verificação de
 cabeçalho, não decode de pixels/alpha. Pacote/intercâmbio continuam com as guardas atuais.
+
+**Fechamento da integração PR60, head `89a8401`.** A revisão Windows aceitou a
+integração com main:claims54 (denied6), processos14, journal13, integrity11,
+jsonl6, discard13, corefx25/transições61 eGPUI80; fmt/check/clippy/no-run/build
+passaram. Stress320/exclusividade40 e mutantes são da R3 em f054, com fontes
+do ledger/testes idênticas; não foram apresentados como execução nova.
+
+No Mac nativo, no mesmo89a8401, passaram claims51 e seis suítes de integração (65 testes) no total
+(discard13/failure6/integrity11/journal13/jsonl6/processos16). O caminho Unix de
+append_accept(write+seek) foi executado. Core completo1528/0/7ignorados e
+fmt/check/clippy do workspace e build passaram; árvore do core semgpui/wry. Nenhuma prova
+de workspace completo, Linux, janela, GPU, áudio ou desempenho decorre disso.
+
+A revisão reproduziu espera quente por NotFound em workspace removido:
+64/478/32358 tentativas em ZERO/20ms/1.5s, respeitando o prazo. Continua P3
+registrado em BL167.6.5, junto à hipótese similar de same_file. Não altera
+a aprovação funcional nem significa que a espera seja eficiente.
+
+**Patch posterior a89, BL167.6.5 (a validar).** Os retries rápidos por NotFound,
+InvalidInput ou troca de identidade do lock passam a pedir pausa de500us,
+limitada ao prazo original; ZERO não dorme e o handle obsoleto é liberado antes
+da pausa. O piso de tentativas, LOCK_WAIT, TICK_WAIT, exclusão e identidade
+failclosed são preservados. A recusa passa a dizer que esgotou o orçamento de
+retentativas, sem atribuir indevidamente causa ao diretório.
+
+Regressões com sono substituído e criação controlada discriminam create/open
+transitórios e ZERO; outra usa workspace realmente inexistente e prova recusa
+sem criar pais. São provas de controle, não medição de CPU ou desempenho. Os
+resultados de89 acima não são evidência da execução deste patch posterior.
+
+**Execução nativa do patch 0f9d1ab.** Mac: 55/55 claims (quatro regressões novas),
+seis suítes de integração (65 testes), fmt/check/clippy do workspace e build passaram e árvore do core não
+lista gpui/wry. Sem pausacreate, sem pausaopen e sleepignorandodeadline foram
+detectados por regressões distintas; após restauração exata,4/4 passaram.
+O Windows validou o patch em c66887e; a cobertura parcial restante está em BL167.6.9.
+
+**Revisão final do patch de espera.** Windows validado em `c66887e`, código
+`0f9d1ab`: 58 testes de claims, integrações 14/13/11/6/13, corefx25/transições61
+e fmt/check/clippy/no-run/build. Corrida320/320 e exclusividade40/40 sequenciais
+passaram sem timeout. Não houve achado P0/P1/P2 de código. Mac permanece
+comprovado no código0f: 55 claims, 65 integrações e gates.
+
+A prova das pausas de create/open NotFound é discriminante; InvalidInput e
+identidade trocada ainda são por leitura. M4 sem a pausa de identidade passa,
+e o handle do lock inválido pode ficar aberto até500us durante a pausa, sem
+alterar exclusão. O complemento de cobertura e higiene fica em BL167.6.9.
+Não houve medida de CPU/FPS nem prova causal do mecanismo NTFS.
