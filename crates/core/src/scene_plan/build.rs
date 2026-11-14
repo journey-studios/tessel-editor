@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use serde_json::Value;
 
-use crate::directed_scene::fx::Fx;
+use crate::directed_scene::fx::FxPass;
 use crate::directed_scene::lighting::{Lighting, LightingRefusal};
 use crate::directed_scene::{
     AssetAlpha, Bundle, CameraState, DirectedScene, FrameEvaluation, NodeKind, Parent, SceneGraph,
@@ -385,6 +385,18 @@ impl<'a> Prepared<'a> {
         scene: &DirectedScene,
         frame: &FrameEvaluation<'_>,
     ) -> Result<ScenePlan, PlanError> {
+        let fx = scene.bundle().fx.resolve(edit_frame_i64(frame));
+        self.assemble_with(scene, frame, fx)
+    }
+
+    /// `assemble` with the passes the caller resolved: the deck of a transition window draws the
+    /// passes of its own stage (`Fx::resolve_frame`), not the ones of the shot under the needle.
+    pub(super) fn assemble_with(
+        &self,
+        scene: &DirectedScene,
+        frame: &FrameEvaluation<'_>,
+        fx: Vec<FxPass>,
+    ) -> Result<ScenePlan, PlanError> {
         let bundle = scene.bundle();
         let nodes = plan_nodes(frame, self.graph)?;
         let layers = plan_layers(bundle, frame, &self.definition_id)?;
@@ -398,7 +410,6 @@ impl<'a> Prepared<'a> {
             &resources,
             self.definition,
         );
-        let fx = bundle.fx.resolve(edit_frame_i64(frame));
         let lights = self.lights_at(frame);
         let requires = derive_requires(
             &nodes,
@@ -433,6 +444,7 @@ impl<'a> Prepared<'a> {
             splats,
             fx,
             lights,
+            transition: None,
             resources,
             requires,
             unsupported: self.unsupported.clone(),
@@ -484,12 +496,40 @@ impl ScenePlan {
         options: PlanOptions,
     ) -> Result<Self, PlanError> {
         super::probe::note_layout();
-        let frame = scene.bundle().evaluate_frame(edit_frame)?;
+        let bundle = scene.bundle();
+        let frame = bundle.evaluate_frame(edit_frame)?;
         let prepared = Prepared::new(scene, &frame)?;
         prepared.refuse_unsupported(options)?;
-        let plan = prepared.assemble(scene, &frame)?;
+        // Without a transition in the document the frame is the one it always was: not a call
+        // more, not a byte different (the baseline `scene_plan_transition_baseline` pins it).
+        if bundle.fx.transitions.is_empty() {
+            let plan = prepared.assemble(scene, &frame)?;
+            plan.check_splat_transforms()?;
+            return Ok(plan);
+        }
+        let stages =
+            bundle
+                .fx
+                .resolve_frame(&bundle.shots, bundle.edit_duration_frames, edit_frame);
+        let plan = prepared.assemble_with(scene, &frame, stages.flat_passes())?;
         plan.check_splat_transforms()?;
-        Ok(plan)
+        let Some(window) = &stages.transition else {
+            return Ok(plan);
+        };
+        let neighbour = bundle.evaluate_shot_at_offset(window.other_shot_id, edit_frame)?;
+        let other_prepared = Prepared::new(scene, &neighbour.evaluation)?;
+        other_prepared.refuse_unsupported(options)?;
+        let other = other_prepared.assemble_with(
+            scene,
+            &neighbour.evaluation,
+            window.other_passes.clone(),
+        )?;
+        other.check_splat_transforms()?;
+        plan.with_transition(
+            window,
+            (neighbour.held_instance, neighbour.held_camera),
+            other,
+        )
     }
 
     /// This plan with the lights of another frame: the lights are a function of the edit frame
@@ -514,7 +554,21 @@ impl ScenePlan {
     /// The nodes of a shot's frames are the same list in the same order (they come from one scene
     /// definition), so a frame that does not line up with this plan is a bug, reported as the node
     /// that does not resolve instead of a plan with some other frame's nodes in it.
-    pub(super) fn at_frame(&self, frame: &FrameEvaluation<'_>, fx: &Fx) -> Result<Self, PlanError> {
+    #[cfg(test)]
+    pub(super) fn at_frame(
+        &self,
+        frame: &FrameEvaluation<'_>,
+        fx: &crate::directed_scene::fx::Fx,
+    ) -> Result<Self, PlanError> {
+        self.at_frame_with(frame, fx.resolve(edit_frame_i64(frame)))
+    }
+
+    /// `at_frame` with the passes the caller resolved (see `Prepared::assemble_with`).
+    pub(super) fn at_frame_with(
+        &self,
+        frame: &FrameEvaluation<'_>,
+        fx: Vec<FxPass>,
+    ) -> Result<Self, PlanError> {
         let states = frame.nodes.nodes();
         // The first position where the two lists stop agreeing (one list may simply be longer).
         let misaligned = (0..states.len().max(self.nodes.len())).find_map(|at| {
@@ -546,7 +600,7 @@ impl ScenePlan {
         }
         // The effects are a function of the edit frame alone, so they are resolved again here
         // (the template holds the first frame's), and `requires` follows them.
-        plan.fx = fx.resolve(edit_frame_i64(frame));
+        plan.fx = fx;
         plan.requires = derive_requires(
             &plan.nodes,
             &plan.layers,

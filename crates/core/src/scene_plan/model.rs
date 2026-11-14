@@ -9,6 +9,7 @@ use crate::directed_scene::{
 };
 use crate::time::Ratio;
 
+use super::transition::PlanTransition;
 use super::{PLAN_VERSION, PlanError};
 
 /// What a runtime must be able to do to execute a plan. A plan lists only the capabilities its own
@@ -58,10 +59,16 @@ pub enum Capability {
     /// it refuses the plan with `unsupported` + `missing`, never draws the shot's look over the
     /// whole output nor leaves it out.
     FxShotScope,
+    /// A transition between two shots (`ScenePlan::transition`, F064): two decks mixed by the
+    /// resolved `progress` and `amount`, the output passes after the mix. Only a plan with a
+    /// `transition` requires it (a plan without one keeps its bytes, `requires` included). A
+    /// runtime that does not list it refuses the plan with `unsupported` + `missing`, never draws
+    /// one deck as if the other did not exist.
+    FxTransition,
 }
 
 impl Capability {
-    pub const ALL: [Capability; 13] = [
+    pub const ALL: [Capability; 14] = [
         Self::Camera,
         Self::NodeTransforms,
         Self::Sockets,
@@ -75,6 +82,7 @@ impl Capability {
         Self::FxNoise,
         Self::PointLights,
         Self::FxShotScope,
+        Self::FxTransition,
     ];
 
     /// The spelling used on the wire.
@@ -93,6 +101,7 @@ impl Capability {
             Self::FxNoise => "fxNoise",
             Self::PointLights => "pointLights",
             Self::FxShotScope => "fxShotScope",
+            Self::FxTransition => "fxTransition",
         }
     }
 
@@ -406,6 +415,10 @@ pub struct ScenePlan {
     /// The point lights of the frame in document order (F060), at most four. Empty without
     /// lights, and then absent from the wire form (plans without lights keep their bytes).
     pub lights: Vec<PlanLight>,
+    /// The neighbour deck and the mix of a frame inside a transition window (F064): absent (and
+    /// absent from the wire form, so plans without it keep their bytes) at every other frame. The
+    /// fields above are the deck under the needle; see `PlanTransition`.
+    pub transition: Option<Box<PlanTransition>>,
     /// The textures and splat files the frame needs, ascending by `asset_id` (bytewise): the stable list a
     /// resource manifest is asked about.
     pub resources: Vec<PlanResource>,
@@ -422,6 +435,10 @@ impl ScenePlan {
     /// (only produced on request, `PlanOptions::allow_partial`) is not the whole picture.
     pub fn is_complete(&self) -> bool {
         self.unsupported.is_empty()
+            && self
+                .transition
+                .as_ref()
+                .is_none_or(|transition| transition.other.is_complete())
     }
 
     /// The resources the frame requires, by `assetId`, in the stable order of `resources`.

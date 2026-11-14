@@ -182,7 +182,7 @@ impl Bundle {
 
     /// Start time of a frame, exact. Checked: a frame too large for the integer ratio is an
     /// error, where `Rate::frame_to_time` would answer zero.
-    fn frame_time(&self, frame: u64) -> Result<Ratio, TemporalError> {
+    pub(super) fn frame_time(&self, frame: u64) -> Result<Ratio, TemporalError> {
         let rate = self.rate()?;
         let seconds_per_frame = Ratio::new(i64::from(rate.den()), i64::from(rate.num()));
         seconds_per_frame
@@ -355,6 +355,20 @@ impl Bundle {
         camera_timeline: impl FnOnce(&str) -> Result<Cow<'t, CameraTimeline<'a>>, TemporalError>,
     ) -> Result<FrameEvaluation<'a>, TemporalError> {
         let mapping = self.mapping_inside_instance(edit_frame)?;
+        self.finish_evaluation(mapping, node_timeline, camera_timeline)
+    }
+
+    /// The body of an evaluation once the mapping is known: nodes, camera and what is left
+    /// unevaluated. Shared by the strict evaluation above and by `evaluate_shot_at_offset_with`
+    /// (`shot_offset.rs`), which maps a frame outside its shot, so the two cannot drift.
+    pub(super) fn finish_evaluation<'a: 't, 't>(
+        &'a self,
+        mapping: FrameMapping<'a>,
+        node_timeline: impl FnOnce(
+            &'a SceneInstance,
+        ) -> Result<Cow<'t, NodeTimeline<'a>>, TemporalError>,
+        camera_timeline: impl FnOnce(&str) -> Result<Cow<'t, CameraTimeline<'a>>, TemporalError>,
+    ) -> Result<FrameEvaluation<'a>, TemporalError> {
         let timeline = node_timeline(mapping.instance)?;
         let camera_layout = camera_timeline(&mapping.shot.camera_clip_id)?;
         let camera = Self::camera_of(&mapping, &camera_layout)?;
