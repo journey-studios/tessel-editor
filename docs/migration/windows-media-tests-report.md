@@ -207,3 +207,14 @@ não há mudança no renderer ou regras de domínio; foram executados os 65 test
 Mac que cobrem os arquivos alterados e seus mecanismos de plataforma.
 Não foi feita nova prova física, medição de desempenho, export GPU ou áudio ouvido.
 Sem push, PR ou merge nesta entrega. O backlog registra o commit local do código.
+
+
+## Revisão PR #57 — BL167.1.1
+
+O wrapper Unix aplica quoting de shell a executável e flag, inclusive apóstrofos,
+sem alterar os argumentos de "$@". Regressão Mac executa script e flag com
+apóstrofos/espaços, argumentos literais com metacaracteres e falha forçada:1/1.
+async_host8/8 e job_commit_state1/1 com FFmpeg real. O wrapper Windows permanece
+inalterado. Gates finais de fmt/check/clippy/no-run/build desktop exit0 no Mac;
+sem nova execução Windows. Logs no SSD de coordenação, github-review-final/.
+[PR #57](https://github.com/journey-studios/tessel-editor/pull/57).

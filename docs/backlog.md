@@ -1406,7 +1406,7 @@ Revisão do coordenador e validação Mac usam o mesmo código dos 8 arquivos re
 por SHA-256. Nenhum corpo de teste foi removido ou teve suas asserções relaxadas.
 Fmt/check/clippyalltargets/testno-run/build passaram, 58 testes de mídia e os 7
 Unix `held_read` passaram sem ignorados. A spec do backlog passou 19/19.
-Logs duráveis e hashes: `/Volumes/Extreme Pro/tessel-bl1671-validation/`,
+Logs duráveis e hashes: `SSD de coordenação: tessel-bl1671-validation/`,
 com comandos/exit codes em `mac/results.jsonl` e identidade em `mac/code-manifest.json`.
 Windows: compilação aceita; sua execução global segue vermelha e o hang de claims
 permanece em BL167.6. Os três erros de representação de caminhos estão em BL167.7.
@@ -1456,7 +1456,7 @@ A primeira criação de worktree também falhou antes de iniciar o modelo:
 o coordenador corrigiu workspaceRoot do projeto T3 para esse caminho, sem mover
 arquivos ou alterar o repositório. A tentativa falha continua só como histórico.
 A thread indicada na linha BL167.2 agora está running em
-`C:\Users\wally\.t3\worktrees\tessel-editor\fix-windows-tool-discovery-bl167-2`,
+`worktree Windows fix-windows-tool-discovery-bl167-2`,
 com Cursor Sonnet 5.5 e opções vazias. Subagente Mac confirmado interrupted,
 sem run ativo; seu diff parcial foi preservado em t3/windows-tool-discovery,
 sem integração, commit ou descarte. Implementação principal e prova ficam no Windows.
@@ -1485,7 +1485,7 @@ compilação, sem os quatro overrides de ferramentas. Provas e limites no
 BL167.2 — regressão Mac concluída sem overrides: fmt/check/clippy/no-run/build
 exit0; testes de busca25+5Rust e13JS, render real15 e media real22 passaram,
 sem skips de runtime (1 diagnóstico Rust ignorado). CLI preflight sem blockers e
-frame PNG real passaram. Logs e manifesto em /Volumes/Extreme Pro/tessel-bl1672-validation/mac/.
+frame PNG real passaram. Logs e manifesto em SSD de coordenação: tessel-bl1672-validation/mac/.
 Naquele ponto, novo delegado Cursor Sonnet5.5 iniciou rechecagem Windows após patch de revisão:
 [rechecagem](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:22bedc638f39d13f3917b5533b99ace12da49abdeed55049d48874d9f4d8d9f9).
 Patch b17ba3da… (4614bytes) aplicado somente a locate.rs/chrome.mjs/chrome-discovery.test.mjs.
@@ -1508,7 +1508,7 @@ vídeoJS7, render15), zero skips, além da regressão inicial80 e smoke CLI real
 com FFmpeg/FFprobe fora do PATH. Não somar as duas rodadas como testes distintos.
 Spec do backlog19/19. Comandos, hashes, manifestos e limites no
 [relatório](migration/windows-tool-discovery-report.md) e em
-`/Volumes/Extreme Pro/tessel-bl1672-validation/mac-followup/`.
+`SSD de coordenação: tessel-bl1672-validation/mac-followup/`.
 
 BL167.2 funcional Windows/Mac concluído; .2.2 mantém só o script de desempenho,
 .2.3 mantém Linux nativo. BL167.3–.7 continuam sem implementação nesta entrega.
@@ -1555,7 +1555,7 @@ A tentativa isolation=worktree foi recusada antes de criar executor. Nova chamad
 sem isolation iniciou execução; nenhuma segunda implementação concorrente.
 Base transportada gzip/base64: patch ead9ca2→65ea9a4,157254 bytes, SHA256
 540935fc83aec91ed11b17dd4b8f903a8bff682fd246612a4b8a5084e46c89c8.
-Artefato durável no Mac: /Volumes/Extreme Pro/tessel-bl081-coordination/.
+Artefato durável no Mac: SSD de coordenação: tessel-bl081-coordination/.
 O coordenador aguarda o evento de conclusão sem polling; revisão/validação Mac e
 integração continuam pendentes. Nenhuma feature BL081 foi declarada entregue.
 
@@ -1592,7 +1592,7 @@ no retorno inicial. Execução da preparação corrigida e produto ainda aguarda
 
 Patch recebido do transcript,96710bytes, SHA256
 5aff608f5b8e56cb8ba2d5f7b03ca1142590d50af293dd097994ab7fbc87088d,
-14paths. Original preservado em /Volumes/Extreme Pro/tessel-bl081-coordination/received/.
+14paths. Original preservado em SSD de coordenação: tessel-bl081-coordination/received/.
 Aplicado sobre65ea9a4: só contexto da matriz divergia pelas provas B2 locais;
 foi integrada apenas a linha F017, sem sobrescrever F019/F021/F029.
 Windows entregou20 testes de integração lib/headless,3 testes desktop e janela
@@ -1643,7 +1643,7 @@ sem inspeção do seu disabled_reason na janela Windows; isso não é ponteiro f
 
 Manifesto18fontes B1/B2 sem divergências; readiness e índice real intactos.
 HEAD Windows continua ead9ca2 com overlay autorizado, sem commit/push/PR.
-Logs remotos: C:\Users\wally\tessel-readiness-logs\2026-11-14-bl081-review\.
+Logs remotos: logs do Computador: \2026-11-14-bl081-review\.
 Mac validado no mesmo código: core1435/7 ignorados existentes/0 falhas, desktop3,
 gates e janela semântica. A correção funcional está salva em c0f7e24; esta atualização
 fecha apenas documentação/status, sem alterar fonte nem herdar novos gates.
@@ -1691,7 +1691,7 @@ Delegação BL081.5 iniciada: [BL081.5 — continuidade de áudio em cortes frac
 Cursor claude-sonnet-5-5 no Computador, defaults sem opções extras.
 Task node:delegated-task:command%3Amcp%3A77122fb9-fe19-4ca6-b856-7beca247f3a3%3Aremote-delegate%3Abl0815-audio-phase-windows-20261114.
 Execução confirmada running pela delegação; manifesto15fontes de base salvo no
-Mac em /Volumes/Extreme Pro/tessel-bl0815-coordination/base-code-manifest.json.
+Mac em SSD de coordenação: tessel-bl0815-coordination/base-code-manifest.json.
 Mesma base Windows já preparada; não foi solicitada criação de worktree remoto
 nem transporte de pacotes grandes de dependências. Retorno por evento, sem polling.
 Implementação/revisão/provas finais ainda pendentes; nenhum commit desta feature.
@@ -1704,7 +1704,7 @@ f654486e86b9c057cd8c8dd523aa5eeffaf16e4f7f3a7bd02876487229742998;
 gzip35891bytes SHA256
 8ed984f62030814be9022425d4e6bec1df8e88b41ea425eb653f1d86bc3d8dee.
 Quatro chunks recuperados do transcript e hashes/tamanhos conferidos no Mac;
-originais em /Volumes/Extreme Pro/tessel-bl0815-coordination/received/.
+originais em SSD de coordenação: tessel-bl0815-coordination/received/.
 Código aplicado sobreab2e8fa. Contextos de F017/matriz divergiam pelo fechamento
 local anterior: integradas somente linhas F017/F051 e contrato atual, preservando
 provas B2 e o aceite do BL081 dentro da fatia original. Documentação nova não
@@ -1799,7 +1799,7 @@ git apply --check/apply exit0. Gates fmt/checkworkspacealltargets/clippyalltarge
 fase14,bordas2,split22,fades8,video_sound8,audio_clock4,desktop4+2,export11+2.
 FFmpeg real; nenhum workspace/core completo ou desempenho foi repetido.
 Manifesto B1/B2:18fontes idênticas;readiness/índice intactos;main@ead9ca2 preservada.
-Logs direct-* em C:\Users\wally\tessel-readiness-logs\2026-11-14-bl081-5-review\.
+Logs direct-* em logs do Computador: \2026-11-14-bl081-5-review\.
 
 Reconciliação da única divergência: split_tests.rs Windows11275B SHA256
 0c4ab12901ad787c96e17c65d273eb856531ca266a04f9f9f1fec3ceaa47743e;
@@ -1834,3 +1834,23 @@ Logs duráveis no SSD: tessel-bl0815-coordination/mac/merge-review-gates/ e
 fractional-visual-fades-{before,after}.log. São provas Mac da correção; não
 substituem uma execução nova em Windows ou uma janela nova. Sem workspace inteiro
 executado ou desempenho aceito. A revisão e integração permanecem na PR #57.
+
+
+### Revisão GitHub da PR #57 (2026-11-14)
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL081.14 | OpenCodeReview / CodeRabbit | Diagnóstico específico de fades mais longos que o áudio; oráculo rejeita NaN/Inf e comparação desktop exige comprimento igual | Corrigido e validado Mac | BL081.5 | Coordenador | Razão correta nas três posições do playhead; controle não finito nos dois canais e desktop split sem truncar comparação |
+| BL167.1.1 | CodeRabbit | Escape de apóstrofos nos caminhos do wrapper Unix de testes | Corrigido e validado Mac | BL167.1 | Coordenador | Executável/flag com apóstrofo e espaço; argumentos literais e falha forçada executados por sh; Windows intocado |
+| BL167.2.7 | OpenCodeReview | Busca automática Rust não pode selecionar wrappers batch no Windows | Corrigido e validado Mac (Windows injetado; sem nova janela) | BL167.2 | Coordenador | Só exe/com; CMD antes de EXE ou pasta anterior de wrappers não esconde binário nativo; overrides explícitos preservados |
+| BL167.2.8 | OpenCodeReview / CodeRabbit | Harness JS conserva override relativo, ordena Gyan como Rust e trata override inválido antes de criar fixtures | Corrigido e validado Mac | BL167.2.2, BL167.2.6 | Coordenador | Controle executa arquivo do cwd em vez do PATH; chaves de versão de comprimentos distintos e empate por caminho; erro FFmpeg vira skip opcional/falha obrigatória sem diretório órfão |
+| BL164.1 | OpenCodeReview | Novas notas de coordenação reintroduziram caminhos de máquina no backlog compartilhado | Corrigido e validado Mac | BL164, BL015.38 | Coordenador | Retirar somente caminhos desta entrega do backlog; manter hashes/artefatos originais e passar hygiene.spec.py sem ampliar a decisão BL164 |
+
+Gates finais desse ajuste: fmt/checkworkspacealltargets/clippyalltargets-Dwarnings/
+testworkspace--no-run/build desktop exit0. Split23, fase15 (inclui controle NaN/Inf),
+fades8, desktop split4, tools26 (1 ignorado existente), wrapper Unix1, async_host8,
+job_commit_state1 e export11 passam. JS descoberta11 e vídeo Chrome real7 passam,
+0skips; higiene13/13. Controle de override inválido: modo opcional sai0/7skips;
+obrigatório sai1/7falhas esperadas; nenhum diretório temporário criado em ambos.
+Logs no SSD de coordenação, github-review-gates/ e github-review-final/. Sem nova
+execução Windows, janela nativa, desempenho ou workspace completo nesta correção.

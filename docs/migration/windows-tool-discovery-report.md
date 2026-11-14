@@ -357,3 +357,26 @@ B1 `a31beb0` → registro `8adb987` → B2 `0aa9daf`. A publicação Windows ori
 continua em `05289a5`, sem B1 no commit; não integrar B2 isoladamente no Windows
 sem a dependência de portabilidade. O coordenador não fez push, PR ou merge.
 O snapshot de revisão e os artefatos originais continuam preservados no SSD.
+
+
+## Revisão de integração PR #57 — BL167.2.7/.8
+
+A descoberta automática Rust passa a aceitar somente binários nativos exe/com
+no Windows; wrappers batch anteriores no PATHEXT ou numa pasta anterior do PATH
+não escondem o executável real. Isso evita encerrar só cmd.exe no cancelamento
+do processo descoberto. Overrides explícitos mantêm o comportamento anterior;
+a árvore de processos de um wrapper configurado manualmente não é gerenciada.
+
+O helper JS usa caminho absoluto para o override validado, compara versões Gyan
+como os vetores do Rust (comprimento desempata prefixos iguais) e usa ordem de
+caminho determinística. O harness resolve o override antes de criar fixtures e
+conserva skip opcional/falha obrigatória com diagnóstico, sem diretório órfão.
+
+Provas Mac: tools26 passam/1 ignorado existente (Windows injetado), descoberta
+JS11/11 (inclui processo executando o override relativo em vez do homônimo do
+PATH), vídeo Chrome real7/7 sem skips. Override inválido: opcional sai0 com7skips;
+obrigatório sai1 com7falhas esperadas; zero diretórios criados nos dois controles.
+fmt/checkworkspacealltargets/clippyalltargets-Dwarnings/no-run/build desktop exit0.
+Não é nova execução nativa Windows/Linux; provas anteriores preservam seus hashes
+e seu escopo. Logs no SSD de coordenação, github-review-gates/ e github-review-final/.
+[PR #57](https://github.com/journey-studios/tessel-editor/pull/57).

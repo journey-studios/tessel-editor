@@ -42,10 +42,11 @@ fn script(real: &Path, flag: &Path, delay: f64) -> String {
     } else {
         String::new()
     };
+    let quote = |path: &Path| format!("'{}'", path.display().to_string().replace('\'', "'\"'\"'"));
     format!(
-        "#!/bin/sh\n{wait}if [ -e '{}' ]; then echo 'forced failure' >&2; exit 1; fi\nexec '{}' \"$@\"\n",
-        flag.display(),
-        real.display()
+        "#!/bin/sh\n{wait}if [ -e {} ]; then echo 'forced failure' >&2; exit 1; fi\nexec {} \"$@\"\n",
+        quote(flag),
+        quote(real)
     )
 }
 

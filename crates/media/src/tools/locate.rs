@@ -9,8 +9,8 @@
 //! then each `PATH` directory in order, then the usual install places of the platform. A
 //! candidate counts only if it is a **file** (a directory called `ffmpeg.exe` is not a tool).
 //!
-//! Windows adds what `Command::new("ffmpeg")` would do through `PATHEXT` (`ffmpeg.exe`, in the
-//! order of `PATHEXT`) and looks in the places installers use: `Program Files` and `LOCALAPPDATA`
+//! Windows tries native `.exe`/`.com` binaries in `PATHEXT` order, skipping automatic `.cmd`/`.bat`
+//! wrappers so cancellation can stop the actual tool. It looks in `Program Files` and `LOCALAPPDATA`
 //! (Node), the WinGet `Links` folders and the `Gyan.FFmpeg*` WinGet packages (FFmpeg). That last
 //! one reads two directory levels (`Packages/Gyan.FFmpeg*/ffmpeg-*/bin`) and nothing deeper: no
 //! recursive disk scan, no shell, no version in the code, no change to `PATH` or the registry.
@@ -26,8 +26,8 @@ use std::path::{Path, PathBuf};
 /// Entries read from one directory level (a WinGet `Packages` folder has one per installed package).
 const MAX_ENTRIES: usize = 4096;
 
-/// What `PATHEXT` is when the variable is missing (the Windows default, minus script hosts).
-const DEFAULT_PATHEXT: &str = ".COM;.EXE;.BAT;.CMD";
+/// Native executable extensions when `PATHEXT` is absent; no shell wrappers.
+const DEFAULT_PATHEXT: &str = ".COM;.EXE";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Os {
@@ -197,7 +197,7 @@ fn file_names(host: &dyn Host, binary: &str) -> Vec<String> {
         .unwrap_or_else(|| DEFAULT_PATHEXT.to_string());
     let mut names: Vec<String> = Vec::new();
     for extension in pathext.split(';').map(str::trim) {
-        let launchable = [".com", ".exe", ".bat", ".cmd"]
+        let launchable = [".com", ".exe"]
             .iter()
             .any(|known| extension.eq_ignore_ascii_case(known));
         // Lower case: the file system ignores the case, and the path reads the same everywhere.
@@ -448,7 +448,7 @@ mod tests {
     }
 
     #[test]
-    fn windows_follows_the_pathext_order_inside_one_folder() {
+    fn windows_pathext_never_selects_a_batch_wrapper() {
         let dir = at("/c/tools", &[]);
         let both = |pathext: Option<&str>| {
             let mut host = windows()
@@ -467,14 +467,29 @@ mod tests {
         );
         assert_eq!(
             both(Some(".CMD;.EXE")),
-            Some(dir.join("ffmpeg.cmd")),
-            "PATHEXT lists .CMD first"
+            Some(dir.join("ffmpeg.exe")),
+            "a .CMD before .EXE must not hide the native executable"
         );
         assert_eq!(
             both(Some(".VBS;.JS")),
             Some(dir.join("ffmpeg.exe")),
             "script hosts are not launchable and .exe is always tried"
         );
+    }
+
+    #[test]
+    fn windows_skips_a_wrapper_folder_before_a_native_tool_folder() {
+        let (first, second) = (at("/c/wrappers", &[]), at("/c/native", &[]));
+        for tool in [Tool::Ffmpeg, Tool::Ffprobe, Tool::Node] {
+            let host = windows()
+                .path(&[&first, &second])
+                .file(first.join(format!("{}.cmd", tool.binary())))
+                .file(second.join(format!("{}.exe", tool.binary())));
+            assert_eq!(
+                found(&host, tool),
+                Some(second.join(format!("{}.exe", tool.binary())))
+            );
+        }
     }
 
     #[test]

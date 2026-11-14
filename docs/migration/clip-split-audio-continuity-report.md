@@ -307,3 +307,20 @@ idênticas estão registradas acima. Sem áudio ouvido, ponteiro físico ou dese
 aceito. BL081.7 (custo do mixer) e BL081.2 (fade atravessado) permanecem abertos.
 A revisão, as validações e o transporte estão concluídos; nenhum executor ativo.
 Sem push, PR ou merge. O backlog centraliza os status eIDs finais.
+
+
+## Revisão GitHub da PR #57 — BL081.14
+
+O oráculo rejeita PCM não finito nos dois canais antes de acumular o maior erro.
+Controle novo injeta NaN e infinitos em cada canal e confirma rejeição; a prova
+desktop exige o mesmo comprimento antes da comparação bit a bit. O diagnóstico
+de fades de áudio somados maiores que o clipe recomenda encurtar o fade, sem
+sugerir mover o playhead (nenhuma posição pode cortar esse caso).
+
+Mac: fase15/15, split23/23, fades8/8, desktop split4/4; export11/11.
+fmt/checkworkspacealltargets/clippyalltargets-Dwarnings/no-run/build desktop exit0.
+O core completo1456/7 ignorados anteriormente registrado é do bf2f16b; não se
+reatribui esse número ao ajuste novo. Provas anteriores Windows permanecem no
+código e nos hashes originais; sem nova janela, execução Windows ou desempenho.
+Logs no SSD de coordenação, github-review-final/.
+[PR #57](https://github.com/journey-studios/tessel-editor/pull/57).

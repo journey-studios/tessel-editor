@@ -411,7 +411,7 @@ Saída observada (resumida): `render.frame` → `{"ok":true,"result":{"action":"
 
 Descoberta do Node e do Chrome (BL167.2): `TESSEL_NODE`/`TESSEL_CHROME` válido vence; inválido é ignorado e a busca segue
 (`PATH`, depois os lugares usuais; no Windows `node.exe`/`chrome.exe` com `PATHEXT`, Program Files, `LOCALAPPDATA`, WinGet; um
-diretório nunca é aceito). Regras e limites em [media-setup](../media-setup.md#descoberta-dos-executáveis); macOS/Linux
+diretório nunca é aceito; só binários nativos exe/com na busca automática, BL167.2.7). Regras e limites em [media-setup](../media-setup.md#descoberta-dos-executáveis); macOS/Linux
 mantêm os candidatos e a ordem anteriores. Edge não é procurado.
 
 Variáveis: `TESSEL_CHROME`, `TESSEL_NODE`, `TESSEL_RUNTIME_DIR`, `TESSEL_GL`

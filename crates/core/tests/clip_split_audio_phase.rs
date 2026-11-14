@@ -182,9 +182,13 @@ fn worst_error(pcm: &Pcm, specs: &[&Spec], from: i64, frames: i64) -> f64 {
             left += value;
             right += if spec.stereo { value / 2.0 } else { 0.0 };
         }
+        let (actual_left, actual_right) = (pcm.sample(index, 0), pcm.sample(index, 1));
+        if !actual_left.is_finite() || !actual_right.is_finite() {
+            return f64::INFINITY;
+        }
         worst = worst
-            .max((f64::from(pcm.sample(index, 0)) - left).abs())
-            .max((f64::from(pcm.sample(index, 1)) - right).abs());
+            .max((f64::from(actual_left) - left).abs())
+            .max((f64::from(actual_right) - right).abs());
     }
     worst
 }

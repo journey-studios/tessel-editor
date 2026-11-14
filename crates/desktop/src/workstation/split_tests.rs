@@ -320,6 +320,11 @@ fn audio_on_a_fractional_grid_is_offered_cut_and_keeps_the_sound(cx: &mut TestAp
     assert_eq!(span(&view, cx, "snd"), (1, 2));
     assert_eq!(span(&view, cx, "snd-split-1"), (2, 48));
     let after = mix(&view, cx);
+    assert_eq!(
+        before.len(),
+        after.len(),
+        "the click preserves every sample"
+    );
     assert!(
         before
             .iter()

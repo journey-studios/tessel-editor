@@ -3,6 +3,22 @@ use super::*;
 // ---- negative controls and the legacy model ----------------------------------------------------------
 
 #[test]
+fn the_oracle_rejects_non_finite_pcm_in_either_channel() {
+    let rate = (24, 1);
+    let main = Spec::audio(rate, 48_000, true, 0, 1, Frac::int(0));
+    let mut state = audio_project(rate, 48_000, true, &["a1"]);
+    add_audio(&mut state, "main", "a1", &main, None);
+    let pcm = check(&state, 0, 1, &[("main", main)], "finite control");
+    for channel in [0, 1] {
+        for invalid in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            let mut invalid_pcm = pcm.clone();
+            invalid_pcm.samples[channel] = invalid;
+            assert_eq!(worst_error(&invalid_pcm, &[&main], 0, 1), f64::INFINITY);
+        }
+    }
+}
+
+#[test]
 fn a_plan_that_loses_the_phase_fails_the_oracle() {
     let rate = (30_000, 1001);
     let main = Spec::audio(rate, 44_100, false, 3, 24, Frac::new(1, 4));

@@ -64,6 +64,8 @@ pub enum SplitBlock {
     PlayheadOutside,
     /// A fade ramp straddles the cut and cannot be written as two ramps.
     FadeCrossesCut,
+    /// Overlapping audio fades are shortened by the mixer at every playhead position.
+    FadesLongerThanClip,
     /// Any other refusal of [`EditorState::plan_split`] (overflow, ID policy): run `clip.split`
     /// to read the typed error.
     Refused,
@@ -78,6 +80,9 @@ impl SplitBlock {
             }
             Self::FadeCrossesCut => {
                 "A fade of the clip spans the playhead: move the playhead or shorten the fade"
+            }
+            Self::FadesLongerThanClip => {
+                "The clip's fades are longer than the clip: shorten a fade to cut it"
             }
             Self::Refused => "The core refuses a cut here: run clip.split to read the reason",
         }
@@ -393,6 +398,15 @@ impl EditorState {
             },
             Err(error) => SplitAvailability::Blocked(match error.code {
                 "out_of_bounds" | "invalid_duration" => SplitBlock::PlayheadOutside,
+                "split_unsupported"
+                    if error
+                        .details
+                        .as_ref()
+                        .and_then(|details| details["reason"].as_str())
+                        == Some("fades_longer_than_clip") =>
+                {
+                    SplitBlock::FadesLongerThanClip
+                }
                 "split_unsupported" => SplitBlock::FadeCrossesCut,
                 _ => SplitBlock::Refused,
             }),

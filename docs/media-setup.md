@@ -32,9 +32,9 @@ diretório chamado `ffmpeg.exe` é rejeitado.
 
 - **macOS/Linux** (nada mudou): o nome como está em cada pasta do `PATH`; para FFmpeg/FFprobe, depois `/opt/homebrew/bin` e
   `/usr/local/bin`; Chrome: os três apps do macOS e depois os nomes Unix no `PATH`. Node não tem lugar extra.
-- **Windows**: `.exe` e as demais extensões de `PATHEXT` que o sistema consegue iniciar (`.com .exe .bat .cmd`, na ordem de
-  `PATHEXT`; `.exe` sempre entra) para os processos Rust. O launcher JS do Chrome aceita apenas `.com`/`.exe`
-  na busca automática, pois não usa shell. Pastas com espaços e entradas entre aspas são aceitas. Depois do `PATH`:
+- **Windows**: somente binários nativos `.com`/`.exe`, na ordem de `PATHEXT` (`.exe` sempre entra),
+  na busca automática Rust e JS. Wrappers `.bat`/`.cmd` são ignorados para que o processo filho
+  seja a ferramenta real, que o cancelamento consegue encerrar (BL167.2.7). Pastas com espaços e entradas entre aspas são aceitas. Depois do `PATH`:
   - Node: `%ProgramFiles%\nodejs`, `%ProgramFiles(x86)%\nodejs`, `%LOCALAPPDATA%\Programs\nodejs`, WinGet `Links`.
   - FFmpeg/FFprobe: WinGet `Links` (`%LOCALAPPDATA%\Microsoft\WinGet\Links` e `%ProgramFiles%\WinGet\Links`) e o layout do pacote
     `Gyan.FFmpeg*` do WinGet, `Packages\Gyan.FFmpeg*\ffmpeg-*\bin`, **dois níveis e nada mais fundo**, o build de versão
@@ -43,7 +43,8 @@ diretório chamado `ffmpeg.exe` é rejeitado.
     `Chromium\Application\chrome.exe`, depois o Canary (`Google\Chrome SxS`).
 - Sem varredura recursiva do disco, sem shell para procurar, sem versão nem usuário no código, sem mexer em `PATH` nem no
   registro. Edge não é procurado (não é Chrome/Chromium); `TESSEL_CHROME` aceita o `msedge.exe` se o usuário quiser.
-- Limites: Rust pode iniciar `.bat`/`.cmd` por `cmd.exe`; os launchers JS sem shell só procuram `.com`/`.exe`.
+- Limites: overrides explícitos preservam a escolha anterior, inclusive wrappers configurados pelo usuário;
+  sua árvore de processos não é gerenciada por esta descoberta. A busca automática só procura `.com`/`.exe`.
   Os testes funcionais de vídeo usam o helper de descoberta `runtime/test/ffmpeg-locate.mjs`, com override estrito,
   PATH e candidatos Homebrew/WinGet. O script de desempenho `runtime/scripts/perf/assets.mjs` ainda exige FFmpeg
   no PATH do processo (BL167.2.2). A descoberta não altera o PATH global nem o registro.

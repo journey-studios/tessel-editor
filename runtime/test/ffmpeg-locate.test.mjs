@@ -1,6 +1,10 @@
 // Where the runtime tests find ffmpeg/ffprobe (BL167.2.2). Environment, platform and file system
 // are injected: nothing here reads or changes `process.env`, so it runs the same on any machine.
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { ffToolPath, locateFfTool } from './ffmpeg-locate.mjs';
 
@@ -63,6 +67,33 @@ test('windows: WinGet Links and the Gyan package layout are found without PATH, 
 test('windows: PATH comes before the install places', () => {
   const links = `${LOCAL}\\Microsoft\\WinGet\\Links\\ffmpeg.exe`;
   assert.equal(find('ffmpeg', { LOCALAPPDATA: LOCAL, PATH: 'C:\\a' }, [links, 'C:\\a\\ffmpeg.exe']).path, 'C:\\a\\ffmpeg.exe');
+});
+
+test('windows: Gyan version length and path ties match Rust ordering', () => {
+  const gyan = `${PACKAGES}\\Gyan.FFmpeg`;
+  const builds = ['ffmpeg-9.0-full_build', 'ffmpeg-9.0.0-a', 'ffmpeg-9.0.0-Z'];
+  const directories = { [PACKAGES]: ['Gyan.FFmpeg'], [gyan]: builds };
+  const files = builds.map((build) => `${gyan}\\${build}\\bin\\ffmpeg.exe`);
+  assert.equal(find('ffmpeg', { LOCALAPPDATA: LOCAL }, files, 'win32', directories).path, files[2]);
+});
+
+test('a relative Unix override executes the current-directory file instead of a PATH namesake', { skip: process.platform === 'win32' }, () => {
+  const root = mkdtempSync(join(tmpdir(), 'tessel-relative-tool-'));
+  try {
+    const pathDir = join(root, 'bin');
+    mkdirSync(pathDir);
+    writeFileSync(join(root, 'ffmpeg'), '#!/bin/sh\nprintf selected\n', { mode: 0o755 });
+    writeFileSync(join(pathDir, 'ffmpeg'), '#!/bin/sh\nprintf wrong\n', { mode: 0o755 });
+    const helper = new URL('./ffmpeg-locate.mjs', import.meta.url).href;
+    const script = `import { ffToolPath } from ${JSON.stringify(helper)}; import { spawnSync } from 'node:child_process'; process.stdout.write(spawnSync(ffToolPath('ffmpeg'), []).stdout);`;
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+      cwd: root, env: { ...process.env, TESSEL_FFMPEG: 'ffmpeg', PATH: pathDir }, encoding: 'utf8',
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trim(), 'selected');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('posix: PATH first, then Homebrew, and nothing else is guessed', () => {

@@ -53,11 +53,11 @@ const versionKey = (name) =>
     .map(Number);
 
 const compareVersions = (a, b) => {
-  for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
-    const difference = (b[index] ?? 0) - (a[index] ?? 0);
+  for (let index = 0; index < Math.min(a.length, b.length); index += 1) {
+    const difference = b[index] - a[index];
     if (difference !== 0) return difference;
   }
-  return 0;
+  return b.length - a.length;
 };
 
 /** `Packages/Gyan.FFmpeg*\/ffmpeg-*\/bin`, newest build first. */
@@ -72,7 +72,7 @@ const gyanBinDirectories = (packages, list) => {
       }
     }
   }
-  return builds.sort((a, b) => compareVersions(a.key, b.key) || a.directory.localeCompare(b.directory)).map((build) => build.directory);
+  return builds.sort((a, b) => compareVersions(a.key, b.key) || (a.directory < b.directory ? -1 : a.directory > b.directory ? 1 : 0)).map((build) => build.directory);
 };
 
 const windowsInstallDirectories = (env, list) => {
@@ -97,9 +97,9 @@ const windowsInstallDirectories = (env, list) => {
 export const locateFfTool = (name, env = process.env, { platform = process.platform, fileExists = isFile, list = listDir } = {}) => {
   const overrideName = name === 'ffprobe' ? 'TESSEL_FFPROBE' : 'TESSEL_FFMPEG';
   const override = variable(env, overrideName, platform);
-  if (override !== undefined) return fileExists(override) ? { path: override, origin: `override ${overrideName}` } : null;
   const windows = platform === 'win32';
   const path = windows ? win32 : posix;
+  if (override !== undefined) return fileExists(override) ? { path: path.resolve(override), origin: `override ${overrideName}` } : null;
   const names = windows ? suffixes(env).map((suffix) => name + suffix) : [name];
   const found = (directory, origin) => {
     for (const file of names) {

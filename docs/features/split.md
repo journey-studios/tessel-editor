@@ -130,3 +130,9 @@ no Mac; não foi repetida janela nem execução Windows para esse ajuste.
 Gate Mac dessa correção: core completo **1456 passam, 0 falhas, 7 ignorados
 existentes**; split23/fades8/fase14 e desktop split4 passam. fmt, check de todos
 os targets, clippy, compilação de todos os testes e build desktop: exit0.
+
+BL081.14 (revisão PR #57): áudio cujos fades somados excedem a duração recebe
+`SplitBlock::FadesLongerThanClip` e motivo para encurtar o fade, sem sugerir mover
+o playhead. O nó, invoke e tooltip da janela usam essa causa compartilhada. O
+oráculo de PCM rejeita NaN/Inf nos dois canais e a prova desktop confere também
+o número de amostras antes da identidade bit a bit.

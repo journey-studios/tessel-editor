@@ -535,6 +535,26 @@ fn an_audio_cut_with_a_fade_across_it_is_refused() {
         error.details.as_ref().unwrap()["reason"],
         "fades_longer_than_clip"
     );
+    run(
+        &mut state,
+        json!({"op":"invoke","target":"clip:c-tone","action":"select"}),
+    );
+    for frame in [1, 24, 47] {
+        run(
+            &mut state,
+            json!({"op":"set","target":"timeline.playhead","field":"frame","value":frame}),
+        );
+        assert_eq!(
+            state.split_availability(),
+            SplitAvailability::Blocked(SplitBlock::FadesLongerThanClip)
+        );
+        let error = fail(
+            &mut state,
+            json!({"op":"invoke","target":"timeline.split","action":"invoke"}),
+        );
+        assert_eq!(error.message, SplitBlock::FadesLongerThanClip.reason());
+        assert!(!error.message.contains("move the playhead"));
+    }
 }
 
 #[test]
