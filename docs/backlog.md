@@ -1854,3 +1854,17 @@ job_commit_state1 e export11 passam. JS descoberta11 e vídeo Chrome real7 passa
 obrigatório sai1/7falhas esperadas; nenhum diretório temporário criado em ambos.
 Logs no SSD de coordenação, github-review-gates/ e github-review-final/. Sem nova
 execução Windows, janela nativa, desempenho ou workspace completo nesta correção.
+
+
+### BL081.15 — compatibilidade do erro de fade (PR #57)
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL081.15 | OpenCodeReview | Preservar inteiro JSON nos detalhes de fades inteiros após aceitar visuais fracionários | Corrigido e validado Mac | BL081.13 | Coordenador | Asserções as_i64 nos erros de fade visual inteiro e áudio; as_f64 fracionário sem truncamento nos fades visuais carregados. Só formato do diagnóstico; decisão e estado intocados |
+
+BL081.15: split23/23 passa com asserts de tipo JSON. fmt/checkworkspacealltargets/
+clippyalltargets-Dwarnings/testworkspace--no-run/build desktop exit0, logs no
+SSD de coordenação, error-json-final/ e github-review-final/error-json-shape.log.
+O core completo1457/0falhas/7ignorados foi executado em e69e66f; o último ajuste
+modifica somente o formato do erro e tem a regressão23/23 própria, sem reatribuir
+o core completo ao commit posterior. Sem nova execução Windows ou janela.

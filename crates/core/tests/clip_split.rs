@@ -408,6 +408,14 @@ fn a_cut_inside_a_visual_fade_is_refused_and_leaves_everything_as_it_was() {
         assert_eq!(error.code, "split_unsupported", "frame {frame}");
         assert_eq!(error.details.as_ref().unwrap()["reason"], reason);
         assert_eq!(
+            error.details.as_ref().unwrap()["fade_in"].as_i64(),
+            Some(12)
+        );
+        assert_eq!(
+            error.details.as_ref().unwrap()["fade_out"].as_i64(),
+            Some(24)
+        );
+        assert_eq!(
             fingerprint(&state),
             untouched,
             "frame {frame} changed state"
@@ -451,6 +459,11 @@ fn loaded_fractional_visual_fades_use_the_renderers_exact_boundaries() {
                 json!({"op":"clip.split","clip":"c-title","frame":frame}),
             );
             assert_eq!(error.code, "split_unsupported");
+            assert_eq!(
+                error.details.as_ref().unwrap()[property].as_f64(),
+                Some(fade)
+            );
+            assert_eq!(error.details.as_ref().unwrap()[property].as_i64(), None);
             assert_eq!(
                 error.details.as_ref().unwrap()["reason"],
                 format!("{property}_crosses_cut")
@@ -534,6 +547,14 @@ fn an_audio_cut_with_a_fade_across_it_is_refused() {
     assert_eq!(
         error.details.as_ref().unwrap()["reason"],
         "fades_longer_than_clip"
+    );
+    assert_eq!(
+        error.details.as_ref().unwrap()["fade_in"].as_i64(),
+        Some(30)
+    );
+    assert_eq!(
+        error.details.as_ref().unwrap()["fade_out"].as_i64(),
+        Some(30)
     );
     run(
         &mut state,

@@ -136,3 +136,10 @@ BL081.14 (revisão PR #57): áudio cujos fades somados excedem a duração receb
 o playhead. O nó, invoke e tooltip da janela usam essa causa compartilhada. O
 oráculo de PCM rejeita NaN/Inf nos dois canais e a prova desktop confere também
 o número de amostras antes da identidade bit a bit.
+
+BL081.15: `split_unsupported.details.fade_in`/`fade_out` mantêm JSON inteiro
+quando o fade é inteiro (inclusive áudio); só fades visuais fracionários usam
+JSON fracionário. Regressões distinguem `as_i64` e `as_f64` na resposta.
+
+BL081.15 validado Mac: split23/23 e fmt/check/clippy/no-run/build exit0; sem
+nova janela ou execução Windows. O teste compara o tipo JSON além do valor.

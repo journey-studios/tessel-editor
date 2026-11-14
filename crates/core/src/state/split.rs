@@ -277,11 +277,18 @@ impl EditorState {
         };
         let fade_in = fade("fade_in");
         let fade_out = fade("fade_out");
+        let fade_detail = |value: f64| {
+            if value.fract() == 0.0 {
+                json!(value as i64)
+            } else {
+                json!(value)
+            }
+        };
         let unsupported = |reason: &'static str, message: String| {
             CommandError::new("split_unsupported", message)
                 .target(format!("clip:{}", entry.id))
                 .details(json!({ "reason": reason, "frame": frame,
-                    "fade_in": fade_in, "fade_out": fade_out,
+                    "fade_in": fade_detail(fade_in), "fade_out": fade_detail(fade_out),
                     "frames_before": before, "frames_after": after }))
         };
         // The mixer shortens two fades that together outlast a sound, in proportion; a half is
