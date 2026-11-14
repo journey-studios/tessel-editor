@@ -1,7 +1,7 @@
 # Migração da UI para GPUI Kit
 
 Status: executado; ver `docs/gpui-kit-migration-report.md` para o resultado e as evidências.
-Projeto alvo exclusivo: `/Users/wallyssonnunes/www/tessel-editor`.
+Projeto alvo exclusivo: `~/www/tessel-editor`.
 
 ## Resultado esperado
 

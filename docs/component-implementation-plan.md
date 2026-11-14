@@ -20,10 +20,10 @@ ser acionáveis pela CLI na mesma instância e pelo mesmo handler usado pela UI.
 
 ## Referências locais
 
-- Composição completa: `/Users/wallyssonnunes/.t3/userdata/attachments/af7eb47d-f7ee-4fd2-adde-cac8a54313ea-30ebc81f-1abc-4bea-a7f0-c43dfeb8394a.png`
-- Pastas: `/Users/wallyssonnunes/.t3/userdata/attachments/af7eb47d-f7ee-4fd2-adde-cac8a54313ea-0eaf8865-7ed9-4275-a3c2-fcb5e1cd6e30.png`
-- Inspetor: `/Users/wallyssonnunes/.t3/userdata/attachments/af7eb47d-f7ee-4fd2-adde-cac8a54313ea-b46e95f1-8cd1-4609-88ca-e1e1d87619b7.png`
-- Timeline: `/Users/wallyssonnunes/.t3/userdata/attachments/af7eb47d-f7ee-4fd2-adde-cac8a54313ea-b126d329-664b-4308-b4f5-7e94cf49b99e.png`
+- Composição completa: `~/.t3/userdata/attachments/af7eb47d-f7ee-4fd2-adde-cac8a54313ea-30ebc81f-1abc-4bea-a7f0-c43dfeb8394a.png`
+- Pastas: `~/.t3/userdata/attachments/af7eb47d-f7ee-4fd2-adde-cac8a54313ea-0eaf8865-7ed9-4275-a3c2-fcb5e1cd6e30.png`
+- Inspetor: `~/.t3/userdata/attachments/af7eb47d-f7ee-4fd2-adde-cac8a54313ea-b46e95f1-8cd1-4609-88ca-e1e1d87619b7.png`
+- Timeline: `~/.t3/userdata/attachments/af7eb47d-f7ee-4fd2-adde-cac8a54313ea-b126d329-664b-4308-b4f5-7e94cf49b99e.png`
 
 As imagens `assets/demo/{highlands,coast}.png` foram baixadas dos assets da demo
 pública ProUI somente como referências de protótipo. Registrar origem e escopo;

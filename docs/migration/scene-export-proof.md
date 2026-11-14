@@ -120,8 +120,8 @@ Run order for an acceptance:
 python3 scripts/directed-scene-export-proof/proof.spec.py                       # harness self-tests, CPU + ffmpeg
 python3 scripts/directed-scene-proof/with-gpu-lock.py \
   python3 scripts/directed-scene-export-proof/proof.py --gpu-lock-held --report /tmp/te-r10-report.json
-python3 /Users/wallyssonnunes/.cache/tessel-editor/cargo-serial.py test -p tessel-editor-render --test scene_export_proof --locked
-python3 /Users/wallyssonnunes/.cache/tessel-editor/cargo-serial.py test -p tessel-editor-render --test scene_export_proof --locked -- --ignored   # same phases from Rust; fails on BLOCKED
+python3 ~/.cache/tessel-editor/cargo-serial.py test -p tessel-editor-render --test scene_export_proof --locked
+python3 ~/.cache/tessel-editor/cargo-serial.py test -p tessel-editor-render --test scene_export_proof --locked -- --ignored   # same phases from Rust; fails on BLOCKED
 ```
 
 ## Adapter (`adapters.json`): where the real fields plug in

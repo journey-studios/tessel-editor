@@ -2,7 +2,7 @@
 
 2026-11-05. Rodada 2 da base de migração ([plano](parallel-implementation-plan.md), [roadmap](phased-roadmap.md)).
 Checkout compartilhado `tessel-editor`, branch `feat/migration-foundation`, base A–E integrada em `52f3175` (HEAD `574f88e`).
-Origem lida em somente leitura (`/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine @
+Origem lida em somente leitura (`~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine @
 d6adac15c61f4ef582a7ec259397b2e025d1f059`); nada foi instalado, compilado ou escrito nela, e nenhuma mídia privada foi copiada.
 Esta frente **não fez** `git add`/commit/push/merge/PR nem tocou o PR draft #1, `Cargo.toml`/`Cargo.lock`, dependências, a matriz
 `docs/features/README.md`, `docs/README.md`, `directed_scene/*` (F), `scene_edit/*`, runtime ou desktop. **Não rodou Cargo, rustc nem

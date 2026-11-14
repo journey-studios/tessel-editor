@@ -735,7 +735,7 @@ def main():
     args = parser.parse_args()
     args.binary = portable.executable(args.binary)
     if not os.path.exists(args.binary):
-        print(f"missing {args.binary}; build it with python3 /Users/wallyssonnunes/.cache/tessel-editor/cargo-serial.py build -p tessel-editor --locked")
+        print(f"missing {args.binary}; build it with ./scripts/cargo build -p tessel-editor --locked")
         return 2
     for needed in ("runtime.js", "index.html"):
         if not (ROOT / "runtime" / "dist" / needed).exists():

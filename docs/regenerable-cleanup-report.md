@@ -27,11 +27,11 @@ O cache mbx e target do tessel-editor estão fora desta limpeza.
 
 Targets removidos:
 
-- `/Users/wallyssonnunes/www/journeystudios/paperclip-plugin-host/packages/paperclip-runner/runner/target`
-- `/Users/wallyssonnunes/www/journeystudios/paperclip-project-hierarchy/packages/paperclip-runner/runner/target`
+- `~/www/journeystudios/paperclip-plugin-host/packages/paperclip-runner/runner/target`
+- `~/www/journeystudios/paperclip-project-hierarchy/packages/paperclip-runner/runner/target`
 - `/private/tmp/vgp16/third_party/sprite-normals/target`
-- `/Users/wallyssonnunes/www/journeystudios/simulation-engine-laya-vision/target`
-- `/Users/wallyssonnunes/www/journeystudios/moodio/apps/studio/src-tauri/target`
+- `~/www/journeystudios/simulation-engine-laya-vision/target`
+- `~/www/journeystudios/moodio/apps/studio/src-tauri/target`
 
 [Auditoria por caminho](maintenance/regenerable-cleanup-audit.json). Para voltar a desenvolver
 nos projetos limpos, reinstalar dependências via pnpm e reconstruir os crates via Cargo.

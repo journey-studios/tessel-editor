@@ -50,7 +50,7 @@ node scripts/migration-oracle/oracle.mjs setup
 
 As três integridades (zod, three, esbuild) são idênticas às do `pnpm-lock.yaml` da origem no commit
 fixado. A origem padrão é
-`/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine`
+`~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine`
 (sobrescreva com `--source-root`/`ORACLE_SOURCE_ROOT`). Nada é copiado, escrito ou instalado nela;
 o runner só lê arquivos e roda `git rev-parse|ls-tree|cat-file`.
 

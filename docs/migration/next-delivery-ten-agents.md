@@ -43,7 +43,7 @@ Meta: anexar/carregar pela UI, editar, transportar/restaurar sem origem e export
 ## Execução e recursos
 
 - Ler AGENTS.md, skill tessel-feature-contract, docs/README, matriz, arquitetura e backlog. Não subdelegar. Sem Git write/push/PR pelos filhos; coordenador mantém uma PR.
-- Cargo só por python3 /Users/wallyssonnunes/.cache/tessel-editor/cargo-serial.py. Helper usa scripts/cargo; se ausente, avisar coordenador. Sem HOME alterado em wrappers, clean/gc, reinstalação ou alteração de dependências sem coordenação.
+- Cargo só por python3 ~/.cache/tessel-editor/cargo-serial.py. Helper usa scripts/cargo; se ausente, avisar coordenador. Sem HOME alterado em wrappers, clean/gc, reinstalação ou alteração de dependências sem coordenação.
 - GPU/native/Chrome: python3 scripts/directed-scene-proof/with-gpu-lock.py COMMAND...; adquirir GPU antes de Cargo quando ambos forem necessários. Nunca executar quatro gates completos por agente; testes proporcionais, gate global pelo coordenador.
 - Instâncias nativas próprias, HOME/socket curtos, binário direto; não operar/reiniciar janela/projeto do usuário. Entrada semântica, sem cliques por coordenadas. Captura nativa permitida; falha de permissão fica como limite, nunca imagem simulada.
 - Temporários próprios prefixados te-rN, no máximo 2 GiB por frente e piso de 10 GiB livre. Só apagar seus próprios artefatos e encerrar seus próprios processos.

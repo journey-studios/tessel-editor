@@ -184,7 +184,7 @@ Na sessão sem disputa o scrub fica em 41–49,5 imagens/s e o crossfade não pe
 Escolha 0 em vez de 2: 2 amostras não fecham o aceite (scrub < 40 imagens/s e quadros perdidos no take A e no crossfade),
 e 0 é indistinguível de 4 neste conteúdo: diferença máxima por canal de 3–8/255, nenhum pixel acima de 16/255, PSNR ≈ 66 dB
 em relação ao MSAA 4 (2 amostras: 66,5–66,8 dB). Gaussians translúcidas não têm silhueta dura, então a redução só custa
-o raster. Imagens em `/Users/wallyssonnunes/www/tessel-video-splat/previews/perf-bl129/`, fora do repositório.
+o raster. Imagens em `~/www/tessel-video-splat/previews/perf-bl129/`, fora do repositório.
 
 - `render.frame` explícito e export idênticos: hash dos quadros 5, 60, 100, 193, 300 e 450 igual antes e depois, e 6 quadros
   de crossfade exportados (190–195, `fullhd`, medido antes da fusão do BL131) com o mesmo MD5 decodificado antes e depois.
