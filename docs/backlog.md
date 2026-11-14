@@ -1921,7 +1921,7 @@ IDs atribuídos pelo coordenador; reaproveitar BL079/BL078 como dependências, s
 | BL167.6.2 | Claims / concorrência | Retentar create_dir negado no Windows dentro do orçamento original | Validado Windows; integração e Unix/Mac conferidos em89a8401 | BL167.6, BL167.6.1 | Coordenador / revisão Windows | Windows54claims/denied6, integrações14/13/11/6/13 e gates; Mac51claims e journal13/processos16/integrity11/jsonl6/failure6/discard13. Stress320/excl40/mutantes pertencem R3f054, fontes idênticas. Sem prova causal NTFS; workspace completo não executado. |
 | BL167.6.3 | RootLease Windows | path.exists não prova identidade do lock; diagnóstico PID sob lock obrigatório | Pendente | BL079, BL078 | Não atribuído | Usar identidade de arquivo fail-closed no lease, reproduzir unlink/recriação e dois titulares reais; tratar legibilidade do PID sem usar PID para vivacidade. Fora do ownership da PR60. |
 | BL167.6.4 | Journal / robustez | Rollback de append parcial e falha de truncate/disco cheio sem prova | Pendente | BL111, BL167.6 | Não atribuído | Injeção determinística da falha de escrita/rollback e estado recuperável, sem alegar teste de disco cheio real. |
-| BL167.6.5 | Claims / espera | Falha persistente de identidade ou NotFound em workspace removido pode girar quente até o prazo | Em andamento — correção pequena pelo coordenador | BL167.6 | Coordenador | R3integração89 reproduz giro quente. Pausa500us limitada pelo restante nos caminhos rápidos, ZERO sem sleep e handle obsoleto liberado antes da pausa; mensagem de orçamento exaurido. Regressões de controle com sono injetado e caso real sem pai, execução/mutantes pendentes. |
+| BL167.6.5 | Claims / espera | Falha persistente de identidade ou NotFound em workspace removido pode girar quente até o prazo | A validar no Windows; correção0f9d1ab passou Mac | BL167.6 | Coordenador | Pausas500us no prazo original, ZERO sem sono, drop handle antes de pausa e mensagem precisa. Mac55claims+seis integrações65, fmt/check/clippy/build e3mutantes detectados. Prova de controle, não CPU/FPS. Rechecagem Windows obrigatória no novo código. |
 
 O coordenador iniciou as correções pequenas .6.1/.6.2 no checkout Mac isolado da PR60,
 sem alterar RootLease, origem ou arquivos da S0 em implementação no Windows.
@@ -2112,3 +2112,13 @@ ZERO nos dois caminhos e workspace realmente ausente sem criar pais. Sono
 injetado por thread prova controle sem limiar de relógio; não mede CPU/FPS.
 Produção e testes mudaram depois de89: suas provas NÃO validam esse patch.
 Mac e Windows precisam de novos gates proporcionais antes do merge.
+
+### BL167.6.5: execução Mac do patch0f9d1ab — 2026-11-14
+
+No head local0f9d1abf41aa5459af0a0f987a2f2ad83c585e68 limpo, passaram fmt,
+claims55/55 (inclui4novos), seis integrações65, check/clippyworkspacealltargets,
+builddesktop e treecore semgpui/wry. Três mutantes novos foram detectados:
+sem pausa create, sem pausa open, pausa ignorando deadline (ZERO falha).
+Fontes restauradas por bytes/SHA, regressões4/4 novamenteverdes.
+O core completo1528/0/7 é execução anterior de89, com core idêntico, não nova
+execução do patch. A rechecagem Windows do novo código ainda não foi feita.

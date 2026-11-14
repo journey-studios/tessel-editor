@@ -224,3 +224,9 @@ Regressões com sono substituído e criação controlada discriminam create/open
 transitórios e ZERO; outra usa workspace realmente inexistente e prova recusa
 sem criar pais. São provas de controle, não medição de CPU ou desempenho. Os
 resultados de89 acima não são evidência da execução deste patch posterior.
+
+**Execução nativa do patch0f9d1ab.** Mac:claims55/55 (quatro regressõesnovas),
+seis integrações65, fmt/check/clippyworkspace/build passaram e treecore não
+lista gpui/wry. Sem pausacreate, sem pausaopen e sleepignorandodeadline foram
+detectados por regressões distintas; após restauração exata,4/4 passaram.
+Windows continua a validar o patch, sem herdar as provas antigas de89.

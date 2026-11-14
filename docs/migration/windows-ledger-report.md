@@ -326,3 +326,18 @@ Esta mudança altera o código depois de89: as tabelas anteriores continuam
 históricas. Execução nativa, mutantes e rechecagem Windows do novo head são
 necessários antes de integrar. Retentativas PermissionDenied50 e prazos
 LOCK_WAIT/TICK_WAIT permanecem inalterados.
+
+### Execução Mac em0f9d1ab (posterior às provas de89)
+
+Em0f9d1abf41aa5459af0a0f987a2f2ad83c585e68 limpo:fmt, claims55/55, seis
+integrações65, check/clippyalltargets do workspace, builddesktop e treecore
+passaram. Quatro regressões novas incluem ZERO e falha real sem workspace.
+Três mutantes novos falharam (exit101) nas regressões pretendidas: remoção
+da pausa create; remoção da pausa open; helper ignorando deadline. A fonte
+foi restaurada por bytes/SHA e as4regressões passaram de novo.
+
+ledgerSHA4df79442681d2bfad5a68af5bab7b82478687b01c0564bb3def92fddbaf69eae;
+retry_waitSHAc0369b465c424fa1ab5ff16597ccf544495271d6ef91a84cff1abdf1a0082074.
+Esses testes observam pedidos de sono, não medem CPU ou FPS. Os320/40 deR3
+e o core completo1528 de89 continuam atribuídos aos seus heads. Nova execução
+Windows é necessária: a alteração deixou de ser somente documental.
