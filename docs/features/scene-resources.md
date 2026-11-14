@@ -50,8 +50,12 @@ diferente, caminhos que só diferem em caixa e "arquivo vs pasta" são `PathColl
 - PNG: assinatura e IHDR (dimensões declaradas), **sem decodificar pixels nem alfa**. SPZ via
   `splat::inspect`. Grade f32 e áudio: só hash.
 - `collision_key` usa minúsculas, **sem dobra de normalização Unicode**.
-- Identidade de arquivo aberto (dev/ino) é **unix**; sem equivalente Windows nesta fatia. Resta
-  uma janela TOCTOU para quem escreve na raiz concorrentemente; hardlinks não são detectáveis.
+- Identidade de arquivo aberto (dev/ino) da **materialização e dos carimbos** (`Stamp`) é **unix**;
+  sem equivalente Windows nesta fatia (BL078). Resta uma janela TOCTOU para quem escreve na raiz
+  concorrentemente; hardlinks não são detectáveis. O **ledger de claims** (BL111) é outra coisa:
+  no Windows a identidade do `ledger.lock` (volume + índice do arquivo) é conferida desde BL167.6,
+  e o diário aceita registros incompletos; limites e provas em
+  [windows-ledger-report](../migration/windows-ledger-report.md).
 - Cancelamento é observado entre blocos de cópia e antes de publicar, **não durante a publicação**
   (passo de publicação por hard links, parar no meio exigiria o mesmo rollback).
 - Campos desconhecidos e luz/clima/efeitos/rigs/paths/`frameAudit` não são varridos em busca de
@@ -125,7 +129,42 @@ O módulo puro não tem apresentação. O fluxo da janela usa o mesmo host F040;
 | Media | `directed_resources.rs` (19) e `directed_resources_transport.rs` (20) | Passaram via Cargo `--locked` em Unix; o teste de rollback pula se executado como root |
 | Qualidade/gate | `test --workspace --locked`, `clippy --workspace --all-targets --locked -- -D warnings`, fmt, check, release e `cargo tree -p tessel-editor-core` | Passaram localmente ([relatório](../migration/round-hijkl-report.md)); sem CI de testes e sem Windows |
 
-O comportamento de links usa unix; sem execução em Windows.
+O comportamento de links usa unix; os módulos de symlink continuam sem execução em Windows
+(criar link exige privilégio, BL167.1).
+
+### Claims no Windows (BL167.6)
+
+O ledger de claims que protege estes arquivos (`scene_resources::claims`, [F040](scene-resource-integration.md))
+foi executado no Windows real por esta fatia. Estado: **A validar; PR60 não aprovada em
+`0cea8d6`**, por uma retentativa de acesso negado que excede o orçamento do tick. A correção
+do coordenador e as regressões novas ainda exigem execução Windows. Mac também precisa ser
+revalidado (a mudança de `claims.journal` roda no Unix).
+
+| Superfície | Evidência | Estado |
+|---|---|---|
+| Lib (core/media, sem janela) | `claims/tests.rs`: 48 testes, entre eles `trackers_never_hold_an_emptied_and_refilled_ledger_at_the_same_time`, `a_lock_file_replaced_at_its_path_is_not_the_one_that_was_opened`, `an_emptied_and_refilled_ledger_reads_the_same_every_time` e a corrida `emptying_and_refilling_a_ledger_is_never_mistaken_for_damage` | Windows: passam; antes a corrida ficava mais de 30 min com CPU ocupada |
+| Dois processos reais | `scene_claims_processes` (14), `scene_claims_journal` (13, antes `cfg(unix)`), `job_discard_claims` (13), `scene_claims_integrity` (11), `scene_claims_jsonl` (6) | Windows: passam; `scene_claims_failure` depende do ajuste de `adopt.rs` que o [relatório](../migration/windows-ledger-report.md) propõe |
+| CLI headless / janela | Sem mudança de contrato; `scene.resources.*` já era coberto pelos testes acima (processos `tessel-media` reais) | Sem prova nova de janela no Windows |
+
+Limites que esta fatia **não** fecha: `scene_claims_budget` continua só Unix (mede tempo do tick, exigiria
+a rodada de desempenho com o lock de GPU); no Windows o peer de `a_peer_stopped_while_holding_the_ledger_lock…`
+segura o lock mas não é suspenso (sem `SIGSTOP`, e `unsafe` é proibido); `Stamp` continua sem
+dev/inode (BL078); o atraso com que o SO libera um lock ao fechar o arquivo não foi demonstrado.
+O `ledger.lock` é disputado por polling (`LOCK_POLL`), sem fila: sob contenção contínua um chamador pode
+esperar quase todo o orçamento de 1,5 s dos jobs (medido: até 1,3 s com retenções abaixo de 11 ms). É
+inanição, não violação de exclusão; o teste de exclusividade usa um orçamento próprio de 60 s e o limite de espera
+tem testes próprios. Um open que o Windows recusa com "acesso negado" (remoção pendente do arquivo) é repetido até
+50 vezes, **dentro do orçamento do chamador**, antes de a recusa ser acreditada. Sem prazo
+restante, a negação é devolvida imediatamente; cada pausa é limitada ao tempo restante.
+
+A revisão independente confirmou a identidade do lock e o journal no Windows, mas reproduziu
+121–126 ms em uma negação persistente, inclusive em `accept(wait=false)` (tick de 20 ms), e
+uma falha por inanição em 140 execuções da corrida. O coordenador acrescentou a guarda de prazo,
+limitou a pausa e separou o prazo de estresse da corrida (60 s, só em teste). Regressões Windows
+com arquivo somente-leitura e diretório em `ledger.lock` conferem ZERO/tick/accept, teto de
+100 ms e claims preservadas. **Ainda não executadas nesta correção**; não são prova de janela.
+A identidade por volume/índice foi exercitada em NTFS; ReFS e filesystems de rede continuam
+sem prova. O defeito equivalente de identidade do RootLease pertence a BL079/BL167.6.3.
 
 ## Integração pelo coordenador
 

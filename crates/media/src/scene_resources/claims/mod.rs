@@ -216,3 +216,6 @@ pub fn tracked_under(root: &Path) -> usize {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(all(test, windows))]
+mod denied_budget_tests;

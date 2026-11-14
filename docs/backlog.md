@@ -1390,7 +1390,7 @@ A raiz antiga e seus planos não foram alterados nesta integração.
 | BL167.3 | Windows B4/B5 | Remover dependência de shasum dos testes e diagnosticar dois testes de gizmo divergentes | Pendente | BL167 | — | Hash portátil nos dois testes render; reproduzir diferenças de rotação/escala em Windows e Mac e conferir invariantes geométricas antes de qualquer tolerância. Hipótese de libm não confirmada; não aprovar só relaxando asserções |
 | BL167.4 | Windows / mbx | Cache de ações sem hits e volumes C:/W: sem hard link; wrapper depende de Git Bash | Pendente | BL167 | — | Diagnosticar mbx explain/not-looked-up, cache_dir e ferramentas de arquivo; provar reutilização real sem target-dir customizado, limpeza global ou perda de target/cache. Decidir adapter Windows para wrapper; não assumir benefício do cache só por mbx executar |
 | BL167.5 | Windows / prova | Instalar Python e completar build release e provas semânticas vivas | Pendente | BL167.1–.4 conforme prova; BL078/BL111 para claims | — | Python disponível, scripts de prova compatíveis executados em binários identificados por SHA, release construído e prova de fluxo registrada. GPU da janela não fecha export em GPU, paridade Mac, ponteiro físico ou áudio ouvido; medir performance em rodada própria |
-| BL167.6 | Windows B3 / claims | Teste emptying_and_refilling_a_ledger_is_never_mistaken_for_damage trava por mais de 30 minutos com CPU ocupada | Pendente | BL111, BL078 | — | Reproduzir isoladamente com limite de duração, diagnosticar o ledger Windows e corrigir sem mascarar a cobertura; provar escrita/leitura/recuperação e concorrência. Relatado no diff BL167.1; executor encerrou somente seu processo filho. Nenhuma correção neste item |
+| BL167.6 | Windows B3 / claims | Ledger de claims e orçamento do tick no Windows | A validar; PR60 bloqueada pela revisão P1 | BL111, BL078; BL167.6.1–.2 | Coordenador / revisão Windows | PR60 0cea8d6 corrige identidade do lock, mas retenta acesso negado por ~120 ms com orçamento de 20 ms. Correção pequena e regressões novas aguardam Windows; Mac ainda pendente. Workspace completo falha fora do ledger. |
 | BL167.7 | Windows / fixture media | Helper tree() de directed_resources_common compara separador Windows com expectativas POSIX: três falhas de directed_resources_transport | Pendente | BL078 | — | Normalizar representação do helper de teste sem mudar caminhos de produto ou tolerar arquivos ausentes; executar os casos files_land, splats_and_audio e destination_conflict em Windows/Mac. Relato e pares de listas no transcript BL167.1; não alterado na entrega |
 
 BL167.1: bytes do patch recebidos no Mac e conferidos (SHA-256
@@ -1901,3 +1901,28 @@ Tarefas efetivamente iniciadas e ownership: S0 (F064, effects.md, scripts/corpus
 correção do plano (somente os dois docs, concluída) [Windows plano](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:808129a7106c4db6a7447b5544292280094e3adbdac731d46c9dd3a30ebc40f4).
 Arquivos comuns de backlog/matriz/índice são reconciliados só pelo coordenador. S1+ permanecem sem
 atribuição até a S0 e o contrato aplicável serem revisados; W1/W2 têm PR59/60 próprias ainda não integradas.
+
+
+
+### Revisão W2/PR60 concluída; bloqueador confirmado — 2026-11-14
+
+A revisão independente de `0cea8d6` não aprova a PR60. A causa da exclusão Windows está
+corrigida (mutação path.exists falha), mas PermissionDenied ignora o deadline: lock_for(ZERO),
+TICK_WAIT e accept(wait=false) levaram 121–126 ms. O orçamento do tick é 20 ms; teto de teste
+100 ms. O teste original ainda falhou por inanição em 1/140 execuções, apesar do relato anterior
+0/40. Os gates antigos registram HEAD da base e árvore ainda sem commit; não validam o head
+por SHA, e não há evidência TESSEL_REQUIRE_RUNTIME=1. CodeRabbit NEUTRAL não é aprovação.
+
+IDs atribuídos pelo coordenador; reaproveitar BL079/BL078 como dependências, sem filas paralelas:
+
+| ID | Área | Pendência | Status | Dependências | Responsável | Aceite e evidência |
+|---|---|---|---|---|---|---|
+| BL167.6.1 | Claims / tick | Retentativa PermissionDenied respeita deadline do chamador | Em andamento | BL167.6 | Coordenador | Corrigir PR60, regressão Windows com diretório e arquivo somente-leitura como lock; ZERO não dorme, tick/accept recusam abaixo do teto de 100 ms sem perder claims; revisão no novo head. |
+| BL167.6.2 | Claims / teste | Separar estresse de exclusão do orçamento produtivo, remover BOM | Em andamento | BL167.6 | Coordenador | Corrida com prazo de teste explícito e limitado, sem mudar LOCK_WAIT/TICK_WAIT; repetição Windows, falha de escritor continua encerrando leitor. |
+| BL167.6.3 | RootLease Windows | path.exists não prova identidade do lock; diagnóstico PID sob lock obrigatório | Pendente | BL079, BL078 | Não atribuído | Usar identidade de arquivo fail-closed no lease, reproduzir unlink/recriação e dois titulares reais; tratar legibilidade do PID sem usar PID para vivacidade. Fora do ownership da PR60. |
+| BL167.6.4 | Journal / robustez | Rollback de append parcial e falha de truncate/disco cheio sem prova | Pendente | BL111, BL167.6 | Não atribuído | Injeção determinística da falha de escrita/rollback e estado recuperável, sem alegar teste de disco cheio real. |
+| BL167.6.5 | Claims / robustez | same_file com falha persistente pode girar quente até o prazo | Pendente | BL167.6 | Não atribuído | Confirmar com probe; evitar CPU ocupada e mensagem enganosa preservando fail-closed e orçamento. Achado por leitura, sem reprodução. |
+
+O coordenador iniciou as correções pequenas .6.1/.6.2 no checkout Mac isolado da PR60,
+sem alterar RootLease, origem ou arquivos da S0 em implementação no Windows.
+NTFS tem prova; ReFS e rede continuam sem validação. Unix append+seek ainda exige rechecagem.

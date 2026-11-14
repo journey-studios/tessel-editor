@@ -8070,6 +8070,7 @@ name = "tessel-editor-media"
 version = "0.1.0"
 dependencies = [
  "crc32fast",
+ "same-file",
  "serde_json",
  "sha2 0.10.9",
  "tessel-editor-core",

@@ -175,6 +175,18 @@ fn file_entries(workspace: &Path) -> Vec<Value> {
         .collect()
 }
 
+/// `text` with `/` between components, whichever separator the platform wrote. Only the
+/// *representation* compared in a test: the ledger keeps the platform's own paths (BL167.6; a
+/// `!contains("/lot/")` on a Windows path `...\lot\...` passed without looking at anything).
+fn slashed(text: &str) -> String {
+    text.replace('\\', "/")
+}
+
+/// The path of a ledger entry, [`slashed`].
+fn path_of(entry: &Value) -> String {
+    slashed(entry["path"].as_str().unwrap())
+}
+
 // ------------------------------------------------------------------------------ accepting --
 
 #[test]
@@ -283,10 +295,7 @@ fn an_adoption_whose_acceptance_cannot_be_written_is_refused_and_keeps_its_files
     assert!(
         file_entries(&world.workspace)
             .iter()
-            .any(|entry| entry["path"]
-                .as_str()
-                .unwrap()
-                .ends_with("lot/assets/backdrop.png")),
+            .any(|entry| path_of(entry).ends_with("lot/assets/backdrop.png")),
         "and still claimed"
     );
 }
@@ -318,7 +327,7 @@ fn a_settle_the_ledger_refuses_returns_the_adoption_still_owning_and_claiming_it
     let claimed = |world: &World| {
         file_entries(&world.workspace)
             .iter()
-            .filter(|entry| entry["path"].as_str().unwrap().contains("/lot/"))
+            .filter(|entry| path_of(entry).contains("/lot/"))
             .count()
     };
     assert_eq!(claimed(&world), 2, "still claimed by the returned owner");
@@ -433,7 +442,7 @@ fn a_settle_rides_out_a_ledger_lock_another_job_of_this_process_holds_for_a_mome
     assert!(
         file_entries(&world.workspace)
             .iter()
-            .all(|entry| !entry["path"].as_str().unwrap().contains("/lot/")),
+            .all(|entry| !path_of(entry).contains("/lot/")),
         "and nobody is left to recover it: the acceptance was recorded"
     );
 }
@@ -448,7 +457,7 @@ fn an_acceptance_that_succeeds_makes_the_files_nobodys_to_recover() {
     assert!(
         file_entries(&world.workspace)
             .iter()
-            .all(|entry| !entry["path"].as_str().unwrap().contains("/lot/"))
+            .all(|entry| !path_of(entry).contains("/lot/"))
     );
 }
 
@@ -486,13 +495,13 @@ fn a_merge_the_ledger_cannot_write_fails_and_nobody_loses_ownership() {
     let street: Vec<PathBuf> = world
         .files()
         .into_iter()
-        .filter(|file| file.to_string_lossy().contains("/street/"))
+        .filter(|file| slashed(&file.to_string_lossy()).contains("/street/"))
         .collect();
     assert!(street.iter().all(|file| file.is_file()));
     world.unblock_writes();
     let held: Vec<Value> = file_entries(&world.workspace)
         .into_iter()
-        .filter(|entry| entry["path"].as_str().unwrap().contains("/street/"))
+        .filter(|entry| path_of(entry).contains("/street/"))
         .collect();
     assert_eq!(held.len(), 2, "{held:?}");
     assert!(
@@ -568,7 +577,8 @@ fn a_second_scene_merge_failure_reports_files_kept_from_both_scenes() {
         assert!(file.exists());
         assert!(
             kept.iter()
-                .any(|entry| entry.as_str().unwrap().contains(file.to_str().unwrap())),
+                .any(|entry| slashed(entry.as_str().unwrap())
+                    .contains(&slashed(file.to_str().unwrap()))),
             "missing {} from {kept:?}",
             file.display()
         );

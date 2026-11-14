@@ -209,7 +209,12 @@ fn claims_of(workspace: &Path, scene: &str) -> Vec<Value> {
         .filter(|entry| {
             entry["path"]
                 .as_str()
-                .is_some_and(|path| path.contains(&format!("/scenes/{scene}/")))
+                // Compared with `/` between components, whichever separator the platform
+                // wrote: only the representation (BL167.6).
+                .is_some_and(|path| {
+                    path.replace('\\', "/")
+                        .contains(&format!("/scenes/{scene}/"))
+                })
         })
         .collect()
 }
@@ -755,6 +760,15 @@ fn a_refused_result_whose_process_is_killed_is_an_orphan_the_ledger_can_recover_
     drop(bystander);
 }
 
+/// Stops (`STOP`) or resumes (`CONT`) the peer. **Unix only.** Windows has no signal for it and
+/// suspending a process needs `unsafe`, which the workspace forbids: there the peer is not
+/// stopped, but it keeps the ledger lock until it is killed, which is the part the tick's budget
+/// is measured against. What the Windows run does *not* show is a peer that cannot answer at all
+/// (BL167.6).
+#[cfg(not(unix))]
+fn signal(_name: &str, _pid: u32) {}
+
+#[cfg(unix)]
 fn signal(name: &str, pid: u32) {
     let status = Command::new("kill")
         .arg(format!("-{name}"))

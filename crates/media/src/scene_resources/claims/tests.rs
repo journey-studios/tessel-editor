@@ -762,40 +762,216 @@ fn a_folder_without_a_state_is_an_empty_ledger() {
     assert_eq!(tracker.entries().count(), 0);
 }
 
+/// The lock file is unlinked while held (by whoever empties the ledger) and a waiter that opened
+/// the old one must notice. A *new* file at the same path is not the file it holds: the check
+/// is one of identity, never "something exists at the path" (BL167.6, BL078).
+#[test]
+fn a_lock_file_replaced_at_its_path_is_not_the_one_that_was_opened() {
+    let dir = workspace("claims-same-file");
+    let path = dir.path().join("ledger.lock");
+    let open = |create: bool| {
+        fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(create)
+            .truncate(false)
+            .open(&path)
+            .unwrap()
+    };
+    let first = open(true);
+    assert!(
+        ledger::same_file(&path, &first),
+        "an open file is the file at its path"
+    );
+    assert!(
+        ledger::same_file(&path, &open(false)),
+        "two handles of one file agree"
+    );
+
+    // Unlinked while open: the name is gone.
+    fs::remove_file(&path).unwrap();
+    assert!(
+        !ledger::same_file(&path, &first),
+        "a path that no longer exists is not the open file"
+    );
+
+    // Another file now has the name: it is not the one `first` holds.
+    let second = open(true);
+    assert!(
+        !ledger::same_file(&path, &first),
+        "a replacement at the same path is a different file"
+    );
+    assert!(ledger::same_file(&path, &second));
+}
+
+/// Counts a writer as finished when it is dropped, however it ends. A writer that panics must
+/// still release the reader: the reader used to wait for a flag only a *successful* writer set,
+/// so one failed assertion left it spinning on a core forever and hid the failure behind a hang
+/// (BL167.6).
+struct Writer<'a>(&'a std::sync::atomic::AtomicUsize);
+
+impl Drop for Writer<'_> {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
 /// The emptied ledger is removed (state, then lock, then folder) while others look at it and
 /// claim again. A reader must never see that as damage.
 #[test]
 fn emptying_and_refilling_a_ledger_is_never_mistaken_for_damage() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    // This checks integrity during continual churn, not whether the polling lock is fair.
+    // Production wait limits have their own tests; keep this stress test bounded separately.
+    const STRESS_WAIT: std::time::Duration = std::time::Duration::from_secs(60);
+    const WRITERS: usize = 3;
     let dir = workspace("claims-race");
     let ledger = Ledger::of(dir.path());
-    let stop = std::sync::atomic::AtomicBool::new(false);
+    let running = AtomicUsize::new(WRITERS);
     std::thread::scope(|scope| {
-        for worker in 0..3 {
+        for worker in 0..WRITERS {
             let ledger = ledger.clone();
-            let stop = &stop;
+            let running = &running;
             scope.spawn(move || {
+                let _done = Writer(running);
                 for round in 0..150 {
                     let holder = next_holder();
                     let path = key(&format!("race-{worker}-{round}"));
-                    let mut tracker = ledger.lock_creating();
+                    let mut tracker = ledger.lock_creating_for(STRESS_WAIT);
                     tracker
                         .create_file(holder, path.clone(), &root(), None)
                         .unwrap();
                     drop(tracker);
-                    assert!(matches!(ledger.lock().leave(holder, &path), Leave::Last(_)));
+                    assert!(matches!(
+                        ledger.lock_for(STRESS_WAIT).leave(holder, &path),
+                        Leave::Last(_)
+                    ));
                 }
-                stop.store(true, std::sync::atomic::Ordering::SeqCst);
             });
         }
         let reader = ledger.clone();
-        let stop = &stop;
+        let running = &running;
         scope.spawn(move || {
-            while !stop.load(std::sync::atomic::Ordering::SeqCst) {
-                let tracker = reader.lock();
+            while running.load(Ordering::SeqCst) > 0 {
+                let tracker = reader.lock_for(STRESS_WAIT);
                 assert!(tracker.fault().is_none(), "{:?}", tracker.fault());
             }
         });
     });
+}
+
+/// What the race above only shows through its side effects, asserted directly: while trackers of
+/// one process take the ledger, empty it (which unlinks `ledger.lock`) and take it again, no two
+/// of them hold it at once. On Windows a waiter that had opened the unlinked lock file believed it
+/// held the ledger while the creator of the new one did too (BL167.6).
+#[test]
+fn trackers_never_hold_an_emptied_and_refilled_ledger_at_the_same_time() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    // Four workers retake the lock back to back on a busy machine. The polling lock is not fair, so
+    // a worker can wait close to the 1.5 s a job is given (measured: up to 1.3 s with holds under
+    // 11 ms); that is starvation, not a violation, and this test is about who holds the ledger.
+    const STRESS_WAIT: std::time::Duration = std::time::Duration::from_secs(60);
+    let dir = workspace("claims-exclusive");
+    let ledger = Ledger::of(dir.path());
+    let inside = AtomicUsize::new(0);
+    std::thread::scope(|scope| {
+        for worker in 0..4 {
+            let ledger = ledger.clone();
+            let inside = &inside;
+            scope.spawn(move || {
+                for round in 0..120 {
+                    let holder = next_holder();
+                    let path = key(&format!("exclusive-{worker}-{round}"));
+                    {
+                        let mut tracker = ledger.lock_creating_for(STRESS_WAIT);
+                        assert_eq!(
+                            inside.fetch_add(1, Ordering::SeqCst),
+                            0,
+                            "two trackers hold the ledger at once"
+                        );
+                        let created = tracker.create_file(holder, path.clone(), &root(), None);
+                        inside.fetch_sub(1, Ordering::SeqCst);
+                        created.unwrap();
+                    }
+                    let mut tracker = ledger.lock_for(STRESS_WAIT);
+                    assert_eq!(
+                        inside.fetch_add(1, Ordering::SeqCst),
+                        0,
+                        "two trackers hold the ledger at once"
+                    );
+                    let left = tracker.leave(holder, &path);
+                    inside.fetch_sub(1, Ordering::SeqCst);
+                    assert!(matches!(left, Leave::Last(_)), "{left:?}");
+                }
+            });
+        }
+    });
+    assert!(
+        !dir.path().join(".tessel-claims").exists(),
+        "everything left, the ledger is gone"
+    );
+}
+
+/// A lock that was let go of is free **at once**: a caller that does not wait at all finds the
+/// ledger free right after its holder dropped it, round after round. A guard of the invariant,
+/// not the proof of a defect: an explicit `unlock()` before closing the file was tried on
+/// Windows as the cure for ledgers seen held for seconds, the mutation without it ran 0 of 40
+/// races and this test failed no run either, so none is kept (BL167.6 report).
+#[test]
+fn a_ledger_lock_that_was_let_go_of_can_be_taken_again_at_once() {
+    let dir = workspace("claims-unlock");
+    let ledger = Ledger::of(dir.path());
+    // A claim keeps the ledger on disk, so the lock file is not unlinked between rounds.
+    ledger
+        .lock_creating()
+        .create_file(next_holder(), key("unlock"), &root(), None)
+        .unwrap();
+    for round in 0..2000 {
+        // No waiting at all: held or not, right now.
+        let tracker = ledger.lock_for(std::time::Duration::ZERO);
+        assert!(
+            tracker.fault().is_none(),
+            "round {round}: {:?}",
+            tracker.fault()
+        );
+    }
+}
+
+/// Emptying the ledger, filling it again and looking at it over and over: what is on disk is
+/// either nothing or exactly what was claimed, and no look is a fault (BL167.6).
+#[test]
+fn an_emptied_and_refilled_ledger_reads_the_same_every_time() {
+    let dir = workspace("claims-reread");
+    let canonical = fs::canonicalize(dir.path()).unwrap();
+    let ledger = Ledger::of(dir.path());
+    for round in 0..60 {
+        let (holder, path) = (next_holder(), key(&format!("reread-{round}")));
+        ledger
+            .lock_creating()
+            .create_file(holder, path.clone(), &root(), None)
+            .unwrap();
+        for _ in 0..4 {
+            let tracker = ledger.lock();
+            assert!(tracker.fault().is_none(), "{:?}", tracker.fault());
+            assert_eq!(tracker.entries().count(), 1, "round {round}");
+        }
+        assert!(matches!(ledger.lock().leave(holder, &path), Leave::Last(_)));
+        assert!(
+            !canonical.join(".tessel-claims").exists(),
+            "round {round}: nothing claimed, nothing on disk"
+        );
+        for _ in 0..4 {
+            let tracker = ledger.lock();
+            assert!(tracker.fault().is_none(), "{:?}", tracker.fault());
+            assert_eq!(tracker.entries().count(), 0);
+        }
+        assert!(
+            !canonical.join(".tessel-claims").exists(),
+            "looking at an empty ledger creates none"
+        );
+    }
 }
 
 // --- the record: folders already held are not read from the ledger again ------------------------
