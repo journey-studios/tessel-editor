@@ -111,10 +111,21 @@ export const assertPlanKind = (plan) => {
     throw invalid('/kind', `expected \`${SCENE_PLAN_KIND}\``);
   }
   if (plan.planVersion !== SCENE_PLAN_VERSION) {
+    let found = plan.planVersion;
+    let label;
+    try {
+      label = JSON.stringify(found);
+    } catch {
+      // The object API can receive cycles/BigInts that JSON text cannot contain. Both the
+      // message and the error details must remain serializable; ordinary wire errors keep
+      // their original found value and message.
+      found = `[unserializable ${typeof found}]`;
+      label = JSON.stringify(found);
+    }
     throw new RuntimeError(
       'unsupported_plan_version',
-      `Scene plan version ${JSON.stringify(plan.planVersion)} is not supported (this runtime draws ${SCENE_PLAN_VERSION})`,
-      { found: plan.planVersion, supported: SCENE_PLAN_VERSION },
+      `Scene plan version ${label} is not supported (this runtime draws ${SCENE_PLAN_VERSION})`,
+      { found, supported: SCENE_PLAN_VERSION },
     );
   }
 };

@@ -878,3 +878,20 @@ R0, reforço de diagnóstico: uma razão não reduzida (por exemplo editTime6/4 
 recusa no próprio campo antes da comparação entre decks; não culpa o vizinho3/2. A
 prova Node inclui também testes antigos de browser/luz/splat/overlays; isso não é
 renderização de transição nem aceite de GPU/desempenho ou UI física.
+
+### R0 — limites de correspondência JS/Rust (R1 Windows)
+
+A R1 independente de9c3a643 confirmou diferenças além dos inteiros seguros:
+JSON.parse apaga grafias como12.0/34.0/2e0/4.1e1/-0/3.0, aceitas como valores
+inteiros no JS onde o leitor textual Rust as recusa. transition.id no JS só exige
+texto não vazio, sem reproduzir64bytes e [A-Za-z0-9_-] do core. O JS é mais estrito
+em sceneInstanceId/cameraClipId/contentHash/revisionId vazios, FOV fora de(0,180)
+e contadores em2^53. A derivação exata de requires pertence ao core; o parser JS
+verifica capacidades conhecidas e cobertura entre decks, sem reproduzir a lista exata.
+Isto é coerência parcial de um leitor interno, não equivalência completa de validadores,
+procedência de cena nem capacidade pública de desenhar. F064 P/Refuse/JS13 permanecem.
+
+Um planVersion cíclico/BigInt na API de objeto agora produz unsupported_plan_version
+tipado e serializável. found/message dos valores JSON normais permanecem iguais;
+quando JSON.stringify falha, found vira o rótulo [unserializable object] ou
+[unserializable bigint]. Nenhum dado malformado é aceito por esse reparo.

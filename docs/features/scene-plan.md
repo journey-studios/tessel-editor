@@ -161,6 +161,7 @@ leitor puro que **não** está ligado a compositor, bridge nem `hello`: `SCENE_C
 comprimento) e profundidade 1 nas duas portas; 4 194 304 bytes só na porta de texto, medidos em UTF-8 sobre o texto
 recebido. `raw 41 / sample 39` (câmera de 40 quadros) continua sendo `{raw: 41, sampled: 39, held: true}` no primário. Ver
 [fx-transitions.md](fx-transitions.md) e o [relatório](../migration/p4b-s2-r0-parser-report.md).
+
 ### Políticas
 
 | Tema | Política |

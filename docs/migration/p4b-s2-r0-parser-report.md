@@ -230,3 +230,59 @@ no código anterior e passam no corrigido. Gates completos de workspace/core
 pertencem a9c3a643; não foram rebatizados como execução do reforço. Só módulos
 internos do parser e testes mudaram depois: leitor produtivo/extração permanecem
 iguais. Revisão independente do reforço ainda pendente, F064 P/Refuse/JS13.
+
+
+## R1 Windows independente e fechamento das ressalvas
+
+A [R1 Windows](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:0174d16d961d8ad76f48c9c83077d6e0dda0d16e20c336cfd5b2cdd74c79ef6e)
+aprova9c3a643 sem bloqueio, não o reforço0175cec. Executou setup, Node182,
+fmt/check/clippy workspace-all-targets/no-run/build, interop4, core216/10/5/8/1
+isolado e preserve_order, tree sem gpui/wry. No-run só compila. Comparou27.345
+entradas entre parser antigo/novo:10.356 diferenças, todas da guarda, zero
+inesperadas; fuzz de34.806variantes contra o core e cerca de59probes manuais.
+Provas da R1, não reexecutadas pelo coordenador:134mutantes JS (98mortos/36sobreviventes);
+33sobreviventes foram rodados na interop, só T12 morreu e32sobreviveram. Seis foram
+considerados provavelmente equivalentes, sem prova; não reclassificados como mortos.
+Os45mutantes do autor constituem outra bateria, não substituem essa evidência.
+
+A R1 chamou182testes de puros e relatou browser não executado. Os arquivos contêm
+browser de luz/splat/overlays; a declaração por tipo de superfície não deve ser
+herdada. O coordenador confirmou a execução desses casos no Mac, sem pixels de transição
+e sem prova de GPU física/desempenho ou janela nativa.
+
+Diferenças confirmadas pela R1 e registradas no contrato: JS aceita lexemas12.0,34.0,
+2e0,4.1e1,-0,3.0 que o Rust textual recusa; id da transição é só não vazio, sem
+64bytes/alfabeto do core; JS é mais estrito em IDs de instância/câmera e hashes/revisões
+vazios, FOV fora de(0,180) e2^53. A igualdade exata de requires é do core; JS só
+verifica reconhecimento/cobertura. Nada disso abre uma entrada produtiva ou promete
+equivalência de todos os planos forjados.
+
+F2 foi reproduzido: versão cíclica lança TypeError no código anterior. O helper
+compartilhado agora conserva unsupported_plan_version e detalhes serializáveis,
+com um rótulo estável para a versão que JSON.stringify não representa. A regressão
+falha antes/passou depois para ciclo, BigInt e objeto com BigInt nas duas entradas.
+Valores JSON normais conservam o resultado/mensagem. Essa é uma mudança defensiva
+no erro malformado, além da guarda de requires; não dizer produção inteiramente intocada.
+
+Dez novos testes puros cobrem F2, fim exclusivo da janela com plano coerente nos demais
+campos, quadro anterior ao shot primário, L0/raw1, janela[0,100) do tamanho da edição,
+intensidade0, tolerância5e-10 de progress, amount>1 mesmo dentro de epsilon, aridade/nome
+de params,1000fps/u32limite,2^53-1/2^53, conflitos format/alpha/colorSpace (helper) e
+ordem de guardas/capacidades contra corpo quebrado. Isso reforça os casos específicos;
+não declara todas as32sobrevivências fechadas. Nits de separação de cabeçalho e newline
+final corrigidos. O head consolidado ainda exige R2 própria, sem herdar aprovação da R1.
+
+
+Mac no fechamento R1: build oficial runtime, grupo Node194/0/0skips (dez novos
+testes são puros; demais incluem browser legado), interop5 e fmt0. O teste de
+versão também confere found/message exatos para undefined/null/2/string2/false/
+objeto/array representáveis por JSON. Onze mutantes focados foram mortos: versão,
+fim exclusivo, janela inteira, intensidade0, tolerância de progresso, teto amount,
+1000fps, inteiro seguro e os três campos de recurso. Sete falharam por asserção e
+quatro por recusa tipada invalid_plan de entrada válida; nenhum erro de sintaxe.
+Cada fonte foi restaurado por bytes/SHA, mtime atualizado e seguido de10/10controles.
+O classificador inicial exigia ERR_ASSERTION e terminou com erro ao encontrar as
+quatro recusas tipadas; os logs foram relidos e classificados, sem fingir erro de
+compilação ou repetir o lote. Artefatos r1-close-* e r1-mut-* no cache Mac da PR75.
+Esses11mutantes são do coordenador, não a reexecução dos134da R1 nem prova de todas
+as32sobrevivências. R2 do head consolidado ainda pendente.

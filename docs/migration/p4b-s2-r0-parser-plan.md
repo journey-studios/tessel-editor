@@ -323,3 +323,19 @@ estava declarada nas decisões iniciais e não é paridade lexical nem arredonda
 
 Razões reduzidas são verificadas na leitura do próprio campo por MDC=1, antes da
 comparação dos decks;0/1 é canônico e6/4 é recusado no campo que o declara.
+
+
+## Reforço após R1 Windows de9c3a643
+
+O leitor comum deve manter a recusa unsupported_plan_version tipada e serializável
+para planVersion cíclico ou BigInt recebido pela API de objeto. Valores que JSON
+normalmente representa mantêm found/message; se a serialização do valor falhar, usar
+o rótulo [unserializable <typeof>] no campo found e na mensagem, nunca o objeto cíclico
+nos detalhes. A versão continua recusada antes de qualquer outro campo. O defeito
+preexistia na produção e o helper agora atende ambas as entradas com a mesma regra.
+
+Não ampliar a fatia para igualdade completa JS/core: documentar limites de id, grafias
+numéricas, campos vazios, FOV, faixa segura e derivação exata de requires como diferenças
+verificadas pela R1. Os testes novos fecham bordas discriminantes, sem alegar que todos
+os134mutantes independentes foram mortos. Recursos format/alpha/colorSpace têm teste
+defensivo do helper de união; não transformá-lo em prova de plano inteiro no core.
