@@ -237,9 +237,9 @@ static TEXTS: &[Entry] = &[
             "Las transiciones {first} y {transitionId} están en el mismo corte ({from} a {to})",
         ),
         some(
-            "Uma transição por corte: setTransition substitui a que já existe.",
-            "One transition per cut: setTransition replaces the one that is there.",
-            "Una transición por corte: setTransition reemplaza la que ya existe.",
+            "Uma transição por corte: set_transition substitui a que já existe.",
+            "One transition per cut: set_transition replaces the one that is there.",
+            "Una transición por corte: set_transition reemplaza la que ya existe.",
         ),
     ),
     entry(
@@ -603,8 +603,8 @@ fn fill(template: &str, args: &Map<String, Value>) -> Option<String> {
     Some(out)
 }
 
-fn number_of(object: &Map<String, Value>, key: &str) -> i64 {
-    object.get(key).and_then(Value::as_i64).unwrap_or(0)
+fn number_of(object: &Map<String, Value>, key: &str) -> Option<i64> {
+    object.get(key).and_then(Value::as_i64).filter(|n| *n >= 0)
 }
 
 /// The pieces of a lack of handles that depend on the language: the list of what is missing, the
@@ -626,8 +626,11 @@ fn derive_no_handles(args: &mut Map<String, Value>, locale: Locale) -> Option<()
         let lack = lack.as_object()?;
         let mut piece = lack.clone();
         piece.insert("side".to_string(), side(lack)?);
-        let (instance, camera) = (number_of(lack, "instance"), number_of(lack, "camera"));
-        let camera_end = number_of(lack, "cameraEnd");
+        let (instance, camera) = (number_of(lack, "instance")?, number_of(lack, "camera")?);
+        let camera_end = match lack.get("cameraEnd") {
+            None => 0,
+            Some(_) => number_of(lack, "cameraEnd")?,
+        };
         if instance > 0 || camera > 0 {
             piece.insert("most".to_string(), json!(instance.max(camera)));
             let what_key = match (instance > 0, camera > 0) {

@@ -356,7 +356,8 @@ pub(in crate::directed_scene) fn transition_issues(
                     "Transitions {first} and {id} are on the same cut ({} to {})",
                     from_shot.id, to_shot.id
                 ),
-                "One transition per cut: setTransition replaces the one that is there.".to_string(),
+                "One transition per cut: set_transition replaces the one that is there."
+                    .to_string(),
                 json!({ "first": first, "from": from_shot.id, "to": to_shot.id }),
             ));
         }

@@ -405,6 +405,61 @@ fn written_param(
         .and_then(|raw| parse_param(param, raw).ok())
 }
 
+/// Restore authored parameter spelling after a batch returns to the same typed value.
+/// Presence is significant: explicitly writing an omitted default remains a real edit.
+pub(super) fn restore_authored_params(original: &Value, work: &mut Value) {
+    let authored: std::collections::HashMap<_, _> = transitions(original)
+        .iter()
+        .filter_map(|item| Some((item.get("id")?.as_str()?, item)))
+        .collect();
+    let Some(edited) = work
+        .pointer_mut("/fx/transitions")
+        .and_then(Value::as_array_mut)
+    else {
+        return;
+    };
+    for item in edited {
+        let Some(prior) = item
+            .get("id")
+            .and_then(Value::as_str)
+            .and_then(|id| authored.get(id))
+        else {
+            continue;
+        };
+        if ["effect", "fromShotId", "toShotId"]
+            .iter()
+            .any(|key| item.get(*key) != prior.get(*key))
+        {
+            continue;
+        }
+        let Some(spec) = prior
+            .get("effect")
+            .and_then(Value::as_str)
+            .and_then(fx::transition_effect)
+        else {
+            continue;
+        };
+        let Some(params) = item.get_mut("params").and_then(Value::as_object_mut) else {
+            continue;
+        };
+        for param in spec.params {
+            let Some(before) = prior.get("params").and_then(|p| p.get(param.id)) else {
+                continue;
+            };
+            let Some(after) = params.get(param.id) else {
+                continue;
+            };
+            if before != after
+                && parse_param(param, before)
+                    .ok()
+                    .is_some_and(|value| parse_param(param, after) == Ok(value))
+            {
+                params.insert(param.id.to_string(), before.clone());
+            }
+        }
+    }
+}
+
 fn easing_of(name: &str, transition: &str) -> Result<FxEasing, EditError> {
     FxEasing::parse(name).ok_or_else(|| {
         problem(

@@ -213,6 +213,68 @@ fn an_edit_built_on_an_old_revision_is_refused_whole() {
 }
 
 #[test]
+fn a_numeric_round_trip_is_noop_in_dry_run_and_real_edit() {
+    let mut list = existing();
+    list[0]["params"] = json!({"intensity":1});
+    let mut state = accept(list);
+    let before = snapshot(&mut state);
+    for dry_run in [true, false] {
+        let mut request = edit(json!([
+            {"op":"set_transition_param","id":"tr","param":"intensity","value":0.5},
+            {"op":"set_transition_param","id":"tr","param":"intensity","value":1}
+        ]));
+        request["dry_run"] = json!(dry_run);
+        let answer = run(&mut state, request);
+        assert_eq!(answer["changed"], false);
+        if dry_run {
+            assert_eq!(answer["would_change"], false);
+        } else {
+            assert_eq!(answer["noop"], true);
+        }
+        assert_eq!(snapshot(&mut state), before);
+    }
+}
+
+#[test]
+fn transition_edits_report_the_candidate_budget_and_undo_restores_it() {
+    let mut state = accept(json!([]));
+    let looks: Vec<Value> = (0..8)
+        .map(|i| {
+            json!({
+                "op":"add_clip", "id":format!("v{i}"), "effect":"vignette",
+                "start_frame":0, "duration_frames":100
+            })
+        })
+        .collect();
+    let base = run(&mut state, edit(json!(looks)));
+    assert_eq!(base["budget"]["peak_passes"], 8);
+    assert_eq!(base["budget"]["over_budget"], false);
+    let added = run(&mut state, edit(json!([set_default()])));
+    assert_eq!(added["budget"]["peak_passes"], 9);
+    assert_eq!(added["budget"]["over_budget"], true);
+    assert!(!added["warnings"].as_array().unwrap().is_empty());
+    for op in ["scene.fx.list", "scene.fx.inspect"] {
+        assert_eq!(
+            run(&mut state, json!({"op":op,"scene":"street"}))["budget"],
+            added["budget"]
+        );
+    }
+    let before = snapshot(&mut state);
+    let mut removal = edit(json!([{"op":"remove_transition","id":"tr-1"}]));
+    removal["dry_run"] = json!(true);
+    let dry = run(&mut state, removal.clone());
+    assert_eq!(dry["budget"], base["budget"]);
+    assert_eq!(snapshot(&mut state), before);
+    removal["dry_run"] = json!(false);
+    assert_eq!(run(&mut state, removal)["budget"], base["budget"]);
+    run(&mut state, json!({"op":"history.undo"}));
+    assert_eq!(
+        run(&mut state, json!({"op":"scene.fx.list","scene":"street"}))["budget"],
+        added["budget"]
+    );
+}
+
+#[test]
 fn a_refusal_names_every_problem_in_english_and_changes_nothing() {
     let mut state = accept(existing());
     let before = snapshot(&mut state);

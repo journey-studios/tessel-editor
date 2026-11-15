@@ -87,6 +87,48 @@ fn a_camera_entered_past_its_end_asks_for_the_frames_that_put_it_back_inside() {
 }
 
 #[test]
+fn a_missing_or_invalid_count_preserves_the_original_diagnostic() {
+    for key in ["instance", "camera"] {
+        for value in [None, Some(json!("0")), Some(json!(-1))] {
+            let mut issue = refused(&head(3, 48), "use");
+            let entry = issue.details.as_mut().unwrap()["args"]["lacks"][0]
+                .as_object_mut()
+                .unwrap();
+            match &value {
+                Some(value) => {
+                    entry.insert(key.to_string(), value.clone());
+                }
+                None => {
+                    entry.remove(key);
+                }
+            }
+            for locale in Locale::ALL {
+                let result = project_problem(&RawProblem::from_issue(&issue), locale);
+                assert_eq!(result.message, issue.message);
+                assert_eq!(result.hint.as_deref(), Some(hint(&issue).as_str()));
+                assert_eq!(result.details["untranslated"], true);
+            }
+        }
+    }
+}
+
+#[test]
+fn a_duplicate_cut_hint_names_the_editors_real_operation() {
+    let error = admit(two_transitions(json!({"id":"a"}), json!({"id":"b"}))).unwrap_err();
+    let issue = error
+        .issues()
+        .iter()
+        .find(|i| i.code == fx::TRANSITION_DUPLICATE)
+        .unwrap();
+    for locale in Locale::ALL {
+        let result = project_problem(&RawProblem::from_issue(issue), locale);
+        let text = result.hint.unwrap();
+        assert!(text.contains("set_transition"));
+        assert!(!text.contains("setTransition"));
+    }
+}
+
+#[test]
 fn one_frame_past_the_end_asks_for_one_frame() {
     let issue = refused(&head(49, 48), "use");
     assert_eq!(lacks(&issue)[0]["cameraEnd"], 1);
@@ -501,6 +543,29 @@ fn a_problem_reads_in_three_languages_without_a_hole_and_english_is_the_importer
             "{}",
             found.key()
         );
+        if english.hint.is_some() {
+            assert!(
+                projected[0].hint.is_some(),
+                "{}: pt-br hint missing",
+                found.key()
+            );
+            assert!(
+                projected[2].hint.is_some(),
+                "{}: es hint missing",
+                found.key()
+            );
+            // A short imperative such as "Use linear" is valid in all three languages.
+            // This full sentence must instead distinguish the localizations (R1 mutant).
+            if found.code == fx::TRANSITION_ID_MISMATCH {
+                assert_ne!(
+                    projected[0].hint,
+                    english.hint,
+                    "{}: pt-br hint",
+                    found.key()
+                );
+                assert_ne!(projected[2].hint, english.hint, "{}: es hint", found.key());
+            }
+        }
         // The transition and the shot are the same whichever the language.
         assert_eq!(projected[0].transition_id, projected[1].transition_id);
         assert_eq!(projected[2].shot_id, projected[1].shot_id);
@@ -642,6 +707,18 @@ fn an_edit_error_carries_the_problems_in_english_next_to_the_issues() {
         &parse_fx_batch(&json!([{"op": "remove_clip", "clip": "ghost"}])).unwrap(),
     )
     .unwrap_err();
+    assert!(
+        error
+            .details()
+            .is_none_or(|details| details.get("errors").is_none())
+    );
+    // The failing op is a look even though a successful transition op precedes it.
+    let ops = json!([
+        {"op":"set_transition_hidden","id":"tr","hidden":true},
+        {"op":"remove_clip","clip":"ghost"}
+    ]);
+    let error = apply_fx(&scene, &parse_fx_batch(&ops).unwrap()).unwrap_err();
+    assert_eq!(error.index, Some(1));
     assert!(
         error
             .details()

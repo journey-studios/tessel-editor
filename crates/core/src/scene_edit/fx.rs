@@ -282,8 +282,6 @@ fn run_batch(
         shots: scene.bundle().shots.as_slice(),
     };
     let mut changes = Vec::with_capacity(ops.len());
-    // The clip each op touched: resolved to a pointer at the end, when slots are final.
-    let mut touched: Vec<(usize, String)> = Vec::new();
     for (index, op) in ops.iter().enumerate() {
         let fail = |error: EditError| error.at_op(index);
         let resolved = resolve_start(scene, op).map_err(fail)?;
@@ -296,17 +294,17 @@ fn run_batch(
             span,
         )
         .map_err(fail)?;
-        if !change.noop {
-            touched.push((index, change.clip.clone()));
-        }
         changes.push(change);
+    }
+    if ops.iter().any(super::fx_transition::is_transition) {
+        super::fx_transition::restore_authored_params(scene.document(), &mut work);
     }
     // A layer that holds nothing but its empty frame is no layer: the baseline document has no
     // `fx` at all (a layer with other keys, kept as written, stays).
     // Only an edit that changed something may tidy it: a batch that changed nothing (an empty one, or
     // only no-ops) leaves a layer the author wrote bare exactly as written, so no revision, no undo entry.
     let bare = work != *scene.document()
-        && !touched.is_empty()
+        && changes.iter().any(|change| !change.noop)
         && work
             .get("fx")
             .and_then(Value::as_object)
@@ -326,12 +324,17 @@ fn run_batch(
         root.remove("fx");
     }
     let modified = work != *scene.document();
-    let pointers: Vec<(usize, String)> = touched
+    // Preserve the target kind: a removed clip's ID can be reused by a new transition.
+    let pointers: Vec<(usize, String)> = changes
         .iter()
-        .filter_map(|(index, clip)| {
-            find_clip(&work, clip)
-                .map(|(track, slot)| (*index, format!("/fx/tracks/{track}/clips/{slot}")))
-                .or_else(|| pointer_of(&work, clip).map(|pointer| (*index, pointer)))
+        .filter(|change| !change.noop)
+        .filter_map(|change| {
+            let pointer = match &change.transition {
+                Some(id) => pointer_of(&work, id),
+                None => find_clip(&work, &change.clip)
+                    .map(|(track, slot)| format!("/fx/tracks/{track}/clips/{slot}")),
+            }?;
+            Some((change.index, pointer))
         })
         .collect();
     let reread = scene.reimport(work, limits);
@@ -577,7 +580,7 @@ fn add_clip(
             if ids.contains(id) {
                 return Err(EditError::new(
                     fx::DUPLICATE_ID,
-                    format!("an fx track or clip `{id}` already exists"),
+                    format!("an fx track, clip or transition `{id}` already exists"),
                 )
                 .with_id(id.as_str()));
             }

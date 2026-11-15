@@ -24,6 +24,8 @@
 //!
 //! * `edit`: the five transition ops, atomic batches, ids, quotas and the importer's rules in
 //!   front of an edit (E01-E11, E19).
+//! * `edit_problems`: localized problems and sufficient camera-head repairs (E12/E15).
+//! * `window_guard`: the shared pure overlay refusal predicate (E14).
 
 #[path = "scene_fx_transition/boundary.rs"]
 mod boundary;

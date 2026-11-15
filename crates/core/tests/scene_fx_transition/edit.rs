@@ -459,6 +459,78 @@ fn adding_a_transition_and_removing_it_again_is_a_net_no_op() {
 }
 
 #[test]
+fn numeric_round_trips_preserve_authorship_even_with_another_change() {
+    for initial in [json!(1), json!(1.0)] {
+        let mut raw = authored().document().clone();
+        raw["fx"]["transitions"][0]["params"]["intensity"] = initial.clone();
+        let scene = admit(raw).unwrap();
+        let ops = json!([
+            {"op":"set_transition_param","id":"keep","param":"intensity","value":0.5},
+            {"op":"set_transition_param","id":"keep","param":"intensity","value":1}
+        ]);
+        let result = run_ok(&scene, ops.clone());
+        assert!(!result.summary.modified);
+        assert_eq!(result.candidate.document(), scene.document());
+        let mut mixed = ops.as_array().unwrap().clone();
+        mixed.push(json!({"op":"set_transition_hidden","id":"keep","hidden":true}));
+        let result = run_ok(&scene, Value::Array(mixed));
+        assert!(result.summary.modified);
+        let mut expected = scene.document().clone();
+        expected["fx"]["transitions"][0]["hidden"] = json!(true);
+        assert_eq!(result.candidate.document(), &expected);
+    }
+}
+
+#[test]
+fn a_round_trip_that_writes_an_omitted_default_remains_a_real_edit() {
+    let mut raw = authored().document().clone();
+    raw["fx"]["transitions"][0]["params"]
+        .as_object_mut()
+        .unwrap()
+        .remove("intensity");
+    let scene = admit(raw).unwrap();
+    let result = run_ok(
+        &scene,
+        json!([
+            {"op":"set_transition_param","id":"keep","param":"intensity","value":0.5},
+            {"op":"set_transition_param","id":"keep","param":"intensity","value":1}
+        ]),
+    );
+    assert!(result.summary.modified, "an authored field was added");
+    let mut expected = scene.document().clone();
+    expected["fx"]["transitions"][0]["params"]["intensity"] = json!(1.0);
+    assert_eq!(result.candidate.document(), &expected);
+}
+
+#[test]
+fn a_reused_id_does_not_attribute_transition_faults_to_a_removed_look() {
+    let scene = run_ok(
+        &empty(),
+        json!([{
+            "op":"add_clip", "id":"shared", "effect":"vignette",
+            "start_frame":0, "duration_frames":10
+        }]),
+    )
+    .candidate;
+    let before = scene.document().clone();
+    let error = run(
+        &scene,
+        json!([
+            {"op":"remove_clip","clip":"shared"},
+            set(json!({"id":"shared","durationFrames":500}))
+        ]),
+    )
+    .unwrap_err();
+    assert_eq!(error.code, CANDIDATE_REJECTED);
+    assert_eq!(error.index, Some(1));
+    assert!(!error.issues().is_empty());
+    for issue in error.issues() {
+        assert_eq!(issue.ops, vec![1]);
+    }
+    assert_eq!(scene.document(), &before);
+}
+
+#[test]
 fn a_dry_run_gives_the_summary_and_the_refusals_of_the_real_run() {
     let scene = empty();
     let good = parse_fx_batch(&json!([set(json!({}))])).unwrap();
