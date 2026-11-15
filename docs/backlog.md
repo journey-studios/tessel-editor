@@ -1881,7 +1881,7 @@ concreto da S0, sem link para arquivo inexistente nem validação de lib/CLI/UI 
 | BL082.4.2 | P4b/S1a | Documento/janela/validação tipada e política de admissão fechada | Concluído no escopo interno; R2 aprova a752f0a | BL082.4.1/.11 concluídos | Coordenador / revisão Windows | R2:61transition/25scene_fx/80GPUI, processo headless real, perfis serde e mutantes dinâmicos/scanner/domínio. fmt/check/clippy/no-run/build passam. Core1525ok/2gizmosbase, workspaceexecutado/Mac pendentes. Produto P; IDgerado fica BL082.4.15/S3. |
 | BL082.4.3 | P4b/S1b | Avaliação dos dois decks e plano, recursos por assetId/used_by sem ambiguidade | Concluída no escopo interno — R3 Windows4199af0 | BL082.4.2 integrada | Coordenador / Cursor Sonnet5.5 | Head73775c3:106transições/10corpus/594lib/80GPUI e gates Windows relatados; produtoP. Mac106+10+baseline debug/release passam após correção de dados(.16), três kitsXparciais(.17) em revisão. SemS2/S3a iniciadas. |
 | BL082.4.4 | P4b/S2 | Runtime/renderer/mistura e lifecycle/cache | Pendente | BL082.4.3; S2A também BL082.4.5/S3a | Não atribuído | Cor8bits/alpha declarados, capability, dois splats/leases/contextloss/dispose e pixelsindependentes |
-| BL082.4.5 | P4b/S3 | Ops/gestos/inspector/persistência ecoreparser/nós | Pendente | BL082.4.3 | Não atribuído | Atomicidade/revisão/undo, módulossemcrescerarquivosproibidos; dividirS3aseS3bseútil |
+| BL082.4.5 | P4b/S3 | Ops/gestos/inspector/persistência ecoreparser/nós | Em andamento — S3a Windows delegada; S3b pendente | BL082.4.3 | Cursor Sonnet5.5 / coordenador | Atomicidade/revisão/undo, módulossemcrescerarquivosproibidos; dividirS3aseS3bseútil |
 | BL082.4.6 | P4b/S4 | UIKit/provaautomação/guardasoverlaycore | Pendente | BL082.4.4/.5; W1integrada | Não atribuído | Controlesreais, predicadocoreúnico, gestoqueentranajanela/hitpress, célulastestadasporfase |
 | BL082.4.7 | P4b/S6 | Dissolve legado com faixaoráculonova e divergênciasdeveredito declaradas | Pendente | BL082.4.10 | Não atribuído | NÃO alterar invalid-dissolve-transition.expected/hashantigo; fixturesnovas/pinpiloto e contraexemploalphaStraightUNSUPPORTED_ALPHA; registrarexpansãodecontrato |
 | BL082.4.8 | P4b/perf | Custo dos dois decks/splats | Pendente | BL082.4.4 | Não atribuído | Medição própriacomlockperformance, não inferirbenefíciodeteste funcional |
@@ -2050,7 +2050,7 @@ atributo no próprio módulo em linha, não a declaração externa dentro dele.
 
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
-| BL082.4.15 | PR62 R2 / S3 | IDs automáticos de looks e trilhas ignoram IDs de transições | Pendente — incorporar à S3 | BL082.4.5 | Não atribuído | Incluir transitions no namespace de every_id; provar transições fx-1/fx-track-1, IDs automáticos distintos, recusa explícita atômica, undo/redo. Hoje apenas Accept: recusa segura, não corrupção, sem acesso público. Não bloqueia S1a. |
+| BL082.4.15 | PR62 R2 / S3 | IDs automáticos de looks e trilhas ignoram IDs de transições | Em andamento — incluída na S3a Windows | BL082.4.5 | Cursor Sonnet5.5 / coordenador | Incluir transitions no namespace de every_id; provar transições fx-1/fx-track-1, IDs automáticos distintos, recusa explícita atômica, undo/redo. Hoje apenas Accept: recusa segura, não corrupção, sem acesso público. Não bloqueia S1a. |
 
 ### PR60 R3 aprova Windows; integração e validação Unix pendentes — 2026-11-14
 
@@ -2195,7 +2195,7 @@ contra referência Mac; é pré-condição ausente. Coordenador capturae3separad
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
 | BL082.4.16 | PR63 / baseline Mac | Fixture de compatibilidade não inclui perfis debug/release Mac | Correção de dados validada no Mac | BL082.4.3 | Coordenador | Captura sobre e3c20cb sem mudar core/src/Cargo.lock, probe removido/status limpo; Windowsentries canônicas inalteradas. Candidato737+fixture:106transições/10corpus e baseline debug/release passam. Head limpo93fb635 passou debug e gates; Linux não executado. |
-| BL082.4.17 | PR63 / referência X | Três lit-held não importam por instância menor que shot, comparações só parcialmente preservadas | Em andamento — referência representável Windows | BL082.4.1/.4.3 | Coordenador / Cursor Sonnet5.5 | JulgarT06/T10/T16 e necessidade de fixtures representáveis sem enfraquecerimportador ouregravarorigem; não promover todosos estados/sondasporassociação. Autor declara reconstrução e limites. |
+| BL082.4.17 | PR63 / referência X | Três lit-held não importam por instância menor que shot, comparações só parcialmente preservadas | A validar — referência aceita Windows9bafc43/Mac; consumidor S1b/S2 pendente | BL082.4.1/.4.3 | Coordenador / Cursor Sonnet5.5 | JulgarT06/T10/T16 e necessidade de fixtures representáveis sem enfraquecerimportador ouregravarorigem; não promover todosos estados/sondasporassociação. Autor declara reconstrução e limites. |
 
 ### Baseline Mac capturado na base original, não no candidato
 
@@ -2285,3 +2285,52 @@ S1b aprovada R3 em4199af0: domínio interno/gates/mutantes, Refusefechado/F064P.
 Fechamento só documentação e comentário normativo, sem tokens executáveis alterados.
 Pendências preservadas:.17consumidorX/.19errosbuilder/.20C/.21plano20000/.23contador
 primário/.24quantidade da dica emS3a antesdeS2A. Não é produto/render/aceitehumano.
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL082.4.17 | P4b/S0-X representável | Casos válidos de hold do vizinho e luz no quadro real, com bundles importáveis | A validar — referência aceita Windows9bafc43/Mac; consumidor S1b/S2 pendente | BL082.4.1/.4.2 | Coordenador / Cursor Sonnet5.5 | 7cenários/98quadros/390sondas,37specs normal/-O e5Rust no Windows/Mac da entrega inicial. Nits: papéis só por quadro, Python3.9 sem metadata3.10, janela Rust e mapa de assets; relatório próprio. Consumidor S1b/S2 ainda pendente, hold da câmera só por estado, viés agregado por cenário vs texto canônico por quadro a decidir antes do engine. Origem não executada/golden não comparável. |
+| BL082.4.23 | S1b / relógio de câmera | Plano primário conserva contador bruto além da câmera curta; offset/oráculo usa contador preso | Pendente — divergência de metadado, sem paridade de estado completo | BL082.4.17/.4.3 | Coordenador / dono de S2 | Julgar contrato preservando bytes sem transição; comparar contador legado e offset separadamente. Exemplo lit-center-held f23: primário23, offset/oráculo11. Pose é hold no kit; isto não é prova de pixels reais. |
+
+BL082.4.17: reforço026b72a noMac passou37normal/-O/metadata3.10ausente,
+14arquivosbytea byte,verifypinMac,5Rust/clippy. Mutantesduração/alinhamento
+agoramorrem,JSONrestaurado/5verdes. Os98quadros/390sondas,bundles,limiares e
+PNGs são iguais a932; sómetadata-resumoremovida e mapaassets adicionado.
+R2Windowsdo reforço ainda pendente; semconsumer/pixels ouorigemexecutada.
+
+BL082.4.17: R2 Windows aprovou93037e0 (37Python normal/-O/metadat ausente,
+14arquivos,5Rust,3mutantesdejanela,fmt/clippy/tree), sembloqueio. OrfãoPNGfoi
+confirmadoe corrigidopelocoordenador: comparelistaentradasda pastaexclusivae
+recusaextra semapagá-lo, emgenerate--check/verify. Mac38normal/-O passam;
+Windowsdo novo guard serárechecado. Math/dados/manifest/PNGs intactos desde930.
+
+### PR65: referência aceita após R3 Windows
+
+BL082.4.17: R3 aprovou `06c8ea9`, com38 specs Python normal/-O,14 arquivos
+reproduzidos byte a byte, verify offline e de blobs, pin estrito ausente=exit4,
+Rust5, fmt/clippy do core e tree sem GPUI/wry. O PNG extra falha em generate--check
+e verify sem ser apagado; retirar o filtro numa cópia faz o teste falhar.
+Mac7a78c40:38/5/clippy são prova separada. Mudanças posteriores são apenas docs.
+Referência/importabilidade validadas; consumidor de dois decks, pixels e origem
+executada permanecem pendentes. Relatório próprio §§13–14; F064 produto P/Refuse.
+[Revisão R3 Windows](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:d651fb1c0951ac65c32d4d3b4930a47dad707ed5c782b50855b051f5df71be64).
+
+BL082.4.5/S3a iniciada sobre main90609da com Cursor Sonnet5.5 defaults no projeto
+preparado `E:\www\tessel-p4b-s3a-20261114`: edição/parser/executor FX, guarda de
+gesto, predicado de janela, diagnóstico .24, testes e docs próprios; inclui .15.
+Backlog/matriz/índice são do coordenador. Não habilita S2A, S3b ou controles.
+[Implementação S3a Windows](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:d711227dbafff7a49dd9343ed593f5c35b8c3a9186d714c2dbc2c0bbc4d398b9).
+
+BL082.4.17: comentário tardio de coerência do writer corrigido em `1de7bb4`:
+generate verifica depois da escrita e recusa PNG extra sem apagar. Mac39 specs
+normal/-O, controle real por blobs e mutante discriminante passam; dados/Rust
+intactos. Esta mudança de I/O ainda precisa de rechecagem Windows antes do merge;
+a R3 aprovada permanece atribuída a06c8ea9, sem novo ciclo de revisão de domínio.
+
+BL082.4.17: caminho de geração aceito no Windows em `9bafc43` (código1de7bb4):
+39specs normal/-O,check14,verifyoffline; CLI real por blobs retorna0 limpa e1 com
+PNGextra preservado, e --check/verify também1. Mutante compare=[] morto. Hashes
+de377 arquivos fixtures/testes idênticos; checkout limpo e pasta própria removida.
+Sem nova execução Rust/GPU/build: os5Rust são da R3 em06c8ea9; Mac39 separado.
+Referência/importabilidade validadas; .17 permanece parcial no consumidorS1b/S2,
+pixels/origem/golden. Fechamento seguinte sódocs, F064P/Refuse, sem ativação pública.
+[Validação Windows de geração](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:eebbb4b56edb287fcdf87bbcbdd0f301a3f77acde8e17e7077a2a2ef0c49c072).
