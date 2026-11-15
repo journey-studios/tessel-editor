@@ -37,6 +37,8 @@ mod clocks;
 mod compat;
 #[path = "scene_fx_transition/corpus.rs"]
 mod corpus;
+#[path = "scene_fx_transition/deck_context.rs"]
+mod deck_context;
 #[path = "scene_fx_transition/document.rs"]
 mod document;
 #[path = "scene_fx_transition/edit.rs"]

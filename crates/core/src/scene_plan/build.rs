@@ -15,6 +15,7 @@ use super::model::{
     Domain, PlanFrame, PlanLayer, PlanLight, PlanNode, PlanOutput, PlanParent, PlanResource,
     PlanSource, PlanSplat, ScenePlan, UninterpretedField, UninterpretedReason, UnsupportedDomain,
 };
+use super::transition_validate::within_other;
 use super::validate::{derive_requires, derive_splat_slots};
 use super::{PLAN_VERSION, PlanError};
 
@@ -516,15 +517,19 @@ impl ScenePlan {
         let Some(window) = &stages.transition else {
             return Ok(plan);
         };
-        let neighbour = bundle.evaluate_shot_at_offset(window.other_shot_id, edit_frame)?;
-        let other_prepared = Prepared::new(scene, &neighbour.evaluation)?;
-        other_prepared.refuse_unsupported(options)?;
-        let other = other_prepared.assemble_with(
-            scene,
-            &neighbour.evaluation,
-            window.other_passes.clone(),
-        )?;
-        other.check_splat_transforms()?;
+        // Every step of the neighbour deck says so in its error (BL082.4.19): the pointer lives
+        // under `/transition/other`, the one place a plan read back from JSON puts it.
+        let neighbour = bundle
+            .evaluate_shot_at_offset(window.other_shot_id, edit_frame)
+            .map_err(|error| within_other(error.into()))?;
+        let other_prepared = Prepared::new(scene, &neighbour.evaluation).map_err(within_other)?;
+        other_prepared
+            .refuse_unsupported(options)
+            .map_err(within_other)?;
+        let other = other_prepared
+            .assemble_with(scene, &neighbour.evaluation, window.other_passes.clone())
+            .map_err(within_other)?;
+        other.check_splat_transforms().map_err(within_other)?;
         plan.with_transition(
             window,
             (neighbour.held_instance, neighbour.held_camera),
