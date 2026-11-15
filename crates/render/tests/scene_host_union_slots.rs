@@ -359,6 +359,67 @@ fn a_conflict_between_the_decks_is_refused_by_the_book_before_it_looks_at_the_ma
 }
 
 #[test]
+fn a_structural_resource_error_names_only_the_affected_deck_and_keeps_the_book() {
+    let fixture = Fixture::new("slots-structural-context", &Content::sky());
+    let session = fixture.approve();
+    let truth = Truth::of(&fixture);
+    for frame in [BEFORE_CUT, AFTER_CUT] {
+        let valid = fixture.plan(frame);
+        let map = approved_map(&valid, PROJECT_SCENE, &session).unwrap();
+        let mut slots = SceneSlots::default();
+        let first = slots.prepare(&valid, &map).unwrap();
+        confirm(&mut slots, &first.pending_slots());
+        let before = truth.book(&slots, map.generation());
+        for role in ["other", "primary"] {
+            for field in ["size", "relativePath"] {
+                let mut plan = valid.clone();
+                let deck = if role == "primary" {
+                    &mut plan
+                } else {
+                    &mut plan.transition.as_mut().unwrap().other
+                };
+                assert_eq!(deck.resources[0].asset_id, "backdrop");
+                if field == "size" {
+                    deck.resources[0].width_px = 0;
+                } else {
+                    deck.resources[0].relative_path = "../escape.png".into();
+                }
+                let error = slots.prepare(&plan, &map).unwrap_err();
+                assert_eq!(error.code, "invalid_plan");
+                let details = error.details.unwrap();
+                let prefix = if role == "primary" {
+                    ""
+                } else {
+                    "/transition/other"
+                };
+                let suffix = if field == "size" { "" } else { "/relativePath" };
+                assert!(
+                    error
+                        .message
+                        .contains(&format!("{prefix}/resources/0{suffix}"))
+                );
+                assert_eq!(
+                    details["resource"],
+                    context("backdrop", &[(role, "backdrop")])
+                );
+                let wrong_role = if role == "primary" {
+                    "other"
+                } else {
+                    "primary"
+                };
+                assert!(
+                    error
+                        .message
+                        .contains(&format!("{role} deck node `backdrop`"))
+                );
+                assert!(!error.message.contains(&format!("{wrong_role} deck node")));
+                assert_eq!(truth.book(&slots, map.generation()), before);
+            }
+        }
+    }
+}
+
+#[test]
 fn the_union_is_what_the_slot_and_byte_ceilings_judge_and_a_shared_picture_costs_once() {
     let fixture = Fixture::new("slots-budget", &Content::sky());
     let session = fixture.approve();

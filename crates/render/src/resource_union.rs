@@ -53,37 +53,42 @@ fn suffix(asset_id: &str, uses: &[DeckUse]) -> String {
     format!(" [asset `{asset_id}` used by: {}]", uses_text(uses))
 }
 
-/// The same `PlanError` the union raised, as the resource it names: only the pointer of a metadata
-/// conflict, `/transition/other/resources/{n}`, names one. `n` indexes the neighbour deck's own
-/// list; the uses come from the `used_by` of that entry and of the primary deck's entry for the
-/// same asset id (never from a scan of the nodes).
+/// A resource-table pointer names that deck's entry, including errors in one of its fields.
+/// Only an error equal to the core union's own refusal is a two-deck metadata conflict;
+/// structural failures name the affected deck alone. Uses always come from the resource tables.
 fn union_failure_context(plan: &ScenePlan, error: &PlanError) -> Option<(Value, String)> {
     let PlanError::Invalid { pointer, .. } = error else {
         return None;
     };
-    let position: usize = pointer
-        .strip_prefix("/transition/other/resources/")?
-        .parse()
-        .ok()?;
-    let other = &plan.transition.as_ref()?.other;
-    let resource = other.resources.get(position)?;
-    let mut uses: Vec<DeckUse> = plan
-        .resource(&resource.asset_id)
-        .map(|primary| {
-            primary
-                .used_by
-                .iter()
-                .map(|node_id| DeckUse {
-                    deck: DeckRole::Primary,
-                    node_id: node_id.clone(),
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-    uses.extend(resource.used_by.iter().map(|node_id| DeckUse {
-        deck: DeckRole::Other,
-        node_id: node_id.clone(),
-    }));
+    let (deck, role, tail) =
+        if let Some(tail) = pointer.strip_prefix("/transition/other/resources/") {
+            (&plan.transition.as_ref()?.other, DeckRole::Other, tail)
+        } else {
+            (
+                plan,
+                DeckRole::Primary,
+                pointer.strip_prefix("/resources/")?,
+            )
+        };
+    let position: usize = tail.split('/').next()?.parse().ok()?;
+    let resource = deck.resources.get(position)?;
+    let uses_of = |deck: &ScenePlan, role| -> Vec<DeckUse> {
+        deck.resource(&resource.asset_id)
+            .into_iter()
+            .flat_map(|entry| &entry.used_by)
+            .map(|node_id| DeckUse {
+                deck: role,
+                node_id: node_id.clone(),
+            })
+            .collect()
+    };
+    let uses = if plan.resource_union().err().as_ref() == Some(error) {
+        let mut uses = uses_of(plan, DeckRole::Primary);
+        uses.extend(uses_of(&plan.transition.as_ref()?.other, DeckRole::Other));
+        uses
+    } else {
+        uses_of(deck, role)
+    };
     Some((
         context(&resource.asset_id, &uses),
         suffix(&resource.asset_id, &uses),
