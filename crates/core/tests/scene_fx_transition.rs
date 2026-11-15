@@ -51,6 +51,8 @@ mod plan;
 mod public;
 #[path = "scene_fx_transition/reload.rs"]
 mod reload;
+#[path = "scene_fx_transition/restoration.rs"]
+mod restoration;
 #[path = "scene_fx_transition/review.rs"]
 mod review;
 #[path = "scene_fx_transition/scan.rs"]

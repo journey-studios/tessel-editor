@@ -45,6 +45,8 @@ mod fx_keys;
 mod fx_op;
 mod fx_scope;
 mod fx_transition;
+#[cfg(test)]
+mod fx_transition_tests;
 mod op;
 mod reference;
 mod value;
