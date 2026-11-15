@@ -2195,7 +2195,7 @@ contra referência Mac; é pré-condição ausente. Coordenador capturae3separad
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
 | BL082.4.16 | PR63 / baseline Mac | Fixture de compatibilidade não inclui perfis debug/release Mac | Correção de dados validada no Mac | BL082.4.3 | Coordenador | Captura sobre e3c20cb sem mudar core/src/Cargo.lock, probe removido/status limpo; Windowsentries canônicas inalteradas. Candidato737+fixture:106transições/10corpus e baseline debug/release passam. Head limpo93fb635 passou debug e gates; Linux não executado. |
-| BL082.4.17 | PR63 / referência X | Três lit-held não importam por instância menor que shot, comparações só parcialmente preservadas | A validar — referência aceita Windows9bafc43/Mac; consumidor de estado implementado na S2-C0b (`pilot_dissolve_representable_state.rs`, 7 cenários/98 quadros, sem pixel), a validar na revisão independente; pixels/sondas de cor pendentes para o renderer | BL082.4.1/.4.3 | Coordenador / Cursor Sonnet5.5 | JulgarT06/T10/T16 e necessidade de fixtures representáveis sem enfraquecerimportador ouregravarorigem; não promover todosos estados/sondasporassociação. Autor declara reconstrução e limites. S2-C0b: papéis, relógios bruto/amostrado/preso dos dois decks, offsets/ids/limites, Ratio (30000/1001), câmera, marcador e luzes no relógio real comparados ao plano real; fora da janela = plano puro do primário; ordem independente; 11 classes de falsificação recusadas (`p4b-s2-c0b-report.md` §4). |
+| BL082.4.17 | PR63 / referência X | Três lit-held não importam por instância menor que shot, comparações só parcialmente preservadas | A validar — referência aceita Windows9bafc43/Mac; consumidor de estado implementado na S2-C0b (`pilot_dissolve_representable_state.rs`, 7 cenários/98 quadros, sem pixel), a validar na revisão independente; pixels/sondas de cor pendentes para o renderer | BL082.4.1/.4.3 | Coordenador / Cursor Sonnet5.5 | JulgarT06/T10/T16 e necessidade de fixtures representáveis sem enfraquecerimportador ouregravarorigem; não promover todosos estados/sondasporassociação. Autor declara reconstrução e limites. S2-C0b: papéis, relógios bruto/amostrado/preso dos dois decks, offsets/ids/limites, Ratio (30000/1001), câmera, marcador e luzes no relógio real comparados ao plano real; fora da janela = plano puro do primário; ordem independente; 19 classes de falsificação recusadas (11 de relógio/papel/luz + 8 de alvo/FOV da câmera) (`p4b-s2-c0b-report.md` §4). |
 
 ### Baseline Mac capturado na base original, não no candidato
 
@@ -2452,3 +2452,10 @@ Emf3f1c8c,o reforçotest-onlytargetxyz/FOVdosdoisdecks passou8/8isolado e8/8pres
 fmt0/clippycorealltargets0. Controle original comprodutofalso falha7/1; novoscontroles
 cobrem8campos, além das11classes anteriores. Código deprodução e dados intactos.
 RevisãoWindows independente em andamento; H/R/S2A nãoiniciadas, Refuse/F064P.
+
+PR71 R1 Windows aprovou4ee9370/c2959ce e f3f1c8c,sem bloqueio de código.
+A1(testefimexclusivoprimário) e M1(docsbytesnas3portas) tratados na própriaPR
+sob.20/.21, semnovoID; M2contagenscorrigidas, M3M07substitutoexplicitado.
+ProvasR1porhead no relatório§10;215transições é previsão após novo teste, não
+resultado ainda. Refuse/F064P; escopo X continua sempixel e semestado integralde
+orientação/escala do marcador ou cor/posição das luzes.

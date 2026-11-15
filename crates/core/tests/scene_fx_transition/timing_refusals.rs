@@ -172,6 +172,32 @@ fn t(plan: &mut ScenePlan) -> &mut tessel_editor_core::scene_plan::PlanTransitio
     plan.transition.as_deref_mut().unwrap()
 }
 
+#[test]
+fn the_primary_frame_must_precede_its_shot_exclusive_end() {
+    // At frame 50, the incoming shot starts at 48. End 51 includes this frame; end 50 does not.
+    let mut inside = plan(50);
+    t(&mut inside).timing.to.shot_end_frame_exclusive = 51;
+    accepted_by_all(
+        &inside,
+        "the frame before the exclusive end belongs to the primary",
+    );
+    for (frame, what) in [
+        (
+            50,
+            "the frame exactly at the exclusive end is outside the primary",
+        ),
+        (51, "a frame past the exclusive end is outside the primary"),
+    ] {
+        let mut outside = plan(frame);
+        t(&mut outside).timing.to.shot_end_frame_exclusive = 50;
+        refused_by_all(
+            &outside,
+            "/transition/timing/to/shotEndFrameExclusive",
+            what,
+        );
+    }
+}
+
 fn cases() -> Vec<Case> {
     const FROM_END: &str = "/transition/timing/from/shotEndFrameExclusive";
     const TO_END: &str = "/transition/timing/to/shotEndFrameExclusive";

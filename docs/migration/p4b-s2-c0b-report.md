@@ -28,7 +28,9 @@ sem origem executada.
 - **Consumidor X (C).** `pilot_dissolve_representable_state.rs` lê o fixture representável do PR65 (7 cenários, 98
   quadros) e compara **estados** do plano real; nenhum pixel é desenhado ou comparado.
 - Pastas novas/arquivos tocados: ver `git diff c9c5fa0 --stat`; as contagens do diff incluem também os documentos de fechamento. Nenhum
-  arquivo acima de 800 linhas é novo e nenhum arquivo acima de 1000 linhas cresceu (`build.rs` 743 → 782 é o maior).
+  arquivo Rust acima de 800 linhas é novo e nenhum arquivo Rust acima de 1000 linhas cresceu.
+  Em `wc -l`, `build.rs` passou de 778 para 782. Exceção documental registrada: o plano canônico Markdown
+  passou de 1045 para 1063 linhas na entrega original para atualizar o contrato; não alegar a mesma restrição para docs.
   Sem mudança em `Cargo.lock`, dependências, desktop, media, runtime, renderer ou na origem.
 
 ## 2. Contrato final (resumo; o normativo é o plano)
@@ -69,7 +71,7 @@ Os 12 PNG representáveis (`dissolve-representable-assets/`), os manifestos fade
 | `scene_fx_transition/timing_refusals.rs` | 4 | cada número do timing × 9 tipos errados (float, 2.0, negativo, bool, string, null, array, objeto, > u64), campos extras, `alignment` errado, 32 planos tipados incoerentes nas **três portas** com o ponteiro do campo (janela, `primary` cedo/tarde, corte, extremos, instância curta, ids compartilhados com comprimentos diferentes, amostras sem clamp, quadros brutos/legados, `held=false` adulterado, FPS/`Ratio`) |
 | `scene_fx_transition/ceiling.rs` | 5 | 20.000 itens válidos (`[3,2,0,9993,2,0]` por deck, contados à mão), +1 passe em cada deck, caso assimétrico, luzes e vizinho no mesmo contador (`(1,0)` aceito, `(2,0)` e `(1,1)` recusados), contador tipado e de arrays, 4.194.304 bytes e +1 (inclusive chave com escape) |
 | `pilot_dissolve_representable_state.rs` + `/reference.rs` | 5 | leitura inteira (7/98/390/84 em janela), 84 quadros em janela comparados em estado, 14 fora da janela = plano puro, avaliador de deslocamento nos 98, independência de ordem (`PlanTimeline` crescente/reverso/repetido) |
-| `pilot_dissolve_representable_state/isolation.rs` | 3 | 11 classes de falsificação recusadas pela comparação (primário no corte, held da instância, held da câmera, instância marcada presa na borda, instância e câmera sem clamp, relógios trocados, relógio do primário no vizinho, fps nominal, lâmpada no relógio da instância e noutro quadro; cada classe exercida por ≥1 quadro), estado estático do hold e comprimento de câmera com layers |
+| `pilot_dissolve_representable_state/isolation.rs` | 3 | 11 classes na entrega original, 19 após f3f1c8c (8 adicionais de target/FOV), recusadas pela comparação (primário no corte, held da instância, held da câmera, instância marcada presa na borda, instância e câmera sem clamp, relógios trocados, relógio do primário no vizinho, fps nominal, lâmpada no relógio da instância e noutro quadro; cada classe exercida por ≥1 quadro), estado estático do hold e comprimento de câmera com layers |
 
 `shot_offset.rs`: unitários da regra única (2 na base, 4 agora). Três testes de `plan.rs` foram atualizados porque o wire agora
 tem 17 chaves e a regra de «cabeça presa no quadro 0» foi **substituída** pela de amostra: um vizinho com
@@ -128,7 +130,7 @@ terminados.** Primeira passada: 26 mortos, **2 sobreviventes e 1 erro de compila
 | M03 / M04 bytes `>` → `>=` (`precheck_text` / `check_text`) | mortos por 2 cada (`limits`, `ceiling`) |
 | M05 vizinho fora do contador tipado | morto por 1 (`the_typed_plan_is_judged_by_the_same_count`) |
 | **M06 luzes fora do contador tipado** | **sobreviveu** → teste tipado com luzes → morto por 1 |
-| **M07 luzes fora do contador de arrays** | **erro de compilação** → refeito (chave `"resources"` duplicada) → morto por 6 |
+| **M07 luzes fora do contador de arrays** | **erro de compilação** na primeira tentativa; substituto compilável com `"resources"` duplicado morto por6. Não é execução da exclusão literal de `lights`; verR1/T19 abaixo. |
 | M08 vizinho fora do contador de arrays | morto por 2 (`limits`, `review`) |
 | M09 sem teto superior no clamp | morto por 4 (unitários); sozinho no X estado, por 6 |
 | M10 clipe vazio não preso em 0 | morto por 1 (unitário) |
@@ -161,7 +163,7 @@ Não mutados: o ramo `DurationAboveEdit` de `check_timing_window` (nenhum teste 
 - `scene_seconds` e as sondas são diagnósticos; a suavização `shaped` é a definição do runtime recalculada no teste.
 - O primeiro/último quadro real da **câmera** do vizinho não existe no fixture (veja §4); a prova é sintética.
 
-## 8. Patches literais para o coordenador
+## 8. Patches da entrega inicial para o coordenador (já integrados)
 
 Números de linha são os de `docs/backlog.md`, `docs/features/README.md` e `docs/README.md` na base `c9c5fa0`. Nenhum
 desses arquivos foi editado nesta entrega. `<PR>` = esta PR.
@@ -175,7 +177,7 @@ desses arquivos foi editado nesta entrega. `<PR>` = esta PR.
 **Linha 2198 (BL082.4.17, tabela de pendências) e linha 2291 (mesma linha na tabela de revisão):**
 
 ```
-| BL082.4.17 | PR63 / referência X | Três lit-held não importam por instância menor que shot, comparações só parcialmente preservadas | A validar — referência aceita Windows9bafc43/Mac; consumidor de estado implementado na S2-C0b (`pilot_dissolve_representable_state.rs`, 7 cenários/98 quadros, sem pixel), a validar na revisão independente; pixels/sondas de cor pendentes para o renderer | BL082.4.1/.4.3 | Coordenador / Cursor Sonnet5.5 | JulgarT06/T10/T16 e necessidade de fixtures representáveis sem enfraquecerimportador ouregravarorigem; não promover todosos estados/sondasporassociação. Autor declara reconstrução e limites. S2-C0b: papéis, relógios bruto/amostrado/preso dos dois decks, offsets/ids/limites, Ratio (30000/1001), câmera, marcador e luzes no relógio real comparados ao plano real; fora da janela = plano puro do primário; ordem independente; 11 classes de falsificação recusadas (`p4b-s2-c0b-report.md` §4). |
+| BL082.4.17 | PR63 / referência X | Três lit-held não importam por instância menor que shot, comparações só parcialmente preservadas | A validar — referência aceita Windows9bafc43/Mac; consumidor de estado implementado na S2-C0b (`pilot_dissolve_representable_state.rs`, 7 cenários/98 quadros, sem pixel), a validar na revisão independente; pixels/sondas de cor pendentes para o renderer | BL082.4.1/.4.3 | Coordenador / Cursor Sonnet5.5 | JulgarT06/T10/T16 e necessidade de fixtures representáveis sem enfraquecerimportador ouregravarorigem; não promover todosos estados/sondasporassociação. Autor declara reconstrução e limites. S2-C0b: papéis, relógios bruto/amostrado/preso dos dois decks, offsets/ids/limites, Ratio (30000/1001), câmera, marcador e luzes no relógio real comparados ao plano real; fora da janela = plano puro do primário; ordem independente; 19 classes de falsificação recusadas (11 de relógio/papel/luz + 8 de alvo/FOV; `p4b-s2-c0b-report.md` §4). |
 ```
 ```
 | BL082.4.17 | P4b/S0-X representável | Casos válidos de hold do vizinho e luz no quadro real, com bundles importáveis | A validar — referência aceita Windows9bafc43/Mac; consumidor de estado na S2-C0b (`pilot_dissolve_representable_state.rs`), a validar; pixels pendentes | BL082.4.1/.4.2 | Coordenador / Cursor Sonnet5.5 | 7cenários/98quadros/390sondas,37specs normal/-O e5Rust no Windows/Mac da entrega inicial. Nits: papéis só por quadro, Python3.9 sem metadata3.10, janela Rust e mapa de assets; relatório próprio. S2-C0b lê o JSON (sem Python/pixel) e compara estados do plano real; hold da câmera e UNH por estado estático provados; sondas de cor (390) seguem diagnósticas. Viés agregado por cenário vs texto canônico por quadro a decidir antes do engine. Origem não executada/golden não comparável. |
@@ -243,3 +245,31 @@ Os patches comuns foram integrados pelo coordenador na PR71 com status A validar
 O teto de bytes só é julgado na porta textual; as portas Value e tipada não recebem
 texto. A contagem20000 é julgada nas três portas. Revisão Windows independente
 em execução; Refuse fechado e F064produtoP.
+
+## 10. Revisão independente Windows R1 e fechamento das ressalvas
+
+R1 aprovou o código em4ee9370/c2959ce e o reforço f3f1c8c, com ressalvas não bloqueantes.
+Executou os gates completos em4ee9370; em f3f1c8c,fmt/clippy/no-run e conjuntos focados
+isolado/preserve/workspace214/10/5/8/1,baseline release1. Lib617,desktopFX80;
+corecompleto1728/2/7 apenasem4ee9370,comosdoisgizmosdabase. Mac não foi herdado.
+18mutantes próprios:16mortos,1equivalente(T10,f<edit já implicado pelos intervalos),
+1lacuna(T11,ramo do fim exclusivo do shot primário). Probes de extremos concordaram
+entre portas sem pânico e dados/5hashes publicados permaneceram iguais; o revisor não
+conseguiu enumerar a lista privada de80hashes do autor. Código novo de produção não
+foi encontrado em f3f1c8c; d5d5dd3 foi visto só porstat de3docs na R1, sem leitura do conteúdo.
+
+A1: o coordenador acrescenta teste permanente de frame50 com fim51 (aceito), fim50
+(recusado) e frame51/fim50 (recusado), nas3portas com ponteiro exato e documento intacto.
+No Mac, o teste matou a remoção do ramo `f >= shotEndFrameExclusive`: 0passam/1falha
+por aceitar frame50/fim50. A produção restaurada passou1/1. Logs `primary-end-mutant.log`
+e `primary-end-green.log` em~/.cache/tessel-pr71-mac-20261115; clone restaurado limpo.
+Nenhuma mudança de produção foi necessária. Os checks do commit publicado ainda serão registrados porhead.
+M1: F064 e plano canônico corrigidos para bytes apenas na porta textual, itens nas3.
+M2: contagem de linhas corrigida, distinguindo Rust da exceção documental do plano.
+M3: o M07 compilável do autor é um substituto. A exclusão literal de `lights` do
+pré-check (`ITEM_ARRAYS` com5entradas) foi morta na R1/T19 pelo teste preexistente
+`review::lights_of_either_deck_count_before_any_item_is_read`, não isoladamente por ceiling.
+M4: target/FOV do X provados em f3f1c8c; as classes agora são19 (11+8). Os mutantes
+R1 de targetx e FOV morreram no consumidorX. Permanecem fora da comparação: orientação
+e escala do marcador, cor e posição das luzes (a intensidade é comparada) e varreduraFOV.
+Isso não muda nenhum limiar ou fixture nem constitui prova de pixel/render.

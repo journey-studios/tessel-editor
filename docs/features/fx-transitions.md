@@ -806,8 +806,9 @@ o da maior faixa (principal ou camada) e o primário guarda os quadros brutos (a
 bruto 23 / amostrado 11 no caso legado). O wire experimental sem `alignment`/`timing` é recusado em
 `/transition/alignment` e `PLAN_VERSION` continua 1; planos sem transição não mudam um byte.
 
-Provas: um plano **válido** de exatamente 20.000 itens e de exatamente 4.194.304 bytes é aceito pelas três portas, e um
-passe, uma luz ou um byte a mais é recusado em `/transition` (BL082.4.21); a referência representável do PR65
+Provas: um plano **válido** de exatamente 20.000 itens é aceito em `validate`, `from_json` e `from_json_str`;
+um passe ou uma luz a mais é recusado em `/transition`. O texto de exatamente 4.194.304 bytes é aceito por
+`from_json_str`, e um byte a mais é recusado nessa porta textual (BL082.4.21); a referência representável do PR65
 (`dissolve-representable-cases.json`) é lida como **estado** pelo plano real, sem Python e sem pixel (BL082.4.17).
 Continua fora: o gate público (`Refuse`), runtime/shader/export, UI e qualquer pixel. Evidências, mutantes, limites e os
 patches do coordenador: [p4b-s2-c0b-report.md](../migration/p4b-s2-c0b-report.md).

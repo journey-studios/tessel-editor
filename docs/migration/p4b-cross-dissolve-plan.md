@@ -286,8 +286,9 @@ recursivo está no **plano**, onde `transition.other` é um `ScenePlan`:
   memória limitados, sem estouro de pilha; `other` corrompido (T28); teto no limite exato e um item acima.
   **S2-C0b (BL082.4.21):** o limite exato é também provado com um plano **válido** (não só com `null`): 20.000 itens
   (`[3,2,0,9993,2,0]` por deck, contados à mão pelos tamanhos dos seis arrays) e o texto de exatamente 4.194.304 bytes
-  (espaço em branco) são aceitos pelas três portas e um passe, luz ou byte a mais é recusado em `/transition`. O
-  contador tipado e o de arrays contam os dois decks e as luzes. Um plano externo válido com esse tamanho **não**
+  (espaço em branco) têm provas distintas: itens nas três portas; bytes somente em `from_json_str`.
+  Um passe/luz a mais é recusado nas três portas; um byte a mais é recusado na porta textual, em `/transition`.
+  O contador tipado e o de arrays contam os dois decks e as luzes. Um plano externo válido com esse tamanho **não**
   implica que um bundle o produza: as cotas do documento (`MAX_FX_TRACKS`) o limitam muito antes e não foram alteradas.
 
 ### 5.4 Ida e volta
