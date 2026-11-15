@@ -841,3 +841,74 @@ H foi aprovada internamente pela R2 Windows emd7c52b7 (código05f37da, testesfe1
 render76, core216/10/5/8/1 isolado/preserve e gates de compilação0. Export Windows10/12
 só por shasum de BL167.3; Mac8a489bf12/12 é prova separada do caminho antigo. R/S2A,
 pixels de transição e todas as superfícies de produto de F064 continuam pendentes.
+
+### BL082.4.4: leitor interno do plano de dois decks no runtime (S2-R0)
+
+O runtime ganha um leitor **puro e interno** do wire C0b (`runtime/src/directed-transition*.js`; contrato em
+[p4b-s2-r0-parser-plan.md](../migration/p4b-s2-r0-parser-plan.md), evidências em
+[p4b-s2-r0-parser-report.md](../migration/p4b-s2-r0-parser-report.md)). Ele lê o deck de cima e o vizinho
+(`transition.other`) **pelo mesmo leitor de deck** (`directed-deck.js`, extraído mecanicamente de `parseDirectedLayer`),
+confere a mistura (`progress` = `ease((frameInWindow + 0,5)/D)`, `amount` = `clamp01(intensity)`, nunca `intensity × progress`),
+a janela, as identidades, os dois relógios independentes de cada deck e os tempos exatos reduzidos, e devolve os dois decks,
+a mistura e `clocks` (`{raw, sampled, held}` por relógio). Uma recusa é um `RuntimeError` tipado com o ponteiro do campo; o
+erro do vizinho vem prefixado **uma vez** com `/transition/other`; o do topo não muda. Portas: `parseTransitionPlan(objeto)` e
+`parseTransitionPlanText(texto)`; só a segunda mede bytes (teto de 4 194 304 bytes UTF-8 do texto recebido, antes do
+`JSON.parse`); o teto de 20 000 itens (seis arrays dos dois decks, por comprimento, antes de ler qualquer elemento) e a
+profundidade 1 valem nas duas, sem recursão.
+
+**Nada disto é produto.** O leitor não está ligado a compositor, bridge, worker nem `hello`: `SCENE_CAPABILITIES` continua
+com 13 capacidades (sem `fxTransition`), o core continua com 14, a admissão pública continua `Refuse` e
+`parseDirectedLayer` continua recusando todo plano com `transition` (agora também com `invalid_plan` em `/requires` quando
+o plano tem a chave sem exigir `fxTransition`). Não há renderização, GL, pixel, flag nem ativação. Interoperabilidade: o
+teste `crates/render/tests/scene_transition_parser.rs` entrega ao leitor, via Node (obrigatório; ausente é falha), os
+planos que o core constrói em cada quadro da janela do bundle público e confere o resultado contra o plano tipado; 29
+planos adulterados são recusados pelo core e pelo leitor no mesmo ponteiro. Continuam pendentes (BL082.4.4/F064): carregar
+os dois decks, desenhar a mistura, bridge/worker, gestos, UI e qualquer pixel (S2 restante).
+
+R0, reforço do coordenador antes do merge: os seis campos de array de cada deck devem
+ser próprios; herança de protótipo recusa no campo antes da leitura/contagem, fechando
+a fuga por herança de protótipo. Accessors/Proxy com estado ainda podem trocar o array
+depois da contagem na API de objeto (R2:30.002 recursos aceitos); JSON textual não os
+produz e nenhuma entrada produtiva entrega dados assim. Planos JSON e planos sem transição conservam o contrato.
+Inteiros JS são valores seguros, não fidelidade lexical:12.0/12e0 viram Number12 no
+JSON.parse, enquanto o leitor textual Rust pode recusar essas grafias. Um teste Rust→Node
+adicional verifica um plano completo aceito pelo core com20.000 itens e recusa20.001;
+o vetor JS de recursos sintéticos sozinho não demonstra validade do plano no core.
+A R2 em a3c357b conferiu esse reforço sem herdar o aceite de9c3a643; o fechamento posterior só altera docs/testes.
+
+R0, reforço de diagnóstico: uma razão não reduzida (por exemplo editTime6/4 em36/24fps)
+recusa no próprio campo antes da comparação entre decks; não culpa o vizinho3/2. A
+prova Node inclui também testes antigos de browser/luz/splat/overlays; isso não é
+renderização de transição nem aceite de GPU/desempenho ou UI física.
+
+### R0 — limites de correspondência JS/Rust (R1 Windows)
+
+A R1 independente de9c3a643 confirmou diferenças além dos inteiros seguros:
+JSON.parse apaga grafias como12.0/34.0/2e0/4.1e1/-0/3.0, aceitas como valores
+inteiros no JS onde o leitor textual Rust as recusa. transition.id no JS só exige
+texto não vazio, sem reproduzir64bytes e [A-Za-z0-9_-] do core. O JS é mais estrito
+em sceneInstanceId/cameraClipId/contentHash/revisionId vazios, FOV fora de(0,180)
+e contadores em2^53. A derivação exata de requires pertence ao core; o parser JS
+verifica capacidades conhecidas e cobertura entre decks, sem reproduzir a lista exata.
+Isto é coerência parcial de um leitor interno, não equivalência completa de validadores,
+procedência de cena nem capacidade pública de desenhar. F064 P/Refuse/JS13 permanecem.
+
+Um planVersion cíclico/BigInt na API de objeto agora produz unsupported_plan_version
+tipado e serializável. found/message dos valores JSON normais permanecem iguais;
+quando JSON.stringify falha, found vira o rótulo [unserializable object] ou
+[unserializable bigint]. Nenhum dado malformado é aceito por esse reparo.
+
+### R0 — aceite interno R2 e limites dos objetos JavaScript
+
+R2 Windows aprova a3c357b sem bloqueio: grupo Node194 (120puros), interop5,
+core216/10/5/8/1 nos dois perfis, fmt/check/clippy/no-run/build0 e tree sem gpui/wry.
+Não houve workspace global, GPU física/desempenho, UI física ou origem executada.
+
+A API de objeto espera dados estáveis. Accessors/Proxy com estado podem contornar
+o teto após a contagem (30.002 recursos reproduzidos); não há isolamento de código
+JavaScript arbitrário. toJSON instável também pode fazer a serialização posterior
+do erro falhar. Ciclos/BigInt dos testes têm recusa tipada e serializável, sem uma
+garantia universal sobre objetos executáveis/profundos. O caminho textual recebe
+JSON, não esses objetos, e o parser interno continua fora das portas produtivas.
+Esses limites ficam em BL082.4.4 para o desenho/transporte seguinte. Produto P,
+Refuse fechado e JS13; não é aceite de pixels, cache/lifecycle ou ativação.
