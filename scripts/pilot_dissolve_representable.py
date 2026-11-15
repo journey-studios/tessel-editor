@@ -832,7 +832,10 @@ def cmd_generate(origin, directory, check, require_pin):
     (directory / ASSET_DIR).mkdir(parents=True, exist_ok=True)
     for name, data in wanted.items():
         (directory / name).write_bytes(data)
-    report([], warnings)
+    differences = compare(directory, wanted)
+    report(differences, warnings)
+    if differences:
+        return EXIT_FINDING
     say(sys.stdout, "wrote %d files (%s, %s and %d assets)" % (len(wanted), CASES_NAME, MANIFEST_NAME, len(wanted) - 2))
     return EXIT_OK
 

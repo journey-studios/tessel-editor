@@ -779,6 +779,7 @@ class Structure(unittest.TestCase):
         wanted = g.expected_files()
         self.assertEqual(wanted, g.expected_files(), "deterministic")
         self.assertEqual(g.compare(g.FIXTURES, wanted), [])
+        self.assertEqual(wanted[g.CASES_NAME], CASES_BYTES)
 
     def test_unlisted_assets_fail_both_inventory_gates_without_being_deleted(self):
         with TemporaryDirectory(prefix="dissolve-inventory-") as temporary:
@@ -794,7 +795,17 @@ class Structure(unittest.TestCase):
             self.assertEqual(g.main(["generate", "--check", "--out", temporary]), g.EXIT_FINDING)
             self.assertEqual(g.main(["verify", "--out", temporary]), g.EXIT_FINDING)
             self.assertTrue(orphan.exists(), "verification must not delete an unlisted file")
-        self.assertEqual(wanted[g.CASES_NAME], CASES_BYTES)
+
+    def test_generation_reports_an_unlisted_asset_without_deleting_it(self):
+        # Isolate output validation; this does not prove origin provenance or pin membership.
+        with TemporaryDirectory(prefix="dissolve-generate-inventory-") as temporary:
+            directory = Path(temporary)
+            with patch.object(g.C, "check_origin", return_value=([], [])):
+                self.assertEqual(g.cmd_generate(Path("origin-fixture"), directory, False, False), g.EXIT_OK)
+                orphan = directory / g.ASSET_DIR / "flat-ffffff.png"
+                orphan.write_bytes(next((directory / g.ASSET_DIR).glob("*.png")).read_bytes())
+                self.assertEqual(g.cmd_generate(Path("origin-fixture"), directory, False, False), g.EXIT_FINDING)
+            self.assertTrue(orphan.exists(), "generation must report rather than delete an unlisted file")
 
     def test_manifest_provenance(self):
         manifest = json.loads((g.FIXTURES / g.MANIFEST_NAME).read_text(encoding="utf-8"))
