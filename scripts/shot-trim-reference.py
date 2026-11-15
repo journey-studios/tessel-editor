@@ -189,9 +189,9 @@ ORACLE_CHOICES = {
     "CHAIN_MIDDLE": "A clip that CONTAINS the removed stretch keeps its keys at the same clip-relative frames (#12 'not re-timed'), pruned at the new end; a clip whose HEAD is cut shifts its keys by the cut (instants kept), pruned below 0 (D09).",
     "EMPTY_CONTAINER": "When the last key track of a light is removed, its `keys` object is removed too (the list rule of #15 says 'undefined'; the container is not mentioned).",
     "REFUSAL_ORDER": "When two rules refuse the same op the oracle reports, in order: SHOTS_OPTION_NOT_YET, SHOT_NOT_FOUND, SHOTS_NOT_ADJACENT, SHOTS_LAYER_NOT_YET, SHOT_TOO_SHORT, CONTINUOUS_JOIN, NO_HEAD_FRAMES, EDIT_TOO_LONG, LOCKED, TRANSITION_TOO_LONG, then the gate (CANDIDATE_REJECTED). The corpus has one rule per refusal case.",
-    "LOCKED_AUTO": "`auto` that would follow tries to stay anchored when `editLocked` forbids following (#10, #30); if anchoring is not possible either (not enough head), the op is LOCKED.",
+    "LOCKED_AUTO": "Under `editLocked`, `auto` takes the first policy that keeps the step (#10, #30): its own mix, then a full anchor (the `move_cut` direction of #30, where following changes the step), then a full follow (the head ripple, where anchoring changes the step and following keeps it); if none keeps it, the op is LOCKED.",
     "GATE": "Findings of the final gate are reported as CANDIDATE_REJECTED with the codes of the origin rules the candidate breaks (integrity, joins, fx clips and keys, transitions); the pose check of continuous joins (CONTINUOUS_*_JUMP) and the lighting reader are not modelled (T06).",
-    "AUDIO_WARNING": "`explain` compares the edit with the END of the audio window and allows one frame of slack; `locked` is the `editLocked` flag of the instance; `NARRATION_PAST_EDIT` is not modelled.",
+    "AUDIO_WARNING": "`explain` compares the edit with the LENGTH of the audio window on the edit (`editEndSecondsExclusive - editStartSeconds`, since edit time t plays the source at `editStartSeconds + t`) and allows one frame of slack; `locked` is the `editLocked` flag of the instance; `NARRATION_PAST_EDIT` is not modelled.",
     "TRANSITION_KEYS": "Transitions in the minimal document have no keys; `shrink_transitions` only changes `durationFrames`.",
 }
 
@@ -423,6 +423,8 @@ def _anchor_candidates(content, d, head, reserve, continuous_in, no_head_limit):
     out = [first]
     if first < d and head >= d:
         out.append(d)
+    if 0 not in out:
+        out.append(0)
     return out
 
 
@@ -600,7 +602,12 @@ def _apply_layers(doc, old, new, chain, keep_absolute, notes):
                 scope = clip.get("scope") or {"kind": "output"}
                 start, end = clip["startFrame"], clip["startFrame"] + clip["durationFrames"]
                 if scope["kind"] == "shot":
-                    shot_id = scope["shotId"]
+                    shot_id = scope.get("shotId")
+                    if shot_id not in new or shot_id not in old:
+                        # A clip of a shot the edit does not have: an invalid document the gate refuses; the
+                        # remap leaves the clip as it is instead of failing.
+                        survivors.append(clip)
+                        continue
                     delta = (new[shot_id][0] - new[shot_id][2]) - (old[shot_id][0] - old[shot_id][2])
                     result = reframe_shot_clip(start, end, delta, new[shot_id][0], new[shot_id][1])
                 elif keep_absolute:
@@ -695,8 +702,9 @@ def _finish(doc, old, new, chain, edit_duration, opts, changed_ids, limit_for, e
     return notes
 
 
-def _follow_note(shot, anchored, followed):
-    if followed <= 0:
+def _follow_note(shot, anchored, followed, content):
+    """#28: `auto` that falls back to follow says so. An explicit `follow` asked for it: no note."""
+    if followed <= 0 or content != "auto":
         return []
     return [{"code": "AUTO_FELL_TO_FOLLOW", "shot": shot["id"], "anchored": anchored, "followed": followed}]
 
@@ -791,7 +799,7 @@ def edge_start_ripple(doc, shot, frame, opts):
         if followed > 0:
             chain.append(("ins", chain_end + a, followed))
         try:
-            return _finish(doc, old, new, chain, edit, opts, set([shot["id"]]), limit_early, _follow_note(shot, a, followed))
+            return _finish(doc, old, new, chain, edit, opts, set([shot["id"]]), limit_early, _follow_note(shot, a, followed, opts["content"]))
         except Refusal as refusal:
             if refusal.code != "LOCKED" or opts["content"] != "auto":
                 raise
@@ -849,7 +857,7 @@ def edge_roll(doc, previous, following, frame, opts):
                 chain.append(("ins", frame, a))
             chain.append(("ins", chain_end - followed, followed))
         try:
-            return _finish(doc, old, new, chain, doc["editDurationFrames"], opts, changed, limit_for, _follow_note(following, a, followed))
+            return _finish(doc, old, new, chain, doc["editDurationFrames"], opts, changed, limit_for, _follow_note(following, a, followed, opts["content"]))
         except Refusal as refusal:
             if refusal.code != "LOCKED" or opts["content"] != "auto":
                 raise
@@ -1179,10 +1187,12 @@ def explain_shots(doc):
     fps = doc.get("fps")
     if audio and fps:
         per_second = Fraction(fps["numerator"], fps["denominator"])
+        start_seconds = Fraction(str(audio["editStartSeconds"]))
         end_seconds = Fraction(str(audio["editEndSecondsExclusive"]))
-        audio_frames = end_seconds * per_second
+        # Edit time t plays the source at editStartSeconds + t: the window lasts end - start on the edit.
+        audio_frames = (end_seconds - start_seconds) * per_second
         out["audio"] = {
-            "edit_start_seconds": _number(Fraction(str(audio["editStartSeconds"]))),
+            "edit_start_seconds": _number(start_seconds),
             "edit_end_seconds_exclusive": _number(end_seconds),
             "frames": _number(audio_frames),
         }
@@ -1491,7 +1501,7 @@ def build_cases():
     keyed = [{"id": "t", "clips": [clip("k1", 40, 30, keys={"amount": [(0, 0.1), (12, 0.4), (25, 0.8)], "tint": [(5, 1.0)]}, fade_in=10, fade_out=10)]}]
     add("t13-moves-whole-keys-intact", ["T13", "T12"], "A clip that moves whole keeps its keys as they are", base3(tracks=[{"id": "t", "clips": [clip("k1", 62, 20, keys={"amount": [(0, 0.1), (19, 0.8)]})]}]), [op_set("a", 50)])
     add("t13-head-cut-shifts-and-prunes", ["T13"], "A clip with its head cut: keys shift by the cut and the ones below 0 are dropped, with a note", base3(tracks=keyed), [op_set("b", 5)])
-    add("t13-tail-cut-prunes", ["T13"], "A clip with its tail cut: keys at the new end or after are dropped", base3(tracks=[{"id": "t", "clips": [clip("k2", 35, 30, keys={"amount": [(0, 0.1), (10, 0.5), (24, 0.9)]})]}]), [op_edit(70)])
+    add("t13-tail-cut-prunes", ["T13"], "An output clip with its tail cut: keys at the new end or after are dropped", base3(tracks=[{"id": "t", "clips": [clip("k2", 60, 25, keys={"amount": [(0, 0.1), (10, 0.5), (24, 0.9)]})]}]), [op_edit(70)])
     add("t13-stretched-keeps-keys", ["T13"], "A stretched clip keeps its keys at the same relative frames", base3(tracks=[{"id": "t", "clips": [clip("k3", 40, 30, keys={"amount": [(0, 0.1), (29, 0.9)]})]}]), [op_set("b", 50)])
     add("t13-fade-reduced", ["T13"], "Fades that no longer fit are reduced, the fade in first", base3(tracks=[{"id": "t", "clips": [clip("f1", 40, 30, fade_in=14, fade_out=14)]}]), [op_set("b", 20)])
     add("t13-fade-out-reduced", ["T13"], "When the fade in alone fits, the fade out takes the excess", base3(tracks=[{"id": "t", "clips": [clip("f2", 45, 20, fade_in=4, fade_out=14)]}]), [op_set("b", 20)])
@@ -1510,7 +1520,7 @@ def build_cases():
     add("t14-too-long-roll", ["T14", "T02"], "A roll that leaves a shot too short for its transition: the limit is the nearest legal cut", base3(transitions=[transition("tr1", "b", "c", 10, "center")]), [op_cut("b", "c", 33)], "TRANSITION_TOO_LONG")
     add("t14-too-long-head", ["T14", "T03"], "A head cut that leaves the incoming shot too short for its transition", base3(transitions=[transition("tr1", "a", "b", 20, "start")]), [op_trim("b", "start", 45)], "TRANSITION_TOO_LONG")
     add("t14-edit-duration", ["T14", "T04"], "set_edit_duration judges the transitions of the last shot", base3(transitions=[transition("tr1", "b", "c", 10, "center")]), [op_edit(62)], "TRANSITION_TOO_LONG")
-    add("t14-two-transitions-shrink", ["T14"], "Two touched transitions are both reduced", base3(transitions=[transition("tr1", "a", "b", 20, "end"), transition("tr2", "b", "c", 20, "start")]), [op_set("b", 6, shrink_transitions=True)])
+    add("t14-two-transitions-shrink", ["T14"], "Two transitions reduced in one batch, each by the op that shortens the shot it lies in", base3(transitions=[transition("tr1", "a", "b", 20, "end"), transition("tr2", "b", "c", 20, "start")]), [op_set("a", 6, shrink_transitions=True), op_edit(42, shrink_transitions=True)])
     add("t14-keeps-others", ["T14"], "A transition between untouched shots is not judged", mk_doc(
         [("a", 0, 30, "ia", 0, 0), ("b", 30, 60, "ib", 0, 0), ("c", 60, 90, "ic", 0, 0), ("d", 90, 120, "id", 0, 0)],
         [("ia", 60, False), ("ib", 60, False), ("ic", 60, False), ("id", 60, False)],
@@ -1518,6 +1528,11 @@ def build_cases():
 
     # ---- T14b: handles and the reserve of auto (needs the admission of transitions of the destination) ------
     hold_use = [transition("tr1", "b", "c", 6, "end", handles="use")]
+    locked_head = mk_doc(
+        [("a", 0, 30, "il", 0, 0), ("b", 30, 60, "il", 30, 30), ("c", 60, 90, "ib", 0, 0)],
+        [("il", 120, True), ("ib", 60, False)])
+    add("t07-head-ripple-auto-follows-to-keep-step", ["T07", "T03"], "a and b are in step on a locked instance: anchoring b's new head frames would break the step, so auto follows", locked_head, [op_trim("b", "start", 20)], tags=["FOLLOW"])
+    add("t07-head-ripple-anchor-locked", ["T07", "T03"], "The same head ripple with anchor breaks the step: LOCKED", locked_head, [op_trim("b", "start", 20, content="anchor")], "LOCKED")
     add("t14b-anchor-loses-head-handle", ["T14b"], "anchor takes the head frames the transition needs: the gate refuses with TRANSITION_NO_HANDLES", mk_doc(
         [("a", 0, 30, "ia", 0, 0), ("b", 30, 60, "ib", 0, 0), ("c", 60, 90, "ic", 10, 10)],
         [("ia", 60, False), ("ib", 60, False), ("ic", 120, False)], transitions=hold_use), [op_cut("b", "c", 54, content="anchor")], "CANDIDATE_REJECTED", tags=["AUTO_RESERVE"])
@@ -1530,6 +1545,9 @@ def build_cases():
     add("t14b-hold-needs-nothing", ["T14b"], "A transition with handles hold needs no frames: the same roll passes", mk_doc(
         [("a", 0, 30, "ia", 0, 0), ("b", 30, 60, "ib", 0, 0), ("c", 60, 90, "ic", 10, 10)],
         [("ia", 60, False), ("ib", 60, False), ("ic", 120, False)], transitions=[transition("tr1", "b", "c", 6, "end")]), [op_cut("b", "c", 54, content="anchor")])
+    add("t14b-follow-spends-tail-handle", ["T14b"], "auto follows 6 frames into c, which shows its scene to the end: the use transition out of c lacks tail frames (#29)", mk_doc(
+        [("a", 0, 30, "ia", 0, 0), ("b", 30, 60, "ib", 0, 0), ("c", 60, 90, "ic", 4, 4), ("d", 90, 120, "id", 0, 0)],
+        [("ia", 60, False), ("ib", 60, False), ("ic", 40, False), ("id", 60, False)], transitions=[transition("tr1", "c", "d", 6, "start", handles="use")]), [op_cut("b", "c", 50)], "CANDIDATE_REJECTED", tags=["AUTO_RESERVE", "FOLLOW"])
     add("t14b-locked-auto-falls-back", ["T07", "T14b"], "auto cannot follow in a locked pair, so it anchors all 10: the transition then lacks head frames", mk_doc(
         [("a", 0, 30, "il", 0, 0), ("b", 30, 60, "ib", 0, 0), ("c", 60, 90, "il", 60, 12)],
         [("il", 120, True), ("ib", 60, False)], transitions=[transition("tr1", "b", "c", 6, "end", handles="use")]), [op_cut("b", "c", 50)], "CANDIDATE_REJECTED", tags=["AUTO_RESERVE", "FOLLOW"])
@@ -1580,6 +1598,7 @@ def build_cases():
     add_explain("t19-edit-longer-than-audio", ["T19"], "The edit passes the audio by more than a frame", base3(extra={"audio": {"editStartSeconds": 0, "editEndSecondsExclusive": 2.5}}))
     add_explain("t19-audio-within-one-frame", ["T19"], "One frame of slack on either side: no warning", base3(extra={"audio": {"editStartSeconds": 0, "editEndSecondsExclusive": 3.75}}))
     add_explain("t19-no-audio", ["T19"], "Without audio there is no warning", base3())
+    add_explain("t19-window-not-at-zero", ["T19"], "The window 2.0-3.75 s lasts 1.75 s (42 frames) on the edit: the 90-frame edit passes it", base3(extra={"audio": {"editStartSeconds": 2.0, "editEndSecondsExclusive": 3.75}}))
     return cases
 
 

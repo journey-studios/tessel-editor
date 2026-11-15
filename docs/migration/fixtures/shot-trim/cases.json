@@ -2987,14 +2987,7 @@
             }
           ]
         },
-        "notes": [
-          {
-            "anchored": 0,
-            "code": "AUTO_FELL_TO_FOLLOW",
-            "followed": 10,
-            "shot": "b"
-          }
-        ],
+        "notes": [],
         "ok": true
       },
       "id": "t02-cut-earlier-follow",
@@ -5088,14 +5081,7 @@
             }
           ]
         },
-        "notes": [
-          {
-            "anchored": 0,
-            "code": "AUTO_FELL_TO_FOLLOW",
-            "followed": 10,
-            "shot": "b"
-          }
-        ],
+        "notes": [],
         "ok": true
       },
       "id": "t03-head-earlier-follow",
@@ -5671,14 +5657,7 @@
             }
           ]
         },
-        "notes": [
-          {
-            "anchored": 0,
-            "code": "AUTO_FELL_TO_FOLLOW",
-            "followed": 10,
-            "shot": "a"
-          }
-        ],
+        "notes": [],
         "ok": true
       },
       "id": "t03-first-negative-follow",
@@ -9029,14 +9008,7 @@
             }
           ]
         },
-        "notes": [
-          {
-            "anchored": 0,
-            "code": "AUTO_FELL_TO_FOLLOW",
-            "followed": 10,
-            "shot": "b"
-          }
-        ],
+        "notes": [],
         "ok": true
       },
       "id": "t05-roll-follow-continuation-outside",
@@ -10379,14 +10351,7 @@
             }
           ]
         },
-        "notes": [
-          {
-            "anchored": 0,
-            "code": "AUTO_FELL_TO_FOLLOW",
-            "followed": 10,
-            "shot": "b"
-          }
-        ],
+        "notes": [],
         "ok": true
       },
       "id": "t07-follow-continuation-in-step",
@@ -11222,12 +11187,6 @@
           ]
         },
         "notes": [
-          {
-            "anchored": 0,
-            "code": "AUTO_FELL_TO_FOLLOW",
-            "followed": 10,
-            "shot": "b"
-          },
           {
             "code": "INSTANCE_GREW",
             "from": 30,
@@ -16243,14 +16202,7 @@
             }
           ]
         },
-        "notes": [
-          {
-            "anchored": 0,
-            "code": "AUTO_FELL_TO_FOLLOW",
-            "followed": 10,
-            "shot": "b"
-          }
-        ],
+        "notes": [],
         "ok": true
       },
       "id": "t11-roll-follow-slides-clips",
@@ -16751,14 +16703,7 @@
             }
           ]
         },
-        "notes": [
-          {
-            "anchored": 0,
-            "code": "AUTO_FELL_TO_FOLLOW",
-            "followed": 10,
-            "shot": "b"
-          }
-        ],
+        "notes": [],
         "ok": true
       },
       "id": "t11-continuation-clips-follow",
@@ -18961,14 +18906,7 @@
             }
           ]
         },
-        "notes": [
-          {
-            "anchored": 0,
-            "code": "AUTO_FELL_TO_FOLLOW",
-            "followed": 10,
-            "shot": "b"
-          }
-        ],
+        "notes": [],
         "ok": true
       },
       "id": "t12-roll-follow-chain",
@@ -20011,7 +19949,7 @@
             {
               "clips": [
                 {
-                  "durationFrames": 30,
+                  "durationFrames": 25,
                   "id": "k2",
                   "keys": {
                     "amount": [
@@ -20032,7 +19970,7 @@
                       }
                     ]
                   },
-                  "startFrame": 35
+                  "startFrame": 60
                 }
               ],
               "id": "t"
@@ -20124,7 +20062,7 @@
               {
                 "clips": [
                   {
-                    "durationFrames": 30,
+                    "durationFrames": 10,
                     "id": "k2",
                     "keys": {
                       "amount": [
@@ -20132,20 +20070,10 @@
                           "easing": "linear",
                           "frame": 0,
                           "value": 0.1
-                        },
-                        {
-                          "easing": "linear",
-                          "frame": 10,
-                          "value": 0.5
-                        },
-                        {
-                          "easing": "linear",
-                          "frame": 24,
-                          "value": 0.9
                         }
                       ]
                     },
-                    "startFrame": 35
+                    "startFrame": 60
                   }
                 ],
                 "id": "t"
@@ -20218,7 +20146,17 @@
             }
           ]
         },
-        "notes": [],
+        "notes": [
+          {
+            "clip": "k2",
+            "code": "KEYS_PRUNED",
+            "frames": [
+              10,
+              24
+            ],
+            "param": "amount"
+          }
+        ],
         "ok": true
       },
       "id": "t13-tail-cut-prunes",
@@ -20234,7 +20172,7 @@
         "T13"
       ],
       "tags": [],
-      "title": "A clip with its tail cut: keys at the new end or after are dropped"
+      "title": "An output clip with its tail cut: keys at the new end or after are dropped"
     },
     {
       "document": {
@@ -24144,7 +24082,7 @@
               "id": "cam"
             }
           ],
-          "editDurationFrames": 66,
+          "editDurationFrames": 42,
           "fps": {
             "denominator": 1,
             "numerator": 24
@@ -24154,7 +24092,7 @@
             "transitions": [
               {
                 "alignment": "end",
-                "durationFrames": 20,
+                "durationFrames": 6,
                 "fromShotId": "a",
                 "handles": "hold",
                 "id": "tr1",
@@ -24162,7 +24100,7 @@
               },
               {
                 "alignment": "start",
-                "durationFrames": 20,
+                "durationFrames": 6,
                 "fromShotId": "b",
                 "handles": "hold",
                 "id": "tr2",
@@ -24193,7 +24131,7 @@
               "cameraClipId": "cam",
               "cameraInFrame": 0,
               "editRange": {
-                "endFrameExclusive": 30,
+                "endFrameExclusive": 6,
                 "startFrame": 0
               },
               "id": "a",
@@ -24206,7 +24144,7 @@
               "cameraInFrame": 0,
               "editRange": {
                 "endFrameExclusive": 36,
-                "startFrame": 30
+                "startFrame": 6
               },
               "id": "b",
               "instanceStartFrame": 0,
@@ -24221,7 +24159,7 @@
               "cameraClipId": "cam",
               "cameraInFrame": 0,
               "editRange": {
-                "endFrameExclusive": 66,
+                "endFrameExclusive": 42,
                 "startFrame": 36
               },
               "id": "c",
@@ -24235,7 +24173,20 @@
             }
           ]
         },
-        "notes": [],
+        "notes": [
+          {
+            "code": "TRANSITION_SHRUNK",
+            "from": 20,
+            "to": 6,
+            "transition": "tr1"
+          },
+          {
+            "code": "TRANSITION_SHRUNK",
+            "from": 20,
+            "to": 6,
+            "transition": "tr2"
+          }
+        ],
         "ok": true
       },
       "id": "t14-two-transitions-shrink",
@@ -24244,7 +24195,13 @@
         {
           "set_shot_duration": {
             "frames": 6,
-            "shot": "b",
+            "shot": "a",
+            "shrink_transitions": true
+          }
+        },
+        {
+          "set_edit_duration": {
+            "frames": 42,
             "shrink_transitions": true
           }
         }
@@ -24253,7 +24210,7 @@
         "T14"
       ],
       "tags": [],
-      "title": "Two touched transitions are both reduced"
+      "title": "Two transitions reduced in one batch, each by the op that shortens the shot it lies in"
     },
     {
       "document": {
@@ -24498,6 +24455,304 @@
       ],
       "tags": [],
       "title": "A transition between untouched shots is not judged"
+    },
+    {
+      "document": {
+        "cameraClips": [
+          {
+            "durationFrames": 300,
+            "id": "cam"
+          }
+        ],
+        "editDurationFrames": 90,
+        "fps": {
+          "denominator": 1,
+          "numerator": 24
+        },
+        "fx": {
+          "tracks": [],
+          "transitions": []
+        },
+        "sceneDefinitions": [],
+        "sceneInstances": [
+          {
+            "durationFrames": 120,
+            "editLocked": true,
+            "id": "il",
+            "sceneDefinitionId": "def-il"
+          },
+          {
+            "durationFrames": 60,
+            "id": "ib",
+            "sceneDefinitionId": "def-ib"
+          }
+        ],
+        "shots": [
+          {
+            "cameraClipId": "cam",
+            "cameraInFrame": 0,
+            "editRange": {
+              "endFrameExclusive": 30,
+              "startFrame": 0
+            },
+            "id": "a",
+            "instanceStartFrame": 0,
+            "intent": "shot a",
+            "sceneInstanceId": "il"
+          },
+          {
+            "cameraClipId": "cam",
+            "cameraInFrame": 30,
+            "editRange": {
+              "endFrameExclusive": 60,
+              "startFrame": 30
+            },
+            "id": "b",
+            "instanceStartFrame": 30,
+            "intent": "shot b",
+            "sceneInstanceId": "il",
+            "transitionInto": {
+              "reason": "scene change",
+              "type": "cut"
+            }
+          },
+          {
+            "cameraClipId": "cam",
+            "cameraInFrame": 0,
+            "editRange": {
+              "endFrameExclusive": 90,
+              "startFrame": 60
+            },
+            "id": "c",
+            "instanceStartFrame": 0,
+            "intent": "shot c",
+            "sceneInstanceId": "ib",
+            "transitionInto": {
+              "reason": "scene change",
+              "type": "cut"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "changed": true,
+        "document": {
+          "cameraClips": [
+            {
+              "durationFrames": 300,
+              "id": "cam"
+            }
+          ],
+          "editDurationFrames": 100,
+          "fps": {
+            "denominator": 1,
+            "numerator": 24
+          },
+          "fx": {
+            "tracks": [],
+            "transitions": []
+          },
+          "sceneDefinitions": [],
+          "sceneInstances": [
+            {
+              "durationFrames": 120,
+              "editLocked": true,
+              "id": "il",
+              "sceneDefinitionId": "def-il"
+            },
+            {
+              "durationFrames": 60,
+              "id": "ib",
+              "sceneDefinitionId": "def-ib"
+            }
+          ],
+          "shots": [
+            {
+              "cameraClipId": "cam",
+              "cameraInFrame": 0,
+              "editRange": {
+                "endFrameExclusive": 30,
+                "startFrame": 0
+              },
+              "id": "a",
+              "instanceStartFrame": 0,
+              "intent": "shot a",
+              "sceneInstanceId": "il"
+            },
+            {
+              "cameraClipId": "cam",
+              "cameraInFrame": 30,
+              "editRange": {
+                "endFrameExclusive": 70,
+                "startFrame": 30
+              },
+              "id": "b",
+              "instanceStartFrame": 30,
+              "intent": "shot b",
+              "sceneInstanceId": "il",
+              "transitionInto": {
+                "reason": "scene change",
+                "type": "cut"
+              }
+            },
+            {
+              "cameraClipId": "cam",
+              "cameraInFrame": 0,
+              "editRange": {
+                "endFrameExclusive": 100,
+                "startFrame": 70
+              },
+              "id": "c",
+              "instanceStartFrame": 0,
+              "intent": "shot c",
+              "sceneInstanceId": "ib",
+              "transitionInto": {
+                "reason": "scene change",
+                "type": "cut"
+              }
+            }
+          ]
+        },
+        "notes": [
+          {
+            "anchored": 0,
+            "code": "AUTO_FELL_TO_FOLLOW",
+            "followed": 10,
+            "shot": "b"
+          }
+        ],
+        "ok": true
+      },
+      "id": "t07-head-ripple-auto-follows-to-keep-step",
+      "kind": "ops",
+      "ops": [
+        {
+          "trim_shot": {
+            "edge": "start",
+            "frame": 20,
+            "shot": "b"
+          }
+        }
+      ],
+      "rows": [
+        "T07",
+        "T03"
+      ],
+      "tags": [
+        "FOLLOW"
+      ],
+      "title": "a and b are in step on a locked instance: anchoring b's new head frames would break the step, so auto follows"
+    },
+    {
+      "document": {
+        "cameraClips": [
+          {
+            "durationFrames": 300,
+            "id": "cam"
+          }
+        ],
+        "editDurationFrames": 90,
+        "fps": {
+          "denominator": 1,
+          "numerator": 24
+        },
+        "fx": {
+          "tracks": [],
+          "transitions": []
+        },
+        "sceneDefinitions": [],
+        "sceneInstances": [
+          {
+            "durationFrames": 120,
+            "editLocked": true,
+            "id": "il",
+            "sceneDefinitionId": "def-il"
+          },
+          {
+            "durationFrames": 60,
+            "id": "ib",
+            "sceneDefinitionId": "def-ib"
+          }
+        ],
+        "shots": [
+          {
+            "cameraClipId": "cam",
+            "cameraInFrame": 0,
+            "editRange": {
+              "endFrameExclusive": 30,
+              "startFrame": 0
+            },
+            "id": "a",
+            "instanceStartFrame": 0,
+            "intent": "shot a",
+            "sceneInstanceId": "il"
+          },
+          {
+            "cameraClipId": "cam",
+            "cameraInFrame": 30,
+            "editRange": {
+              "endFrameExclusive": 60,
+              "startFrame": 30
+            },
+            "id": "b",
+            "instanceStartFrame": 30,
+            "intent": "shot b",
+            "sceneInstanceId": "il",
+            "transitionInto": {
+              "reason": "scene change",
+              "type": "cut"
+            }
+          },
+          {
+            "cameraClipId": "cam",
+            "cameraInFrame": 0,
+            "editRange": {
+              "endFrameExclusive": 90,
+              "startFrame": 60
+            },
+            "id": "c",
+            "instanceStartFrame": 0,
+            "intent": "shot c",
+            "sceneInstanceId": "ib",
+            "transitionInto": {
+              "reason": "scene change",
+              "type": "cut"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "ok": false,
+        "refusal": {
+          "code": "LOCKED",
+          "detail": {
+            "instance": "il",
+            "shots": [
+              "a",
+              "b"
+            ]
+          },
+          "index": 0
+        }
+      },
+      "id": "t07-head-ripple-anchor-locked",
+      "kind": "ops",
+      "ops": [
+        {
+          "trim_shot": {
+            "content": "anchor",
+            "edge": "start",
+            "frame": 20,
+            "shot": "b"
+          }
+        }
+      ],
+      "rows": [
+        "T07",
+        "T03"
+      ],
+      "tags": [],
+      "title": "The same head ripple with anchor breaks the step: LOCKED"
     },
     {
       "document": {
@@ -25245,6 +25500,150 @@
       ],
       "tags": [],
       "title": "A transition with handles hold needs no frames: the same roll passes"
+    },
+    {
+      "document": {
+        "cameraClips": [
+          {
+            "durationFrames": 300,
+            "id": "cam"
+          }
+        ],
+        "editDurationFrames": 120,
+        "fps": {
+          "denominator": 1,
+          "numerator": 24
+        },
+        "fx": {
+          "tracks": [],
+          "transitions": [
+            {
+              "alignment": "start",
+              "durationFrames": 6,
+              "fromShotId": "c",
+              "handles": "use",
+              "id": "tr1",
+              "toShotId": "d"
+            }
+          ]
+        },
+        "sceneDefinitions": [],
+        "sceneInstances": [
+          {
+            "durationFrames": 60,
+            "id": "ia",
+            "sceneDefinitionId": "def-ia"
+          },
+          {
+            "durationFrames": 60,
+            "id": "ib",
+            "sceneDefinitionId": "def-ib"
+          },
+          {
+            "durationFrames": 40,
+            "id": "ic",
+            "sceneDefinitionId": "def-ic"
+          },
+          {
+            "durationFrames": 60,
+            "id": "id",
+            "sceneDefinitionId": "def-id"
+          }
+        ],
+        "shots": [
+          {
+            "cameraClipId": "cam",
+            "cameraInFrame": 0,
+            "editRange": {
+              "endFrameExclusive": 30,
+              "startFrame": 0
+            },
+            "id": "a",
+            "instanceStartFrame": 0,
+            "intent": "shot a",
+            "sceneInstanceId": "ia"
+          },
+          {
+            "cameraClipId": "cam",
+            "cameraInFrame": 0,
+            "editRange": {
+              "endFrameExclusive": 60,
+              "startFrame": 30
+            },
+            "id": "b",
+            "instanceStartFrame": 0,
+            "intent": "shot b",
+            "sceneInstanceId": "ib",
+            "transitionInto": {
+              "reason": "scene change",
+              "type": "cut"
+            }
+          },
+          {
+            "cameraClipId": "cam",
+            "cameraInFrame": 4,
+            "editRange": {
+              "endFrameExclusive": 90,
+              "startFrame": 60
+            },
+            "id": "c",
+            "instanceStartFrame": 4,
+            "intent": "shot c",
+            "sceneInstanceId": "ic",
+            "transitionInto": {
+              "reason": "scene change",
+              "type": "cut"
+            }
+          },
+          {
+            "cameraClipId": "cam",
+            "cameraInFrame": 0,
+            "editRange": {
+              "endFrameExclusive": 120,
+              "startFrame": 90
+            },
+            "id": "d",
+            "instanceStartFrame": 0,
+            "intent": "shot d",
+            "sceneInstanceId": "id",
+            "transitionInto": {
+              "reason": "scene change",
+              "type": "cut"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "ok": false,
+        "refusal": {
+          "code": "CANDIDATE_REJECTED",
+          "findings": [
+            {
+              "code": "TRANSITION_NO_HANDLES",
+              "ref": "tr1"
+            }
+          ]
+        }
+      },
+      "id": "t14b-follow-spends-tail-handle",
+      "kind": "ops",
+      "ops": [
+        {
+          "move_cut": {
+            "frame": 50,
+            "from": "b",
+            "to": "c"
+          }
+        }
+      ],
+      "rows": [
+        "T14b"
+      ],
+      "tags": [
+        "AUTO_RESERVE",
+        "FOLLOW"
+      ],
+      "title": "auto follows 6 frames into c, which shows its scene to the end: the use transition out of c lacks tail frames (#29)"
     },
     {
       "document": {
@@ -27010,14 +27409,7 @@
             }
           ]
         },
-        "notes": [
-          {
-            "anchored": 0,
-            "code": "AUTO_FELL_TO_FOLLOW",
-            "followed": 10,
-            "shot": "b"
-          }
-        ],
+        "notes": [],
         "ok": true
       },
       "id": "t15-roll-follow-chain",
@@ -30788,6 +31180,177 @@
       ],
       "tags": [],
       "title": "Without audio there is no warning"
+    },
+    {
+      "document": {
+        "audio": {
+          "editEndSecondsExclusive": 3.75,
+          "editStartSeconds": 2.0
+        },
+        "cameraClips": [
+          {
+            "durationFrames": 300,
+            "id": "cam"
+          }
+        ],
+        "editDurationFrames": 90,
+        "fps": {
+          "denominator": 1,
+          "numerator": 24
+        },
+        "fx": {
+          "tracks": [],
+          "transitions": []
+        },
+        "sceneDefinitions": [],
+        "sceneInstances": [
+          {
+            "durationFrames": 60,
+            "id": "ia",
+            "sceneDefinitionId": "def-ia"
+          },
+          {
+            "durationFrames": 60,
+            "id": "ib",
+            "sceneDefinitionId": "def-ib"
+          },
+          {
+            "durationFrames": 60,
+            "id": "ic",
+            "sceneDefinitionId": "def-ic"
+          }
+        ],
+        "shots": [
+          {
+            "cameraClipId": "cam",
+            "cameraInFrame": 0,
+            "editRange": {
+              "endFrameExclusive": 30,
+              "startFrame": 0
+            },
+            "id": "a",
+            "instanceStartFrame": 0,
+            "intent": "shot a",
+            "sceneInstanceId": "ia"
+          },
+          {
+            "cameraClipId": "cam",
+            "cameraInFrame": 0,
+            "editRange": {
+              "endFrameExclusive": 60,
+              "startFrame": 30
+            },
+            "id": "b",
+            "instanceStartFrame": 0,
+            "intent": "shot b",
+            "sceneInstanceId": "ib",
+            "transitionInto": {
+              "reason": "scene change",
+              "type": "cut"
+            }
+          },
+          {
+            "cameraClipId": "cam",
+            "cameraInFrame": 0,
+            "editRange": {
+              "endFrameExclusive": 90,
+              "startFrame": 60
+            },
+            "id": "c",
+            "instanceStartFrame": 0,
+            "intent": "shot c",
+            "sceneInstanceId": "ic",
+            "transitionInto": {
+              "reason": "scene change",
+              "type": "cut"
+            }
+          }
+        ]
+      },
+      "expect": {
+        "explain": {
+          "audio": {
+            "edit_end_seconds_exclusive": 3.75,
+            "edit_start_seconds": 2,
+            "frames": 42
+          },
+          "edit": 90,
+          "shots": [
+            {
+              "camera_clip": "cam",
+              "camera_in": 0,
+              "end": 30,
+              "frames": 30,
+              "handles": {
+                "camera_after": 270,
+                "camera_before": 0,
+                "scene_after": 30,
+                "scene_before": 0
+              },
+              "id": "a",
+              "instance": "ia",
+              "instance_start": 0,
+              "intent": "shot a",
+              "locked": false,
+              "start": 0,
+              "transition_into": null
+            },
+            {
+              "camera_clip": "cam",
+              "camera_in": 0,
+              "end": 60,
+              "frames": 30,
+              "handles": {
+                "camera_after": 270,
+                "camera_before": 0,
+                "scene_after": 30,
+                "scene_before": 0
+              },
+              "id": "b",
+              "instance": "ib",
+              "instance_start": 0,
+              "intent": "shot b",
+              "locked": false,
+              "start": 30,
+              "transition_into": "cut"
+            },
+            {
+              "camera_clip": "cam",
+              "camera_in": 0,
+              "end": 90,
+              "frames": 30,
+              "handles": {
+                "camera_after": 270,
+                "camera_before": 0,
+                "scene_after": 30,
+                "scene_before": 0
+              },
+              "id": "c",
+              "instance": "ic",
+              "instance_start": 0,
+              "intent": "shot c",
+              "locked": false,
+              "start": 60,
+              "transition_into": "cut"
+            }
+          ],
+          "warnings": [
+            {
+              "audio_frames": 42,
+              "code": "EDIT_LONGER_THAN_AUDIO",
+              "edit_frames": 90
+            }
+          ]
+        }
+      },
+      "id": "t19-window-not-at-zero",
+      "kind": "explain",
+      "ops": [],
+      "rows": [
+        "T19"
+      ],
+      "tags": [],
+      "title": "The window 2.0-3.75 s lasts 1.75 s (42 frames) on the edit: the 90-frame edit passes it"
     }
   ],
   "d07_audit": {
@@ -31029,13 +31592,13 @@
   "kind": "origin-text transcription (ORIGIN_NOT_EXECUTED)",
   "max_edit_frames": 216000,
   "oracle_choices": {
-    "AUDIO_WARNING": "`explain` compares the edit with the END of the audio window and allows one frame of slack; `locked` is the `editLocked` flag of the instance; `NARRATION_PAST_EDIT` is not modelled.",
+    "AUDIO_WARNING": "`explain` compares the edit with the LENGTH of the audio window on the edit (`editEndSecondsExclusive - editStartSeconds`, since edit time t plays the source at `editStartSeconds + t`) and allows one frame of slack; `locked` is the `editLocked` flag of the instance; `NARRATION_PAST_EDIT` is not modelled.",
     "AUTO_RESERVE": "Decision #29 writes `a = min(d, instanceStartFrame, cameraInFrame)` minus the transition reserve. The oracle reads it as `a = max(0, min(d, min(instanceStartFrame, cameraInFrame) - reserve))` (the reserve is taken out of the head frames that EXIST, so a short slip is still fully anchored). The literal reading is `max(0, min(d, instanceStartFrame, cameraInFrame) - reserve)`. The two differ when `d` is smaller than the head frames: the corpus has a case tagged AUTO_RESERVE that shows it, and the coordinator should settle it before S1 (no pilot code to execute).",
     "BOUNDARY": "A point (a key) at the frame where frames are inserted moves with them (`frame >= at`), and a clip that starts there moves whole; a clip that ENDS there (exclusive end) does not stretch. For a removed stretch [a, b): a point inside is dropped, a point at or after `b` moves back by `b - a`. The origin documents say 'after the point' and 'inside the removed stretch' without the border.",
     "CHAIN_MIDDLE": "A clip that CONTAINS the removed stretch keeps its keys at the same clip-relative frames (#12 'not re-timed'), pruned at the new end; a clip whose HEAD is cut shifts its keys by the cut (instants kept), pruned below 0 (D09).",
     "EMPTY_CONTAINER": "When the last key track of a light is removed, its `keys` object is removed too (the list rule of #15 says 'undefined'; the container is not mentioned).",
     "GATE": "Findings of the final gate are reported as CANDIDATE_REJECTED with the codes of the origin rules the candidate breaks (integrity, joins, fx clips and keys, transitions); the pose check of continuous joins (CONTINUOUS_*_JUMP) and the lighting reader are not modelled (T06).",
-    "LOCKED_AUTO": "`auto` that would follow tries to stay anchored when `editLocked` forbids following (#10, #30); if anchoring is not possible either (not enough head), the op is LOCKED.",
+    "LOCKED_AUTO": "Under `editLocked`, `auto` takes the first policy that keeps the step (#10, #30): its own mix, then a full anchor (the `move_cut` direction of #30, where following changes the step), then a full follow (the head ripple, where anchoring changes the step and following keeps it); if none keeps it, the op is LOCKED.",
     "REFUSAL_ORDER": "When two rules refuse the same op the oracle reports, in order: SHOTS_OPTION_NOT_YET, SHOT_NOT_FOUND, SHOTS_NOT_ADJACENT, SHOTS_LAYER_NOT_YET, SHOT_TOO_SHORT, CONTINUOUS_JOIN, NO_HEAD_FRAMES, EDIT_TOO_LONG, LOCKED, TRANSITION_TOO_LONG, then the gate (CANDIDATE_REJECTED). The corpus has one rule per refusal case.",
     "TRANSITION_KEYS": "Transitions in the minimal document have no keys; `shrink_transitions` only changes `durationFrames`."
   },

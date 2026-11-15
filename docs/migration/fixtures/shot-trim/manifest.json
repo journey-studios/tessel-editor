@@ -1,8 +1,8 @@
 {
   "corpus": {
-    "cases": 163,
+    "cases": 167,
     "file": "cases.json",
-    "sha256": "0c091a8d1aaf96f49e70fe79bf8d7180496a7f08874ab0b158595307858b2d83"
+    "sha256": "f48179ac90ed0e155040bced8154a76c4732d4ed3e624269a4d775ea1636d67f"
   },
   "deferred_fields_source": "crates/core/src/directed_scene/mod.rs:81-100",
   "flags": [
