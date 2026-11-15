@@ -129,6 +129,19 @@ pub fn available_frames(total: i64, start: i64, length: i64) -> i64 {
     total.saturating_sub(start.saturating_add(length)).max(0)
 }
 
+/// Frames to add to the END of a clip of `total` frames so that `after` real frames follow the last
+/// frame of a shot that starts at `start` and runs `length` (BL082.4.25): `start + length + after -
+/// total`, never negative. It differs from `after - available_frames(..)` exactly when the clip
+/// already ends before the shot does (`available_frames` is saturated at zero there): extending
+/// by the saturated number leaves the clip short. Checked: a sum past `i64` is `i64::MAX`, a
+/// repair no document can meet, only ever reported by a refusal.
+pub(crate) fn missing_frames_after(total: i64, start: i64, length: i64, after: i64) -> i64 {
+    start
+        .checked_add(length)
+        .and_then(|end| end.checked_add(after))
+        .map_or(i64::MAX, |wanted| wanted.saturating_sub(total).max(0))
+}
+
 #[cfg(test)]
 mod tests {
     use core::prelude::v1::test;
@@ -196,6 +209,55 @@ mod tests {
         assert_eq!(available_frames(40, 5, 40), 0);
         assert_eq!(available_frames(60, 10, 40), 10);
         assert_eq!(available_frames(0, 0, 48), 0);
+    }
+
+    #[test]
+    fn the_tail_repair_counts_the_frames_the_clip_lacks_to_reach_the_shot_too() {
+        // `cameraIn 40`, a camera of 60 and a shot of 48: the clip ends 28 frames before the shot,
+        // so 6 frames after it need 34 more, not the 6 the saturated tail suggests.
+        assert_eq!(missing_frames_after(60, 40, 48, 6), 34);
+        assert_eq!(missing_frames_after(94, 40, 48, 6), 0);
+        assert_eq!(missing_frames_after(93, 40, 48, 6), 1);
+        assert_eq!(missing_frames_after(66, 40, 48, 6), 28);
+        // The corpus' shot-a: 40 frames from `cameraIn 5` in a camera of 40; 6 after: 11.
+        assert_eq!(missing_frames_after(40, 5, 40, 6), 11);
+        // A clip with room beyond the shot: the same number as the saturated difference.
+        assert_eq!(missing_frames_after(60, 10, 40, 15), 5);
+        assert_eq!(missing_frames_after(60, 10, 40, 10), 0);
+        assert_eq!(missing_frames_after(0, 0, 0, 0), 0);
+    }
+
+    #[test]
+    fn the_tail_repair_agrees_with_the_saturated_difference_wherever_the_clip_reaches_the_shot() {
+        for total in 0..30 {
+            for start in 0..10 {
+                for length in 0..12 {
+                    for after in 0..8 {
+                        let exact = missing_frames_after(total, start, length, after);
+                        let legacy = (after - available_frames(total, start, length)).max(0);
+                        assert!(exact >= legacy, "{total} {start} {length} {after}");
+                        if start + length <= total {
+                            assert_eq!(exact, legacy, "{total} {start} {length} {after}");
+                        }
+                        // Adding exactly `exact` frames is enough, one fewer is not.
+                        assert_eq!(missing_frames_after(total + exact, start, length, after), 0);
+                        if exact > 0 {
+                            assert!(
+                                missing_frames_after(total + exact - 1, start, length, after) > 0
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_tail_repair_saturates_on_overflow_instead_of_wrapping() {
+        assert_eq!(missing_frames_after(10, i64::MAX, 1, 0), i64::MAX);
+        assert_eq!(missing_frames_after(10, 0, i64::MAX, 1), i64::MAX);
+        assert_eq!(missing_frames_after(i64::MAX, i64::MAX, 0, 1), i64::MAX);
+        assert_eq!(missing_frames_after(i64::MAX, i64::MAX - 1, 1, 0), 0);
     }
 
     #[test]

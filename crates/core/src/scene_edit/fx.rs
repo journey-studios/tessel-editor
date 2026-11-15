@@ -324,11 +324,15 @@ fn run_batch(
         root.remove("fx");
     }
     let modified = work != *scene.document();
-    // Preserve the target kind: a removed clip's ID can be reused by a new transition.
+    // Preserve the target kind (a removed clip's ID can be reused by a new transition) and the
+    // generation (a removed `x` and a new `x` are two entities): only an op that touched the entity
+    // the candidate holds answers for it.
+    let survivors = super::fx_lineage::touched_the_survivor(&changes);
     let pointers: Vec<(usize, String)> = changes
         .iter()
-        .filter(|change| !change.noop)
-        .filter_map(|change| {
+        .zip(survivors)
+        .filter(|(change, survivor)| !change.noop && *survivor)
+        .filter_map(|(change, _)| {
             let pointer = match &change.transition {
                 Some(id) => pointer_of(&work, id),
                 None => find_clip(&work, &change.clip)

@@ -21,7 +21,7 @@ use crate::directed_scene::issue::Issue;
 use crate::directed_scene::{Bundle, NodeKind, Shot, ShotReach, Transition};
 
 use super::transition_read::TransitionDraft;
-use super::window::check_duration;
+use super::window::{check_duration, missing_frames_after};
 use super::{
     FxTransition, Handles, TRANSITION_DUPLICATE, TRANSITION_NO_HANDLES, TRANSITION_NOT_AT_CUT,
     TRANSITION_ON_CONTINUOUS, TRANSITION_OUT_OF_RANGE, TRANSITION_OVERLAP, TRANSITION_SPLAT_COST,
@@ -69,11 +69,16 @@ fn reach(bundle: &Bundle, shot: &Shot) -> Option<Reach> {
 /// (`cameraInFrame` is past the end of a clip of `camera_frames`: `cameraInFrame - camera_frames`).
 /// Extending the end does not feed the start and the other way round. `camera_end` is 0 on the
 /// outgoing side and whenever the camera clip cannot be measured.
+///
+/// `camera_extend` is the frames to add to the clip so that the lack is repaired (BL082.4.25). On
+/// the start side it is `camera`. On the tail it is the exact `missing_frames_after`, which is more
+/// than `camera` when the clip already ends before the shot does; 0 when `camera` is 0.
 struct Lack<'a> {
     shot: &'a Shot,
     side: &'static str,
     instance: i64,
     camera: i64,
+    camera_extend: i64,
     camera_end: i64,
     camera_in: i64,
     camera_frames: i64,
@@ -86,9 +91,15 @@ fn lack<'a>(
     instance_handle: i64,
     camera_handle: i64,
     camera_end: (i64, i64),
+    camera_extend: Option<i64>,
 ) -> Option<Lack<'a>> {
     let instance = (needed - instance_handle).max(0);
     let camera = (needed - camera_handle).max(0);
+    let camera_extend = if camera > 0 {
+        camera_extend.unwrap_or(camera)
+    } else {
+        0
+    };
     // A window that asks for no frames on this side (`needed` 0: a start-aligned window has none
     // before the cut) reads nothing of the head, so a camera entered past its end is no fault.
     let (camera_end, camera_frames) = if needed > 0 { camera_end } else { (0, 0) };
@@ -97,6 +108,7 @@ fn lack<'a>(
         side,
         instance,
         camera,
+        camera_extend,
         camera_end,
         camera_in: frames(shot.camera_in_frame),
         camera_frames,
@@ -148,7 +160,7 @@ fn fixes_of(lack: &Lack<'_>) -> Vec<String> {
     if lack.camera > 0 {
         fixes.push(format!(
             "extend its camera clip {} by {} frames {}",
-            lack.shot.camera_clip_id, lack.camera, lack.side
+            lack.shot.camera_clip_id, lack.camera_extend, lack.side
         ));
     }
     if lack.camera_end > 0 {
@@ -188,6 +200,18 @@ fn handle_issue(
         return None;
     }
     let (head_camera, head_end) = head_camera(bundle, to.0);
+    // The exact repair of the tail: the clip's own length decides it, and a clip that cannot be
+    // measured has every frame, so it never lacks one.
+    let tail_extend = bundle
+        .camera_clip_frames(&from.0.camera_clip_id)
+        .map(|total| {
+            missing_frames_after(
+                frames(total),
+                frames(from.0.camera_in_frame),
+                frames(from.0.duration_frames()),
+                window.after,
+            )
+        });
     let lacks: Vec<Lack<'_>> = [
         lack(
             from.0,
@@ -196,6 +220,7 @@ fn handle_issue(
             from.1.tail_instance,
             from.1.tail_camera,
             (0, 0),
+            tail_extend,
         ),
         lack(
             to.0,
@@ -204,6 +229,7 @@ fn handle_issue(
             to.1.head_instance,
             head_camera,
             head_end,
+            None,
         ),
     ]
     .into_iter()
@@ -244,6 +270,10 @@ fn handle_issue(
                 entry["cameraIn"] = json!(lack.camera_in);
                 entry["cameraFrames"] = json!(lack.camera_frames);
             }
+            // Only where the exact repair is not the `camera` the lack always had (BL082.4.25).
+            if lack.camera_extend != lack.camera {
+                entry["cameraExtend"] = json!(lack.camera_extend);
+            }
             entry
         })
         .collect();
@@ -254,7 +284,8 @@ fn handle_issue(
             json!({
                 "shot": lack.shot.id,
                 "side": if lack.side.starts_with("before") { "before" } else { "after" },
-                "instance": lack.instance, "camera": lack.camera, "cameraEnd": lack.camera_end,
+                "instance": lack.instance, "camera": lack.camera, "cameraExtend": lack.camera_extend,
+                "cameraEnd": lack.camera_end,
                 "cameraIn": lack.camera_in, "cameraFrames": lack.camera_frames,
                 "sceneInstance": lack.shot.scene_instance_id,
                 "cameraClip": lack.shot.camera_clip_id,

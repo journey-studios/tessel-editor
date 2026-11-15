@@ -42,9 +42,12 @@ mod fx_choice;
 mod fx_inspector;
 mod fx_intent;
 mod fx_keys;
+mod fx_lineage;
 mod fx_op;
 mod fx_scope;
 mod fx_transition;
+#[cfg(test)]
+mod fx_transition_tests;
 mod op;
 mod reference;
 mod value;

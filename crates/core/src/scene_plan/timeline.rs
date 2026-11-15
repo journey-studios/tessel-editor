@@ -46,6 +46,7 @@ use crate::directed_scene::{
 };
 
 use super::build::Prepared;
+use super::transition_validate::within_other;
 use super::{PlanError, PlanOptions, ScenePlan};
 
 /// The frame-independent part of a shot's plans. Both stages are kept as results so a failure is
@@ -165,19 +166,24 @@ impl<'a> PlanTimeline<'a> {
             return Ok(plan);
         };
         // The neighbour's clocks come from the same shared layouts as the primary's.
-        let shot = bundle
-            .shot(window.other_shot_id)
-            .ok_or_else(|| PlanError::Unresolved {
+        // Every step of the neighbour deck says so in its error (BL082.4.19), as `ScenePlan::build_with`.
+        let shot = bundle.shot(window.other_shot_id).ok_or_else(|| {
+            within_other(PlanError::Unresolved {
                 kind: "shot",
                 id: window.other_shot_id.to_string(),
-            })?;
-        let neighbour = bundle.evaluate_shot_at_offset_with(
-            shot,
-            edit_frame,
-            |instance| self.node_timeline(instance),
-            |clip_id| self.camera_timeline(clip_id),
-        )?;
-        let other = self.plan_of(&neighbour.evaluation, options, window.other_passes.clone())?;
+            })
+        })?;
+        let neighbour = bundle
+            .evaluate_shot_at_offset_with(
+                shot,
+                edit_frame,
+                |instance| self.node_timeline(instance),
+                |clip_id| self.camera_timeline(clip_id),
+            )
+            .map_err(|error| within_other(error.into()))?;
+        let other = self
+            .plan_of(&neighbour.evaluation, options, window.other_passes.clone())
+            .map_err(within_other)?;
         plan.with_transition(
             window,
             (neighbour.held_instance, neighbour.held_camera),

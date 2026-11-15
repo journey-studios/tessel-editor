@@ -112,6 +112,75 @@ fn a_missing_or_invalid_count_preserves_the_original_diagnostic() {
     }
 }
 
+/// BL082.4.28 (permanent, A01): every count the projection reads is a whole, non-negative JSON
+/// integer. A count that is present and is not one (text, negative, fractional, null, or `3.0`,
+/// which is a float even when whole) never becomes a zero: the importer's message and hint are
+/// kept and the problem says `untranslated`. The optional `cameraEnd` is the one that may be
+/// absent or zero; the other two are required.
+#[test]
+fn a_present_but_invalid_count_never_becomes_zero_and_keeps_the_original_diagnostic() {
+    let invalid = [json!("12"), json!(-1), json!(1.5), Value::Null, json!(3.0)];
+    for key in ["instance", "camera", "cameraEnd"] {
+        for value in &invalid {
+            // `cameraIn` 4 over a 3-frame clip: 2 short at the start and 1 past the end, so the
+            // three counts are all present in the projection's input.
+            let mut issue = refused(&head(4, 3), "use");
+            let entry = issue.details.as_mut().unwrap()["args"]["lacks"][0]
+                .as_object_mut()
+                .unwrap();
+            assert!(entry.contains_key(key), "{key} is in the input");
+            entry.insert(key.to_string(), value.clone());
+            for locale in Locale::ALL {
+                let result = project_problem(&RawProblem::from_issue(&issue), locale);
+                let label = format!("{key} = {value} in {locale:?}");
+                assert_eq!(result.message, issue.message, "{label}");
+                assert_eq!(
+                    result.hint.as_deref(),
+                    Some(hint(&issue).as_str()),
+                    "{label}"
+                );
+                assert_eq!(result.details["untranslated"], true, "{label}");
+            }
+        }
+    }
+}
+
+/// BL082.4.28 (permanent, A01): the optional `cameraEnd` that is absent, or present as zero,
+/// is a fault that does not exist: the sentence names the start fault only, translated.
+#[test]
+fn an_absent_or_zero_camera_end_is_translated_as_no_end_fault() {
+    let end_sentence = [
+        (Locale::PtBr, "quadros do fim do seu clipe de câmera"),
+        (Locale::En, "frames past the end of its camera clip"),
+        (Locale::Es, "fotogramas del final de su clip de cámara"),
+    ];
+    for value in [None, Some(json!(0))] {
+        let mut issue = refused(&head(4, 3), "use");
+        let entry = issue.details.as_mut().unwrap()["args"]["lacks"][0]
+            .as_object_mut()
+            .unwrap();
+        match &value {
+            Some(value) => entry.insert("cameraEnd".to_string(), value.clone()),
+            None => entry.remove("cameraEnd"),
+        };
+        for (locale, sentence) in end_sentence {
+            let result = project_problem(&RawProblem::from_issue(&issue), locale);
+            let text = format!("{} | {}", result.message, result.hint.clone().unwrap());
+            assert!(result.details.get("untranslated").is_none(), "{locale:?}");
+            assert!(!text.contains(sentence), "{locale:?}: {text}");
+            assert!(!text.contains(['{', '}']), "{locale:?}: {text}");
+            // The start fault (2 frames of camera) is still said.
+            assert!(text.contains('2'), "{locale:?}: {text}");
+        }
+    }
+    // The control: with the end fault present the same sentence appears.
+    let issue = refused(&head(4, 3), "use");
+    for (locale, sentence) in end_sentence {
+        let result = project_problem(&RawProblem::from_issue(&issue), locale);
+        assert!(result.message.contains(sentence), "{locale:?}");
+    }
+}
+
 #[test]
 fn a_duplicate_cut_hint_names_the_editors_real_operation() {
     let error = admit(two_transitions(json!({"id":"a"}), json!({"id":"b"}))).unwrap_err();
