@@ -269,3 +269,18 @@ O Windows do guard ainda precisa de rechecagem. Hashes do§10 são do reforço f
 
 - scripts/pilot_dissolve_representable.py: 79407b1ac72a1bb369055c244bc0c3c029c0ca3f184b1a4472fa99de1878eb28
 - scripts/pilot_dissolve_representable.spec.py: 176ca90bf6c7700ce0929de16d787f5463eb931208b1d1db26a9e1ba6a1b1e8c
+
+## 13. Integração com a S1b aceita
+
+O merge `7a78c40` incorpora a main `90609da` (PR63), sem conflito de código.
+As resoluções preservam os históricos de backlog, a matriz F064 e o contrato.
+O diff de produção contra essa main é vazio; os dados, bundles, sondas, limiares,
+manifesto e PNGs são idênticos aos de `93037e0`.
+
+No Mac, nesse head limpo: spec Python 38/38, teste Rust de importabilidade 5/5
+e clippy do alvo com `-D warnings`, todos com saída 0. O teste novo verifica que
+as duas portas recusam um PNG extra sem apagá-lo. Os logs ficam em
+`representable-merged-{spec,rust,clippy}.log`, no diretório de evidências do coordenador.
+Isto valida a integração do teste de importabilidade com a S1b; não executa o
+consumidor de dois decks nem pixels. A R2 Windows de `93037e0` continua atribuída
+àquele head; a integração e o novo guard precisam de uma rechecagem Windows curta.
