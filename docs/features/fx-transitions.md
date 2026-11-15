@@ -831,6 +831,7 @@ arquivo ou tocar a raiz. Todo erro atribuível a um recurso carrega `details.res
 e a mensagem nomeia o(s) deck(s); o código do erro não muda (`resource_unknown` continua `resource_unknown` no
 `approved_map`). Erros globais (raiz inexistente, teto total) não recebem atribuição inventada. O custo de splats conta
 **cada uso qualificado** dos dois decks (ids de nó iguais em decks diferentes contam duas vezes) e os bytes de um arquivo
-compartilhado contam uma vez; as somas saturam e nunca dão a volta. Continua **sem** admissão pública (`Refuse`): os
+compartilhado contam uma vez. Custo de imagem ou soma total não representável é recusado com `resource_budget`,
+inclusive com orçamento `u64::MAX`, antes de mudar slots; a conta de eviction também é verificada. Continua **sem** admissão pública (`Refuse`): os
 testes usam a admissão oculta `Accept` somente em `crates/render/tests`. Plano, mutantes, limites e os patches do
 coordenador: [p4b-s2-host-resource-report.md](../migration/p4b-s2-host-resource-report.md).

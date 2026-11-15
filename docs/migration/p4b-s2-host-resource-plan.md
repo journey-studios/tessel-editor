@@ -290,7 +290,7 @@ fn resolve(&self, plan: &ScenePlan, resources: &SceneResourceMap) -> Result<Vec<
 - Todos os erros de recurso de `resolve` (`resource_unresolved`, `resource_mismatch` por
   revisão/hash, não arquivo e formato splat) passam por `attribute_backend`. Os dois tetos
   globais não.
-- Endurecimento restrito de overflow (decisão 5): a soma de bytes do quadro e `held + incoming`
+- Endurecimento inicial de overflow (decisão 5, supersedido pelo reforço §8): a soma de bytes do quadro e `held + incoming`
   passam a `saturating_add`. Antes, dois recursos com `widthPx × heightPx × 4` saturado
   (`u64::MAX`) somavam com `Iterator::sum` (panic em debug, wrap em release e aceite). Agora o
   total satura e o quadro é recusado com `resource_budget`, sem mutar o livro.
@@ -331,3 +331,16 @@ livro. Os dois helpers só acrescentam contexto quando o pointer é exatamente
 testes novos em `crates/render/tests/`; docs: este plano, o relatório e as cláusulas de
 `docs/features/{fx-transitions,scene-plan,scene-resource-integration,scene-export}.md`.
 Nenhum caller de `from_root` precisa mudar. `Cargo.toml`/`Cargo.lock` inalterados.
+
+### 8. Reforço do coordenador na integração
+
+A implementação inicial saturava o custo e a soma, mas com orçamento `u64::MAX` isso podia
+admitir um custo maior que o representável. Contrato final: custo individual e soma total de
+bytes não representáveis dão `resource_budget` antes de qualquer mutação. Soma `held + incoming`
+que estoure nunca prova que os recursos cabem: o livro evicta recursos antigos dispensáveis
+até que uma soma verificada caiba. `incoming` é subconjunto do total já verificado.
+
+Os testes cobrem orçamento padrão e máximo, dois custos individuais exatos de 2^63 cujo total
+não cabe, preservação de slots na recusa e eviction quando os custos antigo e novo cabem
+separadamente, mas não juntos. Injeção de identidades nesses testes é prova de bookkeeping,
+não de reaprovação de hashes pelo media. A integração inclui a main c5400bb/PR72.

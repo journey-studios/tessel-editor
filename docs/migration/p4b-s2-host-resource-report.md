@@ -23,9 +23,9 @@ Windows/Mac independentes e o alvo `scene_export` com runtime ainda não existem
   `render_failed`). `job_error` copia só `details.resource` para o `JobError` (junto de `backend_code`).
   Erros globais (raiz inexistente, tetos totais de slots/bytes/splats) **não** recebem atribuição inventada.
 - Custo: o teto de splats soma **cada uso qualificado** dos dois decks (ids de nó iguais em decks diferentes contam duas
-  vezes); bytes de um arquivo compartilhado contam uma vez. Somas e comparações de eviction **saturam**
-  (`fold(0, saturating_add)`, `held.saturating_add(incoming)`): antes um `u64::MAX` somado por `Iterator::sum` entrava em
-  pânico em debug e dava a volta em release (achado latente, já alcançável com `plan.resources`, agora com testes).
+  vezes); bytes de um arquivo compartilhado contam uma vez. Custos e soma total não representáveis são **recusados**, inclusive
+  com orçamento `u64::MAX`, antes de mudar slots. A eviction exige soma verificada. A saturação inicial do autor
+  não fechava esse caso no orçamento máximo e foi corrigida pelo coordenador (§11).
 - A admissão pública de transições continua `Refuse` (`invalid_bundle`, issue `FX_TRANSITION_NOT_YET`). A admissão
   oculta `Accept` só aparece em `crates/render/tests`.
 
@@ -58,7 +58,7 @@ capability, UI, preflight de intervalo nem ativação S2A.
 | Porta | IO | Códigos preservados | Testes (`crates/render/tests/`) |
 |---|---|---|---|
 | `SceneResourceMap::from_root` | **arquivo**: `canonicalize` do root e de cada `relativePath`, recusa de escape (link/junção) | os códigos existentes de `from_root` (plano da união, arquivo ausente, escape da raiz) com o contexto do deck; raiz inexistente global | `scene_host_union_maps`: carrega o recurso só-vizinho antes/depois do corte; arquivo ausente nomeia o deck `other`; raiz inexistente sem atribuição; junção que sai da raiz recusada; conflito de metadados antes de qualquer IO |
-| `SceneSlots::resolve`/`prepare` | **arquivo** (tamanho/hash/bytes do caminho do mapa) e **livro** de slots | `invalid_plan`, `resource_budget`, `resource_mismatch`, revisão/hash/ausente, `stale_generation` | `scene_host_union_slots`: compartilhado + exclusivo = uma entrada cada e carregados uma vez no corte; geração nova; recusas atômicas (livro não se move); removido após aprovação; tetos de slots/bytes no limite exato; overflow; eviction com imagem enorme; splats |
+| `SceneSlots::resolve`/`prepare` | **arquivo** (`is_file`; inspeção de SPZ) e **livro** de slots; hash é declarado pelo mapa aprovado | `invalid_plan`, `resource_budget`, `resource_mismatch`, revisão/hash/ausente, `stale_generation` | `scene_host_union_slots`: compartilhado + exclusivo = uma entrada cada e carregados uma vez no corte; geração nova; recusas atômicas (livro não se move); removido após aprovação; tetos de slots/bytes no limite exato; overflow; eviction com imagem enorme; splats |
 | `scene_operation::approved_map` | **aprovado** (`SceneResourceSession`): nenhum arquivo é aberto | `resource_unknown`, `resource_not_carried`, `scene_resources_not_loaded`, `stale_generation`, `resource_budget_exceeded` | ausência no aprovado → `resource_unknown` com o deck; chave = cena do projeto; caminho aprovado relativo mantém o código; removido depois da aprovação ainda mapeia |
 | `scene_export::resource_map` (+ `job_error`) | **aprovado** (`ResourceResolver`); o job lê o arquivo depois | idem, mais `render_failed`/`backend_unavailable` no `JobError` com `backend_code` | os mesmos casos nos três tipos de erro (`CommandError`, `BackendError`, `JobError`); regressão de plano sem transição |
 
@@ -136,7 +136,7 @@ Windows, Git Bash real, `./scripts/cargo`, alvo padrão/mbx, sem `CARGO_TARGET_D
 | `test --workspace --locked --no-run` | exit 0 (**compilou** todos os alvos; **não** executou) | 323 hits / 141 misses |
 | `build -p tessel-editor --locked` | exit 0 | 0 hits / 19 misses |
 | render: lib + `scene_seam` + `scene_flow_resources` + 2 alvos H | **16 + 28 + 4 + 10 + 13 = 71 passaram, 0 falharam**, executados | — |
-| core focado, perfil isolado (`TESSEL_EXPECT_PRESERVE_ORDER=0`) | `scene_fx_transition` **215/215**, `pilot_dissolve_corpus` 10/10, `scene_fx_target` 10/10 (X estado), `scene_plan_transition_baseline` 1/1 | 4 hits / 5 misses |
+| core focado, perfil isolado (`TESSEL_EXPECT_PRESERVE_ORDER=0`) | `scene_fx_transition` **215/215**, `pilot_dissolve_corpus` 10/10, `scene_fx_target` 10/10 (F061, não X estado), `scene_plan_transition_baseline` 1/1 | 4 hits / 5 misses |
 | core focado, `--features serde_json/preserve_order` (`=1`) | os mesmos 215/10/10/1, todos verdes | 0 hits / 14 misses |
 | `cargo tree -p tessel-editor-core` | sem `gpui`/`wry` | — |
 | `scene_export` render com `TESSEL_REQUIRE_RUNTIME=1` | **BLOQUEADO** (12/12 falharam **pelo guarda**, não por regressão) | ver §8 |
@@ -175,7 +175,7 @@ Nenhum dado, fixture, `Cargo.*` ou arquivo comum mudou. Os testes constroem os r
   sugerir a nota "(a união dos dois decks, S2-H)". Não editei: fora dos docs desta fatia.
 - BL082.4.4: H passa a "implementada, a validar"; R e S2A seguem pendentes.
 
-## 10. Patches literais para os arquivos comuns (não aplicados)
+## 10. Patches literais originais (histórico; integração atual em §11)
 
 Aplicáveis com `git apply --unidiff-zero` sobre `17d03933` (verificado com `git apply --check`): `docs/backlog.md`
 (BL082.4.4) e `docs/features/README.md` (F064, F040, F041, F042). `docs/README.md` não precisa de mudança.
@@ -203,3 +203,32 @@ index db30ce4..ade3dc5 100644
 -| F064 | [Transições crossDissolve — contrato e corpus (BL082.4)](fx-transitions.md) | P | P | P | P | Fundações S0/S1a/S1b/S3a internas integradas. C0a aceita PR69; C0b PR71 validada internamente: R1 Windows 4ee9370/f3f1c8c, fechamento Windows/Mac ff39b2e (215 transições, 8 Xestado isolado/preserve, fmt/clippy0). Timing/alignment, raw/amostrado/held, teto20000 e texto4MiB, Xestado com alvo/FOV; 19 classes de falsificação. R1 e Mac completos por head no relatório. Refuse fechado, Rust14/JS13; dois gizmos Windows da base continuam vermelhos, workspace global não executado. Pixels e host/runtime/render/S2A/UI pendentes, sem origem executada/GPU/aceite humano. |
 +| F064 | [Transições crossDissolve — contrato e corpus (BL082.4)](fx-transitions.md) | P | P | P | P | Fundações S0/S1a/S1b/S3a internas integradas. C0a aceita PR69; C0b PR71 validada internamente: R1 Windows 4ee9370/f3f1c8c, fechamento Windows/Mac ff39b2e (215 transições, 8 Xestado isolado/preserve, fmt/clippy0). Timing/alignment, raw/amostrado/held, teto20000 e texto4MiB, Xestado com alvo/FOV; 19 classes de falsificação. R1 e Mac completos por head no relatório. Refuse fechado, Rust14/JS13; dois gizmos Windows da base continuam vermelhos, workspace global não executado. S2-H (BL082.4.4, a validar): os quatro carregadores de recursos do host leem a união dos dois decks, com `details.resource` e custo de splat por uso qualificado ([relatório](../migration/p4b-s2-host-resource-report.md)); admissão pública segue `Refuse`. Pixels e runtime/render/S2A/UI pendentes, sem origem executada/GPU/aceite humano. |
 ```
+
+## 11. Integração do coordenador — código 267c659
+
+Merge `b8442f6` incorpora a main c5400bb/PR72 sem conflito de conteúdo, preservando a recusa
+de instância curta nos dois shots. Código `267c659ddecc9cb06a767439adb1c87e6367bf4d` corrige
+um caso aberto pela saturação: com orçamento u64::MAX, o custo saturado podia ser aceito.
+O coordenador escreveu negativos que compilaram e falharam por asserção (11 passam/4 falham)
+na implementação inicial. Uma primeira tentativa dos testes não compilou por acessos de API;
+foi corrigida e não conta como prova de recusa. A correção rejeita custo e soma total não
+representáveis antes de mutar o livro e exige soma verificada para manter recursos na eviction.
+
+O alvo de slots passa de 13 para 15 testes. Orçamento padrão/MAX, soma de dois custos exatos
+2^63, livro já ocupado preservado na recusa e eviction com custos antigo/novo representáveis
+são cobertos. O teste de custo usa metadados tipados e o de eviction injeta novas identidades;
+não são prova de alocação enorme, novos hashes aprovados ou desempenho.
+
+Mac do coordenador no conteúdo de 267c659: mapas 10/10 e slots 15/15. A primeira execução
+Mac dos mapas deu 9/10 porque a limpeza usava remove_dir em um symlink Unix; a recusa do escape
+já passava. O teste agora usa remove_file no Unix e remove_dir para junction Windows.
+Gates Mac completos, runtime export e revisão independente Windows ainda pendentes.
+
+Correção de atribuição: os 10 testes scene_fx_target do autor são de F061, não do consumidor
+X. O consumidor correto é pilot_dissolve_representable_state (8 testes) e precisa de execução
+própria. Os 215 do autor pertencem à base sem PR72; a integração deve executar 216.
+
+O setup oficial do runtime no Mac passou, com FFmpeg existente e pnpm congelado. Isso ainda
+não é prova de execução scene_export. O bloqueio Windows do autor é preservado como fato
+por máquina; nenhuma falha ou guarda foi tratada como verde. Workspace global não executado,
+sem pixel de transição, origem, GPU, desempenho ou UI física; Refuse/F064 P.
