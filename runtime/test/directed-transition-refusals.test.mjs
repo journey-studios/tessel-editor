@@ -4,7 +4,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
+import { invalid } from '../src/directed-deck.js';
 import { parseTransitionPlan, parseTransitionPlanText } from '../src/directed-transition.js';
+import { withinOther } from '../src/directed-transition-decks.js';
 import { RuntimeError } from '../src/protocol.js';
 import { SCENARIOS, basePlan, brokenBase, buildPlan, clone, deepFreeze, edit, fadePass, ratio, shotScope } from './directed-transition-fixtures.mjs';
 
@@ -217,6 +219,24 @@ test('the primary is the shot of the frame: from before the cut, to from it on',
   refusedAt('/transition/primary', { '/transition/primary': 'from' }, SCENARIOS.afterCut);
   refusedAt('/transition/primary', { '/transition/primary': 'from' }, SCENARIOS.atCut);
   refusedAt('/transition/primary', { '/transition/primary': 'to' }, SCENARIOS.beforeCut);
+  // The same with both decks' shots told to agree with the declared primary: only the cut can refuse it now.
+  // Frame 42 with `from` and shot-a: past the cut, so it is `to`'s turn.
+  refusedAt('/transition/primary', { '/transition/primary': 'from', '/frame/shotId': 'shot-a', '/transition/other/frame/shotId': 'shot-b' }, SCENARIOS.afterCut);
+  refusedAt('/transition/primary', { '/transition/primary': 'to', '/frame/shotId': 'shot-b', '/transition/other/frame/shotId': 'shot-a' }, SCENARIOS.beforeCut);
+});
+
+test('an error of the neighbour that already points under /transition/other is not moved a second time', () => {
+  const already = invalid('/transition/other/nodes/0', 'x');
+  assert.equal(withinOther(already), already);
+  const own = invalid('/nodes/0', 'x');
+  const moved = withinOther(own);
+  assert.equal(moved.details.pointer, '/transition/other/nodes/0');
+  assert.equal(moved.message, 'Scene plan /transition/other/nodes/0: x');
+  const root = withinOther(invalid('', 'x'));
+  assert.equal(root.details.pointer, '/transition/other');
+  // Not the plan's: anything that is not a RuntimeError is left alone.
+  const stray = new Error('boom');
+  assert.equal(withinOther(stray), stray);
 });
 
 test('the cut is where from ends and to starts, and the shots lie inside the edit', () => {
