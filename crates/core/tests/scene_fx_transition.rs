@@ -27,6 +27,8 @@
 //! * `edit_problems`: localized problems and sufficient camera-head repairs (E12/E15).
 //! * `window_guard`: the shared pure overlay refusal predicate (E14).
 
+#[path = "scene_fx_transition/attribution.rs"]
+mod attribution;
 #[path = "scene_fx_transition/boundary.rs"]
 mod boundary;
 #[path = "scene_fx_transition/clocks.rs"]
@@ -35,6 +37,8 @@ mod clocks;
 mod compat;
 #[path = "scene_fx_transition/corpus.rs"]
 mod corpus;
+#[path = "scene_fx_transition/deck_context.rs"]
+mod deck_context;
 #[path = "scene_fx_transition/document.rs"]
 mod document;
 #[path = "scene_fx_transition/edit.rs"]
@@ -51,6 +55,8 @@ mod plan;
 mod public;
 #[path = "scene_fx_transition/reload.rs"]
 mod reload;
+#[path = "scene_fx_transition/restoration.rs"]
+mod restoration;
 #[path = "scene_fx_transition/review.rs"]
 mod review;
 #[path = "scene_fx_transition/scan.rs"]
@@ -61,5 +67,7 @@ mod scan_checks;
 mod stages;
 #[path = "scene_fx_transition/support.rs"]
 mod support;
+#[path = "scene_fx_transition/tail_repair.rs"]
+mod tail_repair;
 #[path = "scene_fx_transition/window_guard.rs"]
 mod window_guard;

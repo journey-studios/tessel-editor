@@ -442,3 +442,128 @@ fn a_gesture_cannot_carry_a_transition_op() {
     );
     assert_eq!(document(&state), before.0);
 }
+
+/// The facts of a budget the answers of every read share (`scene.fx.list`, `inspect`, gestures).
+fn peak_and_over(answer: &Value) -> (Value, Value, Value) {
+    (
+        answer["budget"]["peak_passes"].clone(),
+        answer["budget"]["over_budget"].clone(),
+        answer["budget"]["max_passes"].clone(),
+    )
+}
+
+/// BL082.4.27 / E13 (S2-C0a A03): eight looks that draw over the whole edit and a transition
+/// created afterwards make nine passes inside its window and eight outside it. The frame shows it
+/// in its own shape (`count`/`passes` are the primary deck's looks, the blend is counted in
+/// `warnings[].passes` and `transition`), the budget answers show it in theirs, and no pass of
+/// the eight is cut by the transition. A gesture on one of the looks reports the same facts.
+#[test]
+fn eight_looks_and_a_new_transition_cost_nine_passes_only_inside_the_window() {
+    let mut state = accept(json!([]));
+    let looks: Vec<Value> = (0..8)
+        .map(|i| {
+            json!({
+                "op":"add_clip", "id":format!("v{i}"), "effect":"vignette",
+                "start_frame":0, "duration_frames":100
+            })
+        })
+        .collect();
+    run(&mut state, edit(json!(looks)));
+    let added = run(&mut state, edit(json!([set_default()])));
+    let transition = &added["changes"][0]["after"];
+    assert_eq!(
+        transition["durationFrames"], 24,
+        "the default of the effect"
+    );
+    // Centred on the cut at 40: the window is frames 28 to 51.
+    let frame = |state: &mut EditorState, at: i64| {
+        run(
+            state,
+            json!({"op":"scene.fx.frame", "scene":"street", "frame": at}),
+        )
+    };
+    for inside in [28, 40, 51] {
+        let answer = frame(&mut state, inside);
+        assert_eq!(answer["count"], 8, "frame {inside}: no look is cut");
+        assert_eq!(
+            answer["passes"].as_array().unwrap().len(),
+            8,
+            "frame {inside}"
+        );
+        assert_eq!(answer["over_budget"], true, "frame {inside}");
+        assert_eq!(answer["max_passes"], 8);
+        assert_eq!(
+            answer["warnings"][0]["passes"], 9,
+            "eight looks and the blend"
+        );
+        assert_eq!(answer["transition"]["id"], "tr-1");
+        assert_eq!(answer["transition"]["blend_passes"], 1);
+    }
+    for outside in [0, 27, 52, 99] {
+        let answer = frame(&mut state, outside);
+        assert_eq!(answer["count"], 8, "frame {outside}");
+        assert_eq!(
+            answer["over_budget"], false,
+            "frame {outside}: eight passes are the budget"
+        );
+        assert!(
+            answer["warnings"].as_array().unwrap().is_empty(),
+            "frame {outside}"
+        );
+        assert!(answer.get("transition").is_none(), "frame {outside}");
+    }
+
+    // The answers that report the budget of the edit say the same: 9 passes, over.
+    let facts = (json!(9), json!(true), json!(8));
+    assert_eq!(peak_and_over(&added), facts);
+    assert_eq!(added["budget"]["first_frame_over"], 28);
+    assert_eq!(added["budget"]["frames_over"], 24);
+    for op in ["scene.fx.list", "scene.fx.inspect"] {
+        let answer = run(&mut state, json!({"op":op, "scene":"street"}));
+        assert_eq!(peak_and_over(&answer), facts, "{op}");
+    }
+
+    // A gesture on a look: begin, update, status and inspect agree, and the frame under the
+    // gesture inside the window still has the eight looks plus the blend.
+    let begin = run(
+        &mut state,
+        json!({"op":"scene.fx.gesture.begin", "scene":"street", "clip":"v0"}),
+    );
+    let gesture = begin["gesture"].as_str().unwrap().to_string();
+    let update = run(
+        &mut state,
+        json!({"op":"scene.fx.gesture.update", "gesture": gesture,
+               "ops":[{"op":"set_param", "clip":"v0", "param":"intensity", "value":0.8}]}),
+    );
+    let status = run(&mut state, json!({"op":"scene.fx.gesture.status"}));
+    let inspect = run(
+        &mut state,
+        json!({"op":"scene.fx.inspect", "scene":"street", "gesture": gesture}),
+    );
+    for (name, answer) in [
+        ("update", &update),
+        ("status", &status),
+        ("inspect", &inspect),
+    ] {
+        assert_eq!(peak_and_over(answer), facts, "{name}");
+        assert_eq!(answer["budget"]["first_frame_over"], 28, "{name}");
+        assert_eq!(answer["budget"]["frames_over"], 24, "{name}");
+    }
+    let under_gesture = run(
+        &mut state,
+        json!({"op":"scene.fx.frame", "scene":"street", "frame":40, "gesture": gesture}),
+    );
+    assert_eq!(under_gesture["count"], 8);
+    assert_eq!(under_gesture["over_budget"], true);
+    assert_eq!(under_gesture["warnings"][0]["passes"], 9);
+    let outside = run(
+        &mut state,
+        json!({"op":"scene.fx.frame", "scene":"street", "frame":10, "gesture": gesture}),
+    );
+    assert_eq!(outside["count"], 8);
+    assert_eq!(outside["over_budget"], false);
+    run(
+        &mut state,
+        json!({"op":"scene.fx.gesture.cancel", "gesture": gesture}),
+    );
+}

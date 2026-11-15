@@ -43,6 +43,7 @@ fn assert_issue_matches(name: &str, found: &Value, expected: &Value) {
     );
     // The pinned pilot used camelCase. Only this hint's operation name differs in the editor;
     // the immutable oracle remains unchanged and every other character/issue still compares.
+    let (expected_hint, expected_lacks) = tail_repair_adapted(name, expected);
     let expected_hint = if expected["code"] == "TRANSITION_DUPLICATE" {
         assert_eq!(
             expected["hint"],
@@ -52,10 +53,76 @@ fn assert_issue_matches(name: &str, found: &Value, expected: &Value) {
             "One transition per cut: set_transition replaces the one that is there."
         ))
     } else {
-        expected.get("hint").cloned()
+        expected_hint
     };
     assert_eq!(details.get("hint"), expected_hint.as_ref(), "{name}: hint");
-    assert_eq!(details.get("lacks"), expected.get("lacks"), "{name}: lacks");
+    assert_eq!(
+        details.get("lacks"),
+        expected_lacks.as_ref(),
+        "{name}: lacks"
+    );
+}
+
+/// BL082.4.25 (S2-C0a): the rows whose outgoing camera ends before its shot do, where the oracle
+/// asks for `old` frames after the end and the exact repair is `new` (the `camera` of the lack keeps
+/// the oracle's number; the repair is the additive `cameraExtend`). The oracle's file and
+/// script are not regenerated: this table is the whole, named, asserted divergence.
+const TAIL_REPAIR_DIVERGENCES: [(&str, i64, i64); 3] = [
+    ("corpus-center-12-use-lacks-camera-and-head", 6, 11),
+    ("corpus-center-12-refuse-reads-as-use", 6, 11),
+    ("corpus-start-12-use-needs-only-the-tail", 12, 17),
+];
+
+/// The oracle's hint and lacks of a row, adapted for the tail repair when the row is one of the
+/// three that diverge: the old phrase must be there, so a row that stops diverging or a table that
+/// stops matching fails instead of passing silently.
+fn tail_repair_adapted(name: &str, expected: &Value) -> (Option<Value>, Option<Value>) {
+    let hint = expected.get("hint").cloned();
+    let lacks = expected.get("lacks").cloned();
+    let Some((_, old, new)) = TAIL_REPAIR_DIVERGENCES
+        .iter()
+        .find(|(row, _, _)| *row == name)
+    else {
+        return (hint, lacks);
+    };
+    let (old_phrase, new_phrase) = (
+        format!("by {old} frames after its end"),
+        format!("by {new} frames after its end"),
+    );
+    let text = hint.as_ref().and_then(Value::as_str).unwrap_or_default();
+    assert_eq!(text.matches(&old_phrase).count(), 1, "{name}: {text}");
+    let mut lacks = lacks.expect("a handles row has lacks");
+    let entry = lacks
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|entry| entry["side"] == "after its end")
+        .unwrap_or_else(|| panic!("{name}: no lack after the end"));
+    assert_eq!(entry["camera"], *old, "{name}");
+    entry["cameraExtend"] = json!(new);
+    (
+        Some(json!(text.replace(&old_phrase, &new_phrase))),
+        Some(lacks),
+    )
+}
+
+#[test]
+fn the_tail_repair_divergence_is_exactly_the_three_named_rows() {
+    let cases = cases();
+    let names: BTreeSet<&str> = cases["handles"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .chain(cases["explain"].as_array().unwrap())
+        .map(|row| row["name"].as_str().unwrap())
+        .collect();
+    for (name, _, _) in TAIL_REPAIR_DIVERGENCES {
+        assert!(names.contains(name), "{name} is not a row of the oracle");
+    }
+    // A row that is not in the table compares byte for byte (`assert_issue_matches`), so nothing
+    // else carries a `cameraExtend`; the rows of the table are the ones it adapts, and each one
+    // fails there when the importer stops diverging on it.
+    assert_eq!(TAIL_REPAIR_DIVERGENCES.len(), 3);
 }
 
 #[test]

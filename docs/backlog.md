@@ -1880,7 +1880,7 @@ concreto da S0, sem link para arquivo inexistente nem validação de lib/CLI/UI 
 | BL082.4.1 | P4b/S0 | Contrato F064 e corpus independente dissolve, fonte e X analítico | Concluído — somente S0 oráculo/contrato | BL082.4; setupPythonBL167.5 parcial | Coordenador / Cursor Sonnet5.5 | R3 independente aprova e4078ff no Windows; corpus167/analítico39 normal e-O, reprodução byte a byte e Mac equivalente. Produto lib/JSONL/UI permanece P; detalhes no relatório S0 §12. |
 | BL082.4.2 | P4b/S1a | Documento/janela/validação tipada e política de admissão fechada | Concluído no escopo interno; R2 aprova a752f0a | BL082.4.1/.11 concluídos | Coordenador / revisão Windows | R2:61transition/25scene_fx/80GPUI, processo headless real, perfis serde e mutantes dinâmicos/scanner/domínio. fmt/check/clippy/no-run/build passam. Core1525ok/2gizmosbase, workspaceexecutado/Mac pendentes. Produto P; IDgerado fica BL082.4.15/S3. |
 | BL082.4.3 | P4b/S1b | Avaliação dos dois decks e plano, recursos por assetId/used_by sem ambiguidade | Concluída no escopo interno — R3 Windows4199af0 | BL082.4.2 integrada | Coordenador / Cursor Sonnet5.5 | Head73775c3:106transições/10corpus/594lib/80GPUI e gates Windows relatados; produtoP. Mac106+10+baseline debug/release passam após correção de dados(.16), três kitsXparciais(.17) em revisão. SemS2/S3a iniciadas. |
-| BL082.4.4 | P4b/S2 | Runtime/renderer/mistura e lifecycle/cache | Pendente | BL082.4.3; S2A também BL082.4.5/S3a | Não atribuído | Cor8bits/alpha declarados, capability, dois splats/leases/contextloss/dispose e pixelsindependentes |
+| BL082.4.4 | P4b/S2 | Runtime/renderer/mistura e lifecycle/cache | Em andamento — C0a aceita PR69; C0b/H/R pendentes | BL082.4.3; S2A também BL082.4.5/S3a | Não atribuído | Cor8bits/alpha declarados, capability, dois splats/leases/contextloss/dispose e pixelsindependentes |
 | BL082.4.5 | P4b/S3 | Ops/gestos/inspector/persistência ecoreparser/nós | Concluída no escopo interno — R2 Windows512685a; S3b pendente | BL082.4.3 | Cursor Sonnet5.5 / coordenador | Atomicidade/revisão/undo, módulossemcrescerarquivosproibidos; dividirS3aseS3bseútil |
 | BL082.4.6 | P4b/S4 | UIKit/provaautomação/guardasoverlaycore | Pendente | BL082.4.4/.5; W1integrada | Não atribuído | Controlesreais, predicadocoreúnico, gestoqueentranajanela/hitpress, célulastestadasporfase |
 | BL082.4.7 | P4b/S6 | Dissolve legado com faixaoráculonova e divergênciasdeveredito declaradas | Pendente | BL082.4.10 | Não atribuído | NÃO alterar invalid-dissolve-transition.expected/hashantigo; fixturesnovas/pinpiloto e contraexemploalphaStraightUNSUPPORTED_ALPHA; registrarexpansãodecontrato |
@@ -2232,7 +2232,7 @@ luz usa quadro real e o vizinho tem discriminante próprio. Review independente 
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
 | BL082.4.18 | PR63 / validador | Overflow e três guardas sem regressão discriminante | Validado em R2 Windows d2c1861; .24 separada | BL082.4.3 | Coordenador | Recusar conversão/soma inválidas; testes de tempo real divergente, clipId repetido entre decks e luzes no pré-check; matar os mutantes da revisão e revalidar Windows/Mac. |
-| BL082.4.19 | PR63 / erros | Versão e transformação de splat do vizinho sem deck no erro | Parcial — validador/leitor validados R2; construtor pendente S2 | BL082.4.3 | Coordenador | Ponteiro /transition/other em planos tipados e JSON, inclusive versão/splat; manter contrato do topo e testar ids colidentes. |
+| BL082.4.19 | PR63 / erros | Versão e transformação de splat do vizinho sem deck no erro | Validado R1 Windows9f7cc83 e Mac — quatro qualificações defensivas sem alcance provado | BL082.4.3 | Coordenador | Ponteiro /transition/other em planos tipados e JSON, inclusive versão/splat; manter contrato do topo e testar ids colidentes. |
 | BL082.4.20 | S2 / contrato do plano | Wire sem C e comprimentos não permite validar toda a escolha temporal de primary/held | Pendente | BL082.4.3/.4.4 | Dono de S2 a atribuir | Fixar contrato de validação de planos externos antes do runtime; separar escolha correta do construtor da capacidade do validador isolado. |
 | BL082.4.21 | Validação do teto de itens | Não há plano válido aceito de exatamente 20000 itens sob o teto de bytes | Pendente | BL082.4.3 | Não atribuído | Provar interação dos dois tetos com plano válido representável ou documentar formalmente por que a combinação é impossível; pré-check de arrays não é aceite completo. |
 | BL082.4.22 | PR63 / orçamento | Edit/inspect/gesto/UI ainda usam orçamento que ignora transição | Validado em R2 Windows d2c1861; .24 separada | BL082.4.3 | Coordenador | Migrar chamadas restantes para pass_budget_in e discriminar 8 looks mais mistura em respostas compartilhadas; sem abrir Refuse. |
@@ -2348,7 +2348,7 @@ independente da integração serão registrados por head. Refuse fechado/F064 pr
 
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
-| BL082.4.25 | S3a / handles cauda | Dica da câmera de saída subestima o reparo quando seu fim já está fora do clipe | Pendente — diagnosticado na PR66, não corrigido | BL082.4.24 | Coordenador / dono de S2 | cameraIn40,câmera60,shot48,after6: +6 não resolve, +34 resolve. Validar reparo suficiente e registrar divergência sem regravar corpus da origem. Admissão permanece segura; erro é na dica. Relatório S3a §3. |
+| BL082.4.25 | S3a / handles cauda | Dica da câmera de saída subestima o reparo quando seu fim já está fora do clipe | Validado R1 Windows9f7cc83 e Mac — cameraExtend exato, sem alterar admissão | BL082.4.24 | Coordenador / dono de S2 | cameraIn40,câmera60,shot48,after6: +6 não resolve, +34 resolve. Validar reparo suficiente e registrar divergência sem regravar corpus da origem. Admissão permanece segura; erro é na dica. Relatório S3a §3. |
 
 PR66, integração33323a2: Mac nativo core1666/0/7(65resultados), lib605 inclusa,
 transições170/corpus10/X5/baseline1; preserve170/10/5/1 e desktopFX80. Fmt/check/
@@ -2364,9 +2364,9 @@ da R1 não serão herdados pelo código corrigido. .25 reproduzido, só dica e n
 
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
-| BL082.4.26 | PR66 R1 / no-op | Ida e volta de intensity inteiro grava float equivalente e gera revisão/undo | Validado Windows/Mac — b097979; teste de guarda a formalizar | BL082.4.5 | Coordenador | 1→0.5→1 preserva grafia/documento/revisão/histórico; float e parâmetro omitido continuam distintos; lote com outra mudança preserva autoria do parâmetro revertido. |
-| BL082.4.27 | PR66 R1 / provas | Lacunas de hint localizado, erro de look em lote misto e orçamento S3a; envelope de parse pouco explícito | Parcial — mutantes R1 mortos e edit/list/inspect provados; E13 frame/gesto a formalizar | BL082.4.5 | Coordenador | Matar mutantes hint espanhol inglês e errors[] anexado à falha de look; provar orçamento com edição de transição; documentar parser invalid_op fora da projeção e reconciliar E-IDs com o plano. |
-| BL082.4.28 | PR66 / bots reproduzíveis | Metadado incompleto apaga diagnóstico; ID reutilizado cruza atribuição clip/transição; hint usa comando camelCase inexistente | Validado Windows/Mac — b097979; cameraEnd tem probe, teste permanente pendente | BL082.4.5 | Coordenador | Preservar diagnóstico original/untranslated se falta contagem; atribuir erro só à entidade correta após reutilizar ID; hint set_transition nas três línguas e importador, com divergência de vocabulário explícita no consumidor, sem regravar fixture. |
+| BL082.4.26 | PR66 R1 / no-op | Ida e volta de intensity inteiro grava float equivalente e gera revisão/undo | Validado — autoria S3a e guardas permanentes C0a em9f7cc83 | BL082.4.5 | Coordenador | 1→0.5→1 preserva grafia/documento/revisão/histórico; float e parâmetro omitido continuam distintos; lote com outra mudança preserva autoria do parâmetro revertido. |
+| BL082.4.27 | PR66 R1 / provas | Lacunas de hint localizado, erro de look em lote misto e orçamento S3a; envelope de parse pouco explícito | Validado — E13 frame/gesto C0a em9f7cc83; begin N/A sem budget no contrato | BL082.4.5 | Coordenador | Matar mutantes hint espanhol inglês e errors[] anexado à falha de look; provar orçamento com edição de transição; documentar parser invalid_op fora da projeção e reconciliar E-IDs com o plano. |
+| BL082.4.28 | PR66 / bots reproduzíveis | Metadado incompleto apaga diagnóstico; ID reutilizado cruza atribuição clip/transição; hint usa comando camelCase inexistente | Validado — contagens e projeção C0a em9f7cc83 | BL082.4.5 | Coordenador | Preservar diagnóstico original/untranslated se falta contagem; atribuir erro só à entidade correta após reutilizar ID; hint set_transition nas três línguas e importador, com divergência de vocabulário explícita no consumidor, sem regravar fixture. |
 
 PR66 correções de .26–.28 implementadas em b097979: Mac core1673/0/7,175transições
 preserve,clippy workspace/build0; nove fontes Rust idênticos porSHA aos que rodaram,
@@ -2385,4 +2385,35 @@ deR2 confirmaram o comportamento. Relatório S3a§13; .25 continua não bloquean
 
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
-| BL082.4.29 | PR66 R2 / diagnóstico | ID removido e recriado dentro do mesmo tipo ainda atribui falha ao op antigo | Pendente — diagnóstico, sem corrupção | BL082.4.28 | Coordenador / próxima fatia core | remove_transition X + set_transition X inválido deve apontar só à entidade final; incluir edits anteriores à remoção, casos entre tipos e atomicidade. Não promover .28 a rastreamento de gerações. |
+| BL082.4.29 | PR66 R2 / diagnóstico | ID removido e recriado dentro do mesmo tipo ainda atribui falha ao op antigo | Validado — proveniência por gerações C0a em9f7cc83; sem causalidade por propriedade | BL082.4.28 | Coordenador / próxima fatia core | remove_transition X + set_transition X inválido deve apontar só à entidade final; incluir edits anteriores à remoção, casos entre tipos e atomicidade. Não promover .28 a rastreamento de gerações. |
+
+### PR69 — S2-C0a entregue, a validar
+
+Head37fdeaf/código16fa526, base9073e77. Autor Windows relatou192transições em
+debug/preserve/release,corpus10,baseline1,lib615,desktopFX80,gates0 e19mutantes
+mortos. Core completo continua com os2gizmosWindowsbase vermelhos; workspaceglobal
+não verde. Nada disso é revisão independente nem prova Mac da nova entrega.
+
+.29: geração privada por(tipo,id),só a entidade sobrevivente recebe ponteiros.
+.19: construtores ScenePlan/PlanTimeline qualificam other, topo preservado.
+.25: cameraExtend representa reparo físico da cauda;40/60/48/6 pede34,94aceita,
+93/66recusam. Três linhas do corpus mudam só dica por tabela nomeada no consumidor,
+que exige a frase antiga. Fixtures/oráculo intactos. .26–.28 têm cobertura restante.
+Contratos e evidências no relatório S2-C0a; Refuse fechado/F064produtoP, sem runtime.
+Coordenador inicia revisão Windows e gates Mac com ownership separado; C0b/H/R/S2A
+continuam não iniciadas. Não herdar a R2 da S3a.
+
+PR69 Mac9f7cc83 terminou0: core1699/0/7(65resultados,lib616 inclusa), transições192,
+preserve192/10/5/1 e desktopFX80. Fmt/check/clippy-all-targets/no-run/build/tree0,
+clone limpo e logs comHEAD emcache/tessel-pr69-mac-20261115. Workspace compilado,
+nãoexecutado; semengine/GPU/origem/UI física. Não torna Windows/gizmos verdes.
+Revisão independente Windows ainda pendente; sourcecore igual ao autor37fdeaf.
+
+PR69 R1 aceitou9f7cc83 sócore:192/10/5/1 debug/preserve/release,lib615,FX80,
+fmt/check/clippy/no-run/build0 e tree semGPUI/wry. Semcorecompleto/workspaceglobal;
+os2gizmosbase Windows continuam vermelhos. Mac1699/0/7 é execução separada.
+14mutantes próprios:8mortos,2equivalentes de lineage e4costurasdefensivas.19 sem
+prova de alcançabilidade (evaluateoffset build/timeline,Prepared,assemble_with).
+Probe remove_track+clipreusado foi inconclusiva antes do cenário; não contada.
+Fixtures intactos,restaurações por hash/mtime e controle; fechamento sódocs.
+Refuse/F064P; C0b/H/R/S2A pendentes. RelatórioC0a§12 registra os limites.
