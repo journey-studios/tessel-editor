@@ -134,6 +134,41 @@ fn t06_a_cut_that_breaks_the_camera_pose_at_a_continuous_join_is_rejected_by_the
     );
     finding(&ripple, "CONTINUOUS_VELOCITY_JUMP");
     assert_eq!(roll.index, Some(0));
+    // A cut at 60 is past the dolly (frames 0..=59) and the camera has been still since: it
+    // passes, the gate has nothing to say about it.
+    let past = done(
+        &scene,
+        json!({"move_cut": {"from": "a", "to": "b", "frame": 60}}),
+    );
+    assert_eq!(
+        layout(&past.candidate),
+        ["a [0,60) i0 c0", "b [60,90) i60 c60"]
+    );
+}
+
+#[test]
+fn t06_the_rejected_cut_meets_every_structural_rule_and_only_the_temporal_gate_says_no() {
+    // The candidate the roll to 59 would write, built by hand:  is [0,59),  carries on at
+    // 59 on the same scene and camera frames.
+    let mut document = moving_chain().document().clone();
+    document["shots"][0]["editRange"]["endFrameExclusive"] = json!(59);
+    document["shots"][1]["editRange"]["startFrame"] = json!(59);
+    document["shots"][1]["instanceStartFrame"] = json!(59);
+    document["shots"][1]["cameraInFrame"] = json!(59);
+    let candidate = scene_of(document);
+    // The structural join rules (same instance and clip, scene frames and camera offsets that
+    // continue) are met, so the rejection of the roll is the temporal gate's alone.
+    assert!(
+        candidate.edit_join_issues().is_empty(),
+        "{:?}",
+        candidate.edit_join_issues()
+    );
+    let temporal: Vec<&str> = candidate
+        .temporal_issues()
+        .iter()
+        .map(|issue| issue.code)
+        .collect();
+    assert_eq!(temporal, ["CONTINUOUS_VELOCITY_JUMP"]);
 }
 
 // ---- T07: editLocked -------------------------------------------------------------------------
