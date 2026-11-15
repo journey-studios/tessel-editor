@@ -2439,3 +2439,16 @@ PR71: o controle novo de câmera aceito pelo consumidor antigo falhou como esper
 isolado e8/8preserve,fmt0, em árvore candidata com hashes registrados. Fixtures e
 produção intactos. Patch comum aplicado; revisãoWindows e prova no commit publicado
 ainda pendentes. Não herdar o core1731/0/7 de4ee9370 como execução do reforço.
+
+### BL167.8 — infraestrutura da execução Windows
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL167.8 | T3 Windows / C0b | SQLITE_IOERR interrompeu execução sob pressão de memória virtual | Recuperação operacional confirmada; causa SQLite não provada | BL167 | Coordenador | O runner antigo já estava ausente na contenção autorizada; nenhuma ação sobre ele foi necessária. Duas leituras: RAM disponível~42GiB e commit disponível~51GiB; I/O de recibo funcionou e implementação C0b foi entregue após retomada. Banco/WAL/SHM/pagefile não foram alterados; nenhuma integridade SQLite alegada. Diagnóstico e autorização preservados na thread do coordenador. |
+
+PR71 Mac: gates em4ee9370 concluíram0 (core1731/0/7,66resultados,lib618,
+214/10/5/8/1preserve/workspace,baselinerelease1,FX80,fmt/check/clippy/no-run/build/tree).
+Emf3f1c8c,o reforçotest-onlytargetxyz/FOVdosdoisdecks passou8/8isolado e8/8preserve,
+fmt0/clippycorealltargets0. Controle original comprodutofalso falha7/1; novoscontroles
+cobrem8campos, além das11classes anteriores. Código deprodução e dados intactos.
+RevisãoWindows independente em andamento; H/R/S2A nãoiniciadas, Refuse/F064P.

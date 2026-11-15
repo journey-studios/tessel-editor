@@ -233,8 +233,11 @@ por aceitar `primary camera target x` incorreto. Com a comparação completa,8/8
 no isolado e8/8 com preserve_order; fmt0. Logs `camera-controls-red.log`, `camera-green.log`
 e `camera-preserve.log`, com hashes dos4arquivos da árvore candidata em
 `camera-candidate-summary.json`, no diretório de logs acima. O clone voltou limpo a4ee9370;
-nenhum resultado foi atribuído silenciosamente a outrohead. A reexecução no commit
-publicado e a revisãoWindows do reforço continuam pendentes.
+nenhum resultado foi atribuído silenciosamente a outrohead. No commit publicado f3f1c8cc2eac5a4126017eac1bf20115f1dabc99, o Mac reexecutou
+fmt0, Xestado8/8 isolado e8/8preserve, clippycorealltargets-Dwarnings0. Logs
+`final-summary.json` e `final-*.log` no mesmo diretório, clone limpo.
+A revisãoWindows independente do reforço continua pendente. Nenhum arquivo de
+produção mudou entre4ee9370 e f3f1c8c; a única mudança Rust é em testes/comentário.
 
 Os patches comuns foram integrados pelo coordenador na PR71 com status A validar.
 O teto de bytes só é julgado na porta textual; as portas Value e tipada não recebem
