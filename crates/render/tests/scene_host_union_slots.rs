@@ -10,6 +10,9 @@
 
 mod scene_host_union_common;
 
+#[path = "scene_host_union_slots/individual_cost.rs"]
+mod individual_cost;
+
 use std::fs;
 
 use scene_host_union_common::*;
