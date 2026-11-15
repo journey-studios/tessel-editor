@@ -2515,7 +2515,7 @@ A branch da verificação saiu de `ead9ca2`. Enquanto ela era validada, a `main`
 de ferramentas, que a verificação levava numa versão anterior), a PR #60 (ledger de claims no Windows, BL167.6) e a P4b S0/S1a,
 e a W1 ([PR #59](https://github.com/journey-studios/tessel-editor/pull/59), aberta) passou a corrigir os gizmos, o `shasum` e o
 helper `tree()`. A branch `fix/windows-integration-bl168` partiu da `main` `b6cf304`, foi rebaseada sobre `90609da` (com a S1b,
-[PR #63](https://github.com/journey-studios/tessel-editor/pull/63), e o watchdog da [PR #64](https://github.com/journey-studios/tessel-editor/pull/64)) e leva só o que a `main` não tinha. O dono escolheu este caminho em 2026-11-14.
+[PR #63](https://github.com/journey-studios/tessel-editor/pull/63), e o watchdog da [PR #64](https://github.com/journey-studios/tessel-editor/pull/64)) e leva só o que a `main` não tinha. Ao abrir a [PR #67](https://github.com/journey-studios/tessel-editor/pull/67) ela foi rebaseada de novo sobre `79ed312`, que só traz um teste, um script e fixtures da P4b: `pilot_dissolve_representable_import` 5/5, a spec dele 39/39, `fmt`, `clippy -D warnings` e a higiene passaram na integração; os gates completos abaixo são do head sobre `90609da`. Depois, rebaseada sobre `9073e77` (S3a da P4b, edição de transições no core): `fmt`, `clippy -D warnings`, build e as specs de higiene, tabelas e aceite da S10 passaram; a suíte inteira deu 2837 passaram, 21 falharam e 15 ignorados (139 suítes), rodando junto com o reinício do servidor do T3 e com testes de outra thread na máquina. Além das 10 da W1 e de BL168.11, as outras 10 eram de ambiente ("Cannot start WebGL", handshake do runtime sem resposta em 45 s, uma corrida de tempo dos claims); repetidas em seguida, `scene_frames` deu 7/8 (só BL168.11), `scene_export` 10/12 (só as duas do `shasum`, W1) e `scene_claims_journal` 13/13. O dono escolheu este caminho em 2026-11-14.
 
 - **Entram**, com os commits refeitos sobre a `main` e o mesmo conteúdo: BL141.1, BL168.1, BL168.2, BL168.5, o anel da luz de
   BL168.4, BL168.7, BL168.8, BL168.9, BL168.10, BL164, o oráculo de BL016.2 e a rodada R6 do livro da S10. Também parte de
@@ -2546,5 +2546,25 @@ render da `main` deu 130 passaram, 2 falharam (as do `shasum`) e 3 ignorados.
 - Runtime com Chrome real (sobre `b6cf304`; os commits seguintes da `main` não tocam `runtime/` nem `scripts/`): 410
   passaram, 0 falharam, 1 pulado (só Unix, pulado também na `main`). Specs Python no head rebaseado: 43 de 43 (as 41 da
   verificação e as duas do corpus do dissolve que a `main` trouxe).
+- Provas na janela real (head `4172213`, árvore limpa, build debug): `grading-proof` 4/4 headless e 20/20 na janela,
+  `accented-titles-proof` 14/14 e 28/28, `scene-fx-ui-proof` 153/153 e `scene-gizmo-proof` 56/56 headless e 84/84 na janela,
+  com `final_evidence`.
 
-**macOS:** a validar numa thread T3 com worktree própria (Cursor Sonnet 5.5).
+**macOS** (head `4172213`, [thread](t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/mcp:launch:dac635c43f6d7e73897688ddb3fad57a1f77aab3ec664a09f2096c1d971bbf22) T3 com worktree própria no SSD, Cursor Sonnet 5.5):
+
+- `fmt`, `check`, `clippy --workspace --all-targets -D warnings` e `build -p tessel-editor` limpos; o core continua sem gpui
+  e sem wry.
+- `cargo test --workspace --locked --no-fail-fast` com `TESSEL_REQUIRE_RUNTIME=1`: **2819 passaram, 1 falhou, 17
+  ignorados** (137 suítes). A falha é BL168.11, que falha igual na `main` `90609da` (conferido numa worktree temporária).
+  Nenhuma das 10 falhas da W1 aparece no macOS, nem a de ambiente BL082.47.
+- Runtime com Chrome real: 411/411.
+- Specs: 42 de 43, no Python 3.9.6 da Apple e no 3.14. A de aceite da S10 (`directed-scene-acceptance/proof.spec.py`) não
+  roda com menos de 12 GiB livres no volume de `/tmp`, e o disco interno tinha 11,9 GiB. Com o limite baixado só para o
+  teste, e revertido depois, 120 de 122 passaram; as duas restantes reprovam a própria alteração, porque `proof.py` é
+  fixado no livro. A spec não foi provada no estado original no Mac; no Windows ela passa.
+- `live-flow-proof` 116/116 na janela; `directed-scene-export-proof --gpu-lock-held` 23/23 fases e 569 checagens, com a
+  `ui_export_flow` 91/91 e o mix no arquivo.
+- Não executados no Mac, pela mesma guarda de 12 GiB: `grading-proof`, `accented-titles-proof`, `scene-fx-ui-proof`,
+  `scene-gizmo-proof` e `gizmo-perf/native.py`. As quatro provas passaram no Windows (acima).
+- Durante o `clippy`, o GC automático do `mbx` (`MBX_GC_MAX_TOTAL_SIZE=8GiB` no wrapper) removeu três pastas `target`
+  (5,9 GiB lógicos) de outras worktrees; ninguém rodou `mbx gc` à mão.
