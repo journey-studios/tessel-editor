@@ -20,7 +20,7 @@ use std::sync::{Mutex, OnceLock};
 use serde_json::{Value, json};
 use tessel_editor_core::assets::{AudioStream, Decoded, DecodedAudio};
 use tessel_editor_core::audio::{AudioBackend, OfflineMixer, Pcm};
-use tessel_editor_core::state::split::{SplitAvailability, SplitBlock};
+use tessel_editor_core::state::split::SplitAvailability;
 use tessel_editor_core::state::timeline::{TrackFlag, TrimEdge};
 use tessel_editor_core::time::Ratio;
 use tessel_editor_core::{Command, CommandError, EditorState, headless, persist};

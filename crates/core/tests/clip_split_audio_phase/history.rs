@@ -80,8 +80,8 @@ fn a_source_position_that_overflows_is_refused_atomically_with_a_slider_open() {
 }
 
 #[test]
-fn a_cut_inside_an_audio_fade_is_still_refused_without_changing_the_sound() {
-    // BL081.2 stays outside this slice: the ramp is not divided, on any grid.
+fn a_cut_inside_an_audio_fade_keeps_the_sound_bit_for_bit() {
+    // BL081.2: this cut was refused. The halves keep the ramps of the whole clip, on any grid.
     let rate = (30_000, 1001);
     let main = Spec::audio(rate, 44_100, true, 3, 24, Frac::new(1, 4));
     let mut state = audio_project(rate, 44_100, true, &["a1"]);
@@ -92,21 +92,19 @@ fn a_cut_inside_an_audio_fade_is_still_refused_without_changing_the_sound() {
             json!({"op":"clip.property","clip":"main","property":property,"value":value}),
         );
     }
-    let before = fingerprint(&state);
     let sound = mix(&state);
     for frame in [5, 24] {
-        let error = fail(
-            &mut state,
-            json!({"op":"clip.split","clip":"main","frame":frame}),
-        );
-        assert_eq!(error.code, "split_unsupported", "frame {frame}");
-        assert_eq!(fingerprint(&state), before);
+        let mut cut = state.clone();
+        split(&mut cut, "main", frame);
+        same_bits(&sound, &mix(&cut), &format!("frame {frame}"));
     }
-    same_bits(&sound, &mix(&state), "unchanged");
     state.timeline.selected_clip = state.timeline.clip("main").map(|clip| clip.id);
     state.timeline.playhead = 5;
     assert_eq!(
         state.split_availability(),
-        SplitAvailability::Blocked(SplitBlock::FadeCrossesCut)
+        SplitAvailability::Ready {
+            clip: state.timeline.clip("main").unwrap().id,
+            frame: 5
+        }
     );
 }

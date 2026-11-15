@@ -1,5 +1,10 @@
 # Dividir clipe (F017 / BL081) — relatório de entrega
 
+> Registro histórico: as recusas de corte dentro de fades descritas nesta rodada
+> foram superadas pela expansão BL081.2. Contrato atual e provas por versão em
+> [clip-split-fades-report.md](clip-split-fades-report.md) e [split](../features/split.md).
+
+
 Contrato e limites por superfície: [split.md](../features/split.md). Este relatório registra o que foi executado, onde e com
 que resultado. Código integrado localmente em `c0f7e24`, validado Windows/Mac; sem push, PR ou merge.
 As seções da entrega Windows original abaixo são históricas; o fechamento da revisão está ao final.

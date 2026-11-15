@@ -389,97 +389,65 @@ fn visual_fades_keep_their_outer_edges_and_the_inner_edges_are_plain_cuts() {
 }
 
 #[test]
-fn a_cut_inside_a_visual_fade_is_refused_and_leaves_everything_as_it_was() {
-    let mut state = project_24("fade-refused");
+fn a_cut_inside_a_visual_fade_is_accepted_and_keeps_every_frame() {
+    // BL081.2: these frames were refused (`fade_in_crosses_cut`, `fade_out_crosses_cut`). The
+    // halves now keep the ramps of the whole clip (`clip_split_envelope.rs` has the full proof).
+    let mut state = project_24("fade-accepted");
     for (property, value) in [("fade_in", 12), ("fade_out", 24)] {
         run(
             &mut state,
             json!({"op":"clip.property","clip":"c-title","property":property,"value":value}),
         );
     }
-    let untouched = fingerprint(&state);
+    let before = plans(&mut state);
     // Frame 11 is the last still-ramping frame of the fade-in; frame 26 leaves 22 frames, but the
-    // fade-out has 24: the last frame of the left half would still be fading.
-    for (frame, reason) in [(11, "fade_in_crosses_cut"), (26, "fade_out_crosses_cut")] {
-        let error = fail(
-            &mut state,
-            json!({"op":"clip.split","clip":"c-title","frame":frame}),
-        );
-        assert_eq!(error.code, "split_unsupported", "frame {frame}");
-        assert_eq!(error.details.as_ref().unwrap()["reason"], reason);
-        assert_eq!(
-            error.details.as_ref().unwrap()["fade_in"].as_i64(),
-            Some(12)
-        );
-        assert_eq!(
-            error.details.as_ref().unwrap()["fade_out"].as_i64(),
-            Some(24)
-        );
-        assert_eq!(
-            fingerprint(&state),
-            untouched,
-            "frame {frame} changed state"
-        );
-    }
-    // The boundary frames on the good side are accepted.
-    split(&mut state, "c-title", 12);
-    split(&mut state, "c-title-split-1", 25);
+    // fade-out has 24: the last frame of the left half is still fading.
+    split(&mut state, "c-title", 11);
+    split(&mut state, "c-title-split-1", 26);
+    assert_same_picture(&before, &plans(&mut state));
+    assert_eq!(number(&state, "c-title-split-1", "fade_in"), 12.0);
+    assert_eq!(number(&state, "c-title-split-1-split-1", "fade_out"), 24.0);
 }
 
 #[test]
 fn loaded_fractional_visual_fades_use_the_renderers_exact_boundaries() {
-    for (property, fade, refused, accepted) in [
-        ("fade_in", 1.4, Some(1), 2),
-        ("fade_out", 2.4, Some(47), 46),
-        ("fade_in", 0.4, None, 1),
+    // BL081.2: a fractional ramp is zeroed only where it no longer reaches the half (the
+    // renderer's boundary: `before >= fade_in`, `after + 1 >= fade_out`); anywhere else the half
+    // keeps the ramp and a window, so the picture is the same at every frame.
+    for (property, fade, inside, outside) in [
+        ("fade_in", 1.4, 1, 2),
+        ("fade_out", 2.4, 47, 46),
+        ("fade_in", 0.4, 0, 1),
     ] {
         let mut doc = project_24(&format!("fractional-{property}-{fade}")).to_document(None);
         doc["clip_properties"]["c-title"]["fade_in"] = json!(0.0);
         doc["clip_properties"]["c-title"]["fade_out"] = json!(0.0);
         doc["clip_properties"]["c-title"][property] = json!(fade);
-        let mut state = EditorState::from_document(&doc, None).unwrap();
+        let state = EditorState::from_document(&doc, None).unwrap();
         assert_eq!(number(&state, "c-title", property), fade);
 
-        if let Some(frame) = refused {
-            run(
-                &mut state,
-                json!({"op":"invoke","target":"clip:c-title","action":"select"}),
-            );
-            run(
-                &mut state,
-                json!({"op":"set","target":"timeline.playhead","field":"frame","value":frame}),
-            );
-            assert!(matches!(
-                state.split_availability(),
-                SplitAvailability::Blocked(_)
-            ));
-            let untouched = fingerprint(&state);
-            let error = fail(
-                &mut state,
-                json!({"op":"clip.split","clip":"c-title","frame":frame}),
-            );
-            assert_eq!(error.code, "split_unsupported");
-            assert_eq!(
-                error.details.as_ref().unwrap()[property].as_f64(),
-                Some(fade)
-            );
-            assert_eq!(error.details.as_ref().unwrap()[property].as_i64(), None);
-            assert_eq!(
-                error.details.as_ref().unwrap()["reason"],
-                format!("{property}_crosses_cut")
-            );
-            assert_eq!(fingerprint(&state), untouched);
-        }
-
-        let before = plans(&mut state);
-        split(&mut state, "c-title", accepted);
         let inner = if property == "fade_in" {
             "c-title-split-1"
         } else {
             "c-title"
         };
-        assert_eq!(number(&state, inner, property), 0.0);
-        assert_same_picture(&before, &plans(&mut state));
+        for frame in [inside, outside] {
+            if frame == 0 {
+                continue;
+            }
+            let mut state = state.clone();
+            let before = plans(&mut state);
+            split(&mut state, "c-title", frame);
+            assert_same_picture(&before, &plans(&mut state));
+            // The boundary frame zeroes the ramp on the half it no longer reaches; the frame
+            // inside the ramp keeps it (with a window).
+            let expected = if frame == outside { 0.0 } else { fade };
+            assert_eq!(
+                number(&state, inner, property),
+                expected,
+                "{property} {frame}"
+            );
+        }
     }
 
     // Sound keeps the mixer's rounded duration: a loaded 1.4-frame ramp ends at frame 1.
@@ -512,26 +480,23 @@ fn audio_fades_cut_in_the_plateau_mix_the_same_sound() {
 }
 
 #[test]
-fn an_audio_cut_with_a_fade_across_it_is_refused() {
-    let mut state = project_24("audio-refused");
+fn an_audio_cut_with_a_fade_across_it_is_accepted_and_mixes_the_same_bits() {
+    // BL081.2: frames 11 and 25 were refused (a ramp across the cut), and so was every cut of a
+    // clip whose fades overlap (`fades_longer_than_clip`). The mix is now the whole's, bit for bit.
+    let mut state = project_24("audio-accepted");
     for (property, value) in [("fade_in", 12), ("fade_out", 24)] {
         run(
             &mut state,
             json!({"op":"clip.property","clip":"c-tone","property":property,"value":value}),
         );
     }
-    let untouched = fingerprint(&state);
-    // Sound fades by sample: with a 24-frame fade-out only a cut 24 frames before the end (frame
-    // 24) leaves the left half entirely at full gain; frame 25 is already inside the ramp.
+    let whole = mix(&state);
     for frame in [11, 25] {
-        let error = fail(
-            &mut state,
-            json!({"op":"clip.split","clip":"c-tone","frame":frame}),
-        );
-        assert_eq!(error.code, "split_unsupported", "frame {frame}");
-        assert_eq!(fingerprint(&state), untouched);
+        let mut cut = state.clone();
+        split(&mut cut, "c-tone", frame);
+        assert_eq!(cut.timeline.clips.len(), state.timeline.clips.len() + 1);
+        assert_eq!(whole.samples, mix(&cut).samples, "frame {frame}");
     }
-    // Fades that already overlap are shortened by the mixer in proportion: not splittable.
     run(
         &mut state,
         json!({"op":"clip.property","clip":"c-tone","property":"fade_in","value":30}),
@@ -540,22 +505,7 @@ fn an_audio_cut_with_a_fade_across_it_is_refused() {
         &mut state,
         json!({"op":"clip.property","clip":"c-tone","property":"fade_out","value":30}),
     );
-    let error = fail(
-        &mut state,
-        json!({"op":"clip.split","clip":"c-tone","frame":30}),
-    );
-    assert_eq!(
-        error.details.as_ref().unwrap()["reason"],
-        "fades_longer_than_clip"
-    );
-    assert_eq!(
-        error.details.as_ref().unwrap()["fade_in"].as_i64(),
-        Some(30)
-    );
-    assert_eq!(
-        error.details.as_ref().unwrap()["fade_out"].as_i64(),
-        Some(30)
-    );
+    let overlapping = mix(&state);
     run(
         &mut state,
         json!({"op":"invoke","target":"clip:c-tone","action":"select"}),
@@ -565,16 +515,13 @@ fn an_audio_cut_with_a_fade_across_it_is_refused() {
             &mut state,
             json!({"op":"set","target":"timeline.playhead","field":"frame","value":frame}),
         );
-        assert_eq!(
+        assert!(matches!(
             state.split_availability(),
-            SplitAvailability::Blocked(SplitBlock::FadesLongerThanClip)
-        );
-        let error = fail(
-            &mut state,
-            json!({"op":"invoke","target":"timeline.split","action":"invoke"}),
-        );
-        assert_eq!(error.message, SplitBlock::FadesLongerThanClip.reason());
-        assert!(!error.message.contains("move the playhead"));
+            SplitAvailability::Ready { .. }
+        ));
+        let mut cut = state.clone();
+        split(&mut cut, "c-tone", frame);
+        assert_eq!(overlapping.samples, mix(&cut).samples, "frame {frame}");
     }
 }
 

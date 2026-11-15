@@ -147,3 +147,19 @@ plataforma GPUI com arraste manual na janela nativa.
 `SceneCommand::Plan` consulta o plano completo ou diagnóstico parcial, aplicando admissão estrutural/temporal e usando opcionalmente um candidato de gesto vivo. `scene_operation` (render) reutiliza esse comando e `headless::output_geometry`; não duplica domínio.
 `SceneHost` reúne `MediaHost` e `SceneRenderer` na sessão JSONL de `tessel-render`: `scene.render` consome apenas recursos aprovados por F040. O desktop usa o mesmo SceneSlots/frame_render_message de forma assíncrona, confirma loads e coalesce seek, sem esperar GPU na thread gráfica. `monitor.show_scene` é escolha de apresentação local; documento e histórico continuam no core.
 A cena dirigida ainda não entra no export comum da timeline; BL008 permanece pendente. Contrato [F041](features/scene-renderer.md).
+
+
+### Envelope de clipe dividido (BL081.2, em revisão)
+
+O core persiste fade_window opcional no clipe, schema3, quando um corte herda
+uma rampa. Cada lado guarda frames (âncora relativa) e fade (guarda); em áudio,
+norm{far,peer} mantém o vão e pedido par originais da normalização. A âncora e
+a normalização de uma rampa não mudam ao editar a outra. Fades sem fixação
+seguem o mixer legado; a rampa nova ao lado de uma herdada pode formar um vale.
+Trim e carga compartilham checked_frames; descartar guarda acontece dentro do
+histórico, sem ressuscitar rampas antigas. Leitores até schema2 recusam novos
+documentos schema3; sem janela, mantém-se a menor versão anterior necessária.
+AudioSegment mantém os campos, mas clip_offset/clip_frames medem o intervalo
+entre âncoras de entrada/saída; plan_audio resolve cada rampa no seu próprio
+vão. Biblioteca, processo headless e UI consomem esse plano e comando comuns.
+Contrato e limites em [split](features/split.md) e [audio-fades](features/audio-fades.md).
