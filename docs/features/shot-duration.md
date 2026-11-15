@@ -83,7 +83,7 @@ Recusa: `{code, index, detail, limitFrame?}` e o documento intacto. Códigos (D1
 | `CONTINUOUS_JOIN` | a op cortaria a cabeça de quem continua o plano anterior, ou pediria `follow` para dentro de uma junção contínua | — |
 | `NO_HEAD_FRAMES` | `anchor` sem quadros de cabeça | sim |
 | `TRANSITION_TOO_LONG` | a transição presa ao corte não cabe (reaproveita `fx/transition_problem.rs`) | sim |
-| `SHOTS_LAYER_NOT_YET` | campo adiado com tempo na edição em outra forma (D12); **hoje inalcançável**, ver auditoria | — |
+| `SHOTS_LAYER_NOT_YET` | **até a S2:** a op teria de mover uma camada em quadros da edição que a S1 ainda não move (clipe `fx` `output` ou `shot`, key de luz, `weatherKeys`, transição com `shrink_transitions`); `details` traz `path` (ponteiro JSON do primeiro item) e `layer` (`fx_clip_output`, `fx_clip_shot`, `transition`, `light_keys`, `weather_keys`). A S2 move as camadas e tira essa recusa. Também o campo adiado novo da auditoria (D12), que hoje não existe | — |
 | `SHOTS_OPTION_NOT_YET` | `with_narration: true` | — |
 | `CANDIDATE_REJECTED` | o portão final reprova o candidato, com os achados | — |
 
@@ -136,9 +136,9 @@ de emendas; *quadros da instância* não andam (#5); *nenhum* quer dizer que nã
 | `nodes[].rigBind` | nenhum | `{rigId, mode, boneId?, blendPx?}` | fica | `rig/rig-schema.ts:83-91`; `schema/render-bundle.schema.ts:200` |
 
 **Conclusão da auditoria.** Um único campo da lista é remapeado como dado simples: `weatherKeys`. Nenhum campo tem
-tempo na edição em outra forma nem relógio incerto, então `SHOTS_LAYER_NOT_YET` não é alcançável a partir da lista de
-hoje: o código fica no contrato para um campo adiado novo (a lista pode crescer), mas a S1/S2 não têm caso de recusa
-dele. A D12 se mantém como decidida (Q4), com a lista fixada: `weatherKeys` remapeia; o resto fica.
+tempo na edição em outra forma nem relógio incerto, então nenhum campo da lista é recusado por ser de outra forma
+(`REFUSED_LAYERS` fica vazia). O mesmo código tem outro uso na S1: a recusa provisória de uma op que exigiria mover uma
+camada que a S1 ainda não move (ver a tabela de códigos), que a S2 retira. A D12 se mantém como decidida (Q4), com a lista fixada: `weatherKeys` remapeia; o resto fica.
 
 ## D07 / Q2 — quadros da instância que cresce
 
