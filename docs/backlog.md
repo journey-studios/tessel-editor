@@ -2182,3 +2182,9 @@ resíduo do mesmo BL167.6.10, sem bloquear a correção validada.
 |---|---|---|---|---|---|---|
 | BL082.4.17 | P4b/S0-X representável | Casos válidos de hold do vizinho e luz no quadro real, com bundles importáveis | A validar — PR65 R1 aprovada em93246d1; reforço dos nits em revisão | BL082.4.1/.4.2 | Coordenador / Cursor Sonnet5.5 | 7cenários/98quadros/390sondas,37specs normal/-O e5Rust no Windows/Mac da entrega inicial. Nits: papéis só por quadro, Python3.9 sem metadata3.10, janela Rust e mapa de assets; relatório próprio. Consumidor S1b/S2 ainda pendente, hold da câmera só por estado, viés agregado por cenário vs texto canônico por quadro a decidir antes do engine. Origem não executada/golden não comparável. |
 | BL082.4.23 | S1b / relógio de câmera | Plano primário conserva contador bruto além da câmera curta; offset/oráculo usa contador preso | Pendente — divergência de metadado, sem paridade de estado completo | BL082.4.17/.4.3 | Coordenador / dono de S2 | Julgar contrato preservando bytes sem transição; comparar contador legado e offset separadamente. Exemplo lit-center-held f23: primário23, offset/oráculo11. Pose é hold no kit; isto não é prova de pixels reais. |
+
+BL082.4.17: reforço026b72a noMac passou37normal/-O/metadata3.10ausente,
+14arquivosbytea byte,verifypinMac,5Rust/clippy. Mutantesduração/alinhamento
+agoramorrem,JSONrestaurado/5verdes. Os98quadros/390sondas,bundles,limiares e
+PNGs são iguais a932; sómetadata-resumoremovida e mapaassets adicionado.
+R2Windowsdo reforço ainda pendente; semconsumer/pixels ouorigemexecutada.

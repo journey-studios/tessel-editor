@@ -239,3 +239,16 @@ Hashes após os ajustes de metadados/testes (os valores do §6 são históricos 
 - crates/core/tests/pilot_dissolve_representable_import.rs: 4dfdf1cdf4b3035b3a17b098e5b6d819a12fa17e6c428631d8612a789611aad0
 - docs/migration/fixtures/pilot-fx/dissolve-representable-cases.json: 7de67565061aaa5ec5d87e1dfb60ea536eec52f4b8a89d6d9091e41500c6a276
 - docs/migration/fixtures/pilot-fx/dissolve-representable-manifest.json: cb80d2ef88803e6b14b4825474639a523680c1d434415e07e79886dde536cebe
+
+## 11. Gates do reforço no Mac (026b72a, produção não alterada)
+
+37specs normal e-O passaram. As37 também passaram com sys.stdlib_module_names removido
+no próprio intérprete, e ambos os fontes parseiam com gramática3.9; Python3.9 real não rodou.
+Generate--check reproduziu14arquivos, verify--origin--require-pin passou no Mac, onde o commit
+d40 existe (verificação de blobs/pin, origem NÃO executada). Windows sem o pin mantém exit4.
+
+Rust5/5 eclippy do alvo passam. Os mutantes de alinhamento start→end e duração12→11, antes
+sobreviventes, agora falham por asserção no teste Rust; JSON restaurado por bytes/hash e5/5
+novamente verdes. O patch não alterou qualquer estado, sonda, bundle, limiar ouPNG de932;
+só remove os resumos de papel e adiciona o mapa explícito de assets. Não há consumidorS1b/S2.
+A rechecagem Windows das correções permanece pendente; a R1 de932 é histórica, não herdada.

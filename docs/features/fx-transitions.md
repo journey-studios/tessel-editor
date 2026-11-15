@@ -451,3 +451,8 @@ se provam por ESTADO no consumidor S1b. UNH concorda em pixel nas cenas estátic
 o distingue. O viés≤0,25 desta referência é agregado por cenário com≥24sondas únicas; o texto
 canônico fala em sondas do quadro. S2 deve declarar a granularidade antes da primeira execução
 do engine, sem retunar limiar depois. F064 produto continua P; origem não executada, sem golden.
+
+No reforço026b72a, Mac passou37normal/-O e37com metadata opcional de3.10 ausente,14arquivos
+reproduzidos, verify com pin em blobs e5Rust/clippy do alvo. Dois mutantes novos de duração e
+alinhamento morreram; dados restaurados. Windows pós-correções a validar. Gramática3.9 foi
+parseada; não houve execução de Python3.9 real nem de origem/renderer.
