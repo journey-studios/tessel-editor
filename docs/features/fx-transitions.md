@@ -542,4 +542,8 @@ verify/blobs/pin ausente4,5Rust/clippy, mutantes alinhamento/duração/janela mo
 A verificação recebeu ainda um guard de inventário: generate--check/verify agora recusam
 qualquer entrada não declarada na pasta exclusiva de assets; não apagam arquivos extras.
 Mac38specs normal/-O passaram com o novo controle. Dados de sondas/bundles/limiares/PNGs
-não mudaram. Windows do guard de inventário será rechecado separadamente.
+não mudaram. R3 Windows aprovou `06c8ea9`: 38 specs normal/-O, 14 arquivos,
+verify offline/blobs, pin estrito ausente com exit 4, Rust5, fmt e clippy do core,
+tree sem GPUI/wry. O PNG extra falha nas duas portas sem ser apagado; remover o
+filtro numa cópia faz a regressão falhar. A origem permaneceu intacta e não foi
+executada. Mac e Windows são provas separadas; não há consumidor S1b/S2 nem pixel real.

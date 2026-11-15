@@ -284,3 +284,25 @@ as duas portas recusam um PNG extra sem apagá-lo. Os logs ficam em
 Isto valida a integração do teste de importabilidade com a S1b; não executa o
 consumidor de dois decks nem pixels. A R2 Windows de `93037e0` continua atribuída
 àquele head; a integração e o novo guard precisam de uma rechecagem Windows curta.
+
+## 14. Fechamento da R3 Windows
+
+A revisão independente aprovou `06c8ea9845f3ae5ee2e474f8a9d145119ccfe61f`, sem
+defeito funcional. Windows nativo, Python 3.13.17: 38 specs normais e com `-O`,
+14 arquivos reproduzidos byte a byte, verificação offline e de blobs da origem;
+modo estrito sem/com origem retorna 4 porque o commit do pin está ausente.
+Rust: importabilidade 5/5, fmt, clippy do core com `-D warnings` e árvore sem GPUI/wry.
+
+O PNG extra falha nas duas portas sem ser apagado; retirar o filtro numa cópia
+descartável fez o novo teste falhar. A origem permaneceu em HEAD `3710b9a`, com
+as mesmas 151 entradas sujas; nenhum JS foi executado. A integração com a main
+`90609da` foi conferida pelo diff e pelo teste Rust, sem herdar a execução do Mac.
+
+Após esse head, apenas documentação foi alterada: atribuição dos gates históricos
+S1b em `a3c6a63` e registro desta revisão. Scripts, testes Rust, dados, bundles,
+sondas, limiares, manifesto e PNGs mantêm o conteúdo revisado. A R3 não é uma
+aprovação humana no GitHub; CodeRabbit NEUTRAL também não a substitui.
+
+BL082.4.17 permanece parcial: referência e importabilidade validadas, consumidor
+de dois decks e pixels S1b/S2 pendentes. Hold da câmera requer comparação de estado;
+origem não executada, golden não comparável, textura/GPU/desempenho não provados.
