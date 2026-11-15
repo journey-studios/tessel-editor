@@ -24,6 +24,8 @@
 //! `scripts/scene-claims-proof.py` drive it), Windows, network filesystems, a hostile writer.
 
 mod directed_resources_common;
+#[path = "job_discard_claims/watchdog.rs"]
+mod watchdog;
 
 use std::collections::BTreeMap;
 use std::fs::{self};
@@ -807,62 +809,49 @@ fn a_peer_stopped_while_holding_the_ledger_lock_cannot_freeze_the_tick() {
     assert_eq!(peer.ask("hold_ledger")["held"], true);
     let pid = peer.pid;
     signal("STOP", pid);
-    // Without the bound the tick below never returns; the watchdog resumes the peer after 20 s so
-    // that a regression fails the assertion on the elapsed time instead of hanging the suite.
-    let done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let finished = done.clone();
-    let watchdog = std::thread::spawn(move || {
-        let deadline = Instant::now() + Duration::from_secs(20);
-        while Instant::now() < deadline {
-            if finished.load(std::sync::atomic::Ordering::SeqCst) {
-                return;
-            }
-            std::thread::sleep(Duration::from_millis(50));
-        }
-        let _ = Command::new("kill")
-            .args(["-CONT", &pid.to_string()])
-            .status();
-    });
     let blockers = Blockers::hold(&registry);
 
-    let tick = Instant::now();
-    let events = host.poll(&mut state);
-    let elapsed = tick.elapsed();
-    eprintln!(
-        "BUDGET {}",
-        json!({"measure": "tick-sigstop-peer", "pollMs": elapsed.as_secs_f64() * 1000.0,
-            "peerPid": pid, "ceilingMs": 100})
-    );
-    // Not the 1.5 s of the bounded wait either: the tick waits its fixed 20 ms budget and no more,
-    // and the whole tick stays under the UI's 100 ms ceiling (not a loose second).
-    assert!(
-        elapsed < Duration::from_millis(100),
-        "the tick was held for {elapsed:?} by a stopped peer"
-    );
-    let failed = events
-        .iter()
-        .find(|event| event["job"] == job.as_str())
-        .unwrap_or_else(|| panic!("the refused result is reported: {events:?}"));
-    assert_eq!(failed["state"], "failed", "{failed}");
-    assert_eq!(failed["error"]["code"], "claims_unavailable", "{failed}");
-    let details = &failed["error"]["details"];
-    assert_eq!(details["phase"], "accept", "{failed}");
-    assert!(
-        details["why"]
-            .as_str()
-            .is_some_and(|why| why.contains("gave up after") && !why.contains("another process")),
-        "the reason is the tick's budget on a lock that stayed held, without blaming anyone: {failed}"
-    );
-    // Nothing was applied, and the result is still owned (the discard job is queued).
-    assert_eq!(state.summary(), summary);
-    assert_eq!(state.project.revision, revision);
-    let discard = details["discard_job"].as_str().unwrap().to_string();
-    assert_eq!(registry.get(&discard).unwrap().state, JobState::Queued);
-    world.assert_intact("street");
+    // A regression must fail rather than wait forever on the peer's lock, on either OS.
+    let discard = watchdog::with_peer(&mut peer, Duration::from_secs(20), || {
+        let tick = Instant::now();
+        let events = host.poll(&mut state);
+        let elapsed = tick.elapsed();
+        eprintln!(
+            "BUDGET {}",
+            json!({"measure": "tick-sigstop-peer", "pollMs": elapsed.as_secs_f64() * 1000.0,
+                "peerPid": pid, "ceilingMs": 100})
+        );
+        // Not the 1.5 s of the bounded wait either: the tick waits its fixed 20 ms budget and no more,
+        // and the whole tick stays under the UI's 100 ms ceiling (not a loose second).
+        assert!(
+            elapsed < Duration::from_millis(100),
+            "the tick was held for {elapsed:?} by a stopped peer"
+        );
+        let failed = events
+            .iter()
+            .find(|event| event["job"] == job.as_str())
+            .unwrap_or_else(|| panic!("the refused result is reported: {events:?}"));
+        assert_eq!(failed["state"], "failed", "{failed}");
+        assert_eq!(failed["error"]["code"], "claims_unavailable", "{failed}");
+        let details = &failed["error"]["details"];
+        assert_eq!(details["phase"], "accept", "{failed}");
+        assert!(
+            details["why"].as_str().is_some_and(
+                |why| why.contains("gave up after") && !why.contains("another process")
+            ),
+            "the reason is the tick's budget on a lock that stayed held, without blaming anyone: {failed}"
+        );
+        // Nothing was applied, and the result is still owned (the discard job is queued).
+        assert_eq!(state.summary(), summary);
+        assert_eq!(state.project.revision, revision);
+        let discard = details["discard_job"].as_str().unwrap().to_string();
+        assert_eq!(registry.get(&discard).unwrap().state, JobState::Queued);
+        world.assert_intact("street");
+
+        discard
+    });
 
     // The peer comes back and dies: the lock is free, the discard job removes what is ours.
-    done.store(true, std::sync::atomic::Ordering::SeqCst);
-    watchdog.join().unwrap();
     signal("CONT", pid);
     peer.crash();
     blockers.release();
