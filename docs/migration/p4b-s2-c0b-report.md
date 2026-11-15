@@ -43,8 +43,9 @@ sem origem executada.
 
 Inteiros sem float/bool/string/null/negativo; chaves extras recusadas no próprio ponteiro. `C` = `to.shotStartFrame`.
 Ordem de validação: representação `i64` e intervalos → corte único → `primary` pelo lado de `C` → quadro dentro do shot
-primário → janela `(C, D, alignment, edit)` e `startFrame` → ids compartilhados com um comprimento → instância do primário
-cobre o shot → amostras → quadros legados (primário bruto, vizinho amostrado) → `held*` → `Ratio` exatos. Pointers:
+primário → janela `(C, D, alignment, edit)` e `startFrame` → ids compartilhados com um comprimento → cada instância
+cobre o próprio shot, inclusive no vizinho (reforço posterior à PR71, §12) → amostras → quadros legados
+(primário bruto, vizinho amostrado) → `held*` → `Ratio` exatos. Pointers:
 `/transition/alignment`, `/transition/timing[/from|/to]/<campo>`, `/transition/primary`, `/transition/startFrame`,
 `/frame/{instanceFrame,cameraClipFrame,editTime,instanceTime}`, `/transition/other/frame/…`, `/transition/held{Instance,Camera}`.
 
@@ -68,7 +69,7 @@ Os 12 PNG representáveis (`dissolve-representable-assets/`), os manifestos fade
 | Arquivo | Testes | Cobre |
 |---|---|---|
 | `scene_fx_transition/timing.rs` | 13 | timing literal nos quadros 44/50, `clocks()` dos dois decks, C−1/C, último quadro real sem hold, câmera `cameraIn` além do fim antes de C, **legado bruto 23 / amostrado 11**, comprimento = maior faixa (main/layers diferentes), primário com câmera curta, D1/D ímpar/start/end com quadros fora da janela = plano puro, wire e bytes, sem transição = mesmo byte e versão 1, wire anterior recusado, lâmpada com keys no quadro real, plano compartilhado, cold vs timeline em ordem crescente/reversa/repetida |
-| `scene_fx_transition/timing_refusals.rs` | 5 | cada número do timing × 9 tipos errados (float, 2.0, negativo, bool, string, null, array, objeto, > u64), campos extras, `alignment` errado, 32 planos tipados incoerentes nas **três portas** com o ponteiro do campo (janela, `primary` cedo/tarde, corte, extremos, instância curta, ids compartilhados com comprimentos diferentes, amostras sem clamp, quadros brutos/legados, `held=false` adulterado, FPS/`Ratio`) |
+| `scene_fx_transition/timing_refusals.rs` | 6 (reforço §12) | cada número do timing × 9 tipos errados (float, 2.0, negativo, bool, string, null, array, objeto, > u64), campos extras, `alignment` errado, 32 planos tipados incoerentes nas **três portas** com o ponteiro do campo (janela, `primary` cedo/tarde, corte, extremos, instância curta, ids compartilhados com comprimentos diferentes, amostras sem clamp, quadros brutos/legados, `held=false` adulterado, FPS/`Ratio`) |
 | `scene_fx_transition/ceiling.rs` | 5 | 20.000 itens válidos (`[3,2,0,9993,2,0]` por deck, contados à mão), +1 passe em cada deck, caso assimétrico, luzes e vizinho no mesmo contador (`(1,0)` aceito, `(2,0)` e `(1,1)` recusados), contador tipado e de arrays, 4.194.304 bytes e +1 (inclusive chave com escape) |
 | `pilot_dissolve_representable_state.rs` + `/reference.rs` | 5 | leitura inteira (7/98/390/84 em janela), 84 quadros em janela comparados em estado, 14 fora da janela = plano puro, avaliador de deslocamento nos 98, independência de ordem (`PlanTimeline` crescente/reverso/repetido) |
 | `pilot_dissolve_representable_state/isolation.rs` | 3 | 11 classes na entrega original, 19 após f3f1c8c (8 adicionais de target/FOV), recusadas pela comparação (primário no corte, held da instância, held da câmera, instância marcada presa na borda, instância e câmera sem clamp, relógios trocados, relógio do primário no vizinho, fps nominal, lâmpada no relógio da instância e noutro quadro; cada classe exercida por ≥1 quadro), estado estático do hold e comprimento de câmera com layers |
@@ -296,3 +297,46 @@ R1 e fechamento aprovam apenas C0b interna. Refuse/F064P, Rust14/JS13, H/R/S2A/U
 ainda pendentes. DoisgizmosWindowsbase continuamvermelhos no corecompleto executado
 em4ee9370; o corecompletoMac1731/0/7 também pertence a4ee9370. Não foi executado
 workspaceglobal, engine, pixels, origem, GPU, desempenho nem ponteiro físico.
+
+## 12. Reforço posterior ao merge: cobertura da instância dos dois shots
+
+A PR71 foi integrada por squash em `17d0393`. O [comentário posterior do CodeRabbit](https://github.com/journey-studios/tessel-editor/pull/71#issuecomment-6890461070)
+apontou que `check_timing_identities` conferia a cobertura do shot somente em `t.primary`.
+Um plano externo coerente podia declarar uma instância curta no vizinho, mesmo quando
+esse shot não caberia nela. O importador de bundle já recusa essa situação; a lacuna era do plano externo.
+
+Correção de código: `aeb766d7a0f7db6f7092157f4a0d05c53abe8f83`, base `17d0393`.
+O validador exige `instanceStartFrame + (shotEndFrameExclusive − shotStartFrame) <= instanceDurationFrames`
+em `from` e `to`, em ordem estável, preservando aritmética verificada e apontando
+`/transition/timing/<lado>/instanceDurationFrames`. Hold fora do shot continua válido;
+a câmera curta mantém seu contrato. Gate público, versão do plano, fixtures e bytes sem transição são preservados.
+
+O teste `each_instance_covers_its_whole_shot_even_when_its_deck_is_the_neighbour` usa contas literais:
+`from` precisa de 20 + 48 = 68 quadros; `to`, de 0 + 48 = 48. Em f44 e f50, aceita o limite
+exato e recusa um quadro abaixo pelas três portas, preservando o documento. Os clocks amostrados
+e tempos são mantidos coerentes inclusive na cauda presa do vizinho de f50, isolando a cobertura.
+Antes da correção, o teste compilou e falhou por asserção: `to instance with 47 frames at edit frame 44: ()`.
+Depois, passou 1/1 e nos dois perfis completos. Esse negativo é execução na base com o teste novo,
+não uma inferência do comentário nem um erro de compilação contado como recusa.
+
+Gates do coordenador, Mac nativo, no conteúdo de código de `aeb766d`:
+
+| Gate | Resultado |
+|---|---|
+| `fmt --all -- --check` | exit 0 |
+| Core isolado, `TESSEL_EXPECT_PRESERVE_ORDER=0` | transições 216, corpus 10, X import 5, X estado 8, baseline 1 |
+| Mesmo conjunto com `serde_json/preserve_order`, `EXPECT=1` | 216 / 10 / 5 / 8 / 1 |
+| Core completo `--no-fail-fast` | 1733 passam, 0 falham, 7 ignorados existentes, 66 resultados de suíte |
+| Workspace `check`, `clippy --all-targets -D warnings`, `test --no-run` | exit 0 |
+| `build -p tessel-editor` | exit 0 |
+| `cargo tree -p tessel-editor-core` | 0 ocorrências de gpui/wry |
+| Specs de tabelas do backlog | 19/19 |
+
+Logs: `~/.cache/tessel-instance-coverage-20261115/`, com `summary.json` e um log por gate.
+Cargo pelo wrapper e target padrão; houve coleta automática do mbx, sem `clean`/`gc` manual.
+Nenhuma alteração de dados, dependências, renderer, runtime, media ou desktop. A H continua separada.
+
+Não houve execução Windows deste reforço: as provas Windows anteriores seguem atribuídas aos seus SHAs,
+incluindo os dois gizmos da base vermelhos. Não repetir a contagem Mac como resultado Windows.
+Workspace global foi somente compilado, não executado; sem nova execução release, GPUI, runtime,
+origem, pixel real, GPU ou desempenho. F064 continua P e `Refuse` público permanece fechado.

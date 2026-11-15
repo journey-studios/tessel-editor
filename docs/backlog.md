@@ -2233,7 +2233,7 @@ luz usa quadro real e o vizinho tem discriminante próprio. Review independente 
 |---|---|---|---|---|---|---|
 | BL082.4.18 | PR63 / validador | Overflow e três guardas sem regressão discriminante | Validado em R2 Windows d2c1861; .24 separada | BL082.4.3 | Coordenador | Recusar conversão/soma inválidas; testes de tempo real divergente, clipId repetido entre decks e luzes no pré-check; matar os mutantes da revisão e revalidar Windows/Mac. |
 | BL082.4.19 | PR63 / erros | Versão e transformação de splat do vizinho sem deck no erro | Validado R1 Windows9f7cc83 e Mac — quatro qualificações defensivas sem alcance provado | BL082.4.3 | Coordenador | Ponteiro /transition/other em planos tipados e JSON, inclusive versão/splat; manter contrato do topo e testar ids colidentes. |
-| BL082.4.20 | S2 / contrato do plano | Wire sem C e comprimentos não permite validar toda a escolha temporal de primary/held | Validado core interno — Windows R1/f3f1c8c, fechamento ff39b2e e Mac por head | BL082.4.3/.4.4 | S2-C0b / Cursor Sonnet5.5 | `alignment` e `timing` obrigatórios no wire com transição (C, intervalos, offsets, comprimentos, amostras), regra única de relógio, validador em três portas com ponteiro por campo, mutantes mortos; sem mudar `PLAN_VERSION` nem bytes sem transição. Coerência, não procedência. `p4b-s2-c0b-report.md` §2/§6. |
+| BL082.4.20 | S2 / contrato do plano | Wire sem C e comprimentos não permite validar toda a escolha temporal de primary/held | Core interno validado por head; reforço aeb766d validado no Mac, Windows não repetido | BL082.4.3/.4.4 | Coordenador; provas C0b: Cursor Sonnet 5.5 | `alignment` e `timing` obrigatórios no wire com transição, regra única de relógio e três portas com ponteiro por campo. PR71 integrada em 17d0393; reforço aeb766d aplica cobertura de instância a from/to, inclusive vizinho. Mac: regressão vermelha na base e verde na correção, 216/10/5/8/1 isolado e preserve, core 1733/0/7; fmt/check/clippy/no-run/build exit 0; árvore sem gpui/wry. Gates Windows R1/fechamento pertencem aos heads anteriores, sem nova execução Windows deste reforço. Sem mudar versão, fixtures ou bytes sem transição; `p4b-s2-c0b-report.md` §12. |
 | BL082.4.21 | Validação do teto de itens | Não há plano válido aceito de exatamente 20000 itens sob o teto de bytes | Validado core interno — Windows R1/f3f1c8c, fechamento ff39b2e e Mac por head | BL082.4.3 | S2-C0b / Cursor Sonnet5.5 | Plano válido de 20000 itens ([3,2,0,9993,2,0] por deck) aceito em validate/Value/text; texto com 4194304 bytes aceito e +1 byte recusado; +1 passe/luz recusado em `/transition`; lights e vizinho contados; mutantes `>`/`>=`, vizinho e luzes mortos. Um bundle com MAX_FX_TRACKS=64 não produz esse plano: cotas do documento inalteradas. |
 | BL082.4.22 | PR63 / orçamento | Edit/inspect/gesto/UI ainda usam orçamento que ignora transição | Validado em R2 Windows d2c1861; .24 separada | BL082.4.3 | Coordenador | Migrar chamadas restantes para pass_budget_in e discriminar 8 looks mais mistura em respostas compartilhadas; sem abrir Refuse. |
 
@@ -2468,3 +2468,16 @@ e8Xestado emEXPECT0/preserve1,fmt/clippy0; T11morto,controle1/1. M1/M2/M3 e
 Sem mudança de produção desdec2959ce; fixtures intactos. .20/.21/.23 validados
 noescopo interno; .17 parcial(pixels pendentes),.4.4continuaem andamento paraH/R.
 Último commit de aceite sóMarkdown,19specs/diffcheck/bytes0. Refuse/F064P.
+
+### BL082.4.20 — cobertura dos dois shots após a PR71
+
+O comentário do CodeRabbit atualizado após o merge da PR71 apontou uma checagem restrita
+ao primário. Correção do coordenador em `aeb766d7a0f7db6f7092157f4a0d05c53abe8f83`, separada da H: cada
+instância cobre o próprio shot, independentemente do papel do deck. Uma instância de 47 quadros
+para o shot de 48 era aceita como vizinha; a regressão recusa nas três portas. Limites exatos
+48 e 68 (offset 20 + shot 48) continuam aceitos antes/depois do corte.
+
+Mac: 216 transições, corpus 10, importação X 5, estado X 8 e baseline 1 nos perfis isolado e
+preserve; core completo 1733/0/7; fmt/check/clippy/no-run/build exit 0 e tree sem gpui/wry.
+Workspace global apenas compilado; Windows, release, runtime, GPU, desempenho e UI não
+reexecutados para este reforço. Contrato e detalhes no relatório C0b §12. Refuse/F064 P.

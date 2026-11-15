@@ -41,7 +41,7 @@ da C0b. Windows ainda tem dois gizmos vermelhos da base; não declarar workspace
    Preservar L=0 => amostra0 e held=true; último quadro real => held=false.
    Resultado nomeado distingue raw, sampled e held por clock e é acessível pela lib.
 5. Legado primário: frame.instanceFrame/cameraClipFrame e seus tempos continuam BRUTOS.
-   A instância do primário é real e a integridade do shot cabe na instância.
+   A instância de cada lado cobre todo o próprio shot; o vizinho só prende fora dele.
    Câmera primária pode estar além de seu comprimento; não trocar o avaliador estrito por
    offset nem prometer que metadado sozinho muda pose/pixels. Os sampled* de timing dizem
    o resultado da regra temporal de transição. Exemplo legado .23: raw23/sample11.
@@ -261,8 +261,9 @@ Cada recusa é `PlanError::Invalid` com ponteiro; as três portas (`validate`, `
    `frameInWindow = f − startFrame` já é regra de campos (a janela fixa `startFrame`, logo a relação é transitiva).
 6. Mesma instância (`source.sceneInstanceId`) ou mesmo clipe de câmera (`frame.cameraClipId`) nos dois decks não declara
    comprimentos diferentes: `/transition/timing/to/instanceDurationFrames` e `/transition/timing/to/cameraClipDurationFrames`.
-7. Integridade do primário: `instanceStartFrame + (end − start) <= instanceDurationFrames`
-   (`/transition/timing/<primário>/instanceDurationFrames`). Câmera primária pode passar do comprimento (decisão 5).
+7. Integridade dos dois lados: `instanceStartFrame + (end − start) <= instanceDurationFrames`
+   para `from` e `to`, mesmo quando o lado é vizinho
+   (`/transition/timing/<lado>/instanceDurationFrames`). Câmera pode passar do comprimento (decisão 5).
 8. Relógios: para cada lado `DeckClocks::at`; `sampledInstanceFrame`/`sampledCameraClipFrame` iguais ao amostrado
    (`.../sampledInstanceFrame`, `.../sampledCameraClipFrame`).
 9. Legado do primário: `frame.instanceFrame`/`cameraClipFrame` são o `raw` (`/frame/instanceFrame`, `/frame/cameraClipFrame`).
