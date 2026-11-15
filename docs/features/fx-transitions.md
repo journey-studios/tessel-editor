@@ -928,4 +928,4 @@ R1a integrada à main `805a0c6` no head `e14dc51`: grading e layout preservados,
 1192→1080, corpos extraídos idênticos por SHA normalizado. Mac: Node195/browser74 sem skips,
 render44 (scene_frames8/interop5), core216/10/5/8/1 EXPECT0/1 e estáticos/no-run/build0.
 BL168.11 corrigido só no teste de capacidades, mantendo JS13/Rust14. Revisão independente
-Windows pendente; produto P/Refuse, sem desenho ou pixels de transição, GPU física ou desempenho.
+Windows aprovada em e14dc51 (Node195/browser71+3/render44+9, core e estáticos verdes); produto P/Refuse, sem desenho ou pixels de transição, GPU física ou desempenho.

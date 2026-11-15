@@ -359,4 +359,4 @@ Integração R1a com main `805a0c6`, head `e14dc51`: Mac nativo validou Node195/
 (inclui grading/títulos), render44 com runtime real, core216/10/5/8/1 nos dois perfis,
 fmt/check/clippy/no-run/build. BL168.11 mantém a lista anunciada JS13 e exige igualdade exata
 com o conjunto do core menos FxTransition reservada; scene_frames8/8. Revisão Windows
-independente pendente; sem workspace global, pixels de transição, GPU física ou desempenho.
+independente aprovada em e14dc51 (Node195/browser71+3/render44+9, core e estáticos verdes); sem workspace global, pixels de transição, GPU física ou desempenho.
