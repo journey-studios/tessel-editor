@@ -265,3 +265,25 @@ Core, Cargo.lock, fixtures, runtime, media e desktop são idênticos à main c54
 Revisão independente Windows iniciada em19c5ea1, ainda sem veredito. Os 30 mutantes do autor
 continuam atribuídos a7e7c83f e não são um resultado novo destes gates. H interna permanece
 a validar por revisão; R/S2A não iniciadas, F064 P e Refuse fechado.
+
+## 13. Diagnóstico estrutural por deck — código05f37da
+
+O OpenCodeReview apontou corretamente que um ponteiro exato `/transition/other/resources/N`
+também pode vir da validação estrutural (por exemplo widthPx=0), e não só de conflito da união.
+O helper tratava os dois casos como conflito e culpava também o primário quando só a entrada
+do vizinho era inválida. Uma regressão compilada reproduziu a atribuição errada: os dois usos
+apareciam no lugar do único uso esperado. A primeira ordenação do teste também demonstrou
+que a estrutura inválida do primário ficava sem contexto; essa lacuna foi coberta no mesmo teste.
+
+Código `05f37da1937ba58bed2d0e0f31198642cf5f977d`: ponteiros de tabela/entrada/campo identificam
+o deck da falha. Os usos dos dois decks só são unidos se o erro recebido for igual à recusa
+produzida por `ScenePlan::resource_union()`; não há comparação com mensagem literal nem
+nova regra de metadados no host. Os detalhes existentes, código e ponteiro na mensagem ficam
+intactos. A regressão cobre tamanho inválido e relativePath inválido, primary/other, antes/depois
+do corte e livro retido sem mutação. Os testes existentes continuam exigindo ambos os decks
+no conflito real de metadados.
+
+Mac local no conteúdo05f37da: lib19, mapas10, slots16, scene_seam29 e scene_flow_resources4,
+total78, todos passam. Os 77 e o export12 do §12 pertencem a19c5ea1; gates nativos completos
+para a nova fonte e a revisão Windows ainda precisam fechar. O total H agora é26 testes
+(10 mapas +16 slots). Core/fixtures/deps/runtime/media/desktop continuam intactos.

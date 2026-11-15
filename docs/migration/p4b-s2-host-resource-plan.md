@@ -322,8 +322,10 @@ fn union_failure_command(plan: &ScenePlan, error: &PlanError) -> CommandError;  
 
 `prepare` usa `union_failure` também para o erro de `plan.validate()` (que contém a união), então a
 divergência de metadados dá o mesmo `invalid_plan` com `details.resource` pela porta pública do
-livro. Os dois helpers só acrescentam contexto quando o pointer é exatamente
-`/transition/other/resources/{n}`.
+livro. No reforço05f37da, os helpers também reconhecem campos de uma entrada
+`/resources/{n}` ou `/transition/other/resources/{n}`. Falha estrutural nomeia só o deck
+da entrada; os dois decks só aparecem quando o erro é igual à recusa produzida pela união
+do core, sem reinterpretar regras ou comparar texto literal de mensagem.
 
 ### 7. Arquivos tocados (registro prévio)
 

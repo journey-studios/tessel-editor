@@ -828,7 +828,8 @@ compartilhado é resolvido, aprovado e carregado **uma vez**. A aprovação cont
 nenhum id de nó, `scene_definition_id`, `scene_instance_id`, shot ou papel de deck entra na chave. Metadados divergentes
 para o mesmo `assetId` seguem recusados na validação (`/transition/other/resources/N`) **antes** de resolver, abrir
 arquivo ou tocar a raiz. Todo erro atribuível a um recurso carrega `details.resource = {asset_id, used_by:[{deck, node_id}]}`
-e a mensagem nomeia o(s) deck(s); o código do erro não muda (`resource_unknown` continua `resource_unknown` no
+e a mensagem nomeia o(s) deck(s). Falha estrutural de uma entrada nomeia só o deck afetado;
+um conflito real da união nomeia ambos. O código do erro não muda (`resource_unknown` continua `resource_unknown` no
 `approved_map`). Erros globais (raiz inexistente, teto total) não recebem atribuição inventada. O custo de splats conta
 **cada uso qualificado** dos dois decks (ids de nó iguais em decks diferentes contam duas vezes) e os bytes de um arquivo
 compartilhado contam uma vez. Custo de imagem ou soma total não representável é recusado com `resource_budget`,
