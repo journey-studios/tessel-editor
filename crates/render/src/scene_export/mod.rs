@@ -18,6 +18,7 @@ use tessel_editor_media::scene_encoder::{
 };
 use tessel_editor_media::scene_resources::ResourceResolver;
 
+use crate::resource_union::{attribute_backend, union_failure, union_of};
 use crate::scene::{ResolvedResource, SceneResourceMap};
 use crate::{FrameOptions, HANDSHAKE_TIMEOUT, ProcessTransport, RuntimeConfig, SceneRenderer};
 
@@ -27,7 +28,9 @@ pub const EXPORT_FRAME_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// The map of the files `plan` draws, read from the approved resolver. WHY a map per frame and
 /// not one per export: the renderer's slot book decides what stays loaded, and the plan of a frame
-/// names exactly the resources that frame needs.
+/// names exactly the resources that frame needs: both decks of a transition (the union, by asset
+/// id), looked up under `scene_id`, the scene ATTACHED to the project. A refusal keeps the
+/// resolver's own code and names the asset and its decks in `details.resource`.
 pub fn resource_map(
     plan: &ScenePlan,
     scene_id: &str,
@@ -35,10 +38,13 @@ pub fn resource_map(
     generation: u64,
 ) -> Result<SceneResourceMap, BackendError> {
     let mut map = SceneResourceMap::new(generation);
-    for resource in &plan.resources {
+    let union = union_of(plan).map_err(|failure| union_failure(plan, &failure))?;
+    for resource in &union {
         let approved = resolver
             .resolve_asset(scene_id, &resource.asset_id)
-            .map_err(|error| BackendError::new(error.code(), error.to_string()))?;
+            .map_err(|error| {
+                attribute_backend(BackendError::new(error.code(), error.to_string()), resource)
+            })?;
         map.insert(
             resource.asset_id.clone(),
             ResolvedResource {
@@ -46,7 +52,8 @@ pub fn resource_map(
                 content_hash: approved.content_hash,
                 path: approved.path,
             },
-        )?;
+        )
+        .map_err(|error| attribute_backend(error, resource))?;
     }
     Ok(map)
 }
@@ -58,9 +65,17 @@ fn job_error(error: BackendError) -> JobError {
         "backend_unavailable" => "backend_unavailable",
         _ => "render_failed",
     };
-    JobError::new(code, error.message).with_details(serde_json::json!({
-        "backend_code": error.code,
-    }))
+    let mut details = serde_json::json!({ "backend_code": error.code });
+    // Only the attribution travels on (the message already names the decks): a job error never
+    // carried the rest of a backend's details, and this does not widen that.
+    if let Some(resource) = error
+        .details
+        .as_ref()
+        .and_then(|details| details.get("resource"))
+    {
+        details["resource"] = resource.clone();
+    }
+    JobError::new(code, error.message).with_details(details)
 }
 
 pub struct ProcessSceneRenderer {
