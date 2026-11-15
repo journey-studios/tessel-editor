@@ -794,3 +794,21 @@ implementadas e validadas no escopo descrito, com quatro costuras defensivas .19
 sem prova de alcançabilidade por cena importada (relatório§12). Sem core completo
 ou workspace global executado nessa revisão Windows; gizmos da base não ficam verdes.
 Refuse/F064P e C0b/H/R/S2A pendentes; não é aceite de produto/render.
+
+### BL082.4.4, .17, .20, .21, .23: relógios do plano com transição (S2-C0b)
+
+O plano de uma janela passa a declarar `alignment` e um bloco `timing` obrigatório (cena, instância e câmera dos dois
+shots, mais os relógios amostrados): contrato em [scene-plan.md](scene-plan.md) e no plano
+[p4b-s2-c0b-plan.md](../migration/p4b-s2-c0b-plan.md). Uma **única** regra pura de relógio
+(`directed_scene::ClockSample`/`DeckClocks`: bruto, amostrado `clamp(bruto, 0, L−1)`, preso `L == 0 ∨ amostrado ≠ bruto`)
+alimenta o avaliador de deslocamento, o montador e o validador; o último quadro real não é preso, o comprimento de câmera é
+o da maior faixa (principal ou camada) e o primário guarda os quadros brutos (a câmera de um primário curto continua em
+bruto 23 / amostrado 11 no caso legado). O wire experimental sem `alignment`/`timing` é recusado em
+`/transition/alignment` e `PLAN_VERSION` continua 1; planos sem transição não mudam um byte.
+
+Provas: um plano **válido** de exatamente 20.000 itens é aceito em `validate`, `from_json` e `from_json_str`;
+um passe ou uma luz a mais é recusado em `/transition`. O texto de exatamente 4.194.304 bytes é aceito por
+`from_json_str`, e um byte a mais é recusado nessa porta textual (BL082.4.21); a referência representável do PR65
+(`dissolve-representable-cases.json`) é lida como **estado** pelo plano real, sem Python e sem pixel (BL082.4.17).
+Continua fora: o gate público (`Refuse`), runtime/shader/export, UI e qualquer pixel. Evidências, mutantes, limites e os
+patches do coordenador: [p4b-s2-c0b-report.md](../migration/p4b-s2-c0b-report.md).

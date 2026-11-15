@@ -15,6 +15,7 @@ use super::model::{
     Domain, PlanFrame, PlanLayer, PlanLight, PlanNode, PlanOutput, PlanParent, PlanResource,
     PlanSource, PlanSplat, ScenePlan, UninterpretedField, UninterpretedReason, UnsupportedDomain,
 };
+use super::temporal::TransitionTiming;
 use super::transition_validate::within_other;
 use super::validate::{derive_requires, derive_splat_slots};
 use super::{PLAN_VERSION, PlanError};
@@ -530,11 +531,14 @@ impl ScenePlan {
             .assemble_with(scene, &neighbour.evaluation, window.other_passes.clone())
             .map_err(within_other)?;
         other.check_splat_transforms().map_err(within_other)?;
-        plan.with_transition(
-            window,
-            (neighbour.held_instance, neighbour.held_camera),
-            other,
-        )
+        // The clocks of both shots, from the one rule (DeckClocks), with each camera clip measured
+        // on its longest track.
+        let timing = TransitionTiming::derive(bundle, window.transition, edit_frame, |clip_id| {
+            bundle
+                .camera_timeline(clip_id)
+                .map(|timeline| timeline.frames())
+        })?;
+        plan.with_transition(window, timing, other)
     }
 
     /// This plan with the lights of another frame: the lights are a function of the edit frame

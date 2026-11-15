@@ -18,6 +18,7 @@ cada acesso pela UI, CLI com UI, CLI headless e biblioteca Rust.
 - [Spark sob concorrência](features/spark-concurrency.md): diagnóstico da corrida do harness e gate determinístico de cancelamento; runtime intocado.
 - [P4b S3a — edição de transições no core](migration/p4b-s3a-editing-report.md): operações, diagnósticos localizados, predicado de janela e dica de cabeça; admissão pública fechada.
 - [P4b S2-C0a — pré-requisitos do core](migration/p4b-s2-c0a-report.md): proveniência por geração, erros do vizinho por deck e reparo da cauda; admissão pública fechada.
+- [P4b S2-C0b — relógios e estado dos dois decks](migration/p4b-s2-c0b-report.md): timing/alignment, limites de plano e consumidor X de estado; admissão pública fechada.
 - [Backlog compartilhado](backlog.md): registro único de pendências, responsáveis, dependências e aceite; obrigatório para todos os agentes.
 - [Inventário de migração do Scene Studio](migration/README.md): 121 itens classificados,
   evidências na origem, diferenças do branch piloto, matriz de migração e fatias sugeridas.

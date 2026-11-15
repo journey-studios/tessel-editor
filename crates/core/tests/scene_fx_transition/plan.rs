@@ -151,6 +151,7 @@ fn the_wire_form_has_the_documented_keys_round_trips_and_is_deterministic() {
     assert_eq!(
         keys,
         [
+            "alignment",
             "amount",
             "durationFrames",
             "easing",
@@ -165,6 +166,7 @@ fn the_wire_form_has_the_documented_keys_round_trips_and_is_deterministic() {
             "primary",
             "progress",
             "startFrame",
+            "timing",
             "toShotId"
         ]
     );
@@ -465,7 +467,7 @@ fn every_field_of_the_transition_refuses_the_wrong_type_and_the_missing_value() 
         .keys()
         .cloned()
         .collect();
-    assert_eq!(fields.len(), 15);
+    assert_eq!(fields.len(), 17);
     let strings = [
         json!(null),
         json!(1),
@@ -504,11 +506,13 @@ fn every_field_of_the_transition_refuses_the_wrong_type_and_the_missing_value() 
     let mut tried = 0;
     for field in &fields {
         let candidates: &[Value] = match field.as_str() {
-            "id" | "effect" | "fromShotId" | "toShotId" | "primary" | "easing" => &strings,
+            "id" | "effect" | "fromShotId" | "toShotId" | "primary" | "easing" | "alignment" => {
+                &strings
+            }
             "startFrame" | "durationFrames" | "frameInWindow" | "progress" | "amount" => &numbers,
             "heldInstance" | "heldCamera" => &bools,
             "params" => &params,
-            "other" => &others,
+            "other" | "timing" => &others,
             other => panic!("a field this test does not know: {other}"),
         };
         for candidate in candidates {
@@ -616,13 +620,13 @@ fn the_relations_between_the_decks_and_the_mix_are_checked_with_their_own_pointe
         .collect();
     tampered["transition"]["other"]["requires"] = json!(requires);
     assert_eq!(refused(&tampered), "/transition/other/fx/0/scope");
-    // A held head must sit on the first frame.
+    // A neighbour's instance frame is the sampled clock, not whatever frame it was written with.
     let held = with(
         value.clone(),
         "/transition/other/frame/instanceFrame",
         json!(3),
     );
-    assert_eq!(refused(&held), "/transition/heldInstance");
+    assert_eq!(refused(&held), "/transition/other/frame/instanceFrame");
 }
 
 #[test]

@@ -175,6 +175,17 @@ impl FrameEvaluation<'_> {
     }
 }
 
+/// Start time of `frame` at `rate`, exact: `frame * den / num` seconds, reduced. The one
+/// computation of every frame time (the bundle's and a plan's): a frame too large for the integer
+/// ratio is `FrameOverflow`, where `Rate::frame_to_time` would answer zero.
+pub fn frame_start_time(rate: Rate, frame: u64) -> Result<Ratio, TemporalError> {
+    let seconds_per_frame = Ratio::new(i64::from(rate.den()), i64::from(rate.num()));
+    seconds_per_frame
+        .zip(i64::try_from(frame).ok())
+        .and_then(|(per_frame, frames)| per_frame.mul_int(frames))
+        .ok_or(TemporalError::FrameOverflow)
+}
+
 impl Bundle {
     fn rate(&self) -> Result<Rate, TemporalError> {
         self.fps.rate().ok_or(TemporalError::InvalidFrameRate)
@@ -183,12 +194,7 @@ impl Bundle {
     /// Start time of a frame, exact. Checked: a frame too large for the integer ratio is an
     /// error, where `Rate::frame_to_time` would answer zero.
     pub(super) fn frame_time(&self, frame: u64) -> Result<Ratio, TemporalError> {
-        let rate = self.rate()?;
-        let seconds_per_frame = Ratio::new(i64::from(rate.den()), i64::from(rate.num()));
-        seconds_per_frame
-            .zip(i64::try_from(frame).ok())
-            .and_then(|(per_frame, frames)| per_frame.mul_int(frames))
-            .ok_or(TemporalError::FrameOverflow)
+        frame_start_time(self.rate()?, frame)
     }
 
     /// Edit frame whose interval contains `time` (floor, so a boundary belongs to the frame that

@@ -11,11 +11,12 @@
 
 use std::collections::BTreeMap;
 
-use crate::directed_scene::fx::{DeckSide, FxEasing, FxTransitionFrame, FxValue};
+use crate::directed_scene::fx::{Alignment, DeckSide, FxEasing, FxTransitionFrame, FxValue};
 use crate::directed_scene::{AssetAlpha, AssetColorSpace, AssetFormat};
 
 use super::PlanError;
 use super::model::{PlanResource, ScenePlan};
+use super::temporal::TransitionTiming;
 
 /// The most bytes of the JSON text of a plan that carries a `transition` (the two decks together).
 /// Fixed by the S0 contract before the code; a plan without a `transition` has no such ceiling.
@@ -36,6 +37,8 @@ pub struct PlanTransition {
     pub primary: DeckSide,
     pub start_frame: i64,
     pub duration_frames: i64,
+    /// Where the window sits on the cut: with the cut and the duration it fixes `start_frame`.
+    pub alignment: Alignment,
     /// `edit_frame − start_frame`, inside `[0, duration_frames)`.
     pub frame_in_window: i64,
     pub easing: FxEasing,
@@ -46,6 +49,9 @@ pub struct PlanTransition {
     /// Every parameter of the effect in catalog order (`curve`, `intensity`), an ordered list: a
     /// map would reorder with the build's JSON features.
     pub params: Vec<(String, FxValue)>,
+    /// Where the two shots sit in the edit, their instances and camera clips, and the clocks the
+    /// rule gave each deck at this frame (`PlanTransition::clocks` reads them back).
+    pub timing: TransitionTiming,
     /// The neighbour's instance frame was held (it has no real frame there).
     pub held_instance: bool,
     /// The neighbour's camera clip frame was held.
@@ -185,10 +191,15 @@ impl ScenePlan {
     pub(super) fn with_transition(
         mut self,
         frame: &FxTransitionFrame<'_>,
-        held: (bool, bool),
+        timing: TransitionTiming,
         other: ScenePlan,
     ) -> Result<Self, PlanError> {
         let transition = frame.transition;
+        // The neighbour's flags are the rule's own, from the very numbers the plan declares.
+        let edit_frame = i64::try_from(self.frame.edit_frame).map_err(|_| {
+            PlanError::invalid("/frame/editFrame", "does not fit a signed 64-bit frame")
+        })?;
+        let held = timing.deck(frame.primary.other()).clocks_at(edit_frame)?;
         let params = transition
             .effect
             .params
@@ -204,13 +215,15 @@ impl ScenePlan {
             primary: frame.primary,
             start_frame: frame.start_frame,
             duration_frames: transition.duration_frames,
+            alignment: transition.alignment,
             frame_in_window: frame.frame_in_window,
             easing: transition.easing,
             progress: frame.progress,
             amount: frame.amount,
             params,
-            held_instance: held.0,
-            held_camera: held.1,
+            timing,
+            held_instance: held.instance.held,
+            held_camera: held.camera.held,
             other,
         }));
         self.requires = self.expected_requires();

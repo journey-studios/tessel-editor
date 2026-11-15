@@ -274,23 +274,10 @@ impl ScenePlan {
                 "the scene clock is the real edit time, held or not",
             ));
         }
-        // Before the cut the neighbour is the incoming shot's head: a held instance or camera
-        // sits on its first frame. (After the cut the last frame depends on lengths the plan
-        // does not carry.)
-        if t.primary == DeckSide::From {
-            if t.held_instance && other.frame.instance_frame != 0 {
-                return Err(invalid(
-                    "/transition/heldInstance",
-                    "a held head sits on the first frame of the instance",
-                ));
-            }
-            if t.held_camera && other.frame.camera_clip_frame != 0 {
-                return Err(invalid(
-                    "/transition/heldCamera",
-                    "a held head sits on the first frame of the camera clip",
-                ));
-            }
-        }
+        // The clocks of both decks, the window, the ids and the times: `temporal/validate.rs`.
+        // It replaces the old rule that a held head sat on frame 0: a camera that starts past
+        // its clip is held on the tail even before the cut.
+        self.check_transition_timing(t)?;
         let mut clips: BTreeSet<&str> = self.fx.iter().map(|pass| pass.clip_id.as_str()).collect();
         for (position, pass) in other.fx.iter().enumerate() {
             if matches!(pass.scope, FxScope::Output) {
