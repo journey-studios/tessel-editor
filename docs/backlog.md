@@ -1881,7 +1881,7 @@ concreto da S0, sem link para arquivo inexistente nem validação de lib/CLI/UI 
 | BL082.4.2 | P4b/S1a | Documento/janela/validação tipada e política de admissão fechada | Concluído no escopo interno; R2 aprova a752f0a | BL082.4.1/.11 concluídos | Coordenador / revisão Windows | R2:61transition/25scene_fx/80GPUI, processo headless real, perfis serde e mutantes dinâmicos/scanner/domínio. fmt/check/clippy/no-run/build passam. Core1525ok/2gizmosbase, workspaceexecutado/Mac pendentes. Produto P; IDgerado fica BL082.4.15/S3. |
 | BL082.4.3 | P4b/S1b | Avaliação dos dois decks e plano, recursos por assetId/used_by sem ambiguidade | Concluída no escopo interno — R3 Windows4199af0 | BL082.4.2 integrada | Coordenador / Cursor Sonnet5.5 | Head73775c3:106transições/10corpus/594lib/80GPUI e gates Windows relatados; produtoP. Mac106+10+baseline debug/release passam após correção de dados(.16), três kitsXparciais(.17) em revisão. SemS2/S3a iniciadas. |
 | BL082.4.4 | P4b/S2 | Runtime/renderer/mistura e lifecycle/cache | Pendente | BL082.4.3; S2A também BL082.4.5/S3a | Não atribuído | Cor8bits/alpha declarados, capability, dois splats/leases/contextloss/dispose e pixelsindependentes |
-| BL082.4.5 | P4b/S3 | Ops/gestos/inspector/persistência ecoreparser/nós | Em andamento — S3a Windows delegada; S3b pendente | BL082.4.3 | Cursor Sonnet5.5 / coordenador | Atomicidade/revisão/undo, módulossemcrescerarquivosproibidos; dividirS3aseS3bseútil |
+| BL082.4.5 | P4b/S3 | Ops/gestos/inspector/persistência ecoreparser/nós | A validar — S3a PR66 entregue; revisão e Mac pendentes; S3b pendente | BL082.4.3 | Cursor Sonnet5.5 / coordenador | Atomicidade/revisão/undo, módulossemcrescerarquivosproibidos; dividirS3aseS3bseútil |
 | BL082.4.6 | P4b/S4 | UIKit/provaautomação/guardasoverlaycore | Pendente | BL082.4.4/.5; W1integrada | Não atribuído | Controlesreais, predicadocoreúnico, gestoqueentranajanela/hitpress, célulastestadasporfase |
 | BL082.4.7 | P4b/S6 | Dissolve legado com faixaoráculonova e divergênciasdeveredito declaradas | Pendente | BL082.4.10 | Não atribuído | NÃO alterar invalid-dissolve-transition.expected/hashantigo; fixturesnovas/pinpiloto e contraexemploalphaStraightUNSUPPORTED_ALPHA; registrarexpansãodecontrato |
 | BL082.4.8 | P4b/perf | Custo dos dois decks/splats | Pendente | BL082.4.4 | Não atribuído | Medição própriacomlockperformance, não inferirbenefíciodeteste funcional |
@@ -2050,7 +2050,7 @@ atributo no próprio módulo em linha, não a declaração externa dentro dele.
 
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
-| BL082.4.15 | PR62 R2 / S3 | IDs automáticos de looks e trilhas ignoram IDs de transições | Em andamento — incluída na S3a Windows | BL082.4.5 | Cursor Sonnet5.5 / coordenador | Incluir transitions no namespace de every_id; provar transições fx-1/fx-track-1, IDs automáticos distintos, recusa explícita atômica, undo/redo. Hoje apenas Accept: recusa segura, não corrupção, sem acesso público. Não bloqueia S1a. |
+| BL082.4.15 | PR62 R2 / S3 | IDs automáticos de looks e trilhas ignoram IDs de transições | A validar — corrigida na S3a PR66, revisão pendente | BL082.4.5 | Cursor Sonnet5.5 / coordenador | Incluir transitions no namespace de every_id; provar transições fx-1/fx-track-1, IDs automáticos distintos, recusa explícita atômica, undo/redo. Hoje apenas Accept: recusa segura, não corrupção, sem acesso público. Não bloqueia S1a. |
 
 ### PR60 R3 aprova Windows; integração e validação Unix pendentes — 2026-11-14
 
@@ -2273,7 +2273,7 @@ quadros anteriores reais. Ausência de comprimento conhecido conserva comportame
 
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
-| BL082.4.24 | PR63 / handles | cameraIn além do fim conta cabeça inexistente e use/refuse aceita frames presos | Admissão validada R3 Windows4199af0; dica pendente S3a | BL082.4.3 | Coordenador | Regressões49/60 com câmera48 recusam TRANSITION_NO_HANDLES, hold admite e prende47; 47/48 conservam cabeça real e não prendem o vizinho. Testar/core/Mac e rechecagem Windows nova antes do merge; acervoS0 intocado. R3:114/10/1 EXPECT0/1,admission4,clippy/tree/check,4mutantes. Dica60/48sugere6masfaltam12; corrigir antes deS2A. |
+| BL082.4.24 | PR63 / handles | cameraIn além do fim conta cabeça inexistente e use/refuse aceita frames presos | A validar — admissão S1b validada; dica de cabeça corrigida na S3a PR66 | BL082.4.3 | Coordenador | Regressões49/60 com câmera48 recusam TRANSITION_NO_HANDLES, hold admite e prende47; 47/48 conservam cabeça real e não prendem o vizinho. Testar/core/Mac e rechecagem Windows nova antes do merge; acervoS0 intocado. R3:114/10/1 EXPECT0/1,admission4,clippy/tree/check,4mutantes. Dica60/48sugere6masfaltam12; corrigir antes deS2A. |
 
 BL082.4.24: produção69c5143; Mac896 core1596/0/7,114/10/1 preserve,GPUI80,
 check passam. Clippy apontou err-expect só no teste; forma da asserção ajustada
@@ -2334,3 +2334,18 @@ Sem nova execução Rust/GPU/build: os5Rust são da R3 em06c8ea9; Mac39 separado
 Referência/importabilidade validadas; .17 permanece parcial no consumidorS1b/S2,
 pixels/origem/golden. Fechamento seguinte sódocs, F064P/Refuse, sem ativação pública.
 [Validação Windows de geração](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:eebbb4b56edb287fcdf87bbcbdd0f301a3f77acde8e17e7077a2a2ef0c49c072).
+
+### PR66 — S3a entregue, integração e revisão iniciadas
+
+PR66 head934bab3: cinco ops de transição no pipeline existente, errors[] e projeção
+pt-br/en/es, predicado de janela sem consumidor, IDs(.15), diagnóstico de cabeça(.24).
+Autor Windows:170transições debug/preserve/release,604lib,508desktop; fmt/check/clippy/
+build,16mutantes mortos. Core1658/2: dois gizmos da base; workspace global não verde.
+Essas provas pertencem ao autor e não são herdadas pela integração com main79ed312.
+Merge de main em6cbd2c0 resolveu apenas conflito de apêndices no contrato F064,
+preservando X representável e S3a; nenhum conflito de código. Mac e revisão Windows
+independente da integração serão registrados por head. Refuse fechado/F064 produto P.
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL082.4.25 | S3a / handles cauda | Dica da câmera de saída subestima o reparo quando seu fim já está fora do clipe | Pendente — diagnosticado na PR66, não corrigido | BL082.4.24 | Coordenador / dono de S2 | cameraIn40,câmera60,shot48,after6: +6 não resolve, +34 resolve. Validar reparo suficiente e registrar divergência sem regravar corpus da origem. Admissão permanece segura; erro é na dica. Relatório S3a §3. |

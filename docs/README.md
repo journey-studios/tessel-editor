@@ -16,6 +16,7 @@ cada acesso pela UI, CLI com UI, CLI headless e biblioteca Rust.
 - [Inspector e árvore de cena](features/scene-inspector.md): controles recebidos, input GPUI e socket reportados; layout R9 inspecionado, captura final do cabeçalho em validação.
 - [Integração de recursos de cena](features/scene-resource-integration.md): host, geração, pacote/restauração e intercâmbio; 22 testes direcionados reconferidos, renderer integrado; UI dedicada de recursos parcial.
 - [Spark sob concorrência](features/spark-concurrency.md): diagnóstico da corrida do harness e gate determinístico de cancelamento; runtime intocado.
+- [P4b S3a — edição de transições no core](migration/p4b-s3a-editing-report.md): operações, diagnósticos localizados, predicado de janela e dica de cabeça; admissão pública fechada.
 - [Backlog compartilhado](backlog.md): registro único de pendências, responsáveis, dependências e aceite; obrigatório para todos os agentes.
 - [Inventário de migração do Scene Studio](migration/README.md): 121 itens classificados,
   evidências na origem, diferenças do branch piloto, matriz de migração e fatias sugeridas.
