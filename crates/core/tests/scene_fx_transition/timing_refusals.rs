@@ -198,6 +198,45 @@ fn the_primary_frame_must_precede_its_shot_exclusive_end() {
     }
 }
 
+#[test]
+fn each_instance_covers_its_whole_shot_even_when_its_deck_is_the_neighbour() {
+    // From needs 20 + 48 = 68 frames; to needs 0 + 48 = 48, independently of the role.
+    for frame in [44, 50] {
+        for (side, required) in [("from", 68_u64), ("to", 48)] {
+            for duration in [required, required - 1] {
+                let mut candidate = plan(frame);
+                let transition = t(&mut candidate);
+                if side == "from" {
+                    transition.timing.from.instance_duration_frames = duration;
+                    if frame == 50 {
+                        // The outgoing raw frame is 20 + 50 = 70. Both lengths hold it at
+                        // the final real frame; keep every sample and time coherent so only
+                        // the whole-shot coverage distinguishes the two candidates.
+                        let sample = duration - 1;
+                        transition.timing.from.sampled_instance_frame = sample;
+                        transition.other.frame.instance_frame = sample;
+                        transition.other.frame.instance_time =
+                            Ratio::new(i64::try_from(sample).unwrap(), 24).unwrap();
+                        transition.held_instance = true;
+                    }
+                } else {
+                    transition.timing.to.instance_duration_frames = duration;
+                }
+                let what = format!("{side} instance with {duration} frames at edit frame {frame}");
+                if duration == required {
+                    accepted_by_all(&candidate, &what);
+                } else {
+                    refused_by_all(
+                        &candidate,
+                        &format!("/transition/timing/{side}/instanceDurationFrames"),
+                        &what,
+                    );
+                }
+            }
+        }
+    }
+}
+
 fn cases() -> Vec<Case> {
     const FROM_END: &str = "/transition/timing/from/shotEndFrameExclusive";
     const TO_END: &str = "/transition/timing/to/shotEndFrameExclusive";

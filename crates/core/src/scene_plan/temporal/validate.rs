@@ -148,8 +148,8 @@ impl ScenePlan {
         Ok(())
     }
 
-    /// One instance or one camera clip seen from both decks has one length; the primary's
-    /// instance covers its whole shot (the camera may not, decision 5).
+    /// One instance or one camera clip seen from both decks has one length; each instance
+    /// covers its whole shot, including the neighbour's (the camera may not, decision 5).
     fn check_timing_identities(&self, t: &PlanTransition) -> Result<(), PlanError> {
         let timing = &t.timing;
         let from = self.deck_of(t, DeckSide::From);
@@ -170,17 +170,19 @@ impl ScenePlan {
                 "a camera clip seen from both decks has one length",
             ));
         }
-        let deck = timing.deck(t.primary);
-        let frames = deck.shot_end_frame_exclusive - deck.shot_start_frame;
-        if deck
-            .instance_start_frame
-            .checked_add(frames)
-            .is_none_or(|end| end > deck.instance_duration_frames)
-        {
-            return Err(invalid(
-                at(t.primary, "instanceDurationFrames"),
-                "the instance of the primary shot holds all of the shot's frames",
-            ));
+        for side in [DeckSide::From, DeckSide::To] {
+            let deck = timing.deck(side);
+            let frames = deck.shot_end_frame_exclusive - deck.shot_start_frame;
+            if deck
+                .instance_start_frame
+                .checked_add(frames)
+                .is_none_or(|end| end > deck.instance_duration_frames)
+            {
+                return Err(invalid(
+                    at(side, "instanceDurationFrames"),
+                    "the instance holds all of its shot's frames",
+                ));
+            }
         }
         Ok(())
     }
