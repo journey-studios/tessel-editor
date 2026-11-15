@@ -325,3 +325,17 @@ a 40):
 * *A suíte completa repetida (o aceite de BL128):* 3 execuções completas seguidas no head da PR #53, 384/384 cada (584 s, 378 s e
   363 s, máquina compartilhada com load de 30 a 65), e mais uma na `main` `bc0c3ea` (a mescla da PR #53), 384/384; o teste
   é o `ok 368` de todas.
+
+## União de recursos no host (BL082.4.4, S2-H)
+
+`SceneResourceMap::from_root`, `SceneSlots` e `scene_operation::approved_map` percorrem a união
+calculada por `ScenePlan::resource_union()`, inclusive os recursos exclusivos do vizinho. Aprovação
+continua por cena anexada e assetId; cada uso é qualificado por deck. Recursos compartilhados
+custam uma vez em bytes/slots e cada uso de splat conta no teto do quadro. Custos e somas não
+representáveis são recusados antes de mutar o livro, mesmo com orçamento `u64::MAX`; a eviction
+só mantém recursos antigos se a soma verificada couber. Erros de recurso preservam código e
+trazem `details.resource`; os tetos globais não inventam atribuição.
+
+O host interno aceitar um plano tipado nos testes não habilita `crossDissolve` no runtime ou
+nas entradas públicas. Refuse permanece fechado; evidências por head e limites no
+[relatório H](../migration/p4b-s2-host-resource-report.md). Não é prova de render de transição.
