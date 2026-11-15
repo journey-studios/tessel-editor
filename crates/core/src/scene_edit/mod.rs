@@ -50,6 +50,7 @@ mod fx_transition;
 mod fx_transition_tests;
 mod op;
 mod reference;
+pub mod shots;
 mod value;
 
 pub use batch::{
