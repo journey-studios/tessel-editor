@@ -718,3 +718,59 @@ prova edit/list/inspect, não frame/gesto. Reutilização de ID dentro do mesmo 
 ainda pode atribuir erro à remoção anterior (.29); .28 trata tipos diferentes.
 No-op líquido relata alterações intermediárias por op, sem revisar/gravar o
 resultado líquido. Dica da cauda(.25) pendente; detalhes no relatório S3a§13.
+
+## S2-C0a (BL082.4.19, .25, .26, .27, .28, .29): pré-requisitos do core — admissão pública **fechada**
+
+Entrega só do core (sem UI, sem engine, sem Domain novo, sem `Accept` em produção). O produto F064 continua `P` e a
+admissão pública continua `Refuse`. Contrato fixado **antes** do código; evidências e mutantes no relatório
+[p4b-s2-c0a-report.md](../migration/p4b-s2-c0a-report.md).
+
+### BL082.4.29: proveniência de uma entidade num lote
+
+Um id não é uma identidade. Dentro de **um** lote, `add_clip` e o `set_transition` que escreve um corte novo **criam**
+uma geração de `(tipo, id)`; `remove_clip`/`remove_transition` a encerram; os demais ops pertencem à geração viva.
+Um problema que o importador acha na entidade do candidato é atribuído (`ops` do problema e `index` do erro) só aos ops
+da geração que **sobrevive** no fim do lote. Os ops de uma geração removida não recebem ponteiro: se `x` é criado,
+removido e criado de novo, só o terceiro op responde por `x`. Um op sem efeito (no-op) continua sem ponteiro. A regra é
+privada ao pipeline de edição (`scene_edit/fx_lineage.rs`): nenhuma chave de documento, nenhum tipo público e nenhuma
+mudança nas respostas de um lote aceito; a distinção clip/transição da .28 continua valendo. Não é rastreamento causal
+por propriedade: um id removido e recriado é outra entidade, mesmo no mesmo tipo e no mesmo corte.
+
+### BL082.4.19: contexto do deck vizinho no plano
+
+`ScenePlan::build_with` e `PlanTimeline::build_with` qualificam, **por deck**, todo erro dos passos do **vizinho**
+(avaliar o frame do offset, `Prepared::new`, domínios não suportados, montagem, transformação de splat) com o
+`within_other` que já existia na validação do plano: o ponteiro vai para `/transition/other…` e o erro é `Invalid`
+(os tipos `Frame`/`Unsupported`/`SplatTransform` do vizinho viram texto sob esse ponteiro, como já ocorre na leitura do
+JSON). Os passos do deck de cima não mudam: o mesmo erro, no mesmo tipo e ponteiro. Sem transição na janela nada muda.
+Os dois construtores respondem igual; o prefixo nunca é aplicado duas vezes.
+
+### BL082.4.25: reparo da cauda de câmera que sai
+
+Com `cameraIn + duração + after > total`, estender o clipe em `camera = after − tail_camera` não basta quando a câmera
+já termina **antes** do fim do shot (`tail_camera` é saturado em 0). O reparo exato do fim do clipe é
+`cameraExtend = max(0, cameraIn + duração + after − total)` (aritmética checada; num estouro de `i64` satura em
+`i64::MAX` **só** no caminho de recusa, nunca grava nada). Contrato:
+
+- `details.lacks[]` do lado `after` ganha `cameraExtend` **somente** quando difere do `camera` legado; `camera`,
+  `instance` e o resto mantêm os valores e os bytes de hoje. Sem a divergência o formato é byte a byte o do corpus.
+- A dica da cauda manda estender o clipe em `cameraExtend` quadros após o fim. A mensagem continua dizendo o que falta
+  à janela (`camera`), não o reparo.
+- `details.args.lacks[]` leva sempre `cameraExtend` (igual a `camera` quando não diverge); a projeção localizada usa-o
+  no reparo, nas três línguas. Um `cameraExtend` presente e inválido (não inteiro ≥ 0) preserva mensagem/dica originais
+  e marca `untranslated` (regra da .28); ausente, vale `camera`. O lado `before` não muda (`cameraEnd` da .24).
+- A admissão **não** muda: o que era aceito/recusado continua; só o número do reparo fica certo. Exemplo (`cameraIn 40`,
+  câmera 60, shot 48, `after 6`): `cameraExtend 34` ⇒ câmera de 94 aceita, 93 e 66 recusadas.
+
+**Divergência explícita do corpus:** três linhas do oráculo comparam a dica antiga da cauda
+(`corpus-center-12-use-lacks-camera-and-head`, `corpus-center-12-refuse-reads-as-use`: 6→11;
+`corpus-start-12-use-needs-only-the-tail`: 12→17), porque a câmera do `shot-a` (40 quadros, `cameraIn 5`) termina 5
+quadros antes do fim do shot. O oráculo Python e as fixtures **não** foram regravados; o consumidor Rust declara essas
+três linhas como divergência conhecida da dica (a lista de lacks, a admissão e o veredito continuam iguais).
+
+### BL082.4.26, .27, .28: lacunas permanentes de teste
+
+Provas permanentes novas (sem mudar produção): a guarda de `effect`/`fromShotId`/`toShotId` na restauração de grafia
+(caso real num lote + teste defensivo do helper), `cameraEnd` e toda contagem inválida (texto, negativo, fracionário,
+nulo, `3.0`) e o orçamento de 9 passes dentro da janela e 8 fora, em `scene.fx.frame`, nas respostas de orçamento e
+num gesto sobre um look. As ressalvas da S3a sobre esses pontos ficam fechadas pela suíte, não por inspeção.

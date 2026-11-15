@@ -219,4 +219,6 @@ admissão pública nem prova pixels reais.
 
 A execução do workspace unifica `serde_json/preserve_order` vindo de GPUI. O golden da R6 originalmente passava isolado e falhava no workspace apenas pela ordem das chaves. O comparador agora ordena objetos recursivamente antes do digest, mantendo valores, números, arrays e erros exatos. Os digests de referência não foram regenerados nem as tolerâncias afrouxadas.
 
-O construtor (`ScenePlan::build`/`PlanTimeline::build`) ainda não qualifica erros de splat/frame/domínio do vizinho por deck (BL082.4.19); isso fica paraS2, com admissão pública ainda fechada.
+O construtor (`ScenePlan::build_with`/`PlanTimeline::build_with`) qualifica por deck os erros dos passos do vizinho
+(frame, domínio, montagem, transformação de splat): ponteiro `/transition/other…` com `PlanError::Invalid`, igual nos
+dois construtores e sem prefixo duplo; o deck de cima mantém seus erros (BL082.4.19, S2-C0a; admissão pública fechada).
