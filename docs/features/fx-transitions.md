@@ -806,6 +806,12 @@ o da maior faixa (principal ou camada) e o primário guarda os quadros brutos (a
 bruto 23 / amostrado 11 no caso legado). O wire experimental sem `alignment`/`timing` é recusado em
 `/transition/alignment` e `PLAN_VERSION` continua 1; planos sem transição não mudam um byte.
 
+BL082.4.20: cada instância deve cobrir todo o próprio shot, tanto no primário quanto no vizinho.
+O validador verifica `instanceStartFrame + (shotEndFrameExclusive − shotStartFrame) <= instanceDurationFrames`
+nos dois lados e recusa no ponteiro `/transition/timing/<lado>/instanceDurationFrames`.
+Hold da instância do vizinho continua válido fora do próprio shot; câmera curta mantém seu contrato.
+Esse reforço posterior à PR71 corrige a checagem que alcançava apenas o primário.
+
 Provas: um plano **válido** de exatamente 20.000 itens é aceito em `validate`, `from_json` e `from_json_str`;
 um passe ou uma luz a mais é recusado em `/transition`. O texto de exatamente 4.194.304 bytes é aceito por
 `from_json_str`, e um byte a mais é recusado nessa porta textual (BL082.4.21); a referência representável do PR65

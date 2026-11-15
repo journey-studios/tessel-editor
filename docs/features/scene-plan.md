@@ -144,7 +144,9 @@ O validador (mesma porta para `validate`, `from_json` e `from_json_str`, e para 
 aritmética verificada e na ordem: números representáveis em `i64`; shots não vazios dentro da edição; o corte único; `primary`
 = `from` antes de `C` e `to` a partir dele; o quadro dentro do shot primário; a janela de `(C, durationFrames, alignment,
 editDurationFrames)` e o `startFrame`; instância e clipe de câmera compartilhados entre decks com **um** comprimento; a instância
-do primário cobrindo o shot; as amostras; os quadros legados; os `held*`; e os tempos `Ratio` exatos de cada contador. Cada
+de cada lado cobrindo todo o próprio shot, inclusive quando é o vizinho
+(`instanceStartFrame + shotEndFrameExclusive − shotStartFrame <= instanceDurationFrames`);
+as amostras; os quadros legados; os `held*`; e os tempos `Ratio` exatos de cada contador. Cada
 recusa é `invalid` com o ponteiro do campo errado (`/transition/timing/<deck>/<campo>` ou o campo legado). Mede coerência,
 não procedência. Um plano externo válido pode ter até os tetos acima; isso não significa que um bundle o produza.
 
