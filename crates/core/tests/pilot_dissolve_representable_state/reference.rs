@@ -12,6 +12,9 @@ use tessel_editor_core::scene_plan::ScenePlan;
 use tessel_editor_core::time::Ratio;
 pub const CASES: &str =
     include_str!("../../../../docs/migration/fixtures/pilot-fx/dissolve-representable-cases.json");
+/// Every committed kit uses this initial FOV and has only hold/truck segments (no FOV change).
+/// The fixture reader pins this precondition against every bundle camera clip.
+pub const REFERENCE_FOV_DEG: f64 = 50.0;
 
 /// Fixture side, shot, instance and camera clip of each deck.
 pub const DECKS: [(&str, &str, &str, &str); 2] = [
@@ -397,6 +400,21 @@ pub fn verify_window(scenario: &Value, frame: &Value, plan: &ScenePlan) -> Check
             real(&position[2]),
             1e-9,
             label("camera z"),
+        )?;
+        // A truck translates position and target together; a hold leaves both at the input pose.
+        let target = &clip["target"];
+        for (got, want, axis) in [
+            (deck.camera.target.x, real(&target[0]) + travelled, "x"),
+            (deck.camera.target.y, real(&target[1]), "y"),
+            (deck.camera.target.z, real(&target[2]), "z"),
+        ] {
+            close(got, want, 1e-9, label(&format!("camera target {axis}")))?;
+        }
+        close(
+            deck.camera.fov_deg,
+            REFERENCE_FOV_DEG,
+            1e-9,
+            label("camera fov"),
         )?;
         // The marker of the moving kits sits where the neighbour or primary instance frame puts it.
         if text(&scenario["kit"]) != "lit" {

@@ -11,7 +11,7 @@
 //!
 //! Mapping and limits. Compared: `primary`/`neighbour`, `instance_wanted`/`camera_wanted` (raw),
 //! `instance_frame`/`camera_clip_frame` (sampled), `held_*`, `lights[].effective_intensity`,
-//! `marker.world_centre`, `camera` (position along the one segment), `edit_seconds.rational`,
+//! `marker.world_centre`, `camera` (position and target along the one segment, fixed FOV), `edit_seconds.rational`,
 //! `transition.progress`/`amount`/`shaped` (the smoothing is the runtime's own, recomputed here
 //! by its definition), `fx_edge`, `k`, `window`, `shots`, `fps`. Diagnostic only, never compared
 //! as state: `scene_seconds` (a decimal of the edit time), `probes[]`, `centre_px`,
@@ -50,6 +50,11 @@ fn the_reference_is_read_whole() {
         .filter(|frame| frame["in_window"] == true)
         .count();
     assert_eq!(inside, 7 * 12, "twelve frames of every window");
+    for bundle in cases["bundles"].as_object().unwrap().values() {
+        for clip in bundle["cameraClips"].as_array().unwrap() {
+            assert_eq!(real(&clip["initialFovDeg"]), REFERENCE_FOV_DEG);
+        }
+    }
 }
 
 #[test]

@@ -1,6 +1,7 @@
 //! P4b S2-C0b (BL082.4.21): the hostile-input ceilings of a plan with a transition, met by a plan
 //! that is *valid* rather than by nulls: exactly 20,000 items and exactly 4,194,304 bytes are
-//! accepted by the three doors, one item or one byte more is refused as `/transition`.
+//! accepted (the byte ceiling applies to the text reader). One more item is refused by all three
+//! doors; one more text byte is refused by the text reader, as `/transition`.
 //!
 //! The plan is built in memory (nothing is committed): the real window plan of the spec edit at
 //! frame 44 with one `fade` pass of each shot, then cloned passes with fresh clip ids. The item

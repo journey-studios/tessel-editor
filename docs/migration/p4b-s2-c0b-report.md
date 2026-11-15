@@ -27,7 +27,7 @@ sem origem executada.
   documento o limitam muito antes e **não** foram alterados.
 - **Consumidor X (C).** `pilot_dissolve_representable_state.rs` lê o fixture representável do PR65 (7 cenários, 98
   quadros) e compara **estados** do plano real; nenhum pixel é desenhado ou comparado.
-- Pastas novas/arquivos tocados: ver `git diff c9c5fa0 --stat` (27 arquivos, 3413 inserções, 88 remoções). Nenhum
+- Pastas novas/arquivos tocados: ver `git diff c9c5fa0 --stat`; as contagens do diff incluem também os documentos de fechamento. Nenhum
   arquivo acima de 800 linhas é novo e nenhum arquivo acima de 1000 linhas cresceu (`build.rs` 743 → 782 é o maior).
   Sem mudança em `Cargo.lock`, dependências, desktop, media, runtime, renderer ou na origem.
 
@@ -190,7 +190,7 @@ desses arquivos foi editado nesta entrega. `<PR>` = esta PR.
 **Linha 2237 (BL082.4.21):**
 
 ```
-| BL082.4.21 | Validação do teto de itens | Não há plano válido aceito de exatamente 20000 itens sob o teto de bytes | Implementado na S2-C0b — a validar (Windows independente e Mac pendentes) | BL082.4.3 | S2-C0b / Cursor Sonnet5.5 | Plano válido de exatamente 20000 itens ([3,2,0,9993,2,0] por deck) e de exatamente 4194304 bytes aceito nas três portas; +1 passe/luz/byte recusado em `/transition`; lights e vizinho contados; mutantes `>`/`>=`, vizinho e luzes mortos. Um bundle com MAX_FX_TRACKS=64 não produz esse plano: cotas do documento inalteradas. |
+| BL082.4.21 | Validação do teto de itens | Não há plano válido aceito de exatamente 20000 itens sob o teto de bytes | Implementado na S2-C0b — a validar (Windows independente e Mac pendentes) | BL082.4.3 | S2-C0b / Cursor Sonnet5.5 | Plano válido de 20000 itens ([3,2,0,9993,2,0] por deck) aceito em validate/Value/text; texto de exatamente 4194304 bytes aceito e +1 byte recusado; +1 passe/luz recusado em `/transition`; lights e vizinho contados; mutantes `>`/`>=`, vizinho e luzes mortos. Um bundle com MAX_FX_TRACKS=64 não produz esse plano: cotas do documento inalteradas. |
 ```
 
 **Linha 2242 (BL082.4.23) e linha 2292 (mesma linha na tabela de revisão):**
@@ -210,3 +210,33 @@ S2-C0b em <PR> (a validar, Windows independente/Mac pendentes): `alignment`/`tim
 ```
 - [P4b S2-C0b — relógios do plano com transição](migration/p4b-s2-c0b-report.md): `alignment`/`timing`, regra única de relógio, teto exato de 20000 itens/4 MiB e leitura da referência representável como estado; admissão pública fechada.
 ```
+
+## 9. Conferência do coordenador e reforço da câmera
+
+No head4ee9370, o Mac nativo concluiu fmt/check/clippy/no-run/build/tree com saída0;
+core1731/0/7 em66resultados (lib618), preserve e workspaceunificado214/10/5/8/1,
+baselinerelease1 e desktopFX80. Logs comHEAD/command em
+~/.cache/tessel-pr71-mac-20261115/summary.json. Workspace inteiro foi compilado,
+não executado. Não há prova de Windows nesses números, nem runtime/pixel/GPU.
+
+A comparação X original conferia posição da câmera, mas não target nem FOV. O
+coordenador acrescenta os três eixos do alvo e o FOV em ambos os decks, usando
+a definição analítica dos kits: truck desloca posição e alvo juntos; hold mantém
+a pose; todos os clipes commitados têm initialFovDeg50 e nenhum segmento alteraFOV.
+A leitura do fixture fixa essa pré-condição de FOV sem derivá-la do plano produzido.
+Oito controles novos alteram isoladamente cada eixo de target e o FOV de cada deck;
+eles se somam às11classes anteriores. Nenhum fixture/limiar/código de produção mudou.
+Esta comparação continua sintética e de estado: não cobre pixels ou textura.
+
+A prova vermelha no Mac rodou o consumidor original com os controles novos:7passam/1falha,
+por aceitar `primary camera target x` incorreto. Com a comparação completa,8/8 passaram
+no isolado e8/8 com preserve_order; fmt0. Logs `camera-controls-red.log`, `camera-green.log`
+e `camera-preserve.log`, com hashes dos4arquivos da árvore candidata em
+`camera-candidate-summary.json`, no diretório de logs acima. O clone voltou limpo a4ee9370;
+nenhum resultado foi atribuído silenciosamente a outrohead. A reexecução no commit
+publicado e a revisãoWindows do reforço continuam pendentes.
+
+Os patches comuns foram integrados pelo coordenador na PR71 com status A validar.
+O teto de bytes só é julgado na porta textual; as portas Value e tipada não recebem
+texto. A contagem20000 é julgada nas três portas. Revisão Windows independente
+em execução; Refuse fechado e F064produtoP.

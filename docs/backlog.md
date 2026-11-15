@@ -1880,7 +1880,7 @@ concreto da S0, sem link para arquivo inexistente nem validação de lib/CLI/UI 
 | BL082.4.1 | P4b/S0 | Contrato F064 e corpus independente dissolve, fonte e X analítico | Concluído — somente S0 oráculo/contrato | BL082.4; setupPythonBL167.5 parcial | Coordenador / Cursor Sonnet5.5 | R3 independente aprova e4078ff no Windows; corpus167/analítico39 normal e-O, reprodução byte a byte e Mac equivalente. Produto lib/JSONL/UI permanece P; detalhes no relatório S0 §12. |
 | BL082.4.2 | P4b/S1a | Documento/janela/validação tipada e política de admissão fechada | Concluído no escopo interno; R2 aprova a752f0a | BL082.4.1/.11 concluídos | Coordenador / revisão Windows | R2:61transition/25scene_fx/80GPUI, processo headless real, perfis serde e mutantes dinâmicos/scanner/domínio. fmt/check/clippy/no-run/build passam. Core1525ok/2gizmosbase, workspaceexecutado/Mac pendentes. Produto P; IDgerado fica BL082.4.15/S3. |
 | BL082.4.3 | P4b/S1b | Avaliação dos dois decks e plano, recursos por assetId/used_by sem ambiguidade | Concluída no escopo interno — R3 Windows4199af0 | BL082.4.2 integrada | Coordenador / Cursor Sonnet5.5 | Head73775c3:106transições/10corpus/594lib/80GPUI e gates Windows relatados; produtoP. Mac106+10+baseline debug/release passam após correção de dados(.16), três kitsXparciais(.17) em revisão. SemS2/S3a iniciadas. |
-| BL082.4.4 | P4b/S2 | Runtime/renderer/mistura e lifecycle/cache | Em andamento — C0a aceita PR69; C0b/H/R pendentes | BL082.4.3; S2A também BL082.4.5/S3a | Não atribuído | Cor8bits/alpha declarados, capability, dois splats/leases/contextloss/dispose e pixelsindependentes |
+| BL082.4.4 | P4b/S2 | Runtime/renderer/mistura e lifecycle/cache | Em andamento — C0a aceita PR69; C0b (relógios/timing do plano, teto 20000, consumidor X de estado) implementada em PR #71 (head 4ee9370, código c2959ce), a validar (Windows independente e Mac pendentes); H/R pendentes | BL082.4.3; S2A também BL082.4.5/S3a | Não atribuído | Cor8bits/alpha declarados, capability, dois splats/leases/contextloss/dispose e pixelsindependentes. C0b: `p4b-s2-c0b-report.md`; nenhum pixel/runtime/renderer. |
 | BL082.4.5 | P4b/S3 | Ops/gestos/inspector/persistência ecoreparser/nós | Concluída no escopo interno — R2 Windows512685a; S3b pendente | BL082.4.3 | Cursor Sonnet5.5 / coordenador | Atomicidade/revisão/undo, módulossemcrescerarquivosproibidos; dividirS3aseS3bseútil |
 | BL082.4.6 | P4b/S4 | UIKit/provaautomação/guardasoverlaycore | Pendente | BL082.4.4/.5; W1integrada | Não atribuído | Controlesreais, predicadocoreúnico, gestoqueentranajanela/hitpress, célulastestadasporfase |
 | BL082.4.7 | P4b/S6 | Dissolve legado com faixaoráculonova e divergênciasdeveredito declaradas | Pendente | BL082.4.10 | Não atribuído | NÃO alterar invalid-dissolve-transition.expected/hashantigo; fixturesnovas/pinpiloto e contraexemploalphaStraightUNSUPPORTED_ALPHA; registrarexpansãodecontrato |
@@ -2195,7 +2195,7 @@ contra referência Mac; é pré-condição ausente. Coordenador capturae3separad
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
 | BL082.4.16 | PR63 / baseline Mac | Fixture de compatibilidade não inclui perfis debug/release Mac | Correção de dados validada no Mac | BL082.4.3 | Coordenador | Captura sobre e3c20cb sem mudar core/src/Cargo.lock, probe removido/status limpo; Windowsentries canônicas inalteradas. Candidato737+fixture:106transições/10corpus e baseline debug/release passam. Head limpo93fb635 passou debug e gates; Linux não executado. |
-| BL082.4.17 | PR63 / referência X | Três lit-held não importam por instância menor que shot, comparações só parcialmente preservadas | A validar — referência aceita Windows9bafc43/Mac; consumidor S1b/S2 pendente | BL082.4.1/.4.3 | Coordenador / Cursor Sonnet5.5 | JulgarT06/T10/T16 e necessidade de fixtures representáveis sem enfraquecerimportador ouregravarorigem; não promover todosos estados/sondasporassociação. Autor declara reconstrução e limites. |
+| BL082.4.17 | PR63 / referência X | Três lit-held não importam por instância menor que shot, comparações só parcialmente preservadas | A validar — referência aceita Windows9bafc43/Mac; consumidor de estado implementado na S2-C0b (`pilot_dissolve_representable_state.rs`, 7 cenários/98 quadros, sem pixel), a validar na revisão independente; pixels/sondas de cor pendentes para o renderer | BL082.4.1/.4.3 | Coordenador / Cursor Sonnet5.5 | JulgarT06/T10/T16 e necessidade de fixtures representáveis sem enfraquecerimportador ouregravarorigem; não promover todosos estados/sondasporassociação. Autor declara reconstrução e limites. S2-C0b: papéis, relógios bruto/amostrado/preso dos dois decks, offsets/ids/limites, Ratio (30000/1001), câmera, marcador e luzes no relógio real comparados ao plano real; fora da janela = plano puro do primário; ordem independente; 11 classes de falsificação recusadas (`p4b-s2-c0b-report.md` §4). |
 
 ### Baseline Mac capturado na base original, não no candidato
 
@@ -2233,13 +2233,13 @@ luz usa quadro real e o vizinho tem discriminante próprio. Review independente 
 |---|---|---|---|---|---|---|
 | BL082.4.18 | PR63 / validador | Overflow e três guardas sem regressão discriminante | Validado em R2 Windows d2c1861; .24 separada | BL082.4.3 | Coordenador | Recusar conversão/soma inválidas; testes de tempo real divergente, clipId repetido entre decks e luzes no pré-check; matar os mutantes da revisão e revalidar Windows/Mac. |
 | BL082.4.19 | PR63 / erros | Versão e transformação de splat do vizinho sem deck no erro | Validado R1 Windows9f7cc83 e Mac — quatro qualificações defensivas sem alcance provado | BL082.4.3 | Coordenador | Ponteiro /transition/other em planos tipados e JSON, inclusive versão/splat; manter contrato do topo e testar ids colidentes. |
-| BL082.4.20 | S2 / contrato do plano | Wire sem C e comprimentos não permite validar toda a escolha temporal de primary/held | Pendente | BL082.4.3/.4.4 | Dono de S2 a atribuir | Fixar contrato de validação de planos externos antes do runtime; separar escolha correta do construtor da capacidade do validador isolado. |
-| BL082.4.21 | Validação do teto de itens | Não há plano válido aceito de exatamente 20000 itens sob o teto de bytes | Pendente | BL082.4.3 | Não atribuído | Provar interação dos dois tetos com plano válido representável ou documentar formalmente por que a combinação é impossível; pré-check de arrays não é aceite completo. |
+| BL082.4.20 | S2 / contrato do plano | Wire sem C e comprimentos não permite validar toda a escolha temporal de primary/held | Implementado na S2-C0b — a validar (Windows independente e Mac pendentes) | BL082.4.3/.4.4 | S2-C0b / Cursor Sonnet5.5 | `alignment` e `timing` obrigatórios no wire com transição (C, intervalos, offsets, comprimentos, amostras), regra única de relógio, validador em três portas com ponteiro por campo, mutantes mortos; sem mudar `PLAN_VERSION` nem bytes sem transição. Coerência, não procedência. `p4b-s2-c0b-report.md` §2/§6. |
+| BL082.4.21 | Validação do teto de itens | Não há plano válido aceito de exatamente 20000 itens sob o teto de bytes | Implementado na S2-C0b — a validar (Windows independente e Mac pendentes) | BL082.4.3 | S2-C0b / Cursor Sonnet5.5 | Plano válido de 20000 itens ([3,2,0,9993,2,0] por deck) aceito em validate/Value/text; texto com 4194304 bytes aceito e +1 byte recusado; +1 passe/luz recusado em `/transition`; lights e vizinho contados; mutantes `>`/`>=`, vizinho e luzes mortos. Um bundle com MAX_FX_TRACKS=64 não produz esse plano: cotas do documento inalteradas. |
 | BL082.4.22 | PR63 / orçamento | Edit/inspect/gesto/UI ainda usam orçamento que ignora transição | Validado em R2 Windows d2c1861; .24 separada | BL082.4.3 | Coordenador | Migrar chamadas restantes para pass_budget_in e discriminar 8 looks mais mistura em respostas compartilhadas; sem abrir Refuse. |
 
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
-| BL082.4.23 | S1b / relógio de câmera | Plano primário conserva contador bruto além da câmera curta; offset/oráculo usa contador preso | Pendente — divergência de metadado, sem paridade de estado completo | BL082.4.17/.4.3 | Coordenador / dono de S2 | Julgar contrato preservando bytes sem transição; comparar contador legado e offset separadamente. Exemplo lit-center-held f23: primário23, offset/oráculo11. Pose é hold no kit; isto não é prova de pixels reais. |
+| BL082.4.23 | S1b / relógio de câmera | Plano primário conserva contador bruto além da câmera curta; offset/oráculo usa contador preso | Implementado na S2-C0b — a validar (Windows independente e Mac pendentes) | BL082.4.17/.4.3 | S2-C0b / Cursor Sonnet5.5 | Contrato: o primário guarda o quadro **bruto** (bytes sem transição inalterados) e `timing.sampled*` + `PlanTransition::clocks` dão o amostrado e o preso de cada deck pela mesma regra do offset. Caso legado raw23/sample11 (câmera de 12 quadros) é teste explícito; o último quadro real não é preso. Pose é hold no kit; isto não é prova de pixels reais. |
 
 ### PR63: reforço validado no Mac, pronto para rechecagem Windows
 
@@ -2288,8 +2288,8 @@ primário/.24quantidade da dica emS3a antesdeS2A. Não é produto/render/aceiteh
 
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
-| BL082.4.17 | P4b/S0-X representável | Casos válidos de hold do vizinho e luz no quadro real, com bundles importáveis | A validar — referência aceita Windows9bafc43/Mac; consumidor S1b/S2 pendente | BL082.4.1/.4.2 | Coordenador / Cursor Sonnet5.5 | 7cenários/98quadros/390sondas,37specs normal/-O e5Rust no Windows/Mac da entrega inicial. Nits: papéis só por quadro, Python3.9 sem metadata3.10, janela Rust e mapa de assets; relatório próprio. Consumidor S1b/S2 ainda pendente, hold da câmera só por estado, viés agregado por cenário vs texto canônico por quadro a decidir antes do engine. Origem não executada/golden não comparável. |
-| BL082.4.23 | S1b / relógio de câmera | Plano primário conserva contador bruto além da câmera curta; offset/oráculo usa contador preso | Pendente — divergência de metadado, sem paridade de estado completo | BL082.4.17/.4.3 | Coordenador / dono de S2 | Julgar contrato preservando bytes sem transição; comparar contador legado e offset separadamente. Exemplo lit-center-held f23: primário23, offset/oráculo11. Pose é hold no kit; isto não é prova de pixels reais. |
+| BL082.4.17 | P4b/S0-X representável | Casos válidos de hold do vizinho e luz no quadro real, com bundles importáveis | A validar — referência aceita Windows9bafc43/Mac; consumidor de estado na S2-C0b (`pilot_dissolve_representable_state.rs`), a validar; pixels pendentes | BL082.4.1/.4.2 | Coordenador / Cursor Sonnet5.5 | 7cenários/98quadros/390sondas,37specs normal/-O e5Rust no Windows/Mac da entrega inicial. Nits: papéis só por quadro, Python3.9 sem metadata3.10, janela Rust e mapa de assets; relatório próprio. S2-C0b lê o JSON (sem Python/pixel) e compara estados do plano real; hold da câmera e UNH por estado estático provados; sondas de cor (390) seguem diagnósticas. Viés agregado por cenário vs texto canônico por quadro a decidir antes do engine. Origem não executada/golden não comparável. |
+| BL082.4.23 | S1b / relógio de câmera | Plano primário conserva contador bruto além da câmera curta; offset/oráculo usa contador preso | Implementado na S2-C0b — a validar (Windows independente e Mac pendentes) | BL082.4.17/.4.3 | S2-C0b / Cursor Sonnet5.5 | Contrato: o primário guarda o quadro **bruto** (bytes sem transição inalterados) e `timing.sampled*` + `PlanTransition::clocks` dão o amostrado e o preso de cada deck pela mesma regra do offset. Caso legado raw23/sample11 (câmera de 12 quadros) é teste explícito; o último quadro real não é preso. Pose é hold no kit; isto não é prova de pixels reais. |
 
 BL082.4.17: reforço026b72a noMac passou37normal/-O/metadata3.10ausente,
 14arquivosbytea byte,verifypinMac,5Rust/clippy. Mutantesduração/alinhamento
@@ -2417,3 +2417,25 @@ prova de alcançabilidade (evaluateoffset build/timeline,Prepared,assemble_with)
 Probe remove_track+clipreusado foi inconclusiva antes do cenário; não contada.
 Fixtures intactos,restaurações por hash/mtime e controle; fechamento sódocs.
 Refuse/F064P; C0b/H/R/S2A pendentes. RelatórioC0a§12 registra os limites.
+
+### PR71 — S2-C0b entregue e em revisão — 2026-11-15
+
+Entrega Windows em4ee9370/código c2959ce: alignment/timing, relógiosraw/amostrado/held,
+planoexterno20000itens+4MiB no texto e consumidorXdeestado7cenários/98quadros.
+Autor:214/10/5/8/1 nos3perfis,lib617,core1728/2/7,FX80,estáticos/no-run/build0,
+29mutantes finais mortos (primeira rodada2sobreviventes+1compileerr refeita).
+DoisgizmosbaseWindowsvermelhos; workspaceglobal apenascompilado. Fixtures/80hashes
+inalterados; Refusefechado/F064P; semruntime/pixel/GPU/origem.
+
+Revisão independente Windows iniciada em4ee9370, CursorSonnet5.5defaults:
+[PR71 R1 Windows: contrato temporal, teto exato e consumidor X](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:51f4d38f4441d871ccaa8f2bb0c22343e2c21c54ae0b4d803db35426a715e0cf)
+Mac nativo no mesmohead em execução, logs~/.cache/tessel-pr71-mac-20261115.
+Corecompleto jápassou1731/0/7(lib618),66resultados; demaisgatesaindaemexecução.
+Coordenadorencontroulacuna de comparaçãoalvo/FOV emX e prepara reforçotest-only;
+nãopromoverposecompleta antesdoprovar controlesdesses campos.
+
+PR71: o controle novo de câmera aceito pelo consumidor antigo falhou como esperado
+(Mac7/1, alvo x do primário). Comparação com targetxyz/FOV nos dois decks passou8/8
+isolado e8/8preserve,fmt0, em árvore candidata com hashes registrados. Fixtures e
+produção intactos. Patch comum aplicado; revisãoWindows e prova no commit publicado
+ainda pendentes. Não herdar o core1731/0/7 de4ee9370 como execução do reforço.

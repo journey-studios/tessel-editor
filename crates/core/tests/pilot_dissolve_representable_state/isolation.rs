@@ -44,6 +44,31 @@ fn falsified(
         let t = p.transition.as_deref_mut().unwrap();
         t.held_camera = !t.held_camera;
     });
+    for (kind, primary, axis) in [
+        ("primary camera target x", true, 0),
+        ("primary camera target y", true, 1),
+        ("primary camera target z", true, 2),
+        ("neighbour camera target x", false, 0),
+        ("neighbour camera target y", false, 1),
+        ("neighbour camera target z", false, 2),
+    ] {
+        push(kind, &|p| {
+            let camera = if primary {
+                &mut p.camera
+            } else {
+                &mut p.transition.as_deref_mut().unwrap().other.camera
+            };
+            match axis {
+                0 => camera.target.x += 1.0,
+                1 => camera.target.y += 1.0,
+                _ => camera.target.z += 1.0,
+            }
+        });
+    }
+    push("primary camera fov", &|p| p.camera.fov_deg += 1.0);
+    push("neighbour camera fov", &|p| {
+        p.transition.as_deref_mut().unwrap().other.camera.fov_deg += 1.0;
+    });
     for (clock, key, held) in [
         (clocks.instance, "instance_frame", "held_instance"),
         (clocks.camera, "camera_clip_frame", "held_camera"),
@@ -187,6 +212,14 @@ fn every_wrong_clock_flag_role_or_rate_is_refused_by_the_comparison() {
         "primary at the cut",
         "held instance flag",
         "held camera flag",
+        "primary camera target x",
+        "primary camera target y",
+        "primary camera target z",
+        "neighbour camera target x",
+        "neighbour camera target y",
+        "neighbour camera target z",
+        "primary camera fov",
+        "neighbour camera fov",
         // No neighbour camera of the reference sits on its first or last real frame (the instance
         // does, once): the camera's border is proven by scene_fx_transition::timing.
         "flagged edge instance",
