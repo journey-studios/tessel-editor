@@ -429,3 +429,25 @@ A coleta de IDs automáticos de looks ainda não inclui IDs das transições. So
 adicionar um look sem ID: recusa segura e hoje inalcançável pela entrada pública.
 A correção e seus testes ficam na S3, registrada em BL082.4.15. Esta pendência
 não bloqueou o parecer S1a. F064 permanece P e o portão público fechado até S2A.
+
+### X representável para hold do vizinho (BL082.4.17)
+
+A extensão nova, scripts/pilot_dissolve_representable.py e seu corpus, adiciona7cenários válidos,
+98quadros e390sondas sem alterar a S0. Instâncias e câmeras cobrem o próprio shot; hold ocorre
+só no vizinho fora dele, evitando a adaptação12/30 e o contador primário legado(.23). Os5testes
+Rust importam cada bundle pelo core real/Accept e mantêm a recusa pública. Nenhum consumidor
+S1b/S2 ou pixel real foi executado. R1 Windows aprovou93246d1; Mac reproduziu37specs normal/-O,
+14arquivos byte a byte e5Rust. Os ajustes posteriores dos nits precisam dos próprios gates.
+
+Os papéis estão SOMENTE em frames[].primary/neighbour, pois mudam no corte. A convenção
+asset_resolution mapeia assets/<nome>.png do bundle para dissolve-representable-assets/<nome>.png
+junto ao corpus; o consumidor deve resolver/copiar o basename e conferir o hash do manifesto.
+Rust compara alinhamento/duração importados e transition_window com o oráculo; o teste de imports
+Python usa uma allow-list de stdlib e sintaxe3.9, sem sys.stdlib_module_names. Python3.9 real não
+foi executado pelo coordenador; o atributo ausente será simulado no intérprete atual.
+
+Hold da câmera não se distingue em pixel se a pose já satura. held_camera/camera_clip_frame só
+se provam por ESTADO no consumidor S1b. UNH concorda em pixel nas cenas estáticas; instance_frame
+o distingue. O viés≤0,25 desta referência é agregado por cenário com≥24sondas únicas; o texto
+canônico fala em sondas do quadro. S2 deve declarar a granularidade antes da primeira execução
+do engine, sem retunar limiar depois. F064 produto continua P; origem não executada, sem golden.

@@ -436,6 +436,8 @@ class IndependentReference(unittest.TestCase):
     def test_states_seconds_and_weights_of_every_frame(self):
         frames = 0
         for sc in CASES["scenarios"]:
+            self.assertNotIn("primary", sc, "deck roles belong to each frame, including across the cut")
+            self.assertNotIn("neighbour", sc)
             for frame in sc["frames"]:
                 f = frame["edit_frame"]
                 num, den = sc["fps"]
@@ -764,6 +766,11 @@ class Structure(unittest.TestCase):
             self.assertEqual(raw, bytes([0, int(stem[5:7], 16), int(stem[7:9], 16), int(stem[9:11], 16)]))
         for bundle in CASES["bundles"].values():
             for asset in bundle["assets"]:
+                mapping = CASES["conventions"]["asset_resolution"]
+                self.assertEqual(mapping["bundle_prefix"], "assets/")
+                self.assertTrue(asset["relativePath"].startswith(mapping["bundle_prefix"]))
+                fixture = mapping["fixture_prefix"] + Path(asset["relativePath"]).name
+                self.assertEqual(files[fixture]["sha256"], asset["contentHash"])
                 self.assertEqual(asset["contentHash"], by_name[asset["assetId"]]["sha256"])
                 self.assertEqual((asset["widthPx"], asset["heightPx"], asset["alphaMode"]), (1, 1, "opaque"))
 
@@ -803,7 +810,7 @@ class Structure(unittest.TestCase):
 
     def test_no_bare_assert_and_stdlib_only_imports(self):
         for path in (GENERATOR_PATH, Path(__file__)):
-            tree = ast.parse(path.read_text(encoding="utf-8"))
+            tree = ast.parse(path.read_text(encoding="utf-8"), feature_version=(3, 9))
             self.assertEqual([node for node in ast.walk(tree) if isinstance(node, ast.Assert)], [], path.name)
         tree = ast.parse(GENERATOR_PATH.read_text(encoding="utf-8"))
         imported = set()
@@ -812,7 +819,10 @@ class Structure(unittest.TestCase):
                 imported |= {alias.name.split(".")[0] for alias in node.names}
             elif isinstance(node, ast.ImportFrom):
                 imported.add((node.module or "").split(".")[0])
-        self.assertTrue(imported <= set(sys.stdlib_module_names), imported - set(sys.stdlib_module_names))
+        # Explicit roots also work on Python 3.9, which has no sys.stdlib_module_names.
+        stdlib = {"argparse", "binascii", "hashlib", "importlib", "json", "struct", "sys",
+                  "fractions", "pathlib", "zlib"}
+        self.assertTrue(imported <= stdlib, imported - stdlib)
 
     def test_the_generator_refuses_a_store_stub_and_has_a_cli(self):
         stub = r"C:\Users\x\AppData\Local\Microsoft\WindowsApps\python.exe"

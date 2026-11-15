@@ -7,7 +7,7 @@
 use core::prelude::v1::test;
 
 use serde_json::Value;
-use tessel_editor_core::directed_scene::fx::TransitionAdmission;
+use tessel_editor_core::directed_scene::fx::{TransitionAdmission, transition_window};
 use tessel_editor_core::directed_scene::lighting::Lighting;
 use tessel_editor_core::directed_scene::{DirectedScene, ImportError, Limits};
 use tessel_editor_core::time::Ratio;
@@ -80,6 +80,36 @@ fn every_bundle_imports_and_the_public_gate_stays_closed() {
         let id = text(&scenario["id"]);
         let scene = scene_of(&cases, scenario);
         assert_eq!(scene.bundle().fx.transitions.len(), 1, "{id}");
+        let transition = &scene.bundle().fx.transitions[0];
+        let expected = &scenario["transition"];
+        assert_eq!(
+            transition.alignment.name(),
+            text(&expected["alignment"]),
+            "{id}"
+        );
+        assert_eq!(
+            transition.duration_frames,
+            int(&expected["duration"]),
+            "{id}"
+        );
+        let cut = scene
+            .bundle()
+            .shot(&transition.to_shot_id)
+            .unwrap()
+            .start_frame as i64;
+        let window = transition_window(
+            cut,
+            transition.duration_frames,
+            transition.alignment,
+            scene.bundle().edit_duration_frames as i64,
+        )
+        .unwrap();
+        assert_eq!(window.start, int(&expected["window"]["start"]), "{id}");
+        assert_eq!(
+            window.end,
+            int(&expected["window"]["end_exclusive"]),
+            "{id}"
+        );
         let public = DirectedScene::import_value(cases["bundles"][id].clone())
             .expect_err("the public import refuses a transition");
         assert!(codes(&public).contains(&"FX_TRANSITION_NOT_YET"), "{id}");

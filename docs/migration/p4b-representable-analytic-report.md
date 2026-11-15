@@ -134,7 +134,7 @@ fixados (nada modificado, instalado ou executado).
 | `docs/migration/p4b-cross-dissolve-plan.md` | `62d26d083fc9aa26aa467286a7a82304a300fe8052d31b2db9aba1bd1d3d11b4` |
 | `Cargo.lock` | `2ca1ab56e466213fe8203b0cab6ec0dd12060fd5967d786de787734c1dd7db63` |
 
-**Arquivos novos (SHA-256 em `d1373f4`):**
+**Arquivos novos (SHA-256 da entrega inicial publicada em `93246d1`; o ID local anterior `d1373f4` foi reescrito antes do push):**
 
 | Arquivo | SHA-256 |
 |---|---|
@@ -211,3 +211,31 @@ decks e qualquer pixel são da S1b/S2. T06/T10/X só alegam pixel de A com hold 
 * O JSON tem ≈ 360 KB (14 quadros × dois decks × 7 cenários e os bundles): aceitável como fixture, mas é o maior arquivo novo.
 * Commits: o harness do Cursor injeta um trailer `Co-authored-by` nos commits; os commits locais **ainda não publicados** são
   sanitizados antes do primeiro push (sem force), como a regra pede. A skill `commit` **não existe** neste ambiente (registrado).
+
+## 10. Reforço do coordenador após a R1
+
+R1 independente Windows aprovou93246d1 sem bloqueio:37specs normal/-O,14arquivos byte a byte,
+verify normal/origin e strictpin4ausente,5Rust,fmt/clippy/tree. Frações independentes conferiram
+7cenários/98quadros,390sondas,12PNGshashes. Mutantes adicionais do consumidor falso recusados.
+Mac coordenador também reproduziu37normal/-O,14arquivos e5Rust, sem executar origem/runtime.
+
+Nits corrigidos: removeram-se primary/neighbour do nível do cenário (sempre usar frames[]);
+a guarda de imports usa lista explícita stdlib e parser3.9, sem atributo exclusivo de3.10;
+Rust confere alinhamento/duração e transition_window contra a janela da referência; a convenção
+de materialização mapeia os dois prefixos de assets pelo basename e hash. Spec confere o mapa.
+Sondas, estados, bundles, hipóteses, limiares e12PNGs foram comparados com932 e estão idênticos.
+Só os campos-resumo enganosos e a convenção do mapa mudaram nos cases; manifesto regenerado.
+
+Limites da R1 preservados: câmera presa não tem discriminante em pixel quando pose satura;
+UNH em cena estática precisa do estado. Viés agregado por cenário vs texto por quadro deve ser
+decidido antes do consumidorS2. O plano inicial se refere à S1b737; o reforço posterior dessa
+PR passou a comparar câmera/offset/pose, sem fechar o metadado legado(.23). Nada aqui afirma
+pixels ou avaliação de dois decks. Os gates do reforço ainda precisam de execução/rechecagem.
+
+Hashes após os ajustes de metadados/testes (os valores do §6 são históricos de932):
+
+- scripts/pilot_dissolve_representable.py: c855b9e7206d584b6bed157b1b4916ff6dd7107a96b74b1b20f6177f1a03b575
+- scripts/pilot_dissolve_representable.spec.py: 585ff2ec8081cd2c3aff4381f9f57830d352662d3db670c5293bb34d8e8d491f
+- crates/core/tests/pilot_dissolve_representable_import.rs: 4dfdf1cdf4b3035b3a17b098e5b6d819a12fa17e6c428631d8612a789611aad0
+- docs/migration/fixtures/pilot-fx/dissolve-representable-cases.json: 7de67565061aaa5ec5d87e1dfb60ea536eec52f4b8a89d6d9091e41500c6a276
+- docs/migration/fixtures/pilot-fx/dissolve-representable-manifest.json: cb80d2ef88803e6b14b4825474639a523680c1d434415e07e79886dde536cebe

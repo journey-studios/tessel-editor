@@ -504,7 +504,6 @@ def build_scenario(sc):
         "id": sc["id"], "kit": sc["kit"], "role": sc["role"], "fps": list(sc["fps"]), "edit_duration_frames": edit["edit_duration"], "cut": cut_of(edit),
         "transition": dict(transition, window={"start": start, "end_exclusive": end}),
         "shots": {side: dict(sc["shots"][side]) for side in ("A", "B")},
-        "neighbour": frames[1]["neighbour"], "primary": frames[1]["primary"],
         "neighbour_held": pattern, "must_reject": list(sc["rejects"]), "must_agree": list(sc["agrees"]), "reported_only": reported,
         "matrix": finished, "skipped_probes": skipped,
         "decks": {side: {"planes": decks[side]["planes"], "lights": decks[side]["lights"], "camera": decks[side]["camera"]} for side in ("A", "B")},
@@ -652,6 +651,8 @@ def conventions():
         "flicker": A.conventions()["flicker"], "deck_codes": A.conventions()["deck_codes"], "alpha": A.conventions()["alpha"],
         "position_acceptance": A.conventions()["position_acceptance"],
         "bundles": "one complete destination bundle per scenario (assets are 1x1 flat PNGs of the sibling folder); the Rust test imports each with the real core",
+        "asset_resolution": {"bundle_prefix": "assets/", "fixture_prefix": ASSET_DIR + "/",
+                             "rule": "keep the basename; resolve or copy into the bundle root, checking the manifest hash"},
     }
 
 

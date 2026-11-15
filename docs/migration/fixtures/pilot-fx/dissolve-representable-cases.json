@@ -1939,6 +1939,11 @@
   },
   "conventions": {
     "alpha": "output alpha 255",
+    "asset_resolution": {
+      "bundle_prefix": "assets/",
+      "fixture_prefix": "dissolve-representable-assets/",
+      "rule": "keep the basename; resolve or copy into the bundle root, checking the manifest hash"
+    },
     "bundles": "one complete destination bundle per scenario (assets are 1x1 flat PNGs of the sibling folder); the Rust test imports each with the real core",
     "camera": "truck/hold recipes from `camera/resolve-camera-clip.ts`: pose = lerp(start, end, ease(local / max(1, frames - 1))) for a recipe, a hold stays; past the last movement the final pose rests",
     "clamps": "instance and camera are clamped apart; `held_*` is false for every wanted frame inside [0, frames - 1] (including the last real one) and true only outside it",
@@ -3172,9 +3177,7 @@
       },
       "must_agree": ["LSR", "LNF", "PIN", "SWP", "PRI", "UNH"],
       "must_reject": ["LIN", "LCC", "LCE", "DSW", "NOH", "FLG"],
-      "neighbour": "A",
       "neighbour_held": {"camera": "all", "instance": "all"},
-      "primary": "B",
       "reported_only": [],
       "role": "A's tail: instance AND camera held from the first window frame (both end exactly at the cut), B primary, A weighted ~1 at the start: isolates the neighbour-only light error",
       "shots": {
@@ -4471,9 +4474,7 @@
       },
       "must_agree": ["LIN", "LSR", "LCC", "LCE", "LNF"],
       "must_reject": ["PIN", "SWP", "PRI", "UNH", "DSW", "NOH", "FLG"],
-      "neighbour": "A",
       "neighbour_held": {"camera": "none", "instance": "all"},
-      "primary": "B",
       "reported_only": [],
       "role": "A's tail: the instance is held while the camera clip runs past the shot: a joint clamp is rejected by the camera, an unclamped instance by the marker",
       "shots": {
@@ -5691,9 +5692,7 @@
       },
       "must_agree": ["LIN", "LSR", "LCC", "LCE", "LNF"],
       "must_reject": ["PIN", "SWP", "PRI", "UNH", "DSW", "NOH", "FLG"],
-      "neighbour": "A",
       "neighbour_held": {"camera": "none", "instance": "some"},
-      "primary": "B",
       "reported_only": [],
       "role": "like b with 5 real tail frames: the last real instance frame (f = 34) is NOT held, f = 35 is: the held flag boundary and the unclamped instance",
       "shots": {
@@ -6816,9 +6815,7 @@
       },
       "must_agree": ["LNF", "PIN", "SWP", "PRI", "UNH"],
       "must_reject": ["LIN", "LCC", "LCE", "LSR", "DSW", "NOH", "FLG"],
-      "neighbour": "B",
       "neighbour_held": {"camera": "all", "instance": "all"},
-      "primary": "A",
       "reported_only": [],
       "role": "B's head: instance and camera held at 0 for the whole window, A primary, B weighted ~1 at the end",
       "shots": {
@@ -7955,9 +7952,7 @@
       },
       "must_agree": ["LSR", "PIN", "SWP", "PRI", "UNH"],
       "must_reject": ["LNF", "LIN", "LCC", "LCE", "DSW", "NOH", "FLG"],
-      "neighbour": "A",
       "neighbour_held": {"camera": "all", "instance": "all"},
-      "primary": "B",
       "reported_only": [],
       "role": "NTSC 30000/1001 at a large edit frame (about 60 s), static cameras, long instances: only the scene clock moves, and a nominal 30 fps is another second",
       "shots": {
@@ -9240,9 +9235,7 @@
       },
       "must_agree": [],
       "must_reject": ["PIN", "SWP", "PRI", "DSW", "NOH"],
-      "neighbour": "B",
       "neighbour_held": {"camera": "some", "instance": "some"},
-      "primary": "A",
       "reported_only": ["UNH", "FLG", "LIN", "LSR", "LCC", "LCE", "LNF"],
       "role": "extra: mixed hold on both sides of the cut (B head: instance held, camera runs; A tail: instance runs, camera held); a low centre weight does not isolate a light claim",
       "shots": {
@@ -10439,9 +10432,7 @@
       },
       "must_agree": ["PIN", "UNH"],
       "must_reject": ["SWP", "PRI", "DSW", "NOH"],
-      "neighbour": "B",
       "neighbour_held": {"camera": "none", "instance": "none"},
-      "primary": "A",
       "reported_only": ["FLG", "LIN", "LSR", "LCC", "LCE", "LNF"],
       "role": "control (handles use): nothing is held, so the joint clamp equals the truth; light mutants are only reported (a low centre weight does not isolate them)",
       "shots": {
