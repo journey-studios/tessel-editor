@@ -13,483 +13,17 @@
 use serde_json::{Map, Value, json};
 
 use crate::directed_scene::fx::{
-    self, FX_CATALOG_VERSION, FX_CLIP_EMPTY, FX_CLIP_OUT_OF_RANGE, FxScope, FxValue, UNKNOWN_CLIP,
+    self, FX_CATALOG_VERSION, FX_CLIP_EMPTY, FX_CLIP_OUT_OF_RANGE, FxValue, UNKNOWN_CLIP,
     UNKNOWN_EFFECT, UNKNOWN_PARAM, UNKNOWN_TRACK, id_problem, parse_param,
 };
 use crate::directed_scene::{DirectedScene, INVALID_VALUE, ImportError, Limits, Shot};
-use crate::time::Ratio;
 
 use super::batch::rejected;
-use super::error::{DOCUMENT_MISMATCH, EditError, INVALID_OP};
+use super::error::{DOCUMENT_MISMATCH, EditError};
 use super::fx_keys::{self, Batch, FxWork, clip_key_total};
+use super::fx_op::{AddClip, ClipField, FxOp, check_fx_batch_len};
 use super::fx_scope::{scope_refusal, set_scope};
-
-/// The most ops one `scene.fx.edit` batch (or one gesture update) may hold. WHY a budget: each op
-/// locates its clip and copies at most one curve, so the work of a batch is bounded only when its
-/// length is; past it the batch is refused whole, as `FX_LIMIT` at `ops`, before the document is
-/// copied or an op is parsed or run. A real edit (a drag, a retime, a form) is a handful of ops;
-/// split a bulk import into several batches, each one undo entry.
-pub const MAX_FX_BATCH_OPS: usize = 1024;
-
-/// Refuses a batch of `count` ops past [`MAX_FX_BATCH_OPS`] (the check every entry point makes
-/// first, before it copies, parses or runs anything).
-pub fn check_fx_batch_len(count: usize) -> Result<(), EditError> {
-    if count > MAX_FX_BATCH_OPS {
-        Err(batch_too_long(count))
-    } else {
-        Ok(())
-    }
-}
-
-/// The refusal of a batch that holds more ops than [`MAX_FX_BATCH_OPS`].
-fn batch_too_long(count: usize) -> EditError {
-    EditError::new(
-        fx::FX_LIMIT,
-        format!(
-            "a batch holds at most {MAX_FX_BATCH_OPS} fx ops, got {count}; split it into several \
-             batches (each one undo entry)"
-        ),
-    )
-    .with_path("ops")
-}
-
-/// A numeric field of a clip.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ClipField {
-    StartFrame,
-    DurationFrames,
-    FadeInFrames,
-    FadeOutFrames,
-}
-
-impl ClipField {
-    pub const ALL: [Self; 4] = [
-        Self::StartFrame,
-        Self::DurationFrames,
-        Self::FadeInFrames,
-        Self::FadeOutFrames,
-    ];
-
-    /// The key in the document.
-    pub fn key(self) -> &'static str {
-        match self {
-            Self::StartFrame => "startFrame",
-            Self::DurationFrames => "durationFrames",
-            Self::FadeInFrames => "fadeInFrames",
-            Self::FadeOutFrames => "fadeOutFrames",
-        }
-    }
-
-    /// The name in commands and the UI.
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::StartFrame => "start_frame",
-            Self::DurationFrames => "duration_frames",
-            Self::FadeInFrames => "fade_in_frames",
-            Self::FadeOutFrames => "fade_out_frames",
-        }
-    }
-
-    pub fn parse(name: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|field| field.name() == name)
-    }
-
-    fn is_fade(self) -> bool {
-        matches!(self, Self::FadeInFrames | Self::FadeOutFrames)
-    }
-}
-
-/// A new clip. Everything but the effect and the start is optional: no track means the first
-/// track where it fits (or a new one), no ID means `fx-<n>`, no duration means the effect's
-/// typical length cut where its scope ends ([`fx::default_duration`]: the shot's end or the
-/// edit's), no `params` means the catalog defaults. A duration that is given is never cut: it is
-/// judged as it is and refused when it does not fit.
-///
-/// The start is a frame of the edit (`start_frame`) **or** an exact time in seconds
-/// (`start_time`), which the core turns into the edit frame that contains it
-/// (`frame_at_time`, floor, like every other time of `scene.*`). WHY a time: an adapter that
-/// knows only the project's playhead must not hand a sequence frame to a bundle that may run at
-/// another rate; it hands the time, and the bundle's own clock names the frame. With a
-/// `start_time` the `start_frame` field is ignored (it must be 0 in JSON, where it is absent).
-///
-/// The `scope` is where the clip lies (F062): the output, the default (the key stays out of the
-/// document), or a shot, which the clip must lie entirely inside; an add that does not fit is
-/// refused whole (`FX_SCOPE_MISMATCH`, `UNKNOWN_SHOT`) and nothing is written.
-#[derive(Debug, Clone, PartialEq)]
-pub struct AddClip {
-    pub track: Option<String>,
-    pub clip: Option<String>,
-    pub effect: String,
-    pub start_frame: i64,
-    pub start_time: Option<Ratio>,
-    pub duration_frames: Option<i64>,
-    pub params: Vec<(String, Value)>,
-    pub scope: FxScope,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum FxOp {
-    AddClip(AddClip),
-    RemoveClip {
-        clip: String,
-    },
-    /// Sets a catalog parameter. The value is checked against the effect's catalog entry.
-    SetParam {
-        clip: String,
-        param: String,
-        value: Value,
-    },
-    SetField {
-        clip: String,
-        field: ClipField,
-        value: i64,
-    },
-    SetHidden {
-        clip: String,
-        hidden: bool,
-    },
-    /// Moves the clip to the output or to a shot (F062). A shot must exist and hold the whole
-    /// clip; the same scope as the clip has is a no-op, and going back to `output` leaves the
-    /// `scope` key out of the document again.
-    SetScope {
-        clip: String,
-        scope: FxScope,
-    },
-    /// Puts a key of `param` on `frame` of the clip (or changes the one there). No `value`
-    /// captures what the parameter is at that frame; no `easing` keeps the key's own.
-    KeyParam {
-        clip: String,
-        param: String,
-        frame: i64,
-        value: Option<Value>,
-        easing: Option<String>,
-    },
-    /// The easing of the span that arrives at the key on `frame`.
-    SetKeyEasing {
-        clip: String,
-        param: String,
-        frame: i64,
-        easing: String,
-    },
-    RemoveKey {
-        clip: String,
-        param: String,
-        frame: i64,
-    },
-    MoveKey {
-        clip: String,
-        param: String,
-        from: i64,
-        to: i64,
-    },
-    /// Every key of `param` (or of the whole clip) `delta` frames later.
-    ShiftKeys {
-        clip: String,
-        param: Option<String>,
-        delta: i64,
-    },
-    /// The distance of every key from `anchor` times `num / den`.
-    ScaleKeys {
-        clip: String,
-        param: Option<String>,
-        anchor: i64,
-        num: i64,
-        den: i64,
-    },
-    /// The explicit removal of an animation; the base values stay.
-    ClearKeys {
-        clip: String,
-        param: Option<String>,
-    },
-    /// The base seed of a noise effect; `None` goes back to the one the clip's ID gives.
-    SetSeed {
-        clip: String,
-        seed: Option<u32>,
-    },
-}
-
-const SHAPES: &str = r#"{ "op": "add_clip", "effect": "vignette", "start_frame": 0 | "start_time": seconds, "duration_frames"?, "track"?, "id"?, "params"?, "scope"?: "output|shot:<id>" }, { "op": "remove_clip", "clip" }, { "op": "set_param", "clip", "param", "value" }, { "op": "set_field", "clip", "field": "start_frame|duration_frames|fade_in_frames|fade_out_frames", "value" }, { "op": "set_hidden", "clip", "hidden" }, { "op": "set_scope", "clip", "scope": "output|shot:<id>" }, { "op": "key_param", "clip", "param", "frame", "value"?, "easing"? }, { "op": "set_key_easing", "clip", "param", "frame", "easing" }, { "op": "remove_key", "clip", "param", "frame" }, { "op": "move_key", "clip", "param", "from", "to" }, { "op": "shift_keys", "clip", "param"?, "delta" }, { "op": "scale_keys", "clip", "param"?, "anchor", "num", "den" }, { "op": "clear_keys", "clip", "param"? } or { "op": "set_seed", "clip", "seed": uint32|null }"#;
-
-impl FxOp {
-    /// The JSON shape of an op (the `ops` of `scene.fx.edit`).
-    pub fn from_json(value: &Value) -> Result<Self, EditError> {
-        let invalid =
-            |message: String| EditError::new(INVALID_OP, format!("{message}; expected {SHAPES}"));
-        let Value::Object(map) = value else {
-            return Err(invalid("an fx op must be an object".to_string()));
-        };
-        let text = |key: &str| -> Result<String, EditError> {
-            map.get(key)
-                .and_then(Value::as_str)
-                .map(str::to_string)
-                .ok_or_else(|| invalid(format!("`{key}` must be a string")))
-        };
-        let optional_text = |key: &str| -> Result<Option<String>, EditError> {
-            match map.get(key) {
-                None | Some(Value::Null) => Ok(None),
-                Some(Value::String(text)) => Ok(Some(text.clone())),
-                Some(_) => Err(invalid(format!("`{key}` must be a string"))),
-            }
-        };
-        let integer = |key: &str| -> Result<i64, EditError> {
-            map.get(key)
-                .and_then(Value::as_i64)
-                .ok_or_else(|| invalid(format!("`{key}` must be a whole number")))
-        };
-        let only = |keys: &[&str]| -> Result<(), EditError> {
-            match map.keys().find(|key| !keys.contains(&key.as_str())) {
-                Some(extra) => Err(invalid(format!("`{extra}` is not a field of this op"))),
-                None => Ok(()),
-            }
-        };
-        let op = text("op")?;
-        match op.as_str() {
-            "add_clip" => {
-                only(&[
-                    "op",
-                    "effect",
-                    "start_frame",
-                    "start_time",
-                    "duration_frames",
-                    "track",
-                    "id",
-                    "params",
-                    "scope",
-                ])?;
-                // Left out or `null`: the output, the clip every add made before F062.
-                let scope = match map.get("scope") {
-                    None | Some(Value::Null) => FxScope::Output,
-                    Some(raw) => scope_of(raw)?,
-                };
-                let params = match map.get("params") {
-                    None | Some(Value::Null) => Vec::new(),
-                    Some(Value::Object(params)) => params
-                        .iter()
-                        .map(|(name, value)| (name.clone(), value.clone()))
-                        .collect(),
-                    Some(_) => return Err(invalid("`params` must be an object".to_string())),
-                };
-                let duration_frames = match map.get("duration_frames") {
-                    None | Some(Value::Null) => None,
-                    Some(_) => Some(integer("duration_frames")?),
-                };
-                let has = |key: &str| map.get(key).is_some_and(|value| !value.is_null());
-                let (start_frame, start_time) = match (has("start_frame"), has("start_time")) {
-                    (true, false) => (integer("start_frame")?, None),
-                    (false, true) => {
-                        let time = map
-                            .get("start_time")
-                            .and_then(Ratio::from_json)
-                            .ok_or_else(|| {
-                                invalid(
-                                    "`start_time` is seconds: an integer or {\"num\":1,\"den\":24}"
-                                        .to_string(),
-                                )
-                            })?;
-                        (0, Some(time))
-                    }
-                    _ => {
-                        return Err(invalid(
-                            "give exactly one of `start_frame` or `start_time`".to_string(),
-                        ));
-                    }
-                };
-                Ok(Self::AddClip(AddClip {
-                    track: optional_text("track")?,
-                    clip: optional_text("id")?,
-                    effect: text("effect")?,
-                    start_frame,
-                    start_time,
-                    duration_frames,
-                    params,
-                    scope,
-                }))
-            }
-            "remove_clip" => {
-                only(&["op", "clip"])?;
-                Ok(Self::RemoveClip {
-                    clip: text("clip")?,
-                })
-            }
-            "set_param" => {
-                only(&["op", "clip", "param", "value"])?;
-                Ok(Self::SetParam {
-                    clip: text("clip")?,
-                    param: text("param")?,
-                    value: map
-                        .get("value")
-                        .cloned()
-                        .ok_or_else(|| invalid("`value` is required".to_string()))?,
-                })
-            }
-            "set_field" => {
-                only(&["op", "clip", "field", "value"])?;
-                let field = text("field")?;
-                let field = ClipField::parse(&field)
-                    .ok_or_else(|| invalid(format!("`{field}` is not a clip field")))?;
-                Ok(Self::SetField {
-                    clip: text("clip")?,
-                    field,
-                    value: integer("value")?,
-                })
-            }
-            "set_hidden" => {
-                only(&["op", "clip", "hidden"])?;
-                let hidden = map
-                    .get("hidden")
-                    .and_then(Value::as_bool)
-                    .ok_or_else(|| invalid("`hidden` must be true or false".to_string()))?;
-                Ok(Self::SetHidden {
-                    clip: text("clip")?,
-                    hidden,
-                })
-            }
-            "set_scope" => {
-                only(&["op", "clip", "scope"])?;
-                // Required, and `null` is not a scope: going back to the output is `output`.
-                let raw = map.get("scope").ok_or_else(|| {
-                    invalid("`scope` is required: `output` or `shot:<id>`".to_string())
-                })?;
-                Ok(Self::SetScope {
-                    clip: text("clip")?,
-                    scope: scope_of(raw)?,
-                })
-            }
-            "key_param" => {
-                only(&["op", "clip", "param", "frame", "value", "easing"])?;
-                Ok(Self::KeyParam {
-                    clip: text("clip")?,
-                    param: text("param")?,
-                    frame: integer("frame")?,
-                    value: map.get("value").filter(|value| !value.is_null()).cloned(),
-                    easing: optional_text("easing")?,
-                })
-            }
-            "set_key_easing" => {
-                only(&["op", "clip", "param", "frame", "easing"])?;
-                Ok(Self::SetKeyEasing {
-                    clip: text("clip")?,
-                    param: text("param")?,
-                    frame: integer("frame")?,
-                    easing: text("easing")?,
-                })
-            }
-            "remove_key" => {
-                only(&["op", "clip", "param", "frame"])?;
-                Ok(Self::RemoveKey {
-                    clip: text("clip")?,
-                    param: text("param")?,
-                    frame: integer("frame")?,
-                })
-            }
-            "move_key" => {
-                only(&["op", "clip", "param", "from", "to"])?;
-                Ok(Self::MoveKey {
-                    clip: text("clip")?,
-                    param: text("param")?,
-                    from: integer("from")?,
-                    to: integer("to")?,
-                })
-            }
-            "shift_keys" => {
-                only(&["op", "clip", "param", "delta"])?;
-                Ok(Self::ShiftKeys {
-                    clip: text("clip")?,
-                    param: optional_text("param")?,
-                    delta: integer("delta")?,
-                })
-            }
-            "scale_keys" => {
-                only(&["op", "clip", "param", "anchor", "num", "den"])?;
-                Ok(Self::ScaleKeys {
-                    clip: text("clip")?,
-                    param: optional_text("param")?,
-                    anchor: integer("anchor")?,
-                    num: integer("num")?,
-                    den: integer("den")?,
-                })
-            }
-            "clear_keys" => {
-                only(&["op", "clip", "param"])?;
-                Ok(Self::ClearKeys {
-                    clip: text("clip")?,
-                    param: optional_text("param")?,
-                })
-            }
-            "set_seed" => {
-                only(&["op", "clip", "seed"])?;
-                let seed = match map.get("seed") {
-                    Some(Value::Null) => None,
-                    Some(raw) => Some(
-                        raw.as_u64()
-                            .and_then(|seed| u32::try_from(seed).ok())
-                            .ok_or_else(|| {
-                                invalid(
-                                    "`seed` is a whole number from 0 to 4294967295, or null"
-                                        .to_string(),
-                                )
-                            })?,
-                    ),
-                    None => {
-                        return Err(invalid(
-                            "`seed` is required (a number, or null for the automatic one)"
-                                .to_string(),
-                        ));
-                    }
-                };
-                Ok(Self::SetSeed {
-                    clip: text("clip")?,
-                    seed,
-                })
-            }
-            other => Err(invalid(format!("`{other}` is not an fx op"))),
-        }
-    }
-
-    /// The clip an op targets (for an add, the explicit ID if there is one).
-    pub fn clip_id(&self) -> Option<&str> {
-        match self {
-            Self::AddClip(add) => add.clip.as_deref(),
-            Self::RemoveClip { clip }
-            | Self::SetParam { clip, .. }
-            | Self::SetField { clip, .. }
-            | Self::SetHidden { clip, .. }
-            | Self::SetScope { clip, .. }
-            | Self::KeyParam { clip, .. }
-            | Self::SetKeyEasing { clip, .. }
-            | Self::RemoveKey { clip, .. }
-            | Self::MoveKey { clip, .. }
-            | Self::ShiftKeys { clip, .. }
-            | Self::ScaleKeys { clip, .. }
-            | Self::ClearKeys { clip, .. }
-            | Self::SetSeed { clip, .. } => Some(clip),
-        }
-    }
-}
-
-/// A scope an op carries, from its text (`output`, `shot:<id>`) or the document's own object. What
-/// is not a scope is `INVALID_VALUE` and scope `node` is `FX_SCOPE_NOT_YET`, both at the path
-/// `scope`: an op that cannot say where its clip goes is refused before the document is read.
-fn scope_of(raw: &Value) -> Result<FxScope, EditError> {
-    FxScope::from_op_json(raw)
-        .map_err(|(code, message)| EditError::new(code, message).with_path("scope"))
-}
-
-/// `ops` as the JSON array of `scene.fx.edit`.
-pub fn parse_fx_batch(value: &Value) -> Result<Vec<FxOp>, EditError> {
-    let Some(items) = value.as_array() else {
-        return Err(EditError::new(
-            INVALID_OP,
-            "a batch must be an array of fx ops",
-        ));
-    };
-    check_fx_batch_len(items.len())?;
-    items
-        .iter()
-        .enumerate()
-        .map(|(index, item)| FxOp::from_json(item).map_err(|error| error.at_op(index)))
-        .collect()
-}
+use super::fx_transition::{attach_problems, pointer_of};
 
 /// What one op did.
 #[derive(Debug, Clone, PartialEq)]
@@ -498,8 +32,12 @@ pub struct FxChange {
     /// `add_clip`, `remove_clip`, `set_param`, `set_field`, `set_hidden` or `set_scope` (the key
     /// ops have their own names, see `fx_keys`).
     pub action: &'static str,
+    /// Empty for a transition op.
     pub track: String,
+    /// The clip, or the transition (`transition` says which), the op touched.
     pub clip: String,
+    /// The id of the transition a transition op touched; `None` for every look op.
+    pub transition: Option<String>,
     /// What was set (a parameter or field name), when the op sets something.
     pub target: Option<String>,
     pub before: Option<Value>,
@@ -513,6 +51,13 @@ pub struct FxChange {
 
 impl FxChange {
     pub fn to_json(&self) -> Value {
+        if let Some(transition) = &self.transition {
+            return json!({
+                "index": self.index, "action": self.action, "transition": transition,
+                "target": self.target, "before": self.before, "after": self.after,
+                "noop": self.noop, "warnings": self.warnings,
+            });
+        }
         json!({
             "index": self.index, "action": self.action, "track": self.track, "clip": self.clip,
             "target": self.target, "before": self.before, "after": self.after, "noop": self.noop,
@@ -577,6 +122,10 @@ pub(super) fn command_code(code: &str) -> Option<&'static str> {
         fx::UNKNOWN_KEYFRAME => "unknown_keyframe",
         fx::FX_TRANSITION_NOT_YET => "fx_transition_not_yet",
         fx::FX_LIMIT => "fx_limit",
+        fx::UNKNOWN_TRANSITION => "unknown_transition",
+        fx::TRANSITION_ID_MISMATCH => "transition_id_mismatch",
+        fx::TRANSITION_TOO_LONG => "transition_too_long",
+        fx::WRONG_FAMILY => "wrong_family",
         _ => return None,
     })
 }
@@ -631,7 +180,7 @@ fn find_clip(work: &Value, id: &str) -> Option<(usize, usize)> {
     })
 }
 
-fn every_id(work: &Value) -> Vec<String> {
+pub(super) fn every_id(work: &Value) -> Vec<String> {
     let mut ids = Vec::new();
     for track in tracks(work) {
         ids.push(text_of(track, "id").to_string());
@@ -641,10 +190,19 @@ fn every_id(work: &Value) -> Vec<String> {
                 .map(|clip| text_of(clip, "id").to_string()),
         );
     }
+    // Transitions share the namespace of tracks and clips (BL082.4.15): a generated or explicit id
+    // must not collide with one, whichever the op that asks.
+    ids.extend(
+        work.pointer("/fx/transitions")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .map(|transition| text_of(transition, "id").to_string()),
+    );
     ids
 }
 
-fn fresh_id(taken: &[String], prefix: &str) -> String {
+pub(super) fn fresh_id(taken: &[String], prefix: &str) -> String {
     (1..)
         .map(|n| format!("{prefix}-{n}"))
         .find(|candidate| !taken.contains(candidate))
@@ -674,7 +232,7 @@ pub(super) fn clip_ref(work: &Value, id: &str) -> Result<(usize, usize), EditErr
         .ok_or_else(|| EditError::new(UNKNOWN_CLIP, format!("no fx clip `{id}`")).with_id(id))
 }
 
-fn bad_id(id: &str) -> Option<EditError> {
+pub(super) fn bad_id(id: &str) -> Option<EditError> {
     id_problem(id).map(|(code, message)| EditError::new(code, message).with_id(id))
 }
 
@@ -705,7 +263,8 @@ pub fn apply_fx_measured(
         return (Err(error), FxWork::default());
     }
     let mut batch = Batch::default();
-    let outcome = run_batch(scene, ops, limits, &mut batch);
+    let outcome =
+        run_batch(scene, ops, limits, &mut batch).map_err(|error| attach_problems(error, ops));
     (outcome, batch.work)
 }
 
@@ -723,8 +282,6 @@ fn run_batch(
         shots: scene.bundle().shots.as_slice(),
     };
     let mut changes = Vec::with_capacity(ops.len());
-    // The clip each op touched: resolved to a pointer at the end, when slots are final.
-    let mut touched: Vec<(usize, String)> = Vec::new();
     for (index, op) in ops.iter().enumerate() {
         let fail = |error: EditError| error.at_op(index);
         let resolved = resolve_start(scene, op).map_err(fail)?;
@@ -737,17 +294,17 @@ fn run_batch(
             span,
         )
         .map_err(fail)?;
-        if !change.noop {
-            touched.push((index, change.clip.clone()));
-        }
         changes.push(change);
+    }
+    if ops.iter().any(super::fx_transition::is_transition) {
+        super::fx_transition::restore_authored_params(scene.document(), &mut work);
     }
     // A layer that holds nothing but its empty frame is no layer: the baseline document has no
     // `fx` at all (a layer with other keys, kept as written, stays).
     // Only an edit that changed something may tidy it: a batch that changed nothing (an empty one, or
     // only no-ops) leaves a layer the author wrote bare exactly as written, so no revision, no undo entry.
     let bare = work != *scene.document()
-        && !touched.is_empty()
+        && changes.iter().any(|change| !change.noop)
         && work
             .get("fx")
             .and_then(Value::as_object)
@@ -767,11 +324,17 @@ fn run_batch(
         root.remove("fx");
     }
     let modified = work != *scene.document();
-    let pointers: Vec<(usize, String)> = touched
+    // Preserve the target kind: a removed clip's ID can be reused by a new transition.
+    let pointers: Vec<(usize, String)> = changes
         .iter()
-        .filter_map(|(index, clip)| {
-            find_clip(&work, clip)
-                .map(|(track, slot)| (*index, format!("/fx/tracks/{track}/clips/{slot}")))
+        .filter(|change| !change.noop)
+        .filter_map(|change| {
+            let pointer = match &change.transition {
+                Some(id) => pointer_of(&work, id),
+                None => find_clip(&work, &change.clip)
+                    .map(|(track, slot)| format!("/fx/tracks/{track}/clips/{slot}")),
+            }?;
+            Some((change.index, pointer))
         })
         .collect();
     let reread = scene.reimport(work, limits);
@@ -837,6 +400,7 @@ fn run_op(
     span: EditSpan<'_>,
 ) -> Result<FxChange, EditError> {
     match op {
+        FxOp::Transition(transition) => transition.apply(work, index, span),
         FxOp::AddClip(add) => add_clip(work, add, index, span),
         FxOp::SetScope { clip, scope } => set_scope(work, clip, scope, index, span),
         FxOp::RemoveClip { clip } => {
@@ -851,6 +415,7 @@ fn run_op(
                 tracks.remove(track_slot);
             }
             Ok(FxChange {
+                transition: None,
                 index,
                 warnings: Vec::new(),
                 action: "remove_clip",
@@ -931,6 +496,7 @@ fn run_op(
                 }
             }
             Ok(FxChange {
+                transition: None,
                 index,
                 warnings: Vec::new(),
                 action: "set_hidden",
@@ -1014,7 +580,7 @@ fn add_clip(
             if ids.contains(id) {
                 return Err(EditError::new(
                     fx::DUPLICATE_ID,
-                    format!("an fx track or clip `{id}` already exists"),
+                    format!("an fx track, clip or transition `{id}` already exists"),
                 )
                 .with_id(id.as_str()));
             }
@@ -1092,6 +658,7 @@ fn add_clip(
     let written = Value::Object(clip);
     clips.push(written.clone());
     Ok(FxChange {
+        transition: None,
         index,
         warnings: Vec::new(),
         action: "add_clip",
@@ -1172,6 +739,7 @@ fn set_param(
             .collect()
     };
     Ok(FxChange {
+        transition: None,
         index,
         warnings,
         action: "set_param",
@@ -1222,6 +790,7 @@ fn set_field(
         }
     }
     Ok(FxChange {
+        transition: None,
         index,
         warnings: Vec::new(),
         action: "set_field",

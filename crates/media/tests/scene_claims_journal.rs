@@ -28,8 +28,6 @@
 //! depends on the clock. The journal is never read through `claims_status` before it is checked
 //! (every reader folds it), and the failure is provoked by putting a folder where the journal file
 //! should be, so the record cannot be opened for appending.
-#![cfg(unix)]
-
 mod directed_resources_common;
 
 use std::fs::{self, File, OpenOptions};
@@ -192,7 +190,7 @@ impl World {
             .filter(|entry| {
                 entry["path"]
                     .as_str()
-                    .is_some_and(|path| path.contains(fragment))
+                    .is_some_and(|path| slashed(path).contains(fragment))
             })
             .count()
     }
@@ -228,11 +226,21 @@ fn assert_one_record_of_the_street(journal: &Path) {
         .unwrap_or_else(|error| panic!("no journal record after the tick: {error}"));
     assert_eq!(record.lines().count(), 1, "one record: {record}");
     assert!(record.ends_with('\n'), "a complete record: {record}");
+    // The record holds the platform's own paths, JSON-escaped (`\\` on Windows): compare the
+    // representation, not the platform (BL167.6).
+    let record = slashed(&record.replace("\\\\", "\\"));
     assert!(
         record.contains("/scenes/street/assets/backdrop.png")
             && record.contains("/scenes/street/assets/figure.png"),
         "{record}"
     );
+}
+
+/// `text` with `/` between components, whichever separator the platform wrote. Only the
+/// representation compared in a test: a `claims(..) == 0` on a Windows path `...\scenes\...`
+/// passed without looking at anything.
+fn slashed(text: &str) -> String {
+    text.replace('\\', "/")
 }
 
 // ----------------------------------------------------------------------- the tick accepts --

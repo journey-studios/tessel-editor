@@ -348,8 +348,8 @@ impl Workstation {
             None => Arc::clone(&attached.scene),
         };
         let bundle = scene.bundle();
-        let clips = bundle
-            .fx
+        let fx = &bundle.fx;
+        let clips = fx
             .tracks
             .iter()
             .flat_map(|track| {
@@ -366,7 +366,7 @@ impl Workstation {
             edit_frames: i64::try_from(bundle.edit_duration_frames).unwrap_or(i64::MAX),
             clips,
             gesture: open.map(|gesture| gesture.id().to_owned()),
-            budget: bundle.fx.pass_budget(bundle.edit_duration_frames),
+            budget: fx.pass_budget_in(&bundle.shots, bundle.edit_duration_frames),
             shots: bundle.shots.clone(),
         })
     }

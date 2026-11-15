@@ -16,6 +16,7 @@ cada acesso pela UI, CLI com UI, CLI headless e biblioteca Rust.
 - [Inspector e árvore de cena](features/scene-inspector.md): controles recebidos, input GPUI e socket reportados; layout R9 inspecionado, captura final do cabeçalho em validação.
 - [Integração de recursos de cena](features/scene-resource-integration.md): host, geração, pacote/restauração e intercâmbio; 22 testes direcionados reconferidos, renderer integrado; UI dedicada de recursos parcial.
 - [Spark sob concorrência](features/spark-concurrency.md): diagnóstico da corrida do harness e gate determinístico de cancelamento; runtime intocado.
+- [P4b S3a — edição de transições no core](migration/p4b-s3a-editing-report.md): operações, diagnósticos localizados, predicado de janela e dica de cabeça; admissão pública fechada.
 - [Backlog compartilhado](backlog.md): registro único de pendências, responsáveis, dependências e aceite; obrigatório para todos os agentes.
 - [Inventário de migração do Scene Studio](migration/README.md): 121 itens classificados,
   evidências na origem, diferenças do branch piloto, matriz de migração e fatias sugeridas.
@@ -80,8 +81,8 @@ plano/relatório continuam como histórico; o contrato atual fica em `features/`
 - [Plano de execução da paridade do piloto](migration/pilot-parity-execution-plan.md): fases P0–P8 e briefing da primeira entrega Cursor Sonnet 5.5.
 - [Inspector neutro de efeitos e o `fade` (F057)](features/fx-inspector.md) e o [smoke de integração antes/depois de P2](migration/p2-integration-smoke-2026-11-10.md).
 - [P4a — efeitos no escopo de plano `shot`](migration/p4a-shot-scope-fx-plan.md): brief da entrega (BL082.3), composição em etapas e a costura para as transições (P4b).
-- [P4b — crossDissolve entre dois decks](migration/p4b-cross-dissolve-plan.md): plano revisado e fases com portão de ativação; S0 e S1a internas concluídas, S1b pendente; transições públicas recusadas até S2A.
-- [Contrato e corpus das transições (F064)](features/fx-transitions.md): S0/S1a internas aprovadas; produto lib/JSONL/UI pendente e nenhuma transição pública habilitada.
+- [P4b — crossDissolve entre dois decks](migration/p4b-cross-dissolve-plan.md): plano revisado e fases com portão de ativação; S0/S1a internas concluídas; S1b em revisão independente; transições públicas recusadas até S2A.
+- [Contrato e corpus das transições (F064)](features/fx-transitions.md): S0/S1a internas aprovadas, S1b em revisão; produto lib/JSONL/UI pendente e nenhuma transição pública habilitada.
 
 G1 (PR #40): rotação local/mundo implementada, **a validar** no head final;
 os gates históricos de S8 acima não validam os anéis de rotação.

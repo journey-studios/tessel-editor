@@ -47,6 +47,9 @@ mod json;
 mod model;
 pub mod probe;
 mod timeline;
+mod transition;
+mod transition_json;
+mod transition_validate;
 mod validate;
 
 pub use build::PlanOptions;
@@ -57,6 +60,10 @@ pub use model::{
     UninterpretedReason, UnsupportedDomain, capabilities,
 };
 pub use timeline::PlanTimeline;
+pub use transition::{
+    DeckRole, DeckUse, MAX_TRANSITION_PLAN_BYTES, MAX_TRANSITION_PLAN_ITEMS, PlanTransition,
+    UnionResource,
+};
 
 /// `kind` of the serialized plan, so a runtime can tell it from any other JSON it is handed.
 pub const PLAN_KIND: &str = "tessel-scene-plan";

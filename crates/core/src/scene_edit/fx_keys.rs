@@ -330,6 +330,7 @@ fn change(
     noop: bool,
 ) -> FxChange {
     FxChange {
+        transition: None,
         index,
         action,
         track: located.track.clone(),

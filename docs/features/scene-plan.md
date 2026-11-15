@@ -90,6 +90,34 @@ Evidência de custo e tamanho (medida, não suposta): ver "BL064 — medição" 
 | `unsupported` | `UnsupportedDomain { domain, subject }` ordenados; vazio no plano completo |
 | `uninterpreted` | Campos do bundle que o importador preservou e o plano não interpreta (JSON Pointer + motivo), ordenados por ponteiro |
 
+### Chave `transition` (F064, S1b — interna, sem admissão pública)
+
+Um plano **pode** carregar uma chave opcional `transition` quando o quadro cai numa janela de `crossDissolve`
+(ver [fx-transitions.md](fx-transitions.md)). A chave é **aditiva e ausente** quando não há transição: um plano sem ela
+mantém bytes e digests (`PLAN_VERSION` 1), e nenhum teto novo se aplica a ele. Conteúdo: `id`, `effect`, `fromShotId`,
+`toShotId`, `frameInWindow`, `durationFrames`, `progress` (**já suavizado**, `ease((f − início + 0,5)/D)`), `amount`
+(`clamp01(intensity)`; o peso **não** é armazenado: é do runtime), `params` (**array ordenado** de pares) e `other`, o
+`ScenePlan` do vizinho no quadro **real** de edição, com a **sua** tabela de recursos. O topo é sempre o shot sob a
+agulha. `other` não aninha (profundidade 1): um vizinho com `transition` é recusado em `/transition/other/transition`
+antes de ser lido. A saída (`fx` de escopo `output`) age uma vez, no topo, e não é duplicada em `other`.
+
+`resource_union()` é **derivada, não serializada**: por `assetId`, com `used_by` qualificado por deck (`primary`,
+depois `other`); o mesmo `assetId` com conteúdo diferente é inválido em `/transition/other/resources/N`. `requires`
+ganha `fxTransition` (14ª `Capability`, **ausente** da lista `SCENE_CAPABILITIES` do JS até a S2) e a união das
+capacidades dos dois decks. Tetos: 4 194 304 bytes, 20 000 itens e profundidade 1.
+O teto de bytes é verificado antes do parse quando a chave `transition` está literal; uma chave com escape
+é conferida depois. Itens (incluindo luzes) e profundidade são verificados na árvore JSON antes de ler os
+itens de cada deck; o parser de texto também mantém o limite de recursão do serde. `from_json(Value)`
+não mede bytes de texto. Os planos reais do corpus têm ~6 KB.
+
+A relação `editFrame = startFrame + frameInWindow` exige conversão e soma representáveis; dois overflows
+não são igualdade. Erros do vizinho na validação/leitura têm ponteiro `/transition/other` (versão: `planVersion`, transformação
+de splat: `nodes`), inclusive em planos montados à mão; estes erros são `Invalid`, e o erro de splat do
+topo preserva o contrato existente. O construtor escolhe `primary` pelo corte. O validador isolado confere
+os shotIds dos decks e a cabeça presa, mas não recebe o quadro C do corte nem os comprimentos dos clipes;
+não prova a coerência temporal completa de `primary` ou da cauda. A S2 precisa fechar esse contrato antes
+que um runtime aceite planos externos (BL082.4.20).
+
 ### Políticas
 
 | Tema | Política |
@@ -175,6 +203,14 @@ Leitura honesta:
 
 Testes (R6): `crates/core/tests/scene_plan_performance.rs` (equivalência com o corpus 55+47 em 4 ordens × 2 modos, linha do tempo nova por frame, sintéticas, trocas de geração, instância quebrada, ordem de erro, threads, memória limitada), `scene_plan_performance_golden.rs` (saída do planejador fixada na main pristina por perfil `debug`/`release`: a main sem alteração já difere 1 ulp entre perfis), unit test em `scene_plan/timeline.rs`, e `scripts/scene-plan-performance/run.spec.py`.
 
+### F064 S1b — evidência do plano de transição
+
+`crates/core/tests/scene_fx_transition/{clocks,stages,plan,limits,compat}.rs` e `pilot_dissolve_corpus.rs`
+(106 + 10 testes) cobrem relógios, estágios, forma de fio, recursos, capacidade, tetos e o corpus `dissolve-cases.json`;
+`scene_plan_transition_baseline.rs` fixa, na base sem alteração, que planos sem transição mantêm os bytes. Status,
+mutantes e divergências: [p4b-s1b-evaluation-report.md](../migration/p4b-s1b-evaluation-report.md). Nada disso abre a
+admissão pública nem prova pixels reais.
+
 ## Adapter integrado de consulta
 
 `scene.plan {scene,frame|time,partial?,gesture?}` executa SceneCommand::Plan pelo mesmo parser da lib, JSONL e socket. Aplica admissão estrutural/temporal antes do plano. `partial:false` é o padrão. `gesture` usa candidato vivo do mesmo projeto/cena, com erro tipado em invalidação, sem histórico. O teste de operação em `scene_flow` deixou de ser ignorado; 60 checks do plano passaram no processo headless. Consumo real: [F041](scene-renderer.md).
@@ -182,3 +218,5 @@ Testes (R6): `crates/core/tests/scene_plan_performance.rs` (equivalência com o 
 ### Gate integrado e ordem de chaves JSON
 
 A execução do workspace unifica `serde_json/preserve_order` vindo de GPUI. O golden da R6 originalmente passava isolado e falhava no workspace apenas pela ordem das chaves. O comparador agora ordena objetos recursivamente antes do digest, mantendo valores, números, arrays e erros exatos. Os digests de referência não foram regenerados nem as tolerâncias afrouxadas.
+
+O construtor (`ScenePlan::build`/`PlanTimeline::build`) ainda não qualifica erros de splat/frame/domínio do vizinho por deck (BL082.4.19); isso fica paraS2, com admissão pública ainda fechada.

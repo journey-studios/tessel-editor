@@ -583,3 +583,25 @@ para falha de forget de pasta após remoção parcial de diretórios.
 Após a revisão, os contratos de 46 funções receberam docstrings: identidade de holders,
 validação do ledger, leases, publicação/cleanup, import e consumo de resultados pelo host.
 A alteração é documental; o percentual de cobertura depende da nova medição do CodeRabbit.
+
+### Watchdog do harness de descarte (BL167.6.10)
+
+O watchdog de job_discard_claims recebe o handle do processo criado pelo próprio teste.
+Ao expirar, envia SIGCONT no Unix e encerra/recolhe o peer em todos os sistemas. Retomar
+sozinho não libera o arquivo que o peer conserva enquanto espera outro comando. O escopo
+é só teste; operações, orçamento do tick e limite de100ms não mudam. Testes novos exercitam
+lock real/liberação por término e cancelamento do watchdog, com limpeza mesmo na falha.
+Validação Mac e Windows pendente nesta edição; sem nova evidência de janela ou desempenho.
+
+No código67ba3a6, Mac executou job_discard_claims15/15, fmt e clippy do alvo com-Dwarnings.
+Dois mutantes foram detectados: resumir sem encerrar e ignorar cancelamento; o primeiro
+falha em5s com limpeza antes da asserção, o segundo após o prazo de20s. Fontes restauradas,
+regressões2/2 novamente verdes. Esses controles provam o harness, sem medir desempenho do
+produto. Windows/revisão independente pendentes; esta prova não promove a UI.
+
+Windows validado por revisão independente em806be31:15/15, fmt/clippy do alvo,
+mutantes de expiração/cancelamento detectados e fontes restauradas. A prova é
+Child.kill+wait liberar o lock real; SIGSTOP continua Unix. Na falha por panic,
+o scope aguarda até20s para o watchdog matar/recolher o peer e só então relança.
+Essa latência de falha é um limite aceito do harness, não um vazamento nem um
+orçamento do produto. Só conclusão normal cancela o watchdog sem matar o peer.

@@ -127,7 +127,7 @@ impl EditorState {
                     let budget = scene
                         .bundle()
                         .fx
-                        .pass_budget(scene.bundle().edit_duration_frames);
+                        .pass_budget_in(&scene.bundle().shots, scene.bundle().edit_duration_frames);
                     answer["budget"] = budget.to_json();
                     answer["warnings"] = Value::Array(budget.warnings());
                 }
@@ -230,10 +230,10 @@ impl EditorState {
             Some((scene, _)) => (Arc::clone(scene), Some(Arc::clone(scene))),
             None => (Arc::clone(&base), None),
         };
-        let budget = budget_scene
-            .bundle()
-            .fx
-            .pass_budget(budget_scene.bundle().edit_duration_frames);
+        let budget = budget_scene.bundle().fx.pass_budget_in(
+            &budget_scene.bundle().shots,
+            budget_scene.bundle().edit_duration_frames,
+        );
         let clips = budget_scene.bundle().fx.clip_count();
         drop(stored_scene);
         let mut warnings = budget.warnings();
@@ -277,6 +277,19 @@ impl EditorState {
         // The budget first: a batch past it is refused before any op is looked at or run.
         scene_edit::check_fx_batch_len(ops.len())?;
         for (index, op) in ops.iter().enumerate() {
+            // A gesture edits a look clip. A transition op is no shortcut around that: it is
+            // refused before anything is run, so the candidate, the intent and the revision stay.
+            if matches!(op, FxOp::Transition(_)) {
+                return Err(CommandError::new(
+                    "gesture_op_not_allowed",
+                    format!(
+                        "Gesture `{id}` edits one look clip; operation {index} is a transition \
+                         op. Use `scene.fx.edit` for that"
+                    ),
+                )
+                .target(id)
+                .details(json!({ "gesture": id, "index": index })));
+            }
             let target = match op.clip_id() {
                 Some(clip) if !matches!(op, FxOp::AddClip(_) | FxOp::RemoveClip { .. }) => clip,
                 _ => {
@@ -448,7 +461,9 @@ impl EditorState {
                 return Err(CommandError::unknown_element("effect clip", wanted));
             }
         }
-        let budget = bundle.fx.pass_budget(bundle.edit_duration_frames);
+        let budget = bundle
+            .fx
+            .pass_budget_in(&bundle.shots, bundle.edit_duration_frames);
         let mut answer = json!({
             "action": "scene.fx.inspect", "scene": scene, "locale": locale.tag(),
             "catalog_version": FX_CATALOG_VERSION,

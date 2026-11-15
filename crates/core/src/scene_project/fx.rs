@@ -78,7 +78,7 @@ pub(super) fn list_answer(id: &str, scene: &DirectedScene) -> Value {
             "clips": track.clips.iter().map(fx::clip_json).collect::<Vec<_>>(),
         }));
     }
-    let budget = layer.pass_budget(scene.bundle().edit_duration_frames);
+    let budget = layer.pass_budget_in(&scene.bundle().shots, scene.bundle().edit_duration_frames);
     json!({
         "action": "scene.fx.list", "scene": id, "catalog_version": FX_CATALOG_VERSION,
         "edit_duration_frames": scene.bundle().edit_duration_frames,
@@ -127,24 +127,40 @@ pub(super) fn frame_answer(
     let stages = json!({ "deck": deck, "output": resolved.len() - deck });
     let passes: Vec<Value> = resolved.iter().map(fx::FxPass::to_json).collect();
     let shot = fx::shot_at(&scene.bundle().shots, frame).map(fx::shot_json);
-    let over = passes.len() > fx::FX_PASS_BUDGET;
+    // Inside the window of a transition (only a scene read under the internal admission has one)
+    // the frame draws the neighbour's passes and the blend too: that is what the budget counts.
+    let bundle = scene.bundle();
+    let window = bundle
+        .fx
+        .resolve_frame(&bundle.shots, bundle.edit_duration_frames, frame)
+        .transition;
+    let drawn = passes.len()
+        + window
+            .as_ref()
+            .map_or(0, |window| window.other_passes.len() + 1);
+    let over = drawn > fx::FX_PASS_BUDGET;
     let warnings: Vec<Value> = if over {
         vec![json!({
             "code": fx::FX_PASS_BUDGET_WARNING,
             "message": format!(
-                "this frame draws {} effect passes, more than the {} the budget allows without a slowdown",
-                passes.len(), fx::FX_PASS_BUDGET
+                "this frame draws {drawn} effect passes, more than the {} the budget allows without a slowdown",
+                fx::FX_PASS_BUDGET
             ),
-            "max_passes": fx::FX_PASS_BUDGET, "passes": passes.len(),
+            "max_passes": fx::FX_PASS_BUDGET, "passes": drawn,
         })]
     } else {
         Vec::new()
     };
-    Ok(json!({
+    let mut answer = json!({
         "action": "scene.fx.frame", "scene": id, "edit_frame": frame, "shot": shot,
         "count": passes.len(), "stages": stages, "passes": passes,
         "max_passes": fx::FX_PASS_BUDGET, "over_budget": over, "warnings": warnings,
-    }))
+    });
+    // Additive: absent at every frame a public scene has, so its answers keep their bytes.
+    if let Some(window) = &window {
+        answer["transition"] = window.to_json();
+    }
+    Ok(answer)
 }
 
 pub(super) fn changes_json(summary: &FxSummary) -> Vec<Value> {
@@ -186,11 +202,10 @@ impl EditorState {
         let outcome = scene_edit::apply_fx(&current, ops)?;
         let summary = outcome.summary;
         let clips = outcome.candidate.bundle().fx.clip_count();
-        let budget = outcome
-            .candidate
-            .bundle()
-            .fx
-            .pass_budget(outcome.candidate.bundle().edit_duration_frames);
+        let budget = outcome.candidate.bundle().fx.pass_budget_in(
+            &outcome.candidate.bundle().shots,
+            outcome.candidate.bundle().edit_duration_frames,
+        );
         let mut warnings = budget.warnings();
         warnings.extend(summary.warnings());
         if dry_run {

@@ -65,6 +65,7 @@ pub(super) fn set_scope(
         }
     }
     Ok(FxChange {
+        transition: None,
         index,
         warnings: Vec::new(),
         action: "set_scope",

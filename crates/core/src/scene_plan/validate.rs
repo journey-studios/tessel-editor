@@ -206,15 +206,11 @@ impl ScenePlan {
         self.check_resources()?;
         self.check_fx()?;
         self.check_lights()?;
-        if derive_requires(
-            &self.nodes,
-            &self.layers,
-            &self.splats,
-            &self.animation,
-            &self.fx,
-            &self.lights,
-        ) != self.requires
-        {
+        // The neighbour deck of a transition is a plan of its own: its structure first, then what
+        // relates the two (`transition_validate.rs`). Absent, both are no-ops.
+        self.check_transition_decks()?;
+        self.check_transition()?;
+        if self.expected_requires() != self.requires {
             return Err(PlanError::invalid(
                 "/requires",
                 "must list exactly the capabilities the content needs, ascending",
@@ -241,7 +237,13 @@ impl ScenePlan {
                 });
             }
         }
-        Ok(())
+        match &self.transition {
+            Some(transition) => transition
+                .other
+                .check_splat_transforms()
+                .map_err(super::transition_validate::within_other),
+            None => Ok(()),
+        }
     }
 
     fn check_output_and_camera(&self) -> Result<(), PlanError> {

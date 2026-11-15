@@ -41,7 +41,20 @@ fn assert_issue_matches(name: &str, found: &Value, expected: &Value) {
         details["transitionId"], expected["transitionId"],
         "{name}: transitionId"
     );
-    assert_eq!(details.get("hint"), expected.get("hint"), "{name}: hint");
+    // The pinned pilot used camelCase. Only this hint's operation name differs in the editor;
+    // the immutable oracle remains unchanged and every other character/issue still compares.
+    let expected_hint = if expected["code"] == "TRANSITION_DUPLICATE" {
+        assert_eq!(
+            expected["hint"],
+            "One transition per cut: setTransition replaces the one that is there."
+        );
+        Some(json!(
+            "One transition per cut: set_transition replaces the one that is there."
+        ))
+    } else {
+        expected.get("hint").cloned()
+    };
+    assert_eq!(details.get("hint"), expected_hint.as_ref(), "{name}: hint");
     assert_eq!(details.get("lacks"), expected.get("lacks"), "{name}: lacks");
 }
 
