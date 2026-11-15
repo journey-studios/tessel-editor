@@ -3,7 +3,7 @@
 Backlog **BL082.4.4**, fatia H (T10/T18 do plano canônico). Branch `feat/p4b-s2h-host-resources`, base `main`
 `17d03933c3092acfac99850f88aa81e8f07288b3` (PR71/C0b integrada). Plano e contrato fixados **antes** do código:
 [p4b-s2-host-resource-plan.md](p4b-s2-host-resource-plan.md). Status: **implementado, a validar** (revisão independente,
-Windows/Mac independentes e o alvo `scene_export` com runtime ainda não existem; ver §8 e §9).
+Windows independente pendente; Mac e regressão `scene_export` com runtime concluídos em19c5ea1; ver §12).
 
 ## 1. Contrato final
 
@@ -151,7 +151,7 @@ Nenhum dado, fixture, `Cargo.*` ou arquivo comum mudou. Os testes constroem os r
 `Accept` oculto não existe em `src`. Mensagens de erro de recursos de planos **sem** transição ganham o sufixo de atribuição
 (aditivo; os testes de selo existentes continuam verdes).
 
-## 8. Bloqueios e limites honestos
+## 8. Bloqueios e limites honestos na entrega do autor (histórico de 7e7c83f)
 
 - **`scene_export` com runtime bloqueado**: `TESSEL_REQUIRE_RUNTIME=1` faz o alvo falhar (12/12) porque faltam, **nesta
   máquina**, o FFmpeg/ffprobe no `PATH`, `runtime/dist` e `runtime/node_modules` (o Chrome existe em
@@ -168,7 +168,7 @@ Nenhum dado, fixture, `Cargo.*` ou arquivo comum mudou. Os testes constroem os r
 - Commits locais passaram por saneamento do trailer injetado pelo harness (plumbing, árvore idêntica, nunca force): ver
   o histórico, sem trailer de assistente.
 
-## 9. Pendências propostas (para o coordenador)
+## 9. Pendências propostas pelo autor (histórico; estado atual em §12)
 
 - Validar por revisão independente e em Windows/Mac; rodar `scene_export` com FFmpeg e runtime.
 - `docs/features/scene-renderer.md` (linhas 93 e 285) ainda descreve `from_root`/`approved_map` por "cada recurso do plano":
@@ -232,3 +232,36 @@ O setup oficial do runtime no Mac passou, com FFmpeg existente e pnpm congelado.
 não é prova de execução scene_export. O bloqueio Windows do autor é preservado como fato
 por máquina; nenhuma falha ou guarda foi tratada como verde. Workspace global não executado,
 sem pixel de transição, origem, GPU, desempenho ou UI física; Refuse/F064 P.
+
+## 12. Gates Mac do coordenador em 19c5ea1
+
+Head `19c5ea168699d307e541388d1b0e8781bf1bf6aa`, código do host `267c659`, core igual à main
+c5400bb/PR72. Native Mac, clone dedicado em `/Volumes/Extreme Pro/www/tessel-pr63-mac-20261114`,
+árvore limpa antes/depois. Os quatro negativos de custo compilados no merge b8442f6 (host ainda
+igual ao original) deram 11/4; após267c659, mapas10/slots15. A tentativa que não compilou foi descartada.
+
+| Gate | Resultado |
+|---|---|
+| fmt/check workspace/clippy workspace all-targets -D warnings | exit0 |
+| Render: lib / scene_flow_resources / mapas H / slots H / scene_seam | 19 / 4 / 10 / 15 / 29, total77; 0 falhas/ignorados |
+| Core: dissolve corpus / X import / X estado / transições / baseline | 10 / 5 / 8 / 216 / 1, isolado EXPECT0 e preserve_order EXPECT1 |
+| scene_export, TESSEL_REQUIRE_RUNTIME=1, serial | 12/12, 0 ignorados, exit0; Node + Chrome + FFmpeg reais |
+| test workspace --no-run e build -p tessel-editor | exit0; workspace apenas compilado |
+| cargo tree core | 0 ocorrências gpui/wry |
+
+O runtime foi preparado por `./scripts/runtime setup` com lock congelado; fontes JS e dependências
+versionadas não mudaram. O alvo scene_export testa o transporte/export EXISTENTES, com MP4
+1080p/UHD, oráculo de pixels antigo, hashes cena/export, cancelamento e sessão JSONL real.
+Não desenha crossDissolve: a transição continua recusada publicamente e o runtime não anuncia
+fxTransition. Este gate fecha a regressão funcional requerida no Mac; não transforma a ausência
+de FFmpeg do relato Windows em execução Windows. Não houve desempenho, GPU real, UI física,
+áudio ouvido, origem executada ou workspace global executado.
+
+Logs em `~/.cache/tessel-pr73-mac-20261115/`: runtime-setup.log, overflow-red.log,
+summary.json e um arquivo por gate. Check/clippy/no-run podem aproveitar cache mbx; os logs
+mantêm essa distinção. Não houve target override, clean/gc manual ou limpeza de terceiros.
+Core, Cargo.lock, fixtures, runtime, media e desktop são idênticos à main c5400bb.
+
+Revisão independente Windows iniciada em19c5ea1, ainda sem veredito. Os 30 mutantes do autor
+continuam atribuídos a7e7c83f e não são um resultado novo destes gates. H interna permanece
+a validar por revisão; R/S2A não iniciadas, F064 P e Refuse fechado.
