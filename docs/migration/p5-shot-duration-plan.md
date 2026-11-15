@@ -258,8 +258,8 @@ fatia (achados P0–P2 corrigidos antes do merge); CodeRabbit executado conta s�
 
 - **Q1 (D14), decidida:** a edição mais longa que o áudio exporta com **silêncio no fim** (origem #3); a S5 troca a recusa
   `audio_window_short` por silêncio e prova (T24).
-- **Q2 (D07), condicional:** só se a S0 mostrar que a origem segura o último quadro da instância que cresce, o dono decide se
-  a avaliação real dos quadros novos (ciclos continuam) fica como divergência declarada.
+- **Q2 (D07), não disparada:** a S0 mostrou no código da origem que os quadros que a instância ganha são avaliados como
+  reais, como o editor faz (§13); não há divergência para decidir.
 - **Q3 (D20), decidida:** a UI da P5 é a seção "Planos" com campos e seleções; o arrasto na trilha fica para a P6.
 - **Q4 (D12), decidida:** campos adiados em quadros da edição com forma `[{frame, …}]` são remapeados como dado simples pela
   regra da origem (#15); os de outra forma ou relógio incerto recusam com `SHOTS_LAYER_NOT_YET`.
@@ -304,3 +304,23 @@ somente leitura): "aprovar com correções". Achados e o que a v2 fez:
 | Tamanho de `scene_ui.rs` | P3 | §6.3 |
 | Mac como host do oráculo | P3 | §2: `ORIGIN_NOT_EXECUTED` padrão |
 | Linhas de matriz para `auto`/`LOCKED` e junção contínua | P3 | T05, T07 |
+
+## 13. Resultado da S0 (2026-11-15)
+
+Entregue em [F065](../features/shot-duration.md) e no [relatório da S0](p5-s0-report.md), com revisão independente R1
+aplicada. O que a S0 fixou para as fatias seguintes:
+
+- **D07:** os quadros que a instância ganha são **reais** na origem, porque o avaliador não limita o quadro da instância do
+  próprio plano, e `heldInstance` só existe para o outro deck de uma transição. A Q2 não dispara.
+- **D12:** a auditoria dos 17 campos adiados (fora `lighting`) achou um só com tempo na edição, `weatherKeys`, de forma
+  `[{frame, value, easing}]`, remapeado pela regra da #15. `rigs` e `reveal` estão no relógio da instância e a narração em
+  segundos da edição (D13); o resto não tem tempo. `SHOTS_LAYER_NOT_YET` fica no contrato sem caso com a lista de hoje.
+- **D04 (`AUTO_RESERVE`, #29):** `a = max(0, min(d, min(instanceStartFrame, cameraInFrame) − reserva))`. A reserva sai da
+  cabeça que existe, que é a leitura que cumpre o propósito da #29.
+- **D06 (`editLocked` com `auto`):** `auto` toma a primeira política que mantém o passo: a sua mistura, depois ancorar
+  tudo, depois seguir tudo. Ancorar é o caso do `move_cut` (#30); seguir é o do ripple da cabeça, onde ancorar muda o
+  passo.
+- **D16 (avisos de áudio):** o áudio dura `editEndSecondsExclusive − editStartSeconds` na edição.
+- **Oráculo:** `scripts/shot-trim-reference.py` e o corpus de 167 casos em `docs/migration/fixtures/shot-trim/`
+  (`--check`, spec de 40 testes normal e `-O`), com `ORIGIN_NOT_EXECUTED`. A S1 e a S2 reproduzem o corpus; um caso que
+  divergir do Rust é achado a investigar dos dois lados, não verdade de nenhum.
