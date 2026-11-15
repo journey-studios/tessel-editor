@@ -2319,3 +2319,9 @@ preparado `E:\www\tessel-p4b-s3a-20261114`: edição/parser/executor FX, guarda 
 gesto, predicado de janela, diagnóstico .24, testes e docs próprios; inclui .15.
 Backlog/matriz/índice são do coordenador. Não habilita S2A, S3b ou controles.
 [Implementação S3a Windows](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:d711227dbafff7a49dd9343ed593f5c35b8c3a9186d714c2dbc2c0bbc4d398b9).
+
+BL082.4.17: comentário tardio de coerência do writer corrigido em `1de7bb4`:
+generate verifica depois da escrita e recusa PNG extra sem apagar. Mac39 specs
+normal/-O, controle real por blobs e mutante discriminante passam; dados/Rust
+intactos. Esta mudança de I/O ainda precisa de rechecagem Windows antes do merge;
+a R3 aprovada permanece atribuída a06c8ea9, sem novo ciclo de revisão de domínio.

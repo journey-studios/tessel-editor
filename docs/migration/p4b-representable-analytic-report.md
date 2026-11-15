@@ -298,11 +298,30 @@ descartável fez o novo teste falhar. A origem permaneceu em HEAD `3710b9a`, com
 as mesmas 151 entradas sujas; nenhum JS foi executado. A integração com a main
 `90609da` foi conferida pelo diff e pelo teste Rust, sem herdar a execução do Mac.
 
-Após esse head, apenas documentação foi alterada: atribuição dos gates históricos
-S1b em `a3c6a63` e registro desta revisão. Scripts, testes Rust, dados, bundles,
-sondas, limiares, manifesto e PNGs mantêm o conteúdo revisado. A R3 não é uma
+Entre esse head e `7e2e3c3`, apenas documentação foi alterada: atribuição dos gates
+históricos S1b em `a3c6a63` e registro desta revisão. Scripts, testes Rust, dados,
+bundles, sondas, limiares, manifesto e PNGs mantiveram o conteúdo revisado. A R3 não é uma
 aprovação humana no GitHub; CodeRabbit NEUTRAL também não a substitui.
 
 BL082.4.17 permanece parcial: referência e importabilidade validadas, consumidor
 de dois decks e pixels S1b/S2 pendentes. Hold da câmera requer comparação de estado;
 origem não executada, golden não comparável, textura/GPU/desempenho não provados.
+
+## 15. Coerência do comando de geração
+
+O comentário tardio sobre `generate` é válido: o caminho de escrita podia deixar
+um PNG antigo e retornar 0, embora `generate --check` e `verify` o recusassem.
+O código `1de7bb4` chama a mesma comparação após escrever os arquivos esperados;
+se restar uma entrada extra, reporta o achado e retorna 1, sem apagar o arquivo.
+Nenhum dado, bundle, sonda, limiar, manifesto, PNG ou código Rust mudou.
+
+Mac: 39 specs normais e com `-O`, check dos 14 arquivos e verify offline passam.
+Teste próprio com blobs reais da origem: geração em saída temporária limpa retorna
+0; com um PNG extra retorna 1 e o preserva. Não foi executado o JS. Na regressão
+de escrita, a checagem da origem é isolada por mock e não prova proveniência;
+um mutante que omite a comparação falha por asserção, sem editar produção.
+A asserção dos bytes do corpus voltou ao teste de determinismo ao qual pertence.
+
+A R3 continua válida para `06c8ea9`; não é atribuída ao novo caminho de escrita.
+A mudança pequena de I/O aguarda rechecagem Windows, sem repetir a matemática ou
+o domínio Rust já revisados. Os limites de produto, origem e pixels permanecem.

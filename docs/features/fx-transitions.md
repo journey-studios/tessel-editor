@@ -547,3 +547,8 @@ verify offline/blobs, pin estrito ausente com exit 4, Rust5, fmt e clippy do cor
 tree sem GPUI/wry. O PNG extra falha nas duas portas sem ser apagado; remover o
 filtro numa cópia faz a regressão falhar. A origem permaneceu intacta e não foi
 executada. Mac e Windows são provas separadas; não há consumidor S1b/S2 nem pixel real.
+
+Consistência posterior (`1de7bb4`): `generate` também verifica a saída após gravar
+e retorna 1 se houver arquivo extra, sem apagá-lo. Mac39 specs normal/-O e controle
+de escrita por blobs reais passaram; dados/limiares/Rust intactos. A rechecagem
+Windows dessa pequena mudança de I/O é separada da R3 de `06c8ea9`.
