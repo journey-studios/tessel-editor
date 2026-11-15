@@ -183,3 +183,108 @@ transition_validate.rs com parser/fixture, nem juntar tudo num helper genérico 
   gates por head, contagens, mutantes, limites e patches literais dos arquivos comuns.
 - Aceite após revisão independente Windows e gates Mac por SHA. C0b interna aceita não
   libera H/R/S2A automaticamente e nunca promove F064 a produto pronto.
+
+## Contrato final de nomes, tipos, API e ponteiros (fixado ANTES do código)
+
+Esta seção só detalha os fatos acima; não os altera. Foi escrita depois de ler `build.rs`, `timeline.rs`,
+`transition*.rs`, `shot_offset.rs`, `frame.rs`, os testes de transição e o fixture X (PR65). Os nomes abaixo são os
+que o código usa; uma mudança posterior é registrada no relatório com o motivo.
+
+### 1. Regra única de clocks (`directed_scene/temporal/shot_offset.rs`)
+
+`hold_to` deixa de ser privado e vira a regra pública; o avaliador de offset a usa no lugar da cópia atual.
+
+```rust
+pub struct ClockSource { pub start_frame: u64, pub length: u64 }   // onde o shot entra no clipe e o clipe
+pub struct ClockSample { pub raw: i64, pub sampled: u64, pub held: bool }
+pub struct DeckClocks  { pub instance: ClockSample, pub camera: ClockSample }
+impl ClockSample { pub fn of(raw: i64, length: u64) -> Result<Self, TemporalError> }
+impl DeckClocks  { pub fn at(edit_frame: i64, shot_start_frame: u64,
+                             instance: ClockSource, camera: ClockSource) -> Result<Self, TemporalError> }
+```
+
+* `delta = edit_frame − shot_start_frame`; `raw = start_frame + delta`, checados; `sampled = clamp(raw, 0, length − 1)`;
+  `held = (length == 0) || sampled != raw`; `length == 0` amostra 0. Cada relógio é preso à própria duração.
+* `evaluate_shot_at_offset_with` chama `DeckClocks::at`; `held_instance`/`held_camera` de `OffsetEvaluation` são
+  `clocks.instance.held`/`clocks.camera.held`. Montador e validador do plano chamam a mesma função; nenhuma fórmula é copiada.
+* Tempo exato: `frame_start_time(rate: Rate, frame: u64) -> Result<Ratio, TemporalError>` em `frame.rs`
+  (`Bundle::frame_time` passa a chamá-la). Overflow é erro, nunca zero (não usa `Rate::frame_to_time`).
+* Reexports: `directed_scene/temporal/mod.rs` e `directed_scene/mod.rs` (extensão rotineira; motivo: expor estes tipos à lib).
+
+### 2. Tipos do plano (`scene_plan/temporal/`, módulos pequenos)
+
+```rust
+pub struct DeckTiming {                       // todos u64 (inteiros estritos não negativos no wire)
+    pub shot_start_frame: u64,      pub shot_end_frame_exclusive: u64,
+    pub instance_start_frame: u64,  pub instance_duration_frames: u64,
+    pub camera_in_frame: u64,       pub camera_clip_duration_frames: u64,
+    pub sampled_instance_frame: u64, pub sampled_camera_clip_frame: u64,
+}
+pub struct TransitionTiming { pub edit_duration_frames: u64, pub from: DeckTiming, pub to: DeckTiming }
+```
+
+`PlanTransition` ganha `alignment: Alignment` (enum do core, `directed_scene::fx::Alignment`) e
+`timing: TransitionTiming`. API de leitura da lib (sem cópia de fórmula):
+
+* `TransitionTiming::deck(side: DeckSide) -> &DeckTiming` e `TransitionTiming::cut() -> u64` (= `to.shot_start_frame`).
+* `DeckTiming::clocks_at(edit_frame: i64) -> Result<DeckClocks, TemporalError>`: a regra do item 1 sobre os dados do lado.
+* `PlanTransition::clocks(side: DeckSide) -> Result<DeckClocks, PlanError>`: o quadro real é
+  `start_frame + frame_in_window`; raw, amostrado e `held` por relógio, inclusive do primário (que não é serializado).
+* A montagem: `TransitionTiming::derive(...)` em `scene_plan/temporal/assemble.rs` a partir do `Bundle`, dos dois `Shot` e do
+  comprimento de `CameraTimeline::frames()` (máximo da trilha principal e dos layers) de cada clipe. `build.rs` e `timeline.rs`
+  só fornecem esse comprimento (a timeline, do cache); não há fórmula nova neles.
+
+### 3. Wire (somente planos COM transição; `PLAN_VERSION` e planos sem transição não mudam)
+
+`transition` ganha `alignment` (`center`/`start`/`end`) e `timing` obrigatórios; os 15 campos antigos ficam, os campos novos
+elevam a chave para 17. Chaves do timing: `editDurationFrames`, `from`, `to`; de cada lado: `shotStartFrame`,
+`shotEndFrameExclusive`, `instanceStartFrame`, `instanceDurationFrames`, `cameraInFrame`, `cameraClipDurationFrames`,
+`sampledInstanceFrame`, `sampledCameraClipFrame`. Campo ausente, desconhecido, float, bool, string, null ou negativo recusa
+no próprio ponteiro (`/transition/alignment`, `/transition/timing`, `/transition/timing/{from|to}/<campo>`). O wire antigo
+com transição (sem os dois campos) é recusado em `/transition/alignment`, sem default: era formato interno atrás de Refuse
+e da capability ausente no JS, e é uma quebra declarada de um formato experimental.
+
+Módulos: `temporal/json.rs` (escrita e leitura do timing e do alignment), `temporal/validate.rs` (a regra abaixo),
+`temporal/assemble.rs` (montagem), `temporal/mod.rs` (tipos e acessores). `transition_json.rs` apenas delega;
+`transition_validate.rs` apenas chama `check_transition_timing` no lugar do bloco "cabeça presa implica 0".
+
+### 4. Validação (`ScenePlan::check_transition_timing`, depois das relações já existentes entre decks)
+
+Cada recusa é `PlanError::Invalid` com ponteiro; as três portas (`validate`, `from_json`, `from_json_str`) são a mesma validação.
+
+1. Conversões u64→i64 e somas checadas; falha recusa no campo (`/transition/timing/<lado>/<campo>`).
+2. Cada lado: `shotStartFrame < shotEndFrameExclusive <= editDurationFrames` (ponteiro `.../shotEndFrameExclusive`).
+3. Corte `C = to.shotStartFrame`: `from.shotEndFrameExclusive == C` (ponteiro `/transition/timing/from/shotEndFrameExclusive`).
+4. `primary` esperado: `from` se `f < C`, `to` desde `f = C` (`/transition/primary`); `f` dentro do intervalo do primário.
+5. Janela: `transition_window(C, durationFrames, alignment, editDurationFrames)`; duração recusada em `/transition/durationFrames`,
+   janela fora da edição ou `startFrame` diferente em `/transition/startFrame`, overflow em `/transition/timing/to/shotStartFrame`.
+   `frameInWindow = f − startFrame` já é regra de campos (a janela fixa `startFrame`, logo a relação é transitiva).
+6. Mesma instância (`source.sceneInstanceId`) ou mesmo clipe de câmera (`frame.cameraClipId`) nos dois decks não declara
+   comprimentos diferentes: `/transition/timing/to/instanceDurationFrames` e `/transition/timing/to/cameraClipDurationFrames`.
+7. Integridade do primário: `instanceStartFrame + (end − start) <= instanceDurationFrames`
+   (`/transition/timing/<primário>/instanceDurationFrames`). Câmera primária pode passar do comprimento (decisão 5).
+8. Relógios: para cada lado `DeckClocks::at`; `sampledInstanceFrame`/`sampledCameraClipFrame` iguais ao amostrado
+   (`.../sampledInstanceFrame`, `.../sampledCameraClipFrame`).
+9. Legado do primário: `frame.instanceFrame`/`cameraClipFrame` são o `raw` (`/frame/instanceFrame`, `/frame/cameraClipFrame`).
+   Legado do vizinho: são o `sampled` (`/transition/other/frame/instanceFrame`, `.../cameraClipFrame`), e
+   `heldInstance`/`heldCamera` são exatamente `held` de cada relógio, inclusive `false` (`/transition/heldInstance`,
+   `/transition/heldCamera`). A regra antiga "cabeça presa implica 0" é removida.
+10. Tempos exatos `frame_start_time(fps, n)` (só em planos com transição, para não recusar planos simples antigos): `editTime`
+    nos dois decks e `instanceTime`/`cameraClipTime` de cada deck contra o próprio contador legado
+    (`/frame/editTime`, `/frame/instanceTime`, `/frame/cameraClipTime` e os de `/transition/other/frame/...`).
+
+### 5. Teto de itens (Marco B) e o consumidor X (Marco C)
+
+Nenhum código de produção muda para o teto: a prova é um teste que gera em memória o plano válido de 20.000 itens e as
+variações de +1 (passe, luz) e de bytes. O contador independente usa os comprimentos literais dos seis arrays, sem
+`own_items`/`transition_items`. O consumidor X é um teste novo (`pilot_dissolve_representable_state.rs`), sob o `Accept` de
+teste, sem tolerância nova e sem pixel; o mapeamento dos campos de referência e as limitações vão para o relatório.
+
+### 6. Arquivos tocados (registro prévio)
+
+Produção: `directed_scene/temporal/{shot_offset,frame,mod}.rs`, `directed_scene/mod.rs` (reexports),
+`scene_plan/{mod,transition,transition_json,transition_validate,build,timeline}.rs`, `scene_plan/temporal/*` (novos).
+Testes: `tests/scene_fx_transition/{plan,limits,timing,ceiling}.rs`, `tests/scene_fx_transition.rs` (registro de módulos),
+`tests/pilot_dissolve_representable_state.rs` (novo). Docs: este plano, `p4b-cross-dissolve-plan.md`, `fx-transitions.md`,
+`scene-plan.md` e `p4b-s2-c0b-report.md`. `docs/backlog.md`, `docs/features/README.md` e `docs/README.md` são do coordenador.
+Sem `Cargo.lock`, dependências, Python, fixtures, desktop, media, runtime ou renderer.
