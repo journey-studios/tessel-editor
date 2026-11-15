@@ -2695,3 +2695,23 @@ executados antes em comandos separados. Não se alega um cargo test --workspace
 [Relatório de integração](migration/clip-split-integration-report.md).
 Revisão OpenQodex final pré-push cobre o teste corrigido e a reconciliação
 documental; PR preparado após aprovação, merge remoto segue sem autorização.
+
+
+### PR68 — revisão CodeRabbit em08bd420
+
+Check CodeRabbit SUCCESS, sem objeção bloqueante; um achado menor fora do
+diff e dois nits confirmados pela coordenação. Ajustes pequenos em execução;
+nenhuma nova revisão delegada. OpenCodeReview ainda processando esse head.
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL081.17 | PR68 / docs | Seções antigas de project-document dizem schemas1/2 sem qualificar fade_window | Corrigido e validado Mac | BL081.2 | Coordenação | Schema3 com janela tenha cenas ou não; sem janela,1/2 conforme extensões; regra idêntica a document_schema_version |
+| BL081.18 | PR68 / teste | Referência do áudio embutido poderia ser silenciosa e satisfazer igualdade | Corrigido e validado Mac — envelope44/44 | BL081.2 | Coordenação | Pico de without_fades maior que0,01 antes de comparar fades/cortes |
+| BL081.19 | PR68 / prova | Script versionado só capturava a referência após o corte | Corrigido e validado Mac — headless14/14 e janela14/14 | BL081.2 | Coordenação | WAV antes do corte igual ao mix das metades em0..48, nos dois casos simétricos, em headless e janela; manter as comparações de edição/undo/redo/reabrir |
+
+
+PR68, CodeRabbit: três achados tratados, sem alteração de produto. Teste de
+envelope44/44, prova versionada14/14headless e14/14janela (novas comparações
+inteiro/metades nos dois casos), fmt e higiene13/13 passam no Mac. Revisão
+OpenQodex da atualização antes do push; os resultados anteriores Windows
+não são prova destes novos asserts. Sem áudio ouvido ou tecla física.

@@ -51,18 +51,19 @@ a cada 20 s quando há alterações (`workflow_tick`) e oferece recuperar. IDs e
 
 ## Limites
 
-`presentation` é preservada mas não afeta render. Projetos sem dados de cena usam schema 1; com bloco `scenes`, schema 2. Leitores legados recusam schema 2 para evitar perda silenciosa das cenas. O desktop não impede
+`presentation` é preservada mas não afeta render. Sem `fade_window`, projetos sem extensões usam schema 1; cenas, captura ou chaves de câmera exigem schema 2. Com `fade_window`, o projeto exige schema 3, tenha cenas ou não. Leitores legados recusam versões acima do seu limite para evitar perda silenciosa desses dados. O desktop não impede
 fechar a janela com alterações não salvas: o autosave é a rede de segurança, não um aviso.
 
 ## Projetos com cenas dirigidas
 
-F036 adiciona o bloco `scenes` e escreve schema 2 somente quando esse bloco é necessário.
-Projetos comuns permanecem em schema 1. Leitores antigos recusam schema 2, protegendo as
-cenas contra perda silenciosa. Save/autosave e pacote conferem os bytes serializados reais
+F036 adiciona o bloco `scenes`. Sem `fade_window`, esse bloco exige schema 2;
+projetos sem cenas ou outras extensões permanecem em schema 1. Com janela de fade,
+mesmo um projeto com cenas exige schema 3. Leitores antigos recusam versões acima
+do seu limite, protegendo esses dados contra perda silenciosa. Save/autosave e pacote conferem os bytes serializados reais
 contra o limite do loader (256 MiB), antes de escrever ou substituir o arquivo.
 
 
-## Janela de fade (BL081.2, em revisão)
+## Janela de fade (BL081.2, validado tecnicamente)
 
 O campo opcional fade_window em clips[] exige schema3. lead/tail contêm frames
 (âncora) e fade (guarda); em áudio também norm{far,peer}, obrigatório, descrevendo

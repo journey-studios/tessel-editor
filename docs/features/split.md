@@ -252,3 +252,10 @@ Sem tecla física, pixels, áudio ouvido, desempenho ou foco dentro da WebView.
 O atalho de apresentação é N/A na lib e no headless; a edição continua sendo
 o mesmo clip.split. Lote/seleção múltipla continuam pendentes em BL081.1.2.
 [Relatório e hashes finais](../migration/clip-split-shortcut-report.md#fechamento-técnico-macwindows).
+
+
+Revisão CodeRabbit da PR68: a prova versionada agora compara também o WAV
+inteiro antes do corte com as metades, nos dois casos simétricos. São14checks
+por superfície,14/14no processo headless e14/14na janela Mac; as comparações
+posteriores de edição, undo/redo e reabrir continuam presentes. O teste de
+som embutido de vídeo exige pico não nulo antes das comparações de igualdade.

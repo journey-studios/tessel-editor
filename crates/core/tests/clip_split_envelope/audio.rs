@@ -121,6 +121,10 @@ fn the_sound_of_a_video_never_follows_its_visual_fades_across_a_cut() {
             "source_start":{"num":1,"den":4},"properties":{"speed":150}}),
     );
     let without_fades = mix(&state);
+    assert!(
+        without_fades.peak() > 0.01,
+        "the video source contains sound"
+    );
     set(&mut state, "cv", "fade_in", json!(12));
     set(&mut state, "cv", "fade_out", json!(24));
     same_bits(

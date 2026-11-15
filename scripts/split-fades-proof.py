@@ -26,6 +26,7 @@ def scenario(surface,check,scratch):
         for line in (fixtures/'proof.jsonl').read_text().splitlines():
             if line.strip():ok(json.loads(line))
         for prop,value in [('fade_in',fi),('fade_out',fo)]:ok({'op':'clip.property','clip':'c-tone','property':prop,'value':value})
+        uncut=wav(0,48)
         if surface.name=='native':
             surface.invoke('clip:c-tone','select')
             good,out=surface.set('timeline.playhead','frame',cut)
@@ -33,6 +34,7 @@ def scenario(surface,check,scratch):
             good,out=surface.invoke('timeline.split','invoke')
             if not good:raise ProofFailure(str(out))
         else:ok({'op':'clip.split','clip':'c-tone','frame':cut})
+        check(edited+': cut preserves the uncut WAV',uncut==wav(0,48))
         clip='c-tone-split-1' if edited=='fade_in' else 'c-tone'
         before=wav(*protect);edge_before=wav(*active)
         ok({'op':'clip.property','clip':clip,'property':edited,'value':5})

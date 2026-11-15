@@ -61,3 +61,15 @@ no Mac. Sem novo aceite Windows do merge, tecla física, foco na WebView,
 semântica, com WAV offline. Runtime JS completo não foi rodado separadamente.
 Publicação em branch/PR é esta integração; merge remoto exige autorização
 separada. BL081.7, BL081.1.1.b, BL081.1.2 e os demais gaps mantêm seu status.
+
+
+## PR68 — ajustes após CodeRabbit
+
+Um comentário menor fora do diff e dois nits foram confirmados e corrigidos:
+qualificadores de schema1/2 sem fade_window em project-document, guarda de
+pico não nulo para o áudio embutido do vídeo, e comparação WAV antes/depois
+do corte nos dois casos do script versionado. Nenhuma regra de produto mudou.
+Mac: envelope44/44, prova headless14/14 e janela14/14, fmt e higiene13/13.
+As contagens12/12 acima são da prova anterior; as duas verificações extras
+por superfície são comparações diretas inteiro/metades, sem remover checks.
+Os eventos de tecla, Windows, pixels e áudio ouvido não foram revalidados.
