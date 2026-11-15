@@ -447,9 +447,11 @@ Detalhe, mutantes, divergências e comandos: [p4b-s1b-evaluation-report.md](../m
   (`progress` suavizado, `amount = clamp01(intensity)`) e saída, uma vez. Orçamento (`fx/budget.rs`): só aviso.
 - **Plano.** `scene_plan/transition{,_json,_validate}.rs`: ver [scene-plan.md](scene-plan.md). Recursos por deck, união
   derivada com `used_by` qualificado, `requires` ganha `fxTransition`, tetos 4 MiB / 20 000 itens / profundidade 1.
-- **Prova (Windows, head de código desta entrega).** `scene_fx_transition` 106 testes e `pilot_dissolve_corpus` 10, nos
+- **Prova histórica (Windows, commit `73775c3`).** `scene_fx_transition` 106 testes e `pilot_dissolve_corpus` 10, nos
   dois perfis de `serde_json` (com e sem `preserve_order`); core completo com 2 falhas de base (`scene_gizmo_rotation`,
   `scene_gizmo_scale`, também na base sem alteração); GPUI `scene_fx` 80. 18 mutantes essenciais mortos.
+  Esses gates não comprovam os patches posteriores. O limite de cabeça de câmera (.24) tem
+  114 testes e revisão Windows R3 em `4199af0`, descrita no fechamento abaixo.
 - **Não provado / A validar:** pixels reais, GPU, runtime e shader (S2), Mac, origem (`ORIGIN_NOT_EXECUTED`), comparação
   com ouro (`GOLDEN_NOT_COMPARABLE`), aceite humano. A linha de pixels do corpus é um cálculo de referência
   (decodificação sRGB, mistura, codificação, meio para cima), **não** saída de GPU.
@@ -507,6 +509,54 @@ before-head_real e pode subestimar a extensão necessária (60/48/before6 sugere
 ou ser conservadora (49/48 sugere6,1basta). A admissão recusa corretamente; corrigir diagnóstico
 emBL082.4.24/S3a antes da ativação pública. Não se abriu o portão nem se mudou esse diagnóstico
 neste fechamento documental. Build/GPUI/release não foram reexecutados pelaR3.
+
+### X representável para hold do vizinho (BL082.4.17)
+
+A extensão nova, scripts/pilot_dissolve_representable.py e seu corpus, adiciona7cenários válidos,
+98quadros e390sondas sem alterar a S0. Instâncias e câmeras cobrem o próprio shot; hold ocorre
+só no vizinho fora dele, evitando a adaptação12/30 e o contador primário legado(.23). Os5testes
+Rust importam cada bundle pelo core real/Accept e mantêm a recusa pública. Nenhum consumidor
+S1b/S2 ou pixel real foi executado. R1 Windows aprovou93246d1; Mac reproduziu37specs normal/-O,
+14arquivos byte a byte e5Rust. Os ajustes posteriores dos nits precisam dos próprios gates.
+
+Os papéis estão SOMENTE em frames[].primary/neighbour, pois mudam no corte. A convenção
+asset_resolution mapeia assets/<nome>.png do bundle para dissolve-representable-assets/<nome>.png
+junto ao corpus; o consumidor deve resolver/copiar o basename e conferir o hash do manifesto.
+Rust compara alinhamento/duração importados e transition_window com o oráculo; o teste de imports
+Python usa uma allow-list de stdlib e sintaxe3.9, sem sys.stdlib_module_names. Python3.9 real não
+foi executado pelo coordenador; o atributo ausente foi simulado no intérprete atual (Mac e Windows R2:37testes).
+
+Hold da câmera não se distingue em pixel se a pose já satura. held_camera/camera_clip_frame só
+se provam por ESTADO no consumidor S1b. UNH concorda em pixel nas cenas estáticas; instance_frame
+o distingue. O viés≤0,25 desta referência é agregado por cenário com≥24sondas únicas; o texto
+canônico fala em sondas do quadro. S2 deve declarar a granularidade antes da primeira execução
+do engine, sem retunar limiar depois. F064 produto continua P; origem não executada, sem golden.
+
+No reforço026b72a, Mac passou37normal/-O e37com metadata opcional de3.10 ausente,14arquivos
+reproduzidos, verify com pin em blobs e5Rust/clippy do alvo. Dois mutantes novos de duração e
+alinhamento morreram; dados restaurados. Windows pós-correções a validar. Gramática3.9 foi
+parseada; não houve execução de Python3.9 real nem de origem/renderer.
+
+R2 Windows aprovou93037e0:37normal/-O e37sem metadata opcional,14arquivos,
+verify/blobs/pin ausente4,5Rust/clippy, mutantes alinhamento/duração/janela mortos.
+A verificação recebeu ainda um guard de inventário: generate--check/verify agora recusam
+qualquer entrada não declarada na pasta exclusiva de assets; não apagam arquivos extras.
+Mac38specs normal/-O passaram com o novo controle. Dados de sondas/bundles/limiares/PNGs
+não mudaram. R3 Windows aprovou `06c8ea9`: 38 specs normal/-O, 14 arquivos,
+verify offline/blobs, pin estrito ausente com exit 4, Rust5, fmt e clippy do core,
+tree sem GPUI/wry. O PNG extra falha nas duas portas sem ser apagado; remover o
+filtro numa cópia faz a regressão falhar. A origem permaneceu intacta e não foi
+executada. Mac e Windows são provas separadas; não há consumidor S1b/S2 nem pixel real.
+
+Consistência posterior (`1de7bb4`): `generate` também verifica a saída após gravar
+e retorna 1 se houver arquivo extra, sem apagá-lo. Mac39 specs normal/-O e controle
+de escrita por blobs reais passaram; dados/limiares/Rust intactos. A rechecagem
+Windows dessa pequena mudança de I/O é separada da R3 de `06c8ea9` e foi aceita
+em `9bafc43`: 39 specs normal/-O, check14 e verify passam; geração real por blobs
+retorna 0 limpa e 1 com extra preservado, assim como check/verify dessa saída.
+O mutante da comparação falha por asserção. Nenhum Rust/build/GPU reexecutado
+nessa rodada; os cinco Rust continuam sendo prova da R3. Origem não executada,
+pin ausente no Windows não verificado; consumidor S1b/S2 e pixels pendentes.
 
 ## S3a (BL082.4.5, BL082.4.15, BL082.4.24): edição de `crossDissolve` no core — admissão **fechada**
 
