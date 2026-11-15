@@ -363,6 +363,12 @@ fn a_gesture_cannot_carry_a_transition_op() {
         )
         .unwrap_err();
         assert_eq!(error.code, "gesture_op_not_allowed", "{op}");
+        // The refusal says what the op is, not the generic "no clip" it would also fall into.
+        assert!(
+            error.message.contains("is a transition op"),
+            "{op}: {}",
+            error.message
+        );
         assert_eq!(snapshot(&mut state), before);
         let (now, refusal) = open_gesture(&mut state);
         assert_eq!(now, status);
