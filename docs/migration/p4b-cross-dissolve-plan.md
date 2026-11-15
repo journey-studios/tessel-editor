@@ -284,6 +284,11 @@ recursivo está no **plano**, onde `transition.other` é um `ScenePlan`:
   **sem** `transition` não tem teto novo (seus bytes não mudam).
 - Testes obrigatórios: JSON aninhado hostil de profundidade 2 e uma "bomba" (`other` repetido), recusados em tempo e
   memória limitados, sem estouro de pilha; `other` corrompido (T28); teto no limite exato e um item acima.
+  **S2-C0b (BL082.4.21):** o limite exato é também provado com um plano **válido** (não só com `null`): 20.000 itens
+  (`[3,2,0,9993,2,0]` por deck, contados à mão pelos tamanhos dos seis arrays) e o texto de exatamente 4.194.304 bytes
+  (espaço em branco) são aceitos pelas três portas e um passe, luz ou byte a mais é recusado em `/transition`. O
+  contador tipado e o de arrays contam os dois decks e as luzes. Um plano externo válido com esse tamanho **não**
+  implica que um bundle o produza: as cotas do documento (`MAX_FX_TRACKS`) o limitam muito antes e não foram alteradas.
 
 ### 5.4 Ida e volta
 
@@ -440,9 +445,10 @@ transição (digests de planos sem transição ficam idênticos; teste de ouro s
 "transition": {
   "id": "tr-1", "effect": "crossDissolve",
   "fromShotId": "shot-a", "toShotId": "shot-b", "primary": "from",
-  "startFrame": 42, "durationFrames": 12, "frameInWindow": 5,
+  "startFrame": 42, "durationFrames": 12, "alignment": "center", "frameInWindow": 5,
   "easing": "easeInOutCubic", "progress": 0.385127, "amount": 1.0,
   "params": [["curve","smooth"],["intensity",1.0]],
+  "timing": { /* S2-C0b: relógios e deslocamentos dos dois shots (ver 7.3, lacuna fechada) */ },
   "heldInstance": false, "heldCamera": true,
   "other": { /* ScenePlan do deck vizinho */ }
 }
@@ -477,10 +483,17 @@ transição (digests de planos sem transição ficam idênticos; teste de ouro s
   `ease(easing, (frameInWindow+0,5)/durationFrames)` e confere com tolerância 1e-9 (`/transition/progress`), confere
   `frameInWindow = frame.edit_frame − startFrame ∈ [0, durationFrames)`, `amount = clamp01(intensity)` (**não** a regra
   de `expected_amount` dos looks), `params` na ordem e nos tipos do catálogo (`parse_param` com `Choice`) e
-  `primary` coerente com o lado do corte (`from` em `< C`, `to` em `≥ C`). **Lacuna constatada na S1b:**
-  o construtor faz essa escolha, mas o wire atual não leva C nem os comprimentos dos clipes. O validador
-  isolado só confere a relação entre shotIds e a cabeça presa. A S2 deve decidir e provar como validar o
-  lado de C antes de aceitar planos externos; não atribuir essa prova ao validador S1b (BL082.4.20).
+  `primary` coerente com o lado do corte (`from` em `< C`, `to` em `≥ C`). **Lacuna da S1b, fechada na S2-C0b
+  (BL082.4.4, .20, .23):** o plano com transição leva `alignment` e um bloco `timing` obrigatório com C (início do
+  shot `to`), os dois intervalos de shot, os deslocamentos e comprimentos de instância e câmera e os relógios
+  amostrados dos dois decks (contrato final em `docs/migration/p4b-s2-c0b-plan.md`). `PLAN_VERSION` continua 1 e
+  planos sem transição não mudam um byte; o wire experimental sem esses campos é recusado em `/transition/alignment`
+  (o gate público segue fechado e não há plano persistido). Uma só regra pura de relógio (`bruto = início + (f −
+  inícioDoShot)`, `amostrado = clamp(bruto, 0, L−1)`, `preso = L == 0 ∨ amostrado ≠ bruto`) alimenta o avaliador de
+  deslocamento, o montador e o validador. O último quadro real **não** é preso, o comprimento da câmera é o da maior
+  faixa (principal ou camada), o deck primário guarda os quadros brutos e o vizinho os amostrados. O validador
+  compara todas as relações (janela do corte, lado do primário, ids compartilhados com comprimentos iguais,
+  amostras, quadros legados, bandeiras e tempos `Ratio`) com aritmética verificada; mede coerência, não procedência.
 - **Estágios** (`check_fx` estendido): lista do topo = passes `shot` do topo, depois `output`; passes `shot` do
   topo nomeiam o `frame.shot_id`; passes de `other.fx` nomeiam `other.frame.shot_id`. Um clipe aparece **uma vez por
   quadro** entre os dois decks.
@@ -503,6 +516,11 @@ transição (digests de planos sem transição ficam idênticos; teste de ouro s
   A referência atual isola erros do relógio da luz **só no vizinho** nas janelas `start`/`end`;
   os casos `center` não demonstram sozinhos essa discriminação (peso baixo do vizinho). A comparação
   dos estados de cada deck permanece obrigatória; S2 não deve atribuir isolamento de pixel a esses casos.
+  **S2-C0b (BL082.4.17):** `crates/core/tests/pilot_dissolve_representable_state.rs` lê o JSON representável (7 cenários,
+  98 quadros, sem Python e sem pixel) e compara os **estados** do plano real (papéis, relógios bruto/amostrado/preso dos
+  dois decks, deslocamentos, `Ratio` inclusive 30000/1001, câmera, marcador, luzes no relógio real e mistura) sob o
+  `Accept` de teste; fora da janela o plano é o puro do primário real, e o vizinho é comparado à parte pelo avaliador de
+  deslocamento. As sondas de cor (390) seguem diagnósticas: nenhum pixel é desenhado ou comparado.
   As lâmpadas sintéticas respeitam intensidade `[0,20]`, cor/flicker `[0,1]`, raio positivo e até quatro luzes.
   Sem esse oráculo, o caso continua A validar e bloqueia seu aceite;
   não fabricar um quadro puro equivalente nem obter ambos os lados pelo mesmo avaliador de transição. O teste Rust
