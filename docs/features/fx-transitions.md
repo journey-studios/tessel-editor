@@ -652,10 +652,10 @@ de início (estender o fim não resolve); as duas faltas juntas (`cameraIn 4`, c
 `cameraEnd 1`) pedem os dois reparos, nenhum basta sozinho; `before 0` não exige cabeça, **nem** a falta de fim (uma
 janela alinhada ao início não lê nada antes do corte). A admissão **não** é enfraquecida.
 
-**Análogo conhecido, não corrigido aqui (BL082.4.25, proposto):** a cauda do plano que sai tem a mesma subestimativa.
-Com `cameraIn 40` e câmera de 60 quadros num plano de 48, a janela pede 6 quadros após o fim e a dica manda estender o
-clipe em 6, mas é preciso `cameraIn + duração + after − total = 34`; estender 6 continua recusado. É outra dívida (o
-campo `camera` da cauda e a linha do oráculo que o compara) e fica fora desta entrega.
+**Análogo na cauda (BL082.4.25), corrigido na S2-C0a (seção abaixo):** a cauda do plano que sai tinha a mesma
+subestimativa. Com `cameraIn 40` e câmera de 60 quadros num plano de 48, a janela pede 6 quadros após o fim e a dica
+mandava estender o clipe em 6, mas é preciso `cameraIn + duração + after − total = 34`; estender 6 continuava
+recusado. Agora a dica e o campo aditivo `cameraExtend` dizem 34.
 
 ### Predicado de janela (§9.6, sem consumidor ainda)
 

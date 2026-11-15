@@ -67,5 +67,7 @@ mod scan_checks;
 mod stages;
 #[path = "scene_fx_transition/support.rs"]
 mod support;
+#[path = "scene_fx_transition/tail_repair.rs"]
+mod tail_repair;
 #[path = "scene_fx_transition/window_guard.rs"]
 mod window_guard;

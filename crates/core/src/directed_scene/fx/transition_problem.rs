@@ -631,6 +631,10 @@ fn derive_no_handles(args: &mut Map<String, Value>, locale: Locale) -> Option<()
             None => 0,
             Some(_) => number_of(lack, "cameraEnd")?,
         };
+        let camera_extend = match lack.get("cameraExtend") {
+            None => camera,
+            Some(_) => number_of(lack, "cameraExtend")?,
+        };
         if instance > 0 || camera > 0 {
             piece.insert("most".to_string(), json!(instance.max(camera)));
             let what_key = match (instance > 0, camera > 0) {
@@ -650,7 +654,8 @@ fn derive_no_handles(args: &mut Map<String, Value>, locale: Locale) -> Option<()
             fixes.push(fill(phrase("fix.instance")?.get(locale), &piece)?);
         }
         if camera > 0 {
-            piece.insert("n".to_string(), json!(camera));
+            // The repair is the exact extension (BL082.4.25); a problem without it asks for `camera`.
+            piece.insert("n".to_string(), json!(camera_extend));
             fixes.push(fill(phrase("fix.camera")?.get(locale), &piece)?);
         }
         if camera_end > 0 {
