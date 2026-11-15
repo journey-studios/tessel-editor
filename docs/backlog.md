@@ -1879,7 +1879,7 @@ concreto da S0, sem link para arquivo inexistente nem validação de lib/CLI/UI 
 |---|---|---|---|---|---|---|
 | BL082.4.1 | P4b/S0 | Contrato F064 e corpus independente dissolve, fonte e X analítico | Concluído — somente S0 oráculo/contrato | BL082.4; setupPythonBL167.5 parcial | Coordenador / Cursor Sonnet5.5 | R3 independente aprova e4078ff no Windows; corpus167/analítico39 normal e-O, reprodução byte a byte e Mac equivalente. Produto lib/JSONL/UI permanece P; detalhes no relatório S0 §12. |
 | BL082.4.2 | P4b/S1a | Documento/janela/validação tipada e política de admissão fechada | Concluído no escopo interno; R2 aprova a752f0a | BL082.4.1/.11 concluídos | Coordenador / revisão Windows | R2:61transition/25scene_fx/80GPUI, processo headless real, perfis serde e mutantes dinâmicos/scanner/domínio. fmt/check/clippy/no-run/build passam. Core1525ok/2gizmosbase, workspaceexecutado/Mac pendentes. Produto P; IDgerado fica BL082.4.15/S3. |
-| BL082.4.3 | P4b/S1b | Avaliação dos dois decks e plano, recursosporassetId/used_bysemambiguidade | Em andamento no Windows | BL082.4.2 | Cursor Sonnet5.5 / coordenador | Recurso próprio por deck euniãoderivadaestável, clock/handlessemunderflow, parserprofundidadelimitada |
+| BL082.4.3 | P4b/S1b | Avaliação dos dois decks e plano, recursos por assetId/used_by sem ambiguidade | Concluída no escopo interno — R3 Windows4199af0 | BL082.4.2 integrada | Coordenador / Cursor Sonnet5.5 | Head73775c3:106transições/10corpus/594lib/80GPUI e gates Windows relatados; produtoP. Mac106+10+baseline debug/release passam após correção de dados(.16), três kitsXparciais(.17) em revisão. SemS2/S3a iniciadas. |
 | BL082.4.4 | P4b/S2 | Runtime/renderer/mistura e lifecycle/cache | Pendente | BL082.4.3; S2A também BL082.4.5/S3a | Não atribuído | Cor8bits/alpha declarados, capability, dois splats/leases/contextloss/dispose e pixelsindependentes |
 | BL082.4.5 | P4b/S3 | Ops/gestos/inspector/persistência ecoreparser/nós | Pendente | BL082.4.3 | Não atribuído | Atomicidade/revisão/undo, módulossemcrescerarquivosproibidos; dividirS3aseS3bseútil |
 | BL082.4.6 | P4b/S4 | UIKit/provaautomação/guardasoverlaycore | Pendente | BL082.4.4/.5; W1integrada | Não atribuído | Controlesreais, predicadocoreúnico, gestoqueentranajanela/hitpress, célulastestadasporfase |
@@ -2177,6 +2177,114 @@ no trabalho aguarda até20s, então encerra/recolhe o peer antes de relançar.
 Atraso da falha é P3 aceito nesta entrega; cancelar sem matar em unwind vazaria
 peer, e não foi feito. Melhorar latência preservando limpeza continua como
 resíduo do mesmo BL167.6.10, sem bloquear a correção validada.
+
+### PR63/S1b entregue; revisão independente e validação Mac — 2026-11-14
+
+Head73775c37d40c78f8507698d7cd2b7946aa9ce05f, basee3c20cb, fonte principald71be93.
+AutorWindows:106transição/10corpus em2perfisserde, lib594, GPUI80, fmt/check/
+clippy/no-run/build/treecore. Corecompleto só2gizmosbasefalham, workspace
+executado não rodou. Mutantes18 segundoautor, semruntime/pixels/GPU.
+S1b parcial interna Avalidar; F064produtoP, capRust14/JS13, RefuseatéS2A.
+
+Revisão independente no checkout WindowsS1b, sem commits/comuns:
+[PR63 S1b: revisão independente dos decks, parser e corpus no Windows](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:fea010fd225f789b189f7872b771b0a6bc61fff9a0d38045762ba18f070b23c8).
+Mac nativo737limpo:106transição e10corpuspassam, baselinefalha por perfildebug
+ausente (fixture sótem windows-debug/windows-release). Não é byte comparado
+contra referência Mac; é pré-condição ausente. Coordenador capturae3separado.
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL082.4.16 | PR63 / baseline Mac | Fixture de compatibilidade não inclui perfis debug/release Mac | Correção de dados validada no Mac | BL082.4.3 | Coordenador | Captura sobre e3c20cb sem mudar core/src/Cargo.lock, probe removido/status limpo; Windowsentries canônicas inalteradas. Candidato737+fixture:106transições/10corpus e baseline debug/release passam. Head limpo93fb635 passou debug e gates; Linux não executado. |
+| BL082.4.17 | PR63 / referência X | Três lit-held não importam por instância menor que shot, comparações só parcialmente preservadas | Em andamento — referência representável Windows | BL082.4.1/.4.3 | Coordenador / Cursor Sonnet5.5 | JulgarT06/T10/T16 e necessidade de fixtures representáveis sem enfraquecerimportador ouregravarorigem; não promover todosos estados/sondasporassociação. Autor declara reconstrução e limites. |
+
+### Baseline Mac capturado na base original, não no candidato
+
+BL082.4.16: o coordenador capturoudebug/release noMacARM sobree3c20cb emclone
+separado. Só havia probe temporário emtests; core/src/Cargo.lock semdiff,
+probe removido eárvore limpa depois. A captura Mac foi posterior no tempo,
+mas usa o código anterior àS1b; não se gerou referência comoplannerS1b.
+
+Foram adicionados apenas os perfisdebug/release ao JSON; windows-debug e
+windows-release/metadata existentes mantiveram os valores canônicos exatos.
+No candidato737+fixturecorrigido,106transições/10corpus/baseline debug passaram;
+baseline release também. Comentário do teste esclarece a cronologia e os
+generadores temporários removidos. Nenhuma mudança emcrates/core/src.
+Gates do head limpo ainda serão rodados antes de publicar o ajuste. F064
+produtoP, reviewWindows fonte737em andamento, divergênciaX(.17) nãoresolvida
+por este ajuste. Sem Linux ouruntime/pixels/aceitehumano.
+
+### PR63: reforço após revisão independente; referência representável iniciada
+
+R1 Windows em 73775c3 aprovou o core interno com condição de baseline Mac e achados baixos.
+Baseline corrigida em dd92281: Mac limpo passou106transições/10corpus e baseline debug/release,
+check/clippy/build. Referência capturada em e3c20cb separado; perfis Windows preservados.
+O coordenador iniciou os ajustes pequenos de validação, contexto de deck e orçamento na PR63;
+não são gates herdados do head737. S2/S3a continuam não iniciadas e F064 produto P.
+
+BL082.4.17 está em implementação Windows com Cursor Sonnet5.5 defaults:
+[P4b X: oráculo representável de hold e luz para S2](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:67711dc2ee2161709e5694a6f305ba4d0b7e70ac9dec806217509ddb22f166e6).
+Checkout próprio E:/www/tessel-p4b-representable-x-20261114, base main b6cf304.
+Ownership: scripts pilot_dissolve_representable.py/spec, corpus/manifesto novos, teste de
+importabilidade real e plano/relatório próprios. Não altera produção, corpus S0, origem,
+backlog, matriz ou índice. Instâncias cobrem seus shots; ambos os decks têm estados completos;
+luz usa quadro real e o vizinho tem discriminante próprio. Review independente futura.
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL082.4.18 | PR63 / validador | Overflow e três guardas sem regressão discriminante | Validado em R2 Windows d2c1861; .24 separada | BL082.4.3 | Coordenador | Recusar conversão/soma inválidas; testes de tempo real divergente, clipId repetido entre decks e luzes no pré-check; matar os mutantes da revisão e revalidar Windows/Mac. |
+| BL082.4.19 | PR63 / erros | Versão e transformação de splat do vizinho sem deck no erro | Parcial — validador/leitor validados R2; construtor pendente S2 | BL082.4.3 | Coordenador | Ponteiro /transition/other em planos tipados e JSON, inclusive versão/splat; manter contrato do topo e testar ids colidentes. |
+| BL082.4.20 | S2 / contrato do plano | Wire sem C e comprimentos não permite validar toda a escolha temporal de primary/held | Pendente | BL082.4.3/.4.4 | Dono de S2 a atribuir | Fixar contrato de validação de planos externos antes do runtime; separar escolha correta do construtor da capacidade do validador isolado. |
+| BL082.4.21 | Validação do teto de itens | Não há plano válido aceito de exatamente 20000 itens sob o teto de bytes | Pendente | BL082.4.3 | Não atribuído | Provar interação dos dois tetos com plano válido representável ou documentar formalmente por que a combinação é impossível; pré-check de arrays não é aceite completo. |
+| BL082.4.22 | PR63 / orçamento | Edit/inspect/gesto/UI ainda usam orçamento que ignora transição | Validado em R2 Windows d2c1861; .24 separada | BL082.4.3 | Coordenador | Migrar chamadas restantes para pass_budget_in e discriminar 8 looks mais mistura em respostas compartilhadas; sem abrir Refuse. |
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL082.4.23 | S1b / relógio de câmera | Plano primário conserva contador bruto além da câmera curta; offset/oráculo usa contador preso | Pendente — divergência de metadado, sem paridade de estado completo | BL082.4.17/.4.3 | Coordenador / dono de S2 | Julgar contrato preservando bytes sem transição; comparar contador legado e offset separadamente. Exemplo lit-center-held f23: primário23, offset/oráculo11. Pose é hold no kit; isto não é prova de pixels reais. |
+
+### PR63: reforço validado no Mac, pronto para rechecagem Windows
+
+Código93fb635 (produção idêntica a61efdba) sobre mainb6cf304: core1594/0/7,
+64resultados; transições112/corpus10/baseline1 com preserve_order; GPUI80;
+fmt/check/clippy/build/tree passam. Sete mutantes discriminantes em61, fontes
+restauradas; a falha inicial de comparação primária23 vs offset11 foi preservada
+no relatório e o teste corrigido sem editar corpus/produção. BL082.4.23 registra
+a divergência de metadado; não é paridade de estado completo nem prova de pixels.
+BL082.4.18/.19/.22 A validar no Windows; .17 segue em implementação separada;
+S2/S3a não iniciadas, F064 produto P e admissão pública Refuse.
+
+Baseline release do mesmo código93fb635 passou1/1 no Mac; fechamento posterior só documental.
+
+### PR63 R2 aprovada; comentário tardio de handles exige correção
+
+R2 independente aprovou d2c1861 para a fundação interna:112/10/1isolado e
+preserve_order, baseline release1, admission4, GPUI80, fmt/check/clippy/no-run/build
+Windows passam. Mac93fb6351594/0/7 continua atribuído ao seu head. Produto P.
+
+BL082.4.19: validador e leitor qualificam vizinho, mas o construtor build/PlanTimeline
+NÃO qualifica erro de splat/frame/domínio do vizinho; probeR2 cloud espelhado emB
+retorna mesmoSplatTransform em f44/f52/f70 sem deck. Fechamento noS2, não encerrar
+o ID como cobertura total. O comentário de pose ganhou assert explícito no teste.
+
+Novo comentárioCodeRabbit emd2 apontou cabeça de câmera inexistente. Root reproduziu:
+cameraIn49 com câmera48 aceita handles use indevidamente; teste novo falhou por
+asserção na admissão (não por compilação), antes da correção. Cabeça contígua agora
+é0 quando cameraIn passa o comprimento; igualdade com end exclusivo conserva os
+quadros anteriores reais. Ausência de comprimento conhecido conserva comportamento.
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL082.4.24 | PR63 / handles | cameraIn além do fim conta cabeça inexistente e use/refuse aceita frames presos | Admissão validada R3 Windows4199af0; dica pendente S3a | BL082.4.3 | Coordenador | Regressões49/60 com câmera48 recusam TRANSITION_NO_HANDLES, hold admite e prende47; 47/48 conservam cabeça real e não prendem o vizinho. Testar/core/Mac e rechecagem Windows nova antes do merge; acervoS0 intocado. R3:114/10/1 EXPECT0/1,admission4,clippy/tree/check,4mutantes. Dica60/48sugere6masfaltam12; corrigir antes deS2A. |
+
+BL082.4.24: produção69c5143; Mac896 core1596/0/7,114/10/1 preserve,GPUI80,
+check passam. Clippy apontou err-expect só no teste; forma da asserção ajustada
+emffa1f9c, produção idêntica,114/10/1+clippyworkspace/build passam. Windows do
+limite ainda pendente; não herdarR2d2. Mainf00c4ed/PR64 incorporada, conflito
+somente histórico do backlog, preservado. F064P/Refuse, semS2/S3a iniciadas.
+
+S1b aprovada R3 em4199af0: domínio interno/gates/mutantes, Refusefechado/F064P.
+Fechamento só documentação e comentário normativo, sem tokens executáveis alterados.
+Pendências preservadas:.17consumidorX/.19errosbuilder/.20C/.21plano20000/.23contador
+primário/.24quantidade da dica emS3a antesdeS2A. Não é produto/render/aceitehumano.
 
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|

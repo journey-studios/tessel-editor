@@ -14,9 +14,11 @@ o corpus independente da S0 (`scripts/pilot-dissolve-corpus.py`, `scripts/pilot_
 um portão de admissão**: toda entrada pública (importar, anexar, abrir projeto, restaurar pacote, candidato de edição)
 lê com a política `Refuse`, e um `transitions` não vazio continua `FX_TRANSITION_NOT_YET`, com a mesma mensagem. Só os
 testes e o corpus do core têm a política `Accept` (`#[doc(hidden)]`, **não** é barreira de segurança). Continuam sem
-existir: avaliação fora da janela e `ScenePlan.transition` (S1b), runtime/shader/export (S2), operações/gestos/inspetor
-(S3), UI (S4). O catálogo público, o seletor de clipe e os planos **não mudam** (3 looks, `catalogVersion` 1, 13
-capacidades, `PLAN_VERSION` 1). Plano de trabalho (versão 2):
+existir: runtime/shader/export (S2), operações/gestos/inspetor (S3), UI (S4). **S1b (BL082.4.3) adiciona, só no core e
+só interno:** a avaliação de dois decks, `ScenePlan.transition` e a capacidade `fxTransition` (ver «S1b» no fim e o
+[relatório](../migration/p4b-s1b-evaluation-report.md)); a admissão pública segue fechada. O catálogo público, o seletor
+de clipe e os planos **sem transição não mudam** (3 looks, `catalogVersion` 1, `PLAN_VERSION` 1; 14 capacidades no Rust,
+13 na lista do JS). Plano de trabalho (versão 2):
 [p4b-cross-dissolve-plan.md](../migration/p4b-cross-dissolve-plan.md), lido no head `2395719`.
 
 Fica fora (cada item é BL próprio): as outras transições do piloto, `keys` em transições (D10,
@@ -98,7 +100,7 @@ shader e **nunca** é guardado. Saída = `mix(mix(a,b,progress), mix(a,b,shaped)
 O deck vizinho tem **três relógios** (D17): instância e câmera **presas** de forma **independente**
 (`clamp(inicioInst + Δ, 0, durInst − 1)`, `clamp(camIn + Δ, 0, quadrosCam − 1)`, mais `heldInstance`/`heldCamera`) e o
 **relógio de cena** (luz com cintilação) no **quadro real da edição** `f`, também em `hold`. Disponibilidade: cabeça
-de instância = `instanceStart`; de câmera = `cameraIn`; caudas = `max(0, total − (início + comprimento))`. Um clipe `shot`
+de instância = `instanceStart`; de câmera = `cameraIn` se `cameraIn <= quadrosCam`, senão0 (ou `MAX` sem comprimento conhecido); caudas = `max(0, total − (início + comprimento))`. Um clipe `shot`
 que **encosta** na borda do plano segura o quadro mais próximo; um clipe no meio não entra (`shotClipFrame`).
 `handles`: `use` e `refuse` exigem quadros **reais** de instância **e** de câmera, contados à parte (e `refuse` lê
 exatamente como `use`); só `hold` aceita congelados.
@@ -429,6 +431,82 @@ A coleta de IDs automáticos de looks ainda não inclui IDs das transições. So
 adicionar um look sem ID: recusa segura e hoje inalcançável pela entrada pública.
 A correção e seus testes ficam na S3, registrada em BL082.4.15. Esta pendência
 não bloqueou o parecer S1a. F064 permanece P e o portão público fechado até S2A.
+
+## S1b (BL082.4.3): avaliação de dois decks e `ScenePlan.transition` — interna, a validar review
+
+**Concluída parcial interna, a validar review.** Só o core; a admissão pública continua `Refuse` e o `tessel-headless`
+real continua recusando `transitions` com exit 1. S2 e S3a não começaram; BL082.4.15 segue Pendente para a S3.
+Detalhe, mutantes, divergências e comandos: [p4b-s1b-evaluation-report.md](../migration/p4b-s1b-evaluation-report.md).
+
+- **Relógios (D14/D15/D17).** `evaluate_shot_at_offset` (`temporal/shot_offset.rs`) avalia um shot nomeado num quadro
+  fora do seu intervalo: instância e câmera são presas **separadamente**, com `held` só quando o grampo mudou o quadro
+  (clipe sem quadros: sempre preso em 0); luz e cena usam o quadro **real** de edição à taxa racional. O clipe de plano do
+  vizinho usa `clamp(f, shot.start, shot.end−1)`; um clipe no meio do shot não entra. A semente de ruído do vizinho usa o
+  quadro real (exceção registrada).
+- **Estágios.** `Fx::resolve_frame` (`fx/frame.rs`): passes do topo, passes do vizinho (cada deck), mistura
+  (`progress` suavizado, `amount = clamp01(intensity)`) e saída, uma vez. Orçamento (`fx/budget.rs`): só aviso.
+- **Plano.** `scene_plan/transition{,_json,_validate}.rs`: ver [scene-plan.md](scene-plan.md). Recursos por deck, união
+  derivada com `used_by` qualificado, `requires` ganha `fxTransition`, tetos 4 MiB / 20 000 itens / profundidade 1.
+- **Prova (Windows, head de código desta entrega).** `scene_fx_transition` 106 testes e `pilot_dissolve_corpus` 10, nos
+  dois perfis de `serde_json` (com e sem `preserve_order`); core completo com 2 falhas de base (`scene_gizmo_rotation`,
+  `scene_gizmo_scale`, também na base sem alteração); GPUI `scene_fx` 80. 18 mutantes essenciais mortos.
+- **Não provado / A validar:** pixels reais, GPU, runtime e shader (S2), Mac, origem (`ORIGIN_NOT_EXECUTED`), comparação
+  com ouro (`GOLDEN_NOT_COMPARABLE`), aceite humano. A linha de pixels do corpus é um cálculo de referência
+  (decodificação sRGB, mistura, codificação, meio para cima), **não** saída de GPU.
+
+**Validação Mac da S1b (BL082.4.16).** No head73775c3 passaram106testes de
+transição e10do corpus; a baseline de compatibilidade falhou porque só tinha
+perfis Windows. Os perfis Macdebug/release foram capturados posteriormente
+sobre a basee3c20cb sem mudança de produção, preservando as referências
+Windows. Candidato+dados corrigidos passam106/10e baseline emdebug/release.
+Esta é prova de compatibilidade de plano/core, sem runtime oupixelsreais,
+e não resolve as divergências de kitsX (BL082.4.17) em revisão.
+
+### Reforço do coordenador após review S1b
+
+BL082.4.18/.19/.22: o validador recusa a relação de quadro com overflow, qualifica erros do deck
+vizinho (incluindo versão e splat), e edit/inspect/gesto/UI usam o mesmo orçamento com shots e mistura.
+Regressões novas cobrem tempo real diferente, clipId repetido entre decks e luzes no teto de itens.
+A adaptação dos três kits lit-held passa a conferir também câmera e heldCamera de A; só os estados de
+instância que dependem do comprimento adaptado ficam sem comparação. BL082.4.17 adiciona referência
+representável separada; o acervo S0 permanece intacto. Nenhuma dessas correções abre a admissão.
+Os testes novos e os gates do novo head ainda precisam de execução e review. F064 permanece P.
+
+O reforço encontrou uma distinção adicional (BL082.4.23): o contador de câmera do plano primário
+legado pode passar do último frame de uma câmera curta, enquanto o avaliador por offset informa
+o frame preso. No caso adaptado A em f23 são23 e11. O teste valida cada contrato separadamente;
+não declara igualdade dos estados completos desse deck. A referência nova deve usar comprimentos
+representáveis e a S2 precisa manter essa distinção explícita. O resultado vermelho inicial consta
+no relatório S1b, sem ser promovido a prova verde.
+
+No reforço93fb635, Mac nativo passou core1594/0/7, transições112/corpus10/baseline1 com
+preserve_order, GPUI80 e fmt/check/clippy/build; dependências do core sem gpui/wry.
+Sete mutantes em61efdba, cujos arquivos de produção permanecem idênticos, foram detectados.
+O resultado inicial vermelho e o ajuste do teste de câmera estão no relatório S1b §§6–7.
+Windows do novo head ainda a validar; não herdar R1 de73775c3 nem declarar produto entregue.
+
+A baseline release do mesmo93fb635 também passou1/1. Os gates acima pertencem ao código93fb635; o fechamento posterior muda só docs.
+
+A revisão R2 Windows aprovou d2c1861 no escopo interno, com gates e mutantes; o construtor
+continua sem contexto de deck em seus erros (BL082.4.19), diferente do validador/leitor.
+Um comentário tardio de handles foi reproduzido e está em correção (.24): se cameraIn excede
+o comprimento conhecido, não existe cabeça contígua de quadros reais. `use`/`refuse` recusam
+quando a janela pede essa cabeça; `hold` permanece válido e prende no último frame.
+Câmera começando exatamente no end exclusivo ainda tem os frames anteriores reais.
+O acervo S0 não foi alterado; gates/review do novo código são separados da aprovação R2.
+
+Limite .24: Mac896 passou core1596/0/7,114transições/10corpus/1baseline,GPUI80,check.
+Após ajustar só a forma da asserção do teste, ffa1f9c passou114+10+1,clippy/build.
+A rechecagem Windows do limite é separada da R2 de d2c1861 e continua pendente.
+
+R3 Windows aprovou4199af0 no escopo interno:114/10/1 emEXPECT0/1,admission4,
+clippycore/tree/check, mais temporal20/handles21/plan27/splat15/oracle3 e4mutantes.
+A cabeça contígua corrigida é contrato Tessel mais estrito que a fórmula inicial do plano.
+Limite conhecido antes deS3a: em cameraIn além do fim, details.lacks.camera/dica ainda usa
+before-head_real e pode subestimar a extensão necessária (60/48/before6 sugere6, faltam12)
+ou ser conservadora (49/48 sugere6,1basta). A admissão recusa corretamente; corrigir diagnóstico
+emBL082.4.24/S3a antes da ativação pública. Não se abriu o portão nem se mudou esse diagnóstico
+neste fechamento documental. Build/GPUI/release não foram reexecutados pelaR3.
 
 ### X representável para hold do vizinho (BL082.4.17)
 

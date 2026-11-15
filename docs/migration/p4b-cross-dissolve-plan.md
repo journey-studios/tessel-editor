@@ -417,7 +417,7 @@ da edição**; só instância e câmera são presas. Com `hold`, a luz do vizinh
 
 **Disponibilidade de quadros reais** (em `i64`, `max(0, …)` semântico, 6.1), por plano:
 
-- cabeça de instância = `instanceStart`; cabeça de câmera = `cameraIn`;
+- cabeça de instância = `instanceStart`; cabeça de câmera = `cameraIn` se `cameraIn <= camFrames`, senão0; `MAX` quando o comprimento não é conhecido (contrato Tessel corrigido na S1b, mais estrito que a fórmula inicial);
 - cauda de instância = `max(0, instDur − (instanceStart + len))`;
 - cauda de câmera = `max(0, camFrames − (cameraIn + len))`.
 
@@ -477,7 +477,10 @@ transição (digests de planos sem transição ficam idênticos; teste de ouro s
   `ease(easing, (frameInWindow+0,5)/durationFrames)` e confere com tolerância 1e-9 (`/transition/progress`), confere
   `frameInWindow = frame.edit_frame − startFrame ∈ [0, durationFrames)`, `amount = clamp01(intensity)` (**não** a regra
   de `expected_amount` dos looks), `params` na ordem e nos tipos do catálogo (`parse_param` com `Choice`) e
-  `primary` coerente com o lado do corte (`from` em `< C`, `to` em `≥ C`).
+  `primary` coerente com o lado do corte (`from` em `< C`, `to` em `≥ C`). **Lacuna constatada na S1b:**
+  o construtor faz essa escolha, mas o wire atual não leva C nem os comprimentos dos clipes. O validador
+  isolado só confere a relação entre shotIds e a cabeça presa. A S2 deve decidir e provar como validar o
+  lado de C antes de aceitar planos externos; não atribuir essa prova ao validador S1b (BL082.4.20).
 - **Estágios** (`check_fx` estendido): lista do topo = passes `shot` do topo, depois `output`; passes `shot` do
   topo nomeiam o `frame.shot_id`; passes de `other.fx` nomeiam `other.frame.shot_id`. Um clipe aparece **uma vez por
   quadro** entre os dois decks.

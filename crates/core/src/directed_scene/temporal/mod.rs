@@ -21,6 +21,7 @@
 mod camera;
 mod frame;
 mod gate;
+mod shot_offset;
 
 use std::fmt;
 
@@ -36,6 +37,7 @@ pub use camera::{
 pub use frame::{CameraEvaluation, FrameEvaluation, FrameMapping, NodeAnimation, Unsupported};
 pub use gate::LAYER_FOV_SWEEP_MAX_FRAMES;
 pub(in crate::directed_scene) use gate::layered_fov_issues;
+pub use shot_offset::{OffsetEvaluation, ShotReach};
 
 /// Why a frame could not be evaluated. Nothing here panics: a bundle the importer accepted never
 /// reaches the structural variants (`Unresolved`, `NoShotAtFrame`, ...) but the API stays total,

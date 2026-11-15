@@ -168,3 +168,57 @@ fn a_refuse_scene_never_becomes_accept_through_an_edit() {
     .unwrap_err();
     assert_eq!(error.code, "invalid_bundle");
 }
+
+#[test]
+fn admission_budget_answers_count_the_blend_for_edits_inspection_and_gestures() {
+    let mut state = state_with(TransitionAdmission::Accept);
+    let ops: Vec<Value> = (0..8)
+        .map(|i| {
+            json!({
+                "op": "add_clip", "id": format!("look-{i}"), "effect": "vignette",
+                "start_frame": 0, "duration_frames": 100
+            })
+        })
+        .collect();
+    let edit = run(
+        &mut state,
+        json!({"op": "scene.fx.edit", "scene": "street", "ops": ops}),
+    );
+    let budget = edit["budget"].clone();
+    assert_eq!(
+        budget["peak_passes"], 9,
+        "eight output passes plus one blend"
+    );
+    assert_eq!(budget["over_budget"], true);
+    for request in [
+        json!({"op":"scene.fx.list", "scene":"street"}),
+        json!({"op":"scene.fx.inspect", "scene":"street"}),
+        json!({"op":"scene.fx.edit", "scene":"street", "ops":[], "dry_run":true}),
+        json!({"op":"scene.fx.edit", "scene":"street", "ops":[]}),
+    ] {
+        let answer = run(&mut state, request.clone());
+        assert_eq!(answer["budget"], budget, "{request}");
+    }
+    let begin = run(
+        &mut state,
+        json!({"op":"scene.fx.gesture.begin", "scene":"street", "clip":"look-0"}),
+    );
+    let gesture = begin["gesture"].as_str().unwrap();
+    let update = run(
+        &mut state,
+        json!({"op":"scene.fx.gesture.update", "gesture":gesture,
+        "ops":[{"op":"set_param", "clip":"look-0", "param":"radius", "value":0.7}]}),
+    );
+    assert_eq!(update["budget"], budget);
+    let status = run(&mut state, json!({"op":"scene.fx.gesture.status"}));
+    assert_eq!(status["budget"], budget);
+    let inspect = run(
+        &mut state,
+        json!({"op":"scene.fx.inspect", "scene":"street", "gesture":gesture}),
+    );
+    assert_eq!(inspect["budget"], budget);
+    run(
+        &mut state,
+        json!({"op":"scene.fx.gesture.cancel", "gesture":gesture}),
+    );
+}

@@ -244,3 +244,49 @@ pub fn only_issue(value: Value) -> (String, String, String) {
         issue.message.clone(),
     )
 }
+
+// ---- S1b (BL082.4.3): two-deck evaluation and the plan of a transition window ---------------------
+
+use tessel_editor_core::scene_plan::ScenePlan;
+
+/// The scene of `bundle` through the hidden admitting importer, or the issues it refused with.
+pub fn scene_of(bundle: Value) -> DirectedScene {
+    admit(bundle).unwrap_or_else(|error| panic!("the bundle was refused: {:?}", error.issues()))
+}
+
+/// The oracle's spec edit (`s1`, `s2`, `s3`) with `list` as its transitions.
+pub fn spec_scene(list: Vec<Value>) -> DirectedScene {
+    scene_of(with_transitions(Edit::spec().bundle(), list))
+}
+
+/// The same edit with a layer of effect `tracks` next to the transitions.
+pub fn spec_scene_with_tracks(list: Vec<Value>, tracks: Value) -> DirectedScene {
+    let mut bundle = with_transitions(Edit::spec().bundle(), list);
+    bundle["fx"]["tracks"] = tracks;
+    scene_of(bundle)
+}
+
+pub fn plan_at(scene: &DirectedScene, frame: i64) -> ScenePlan {
+    ScenePlan::build(scene, frame)
+        .unwrap_or_else(|error| panic!("plan at frame {frame}: {error:?}"))
+}
+
+/// A shot-scope clip of the layer, on its own track.
+pub fn shot_clip(
+    track: &str,
+    clip: &str,
+    effect: &str,
+    shot: &str,
+    start: i64,
+    duration: i64,
+) -> Value {
+    json!({"id": track, "label": track, "clips": [{
+        "id": clip, "effect": effect, "startFrame": start, "durationFrames": duration,
+        "scope": {"kind": "shot", "shotId": shot}}]})
+}
+
+/// An output-scope clip of the layer, on its own track.
+pub fn output_clip(track: &str, clip: &str, effect: &str, start: i64, duration: i64) -> Value {
+    json!({"id": track, "label": track, "clips": [{
+        "id": clip, "effect": effect, "startFrame": start, "durationFrames": duration}]})
+}
