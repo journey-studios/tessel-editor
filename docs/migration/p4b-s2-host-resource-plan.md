@@ -43,7 +43,7 @@ A pesquisa de H foi só leitura sobre d5d5dd3: nenhuma prova de loader novo foi 
    nos dois decks. Preservar o teto de splats, slots e bytes, sem aumentar orçamento.
    Contagem/custo não pode dar wrap ou panic quando soma ambos os decks; se a união revelar
    overflow alcançável, recusar com orçamento sem mutar estado e registrar o conserto restrito.
-6. Todo erro atribuível a um recurso inclui seu asset_id e usos {deck,node_id}.
+6. Nos quatro loaders H, todo erro atribuível a um recurso inclui seu asset_id e usos {deck,node_id}.
    O campo aditivo de contexto será details.resource:
    { "asset_id": id, "used_by": [{ "deck": "primary|other", "node_id": id }, ...] }.
    Preservar detalhes existentes, sem apagar pointer, expected/got, geração ou backend_code.
@@ -58,6 +58,11 @@ A pesquisa de H foi só leitura sobre d5d5dd3: nenhuma prova de loader novo foi 
    (root inválido, orçamento total) não ganham atribuição inventada a um asset.
    Em scene_export::job_error manter código/cancelamento/backend_code; carregar o novo
    contexto resource até o JobError sem alargar desnecessariamente outros contratos de erro.
+   Em scene.export, details.resource é uma união por tipo JSON: string label nos erros
+   legados de snapshot do media (resource_changed/resource_missing, ex.: "asset:hero") ou
+   objeto {asset_id,used_by} nos erros atribuídos pelos loaders H. Clientes discriminam
+   pelo código do erro e tipo JSON; campo ausente significa sem atribuição. Nunca converter
+   o label legado em objeto nem assumir que a presença do campo implica a forma H.
 8. requires do topo JÁ é união dos decks no core. Renderer/monitor já negociam esse conjunto.
    Não recalcular capacidades nos adapters, alterar Domain, contornar negociação ou anunciar
    fxTransition no runtime. Um runtime antigo deve continuar recusando essa capacidade.

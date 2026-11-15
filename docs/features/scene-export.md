@@ -247,6 +247,26 @@ Um export (e seu preflight) pede o renderer pela política única de [F056](rend
 ## Recursos do plano com transição (BL082.4.4, S2-H)
 
 O `resource_map` do job de export resolve a união dos recursos dos dois decks (aprovados em
-`(cena do projeto, Asset(assetId))`). Uma falha atribuível a um recurso mantém o código (`resource_unknown` etc.) e o
-`JobError` carrega `details.resource = {asset_id, used_by:[{deck, node_id}]}` além de `backend_code`; erros globais não
-recebem atribuição. Admissão pública de transições continua recusada. Ver [fx-transitions.md](fx-transitions.md).
+`(cena do projeto, Asset(assetId))`). `resource_map` preserva o código do BackendError
+(`resource_unknown` etc.). A conversão para JobError mantém a classificação existente
+(`render_failed`, `backend_unavailable` ou `cancelled`) e guarda o código original em
+`details.backend_code`, junto do contexto H `details.resource = {asset_id, used_by:[{deck, node_id}]}`.
+Erros globais não recebem atribuição.
+
+**O campo details.resource depende da origem do erro:**
+
+- Erros legados de snapshot do media, como `resource_changed` e `resource_missing`, usam
+  um label string (`"asset:hero"`), preservado sem alteração.
+- Erros atribuídos pelos loaders H usam o objeto `{asset_id, used_by:[{deck,node_id}]}`.
+- Campo ausente indica que o erro não carrega essa atribuição.
+
+O cliente deve discriminar pelo código e pelo tipo JSON do campo: string é label de snapshot;
+objeto com `asset_id`/`used_by` é contexto H. Não tratar todos os valores como string ou todos
+como objeto, nem inferir formato apenas da presença da chave. Exemplos:
+
+```json
+{"code":"resource_changed","details":{"resource":"asset:hero"}}
+{"code":"render_failed","details":{"backend_code":"resource_unknown","resource":{"asset_id":"sky","used_by":[{"deck":"other","node_id":"sky-plane"}]}}}
+```
+
+Admissão pública de transições continua recusada. Ver [fx-transitions.md](fx-transitions.md).

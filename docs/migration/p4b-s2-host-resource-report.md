@@ -372,3 +372,19 @@ Aceite é do host interno. Refuse/F064 P, R e S2A não habilitados; sem workspac
 core completo novo, GPU, desempenho, UI física, áudio ouvido, origem ou pixel de transição.
 Os resultados Mac continuam do coordenador, não execução da R2. O fechamento seguinte
 muda somente docs e não herda uma alegação de runtime Windows12/12.
+
+## 18. Compatibilidade do campo details.resource no export
+
+O OCR de d7c52b7 apontou que o campo já era um label string em erros de snapshot do media
+(resource_changed/resource_missing), enquanto H acrescenta o objeto {asset_id,used_by} nos
+erros dos loaders. A opção adotada preserva os payloads e o código aprovado pela R2 e explicita
+a união no plano (decisões6–7) e contrato F042: discriminar código e tipo JSON, string para
+label legado, objeto para atribuição H, ausência para erro sem atribuição. Não mudar label
+antigo nem interpretar presença como formato único. BackendError mantém seu código; JobError
+continua classificando como antes e guarda o código backend original em backend_code.
+
+Provas existentes, mesma produção05f37da: scene_host_union_maps exige o objeto nos três tipos
+de erro; scene_export::a_same_size_swap_after_the_map_was_approved_is_refused_by_hash_not_by_size
+exige o label asset:hero. O alvo completo Mac8a489bf12/12 já cobriu o snapshot. Esta clarificação
+não altera Rust, formatos efetivamente emitidos, testes ou dados, e não exige outra execução
+Windows do código. O fechamento muda só docs e a higiene/tabelas é reconferida.

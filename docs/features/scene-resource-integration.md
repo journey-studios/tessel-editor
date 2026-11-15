@@ -618,3 +618,6 @@ livro de slots continua atômico (nada muda numa recusa). Contrato e provas:
 [fx-transitions.md](fx-transitions.md) e [p4b-s2-host-resource-report.md](../migration/p4b-s2-host-resource-report.md).
 
 `resource_changed` pertence ao snapshot de arquivos do job de export, não aos quatro carregadores H.
+
+No job de export, o label string de snapshot e o objeto de usos dos loaders compartilham `details.resource`;
+o cliente discrimina código/tipo JSON conforme [F042](scene-export.md#recursos-do-plano-com-transição-bl08244-s2-h).
