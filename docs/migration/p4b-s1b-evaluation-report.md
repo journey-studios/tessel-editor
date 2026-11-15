@@ -223,3 +223,16 @@ asserção de admissão, antes do patch. Cabeça=0 se offset>total; offset==tota
 frames anteriores, e comprimento desconhecido mantém a regra anterior. Dois testes cobrem
 49/60 negativos, hold com câmera47presa e instância livre, e47/48positivos (.24).
 O código novo precisa de novos gates/revisão; não herda a aprovação de d2.
+
+## 9. Execução do limite de cabeça (.24)
+
+Código de produção69c5143, integrado àmainf00c4ed em896008a: Mac core completo1596/0/7,
+64resultados, preserve_order114transições/10corpus/1baseline, GPUI80, checkworkspacepassam.
+Clippy recusou err().expect no teste negativo; foi ajustado para let-else emffa1f9c, sem
+mudar produção nem a asserção. No head limpoffa:114+10+1 novamente passam, clippyworkspace
+alltargets-Dwarnings e builddesktop passam. A pose hold da câmera primária agora tem assert.
+
+A falha pré-correção na admissão está preservada. A cabeça no end exclusivo é real; além
+dele, use/refuse recusa, enquantohold prende câmera e deixa instância rodando. Fontes/fixtureS0
+intactas, versões/capacidades/portão não mudaram. R2 aprova d2, não este patch: rechecagem
+Windows específica de .24 ainda pendente. Não há workspace global, runtime/pixel/GPU novo.

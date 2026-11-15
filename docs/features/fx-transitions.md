@@ -494,3 +494,7 @@ o comprimento conhecido, não existe cabeça contígua de quadros reais. `use`/`
 quando a janela pede essa cabeça; `hold` permanece válido e prende no último frame.
 Câmera começando exatamente no end exclusivo ainda tem os frames anteriores reais.
 O acervo S0 não foi alterado; gates/review do novo código são separados da aprovação R2.
+
+Limite .24: Mac896 passou core1596/0/7,114transições/10corpus/1baseline,GPUI80,check.
+Após ajustar só a forma da asserção do teste, ffa1f9c passou114+10+1,clippy/build.
+A rechecagem Windows do limite é separada da R2 de d2c1861 e continua pendente.

@@ -2231,11 +2231,11 @@ luz usa quadro real e o vizinho tem discriminante próprio. Review independente 
 
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
-| BL082.4.18 | PR63 / validador | Overflow e três guardas sem regressão discriminante | A validar — Mac93fb635 passou; review Windows pendente | BL082.4.3 | Coordenador | Recusar conversão/soma inválidas; testes de tempo real divergente, clipId repetido entre decks e luzes no pré-check; matar os mutantes da revisão e revalidar Windows/Mac. |
-| BL082.4.19 | PR63 / erros | Versão e transformação de splat do vizinho sem deck no erro | A validar — Mac93fb635 passou; review Windows pendente | BL082.4.3 | Coordenador | Ponteiro /transition/other em planos tipados e JSON, inclusive versão/splat; manter contrato do topo e testar ids colidentes. |
+| BL082.4.18 | PR63 / validador | Overflow e três guardas sem regressão discriminante | Validado em R2 Windows d2c1861; .24 separada | BL082.4.3 | Coordenador | Recusar conversão/soma inválidas; testes de tempo real divergente, clipId repetido entre decks e luzes no pré-check; matar os mutantes da revisão e revalidar Windows/Mac. |
+| BL082.4.19 | PR63 / erros | Versão e transformação de splat do vizinho sem deck no erro | Parcial — validador/leitor validados R2; construtor pendente S2 | BL082.4.3 | Coordenador | Ponteiro /transition/other em planos tipados e JSON, inclusive versão/splat; manter contrato do topo e testar ids colidentes. |
 | BL082.4.20 | S2 / contrato do plano | Wire sem C e comprimentos não permite validar toda a escolha temporal de primary/held | Pendente | BL082.4.3/.4.4 | Dono de S2 a atribuir | Fixar contrato de validação de planos externos antes do runtime; separar escolha correta do construtor da capacidade do validador isolado. |
 | BL082.4.21 | Validação do teto de itens | Não há plano válido aceito de exatamente 20000 itens sob o teto de bytes | Pendente | BL082.4.3 | Não atribuído | Provar interação dos dois tetos com plano válido representável ou documentar formalmente por que a combinação é impossível; pré-check de arrays não é aceite completo. |
-| BL082.4.22 | PR63 / orçamento | Edit/inspect/gesto/UI ainda usam orçamento que ignora transição | A validar — Mac93fb635 passou; review Windows pendente | BL082.4.3 | Coordenador | Migrar chamadas restantes para pass_budget_in e discriminar 8 looks mais mistura em respostas compartilhadas; sem abrir Refuse. |
+| BL082.4.22 | PR63 / orçamento | Edit/inspect/gesto/UI ainda usam orçamento que ignora transição | Validado em R2 Windows d2c1861; .24 separada | BL082.4.3 | Coordenador | Migrar chamadas restantes para pass_budget_in e discriminar 8 looks mais mistura em respostas compartilhadas; sem abrir Refuse. |
 
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
@@ -2273,4 +2273,10 @@ quadros anteriores reais. Ausência de comprimento conhecido conserva comportame
 
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
-| BL082.4.24 | PR63 / handles | cameraIn além do fim conta cabeça inexistente e use/refuse aceita frames presos | Em andamento — coordenador | BL082.4.3 | Coordenador | Regressões49/60 com câmera48 recusam TRANSITION_NO_HANDLES, hold admite e prende47; 47/48 conservam cabeça real e não prendem o vizinho. Testar/core/Mac e rechecagem Windows nova antes do merge; acervoS0 intocado. |
+| BL082.4.24 | PR63 / handles | cameraIn além do fim conta cabeça inexistente e use/refuse aceita frames presos | A validar — Mac passou; rechecagem Windows pendente | BL082.4.3 | Coordenador | Regressões49/60 com câmera48 recusam TRANSITION_NO_HANDLES, hold admite e prende47; 47/48 conservam cabeça real e não prendem o vizinho. Testar/core/Mac e rechecagem Windows nova antes do merge; acervoS0 intocado. |
+
+BL082.4.24: produção69c5143; Mac896 core1596/0/7,114/10/1 preserve,GPUI80,
+check passam. Clippy apontou err-expect só no teste; forma da asserção ajustada
+emffa1f9c, produção idêntica,114/10/1+clippyworkspace/build passam. Windows do
+limite ainda pendente; não herdarR2d2. Mainf00c4ed/PR64 incorporada, conflito
+somente histórico do backlog, preservado. F064P/Refuse, semS2/S3a iniciadas.
