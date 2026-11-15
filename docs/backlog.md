@@ -1603,7 +1603,7 @@ correções de revisão, não gate do código corrigido.
 
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
-| BL081.1 | Corte / expansão | Corte em lote e atalho de teclado | Parcial — atalho iniciado em BL081.1.1; lote pendente | BL081 | Coordenação | Atalho usa o comando atual e disponibilidade do core, sem interceptar edição de texto; lote exige definir seleção/múltiplos e um undo, continua sem implementação |
+| BL081.1 | Corte / expansão | Corte em lote e atalho de teclado | Parcial — atalho BL081.1.1 validado; lote pendente | BL081 | Coordenação | Atalho usa o comando atual e disponibilidade do core, sem interceptar edição de texto; lote exige definir seleção/múltiplos e um undo, continua sem implementação |
 | BL081.2 | Corte / envelope | Preservar o envelope ao cortar dentro de fades visuais e de áudio | Validado tecnicamente Mac/Windows — commit local8901553; sem publicação | BL081, BL142, BL081.5 | Coordenação; implementação Cursor Sonnet 5.5 em worktree isolado | Preservar quadro e PCM antes/depois do corte, inclusive grades fracionárias, fades sobrepostos, múltiplos cortes e salvar/reabrir/undo/redo; documentar mover/trim/edição de fades sem âncoras obsoletas; não reintroduzir aproximação; overflow/dado inválido continuam com recusa tipada. Lib, processo headless e UI compartilham a regra. Sem transições/crossfade de P4b, desempenho, batch ou atalhos |
 | BL081.3 | Documentação | Incluir clip.split no vocabulário F015 | Corrigido pela coordenação | BL081 | Coordenador | Linha no contrato project-creation aponta F017 e argumentos absolutos; sem mudar outras operações |
 | BL081.4 | Windows / cache | Artefato debug GPUI reaproveita CARGO_MANIFEST_DIR de W: após mudança para E:; shader não abre | Pendente | BL167.4 | — | Invalidar por caminho ou incorporar HLSL sem tocar cache global; provar janela de debug em outro checkout. Executor atualizou mtime do build.rs, sem diff, apenas como contorno |
@@ -2146,7 +2146,7 @@ porque subagente remoto não suporta isolation worktree.
 
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
-| BL081.1.1 | Próxima entrega / F017 | Atalho Cmd+B/Ctrl+B para cortar o clipe selecionado no playhead | Em andamento — implementação Windows isolada | BL081, base funcional8901553 | Implementação Cursor Sonnet5.5; revisão coordenador | Mesmo Command/handler do botão e CLI; um undo por corte; key repeat não repete; nenhuma edição em borda/sem seleção/diálogo/texto; GPUI despacha tecla real do framework; documentar limite de foco da WebView e separar ponteiro físico de simulação |
+| BL081.1.1 | Próxima entrega / F017 | Atalho Cmd+B/Ctrl+B para cortar o clipe selecionado no playhead | Validado tecnicamente no dispatcher Mac/Windows — commit cb86d05 | BL081, base funcional8901553 | Implementação Cursor Sonnet5.5; revisão coordenador | Mesmo Command/handler do botão e CLI; um undo por corte; key repeat não repete; nenhuma edição em borda/sem seleção/diálogo/texto; GPUI despacha tecla real do framework; documentar limite de foco da WebView e separar ponteiro físico de simulação |
 | BL081.1.2 | Corte / expansão | Corte em lote e seleção múltipla | Pendente — sem implementação autorizada nesta fatia | BL081.1.1 e contrato de seleção | — | Definir alvos/múltiplos, atomicidade e único undo antes de implementar |
 
 
@@ -2192,3 +2192,101 @@ BL081.1.1 continua em execução independente; gates acima não provam atalho.
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
 | BL081.2.9 | Prova / portabilidade | Tornar reproduzível no repo o harness PowerShell sem Python | Pendente — prova atual preservada fora do repo | BL081.2.5 | Coordenação | Versionar o equivalente PS ou executar o Python versionado no Windows, mantendo os casos simétricos, diferenças de rampa editada e identidade dos WAVs; não invalida a execução Windows já conferida |
+
+
+### BL081.1.1 — entrega Windows recebida, revisão iniciada
+
+[Entrega do atalho](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:dc909464acf87e8b1167f80f96d98e6e16337491fdeae173ff2436e18629247e)
+recebida: patch incremental57832bytes SHA256
+46a8cd6c36d83d013bfb6532d7bb736383a495973e6f4461a1af2835b5042779,
+seis arquivos contra snapshot de envelope; sem staging/commit/push/PR.
+Executor reportou fmt/check/clippy/no-run/build exit0, atalho14/14, split5/5,
+fades2/2 e quatro mutações discriminadas. Revisão da coordenação iniciada,
+ainda sem aceite. Listener on_key_down deve filtrar repetição e contexto
+antes de consumir; foco de Input/Select/diálogo e política Mac serão revistos.
+Mac agora tem13GiB livres no volume interno, permitindo tentar os checks
+normais via wrapper, sem target alternativo ou limpeza. Sem tecla física,
+Mac ou desempenho provados pelo relatório Windows.
+
+
+Revisão independente atribuída a Cursor Sonnet5.5, somente leitura:
+[BL081.1.1 — revisão de foco e teclado](t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3A7cf41667-db4f-4a97-b58c-91dff3fdad39%3Adelegate-task%3A1f2d4c44-c75f-4ff4-ad12-5d1a7b5dd5c9).
+Ownership de revisão: adapter split_shortcut, testes, integração mod/timeline,
+contrato split e relatório; sem builds concorrentes, fontes ou docs editados.
+Transporte de4chunks extraído programaticamente, sem retranscrição; gzip17543B
+SHA256ded15018517185217bb023d2d4548a29633bc5de9f9ccd2d4d92343c29d8bcbc.
+Patch descomprimido com tamanho/SHA iguais ao executor, apply --check/apply0.
+As quatro fontes desktop são idênticas aos hashes do manifesto Windows.
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL081.1.1.a | Portabilidade / teclado | Executar dispatcher Cmd+B no Mac | Validado no dispatcher Mac — gates finais0, atalho16/16; revisão sem bloqueios | BL081.1.1 | Coordenação | Testes do dispatcher em Mac e checks do snapshot final; is_held sintético separado da tecla física |
+| BL081.1.1.b | Teclado nativo / escopo | Observar tecla física e encaminhamento da WebView | Pendente — escopo Workstation explícito | BL081.1.1, BL044 | — | Prova nativa de teclado com foco e repetição, sem atribuir simulate_keystrokes ou invoke à tecla física; não ampliar captura global implicitamente |
+
+
+BL081.1.1 Mac: fmt/checkworkspacealltargets/clippy-Dwarnings/no-run/build
+exit0; split_shortcut14/14, split5/5 e audio_fades2/2. Quatro fontes idênticas
+ao manifesto Windows antes/depois dos gates. Evidências duráveis no SSD de
+coordenação, bl08111-coordination/mac (summary.json, source-manifest.json,
+snapshot.json e logs por comando). Backend gpui-pre-macos0.3.11 events.rs
+usa NSEvent.isARepeat para o keydown normal; isso é inspeção de fonte, não
+observação física. Nenhuma nova fonte editada após os gates; revisão
+independente segue ativa, sem fechamento ou commit desta entrega.
+
+
+### BL081.1.1 — revisão independente concluída e ajustes pequenos
+
+Revisão sem objeção ao aceite, por leitura (sem execução de Cargo/janela).
+Coordenação tratou os achados1–4: teste real do Select com corte disponível;
+Root/EditorShell/header com foco no painel descendente; detector de colisões
+inclui prefixos de chords com controle cmd-b x; retorno cedo para teclas
+irrelevantes antes de alocar context_stack e consultar plan_split.
+Mac atalho16/16 após os ajustes; gates finais e rechecagem Windows pendentes.
+Nenhuma nova revisão delegada para esses consertos pequenos.
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL081.1.1.c | Revisão1–3 / testes | Cobrir Select, cadeia Root/EditorShell e prefixos de atalhos | Corrigido e validado Mac/Windows — 16/16 no snapshot final | BL081.1.1 | Coordenação | Select focado impede edição; painel descendente na estrutura de produção corta uma vez; cmd-b x detectado como colisão mesmo sem binding completo |
+| BL081.1.1.d | Revisão4 / entrada | Toda tecla consultava o plano de split antes de verificar se era atalho | Corrigido e validado Mac/Windows — gates finais0 | BL081.1.1 | Coordenação | Teclas irrelevantes retornam antes de consultar foco/disponibilidade; nenhuma meta de desempenho alegada |
+
+O possível beep macOS quando o corte está bloqueado fica como observação de
+tecla física em BL081.1.1.b, não bug confirmado. Tooltip/acessibilidade inclui
+atalho também no estado desabilitado, acompanhado do motivo de recusa.
+
+
+Gates Mac finais após os ajustes: fmt/checkalltargets/clippy-Dwarnings/no-run/
+build exit0; atalho16/16, split5/5, audio_fades2/2. Nenhum ignorado nesses
+alvos; workspace compilado, não executado inteiro. Quatro fontes congeladas
+em mac-final/source-manifest.json, logs/summary e snapshot no SSD de coordenação.
+[Nova rechecagem Windows dirigida](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:dfb2880582c80b137d7a8a05ebf2960e4e0e5b610a56a42c7ed83777abf083e2)
+atribuída a Cursor Sonnet5.5: ownership somente split_shortcut.rs/testes,
+aplicar patch5025bytes com SHA256 conferido no worktree do atalho já existente;
+checks dirigidos, sem novas features, janela, core completo ou runtimeJS.
+Não reatribuir os resultados Windows de14testes ao snapshot final16testes.
+
+
+### BL081.1.1 — fechamento técnico Mac/Windows
+
+Código integrado localmente em cb86d05d62bfcd4a3f5ead2bb677d3a832f07994.
+Coordenação conferiu a rechecagem Windows final e os hashes: patch5025bytes
+SHA25614b24cd16dbe717653c9cc178a486f8d5da50bbb26a25949931893427a785715,
+apply/check0; split_shortcut.rs c714da40…f3846a10 e testes c7afb1c1…ff03b9a1
+iguais ao Mac. Os29outros paths verificados no worktree Windows mantêm
+baseline; docs e relatório intocados pelo worker. HEAD Windows permaneceE3,
+sem staging. A raiz e os outros worktrees não foram usados nesta rechecagem.
+
+Mac e Windows finais: fmt/checkworkspacealltargets/clippy-Dwarnings/no-run/
+build exit0; atalho16/16, split5/5 e audio_fades2/2, sem falhas ou ignorados
+nesses alvos. Revisão independente sem bloqueios; achados1–4 corrigidos pela
+coordenação e cobertos pelos novos checks. BL081.1.1, .a, .c e .d encerrados
+tecnicamente. A entrada de teclado é N/A na lib/headless; a edição usa o
+mesmo clip.split. Lib/core e workspace completos não foram reexecutados;
+no-run só prova compilação. Sem nova janela real ou desempenho no final.
+
+[Relatório e limites](migration/clip-split-shortcut-report.md#fechamento-técnico-macwindows).
+Evidências Mac: bl08111-coordination/mac-final no SSD de coordenação.
+Windows: bl08111-shortcut-final-recheck-20261114 no backup externo do
+Computador, evidence.log, gates-summary.log e logs1–8 por comando.
+Sem push/PR/merge desta entrega. BL081.1.1.b (tecla física/WebView e beep
+não observado) e BL081.1.2 (lote/seleção múltipla) continuam pendentes;
+nenhuma captura global, suporte WebView ou aprovação física é alegada.
