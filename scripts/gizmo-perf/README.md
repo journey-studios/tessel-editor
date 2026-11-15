@@ -23,5 +23,10 @@ Os runners medem **uma vez, em máquina quieta**, e só no checkout limpo. Um `-
 ruim é `BLOCKED`. Não envolva um runner em `scripts/directed-scene-proof/with-gpu-lock.py` (BL015.27). Nenhum runner define
 `CARGO_TARGET_DIR` nem `TESSEL_CARGO_LANE`.
 
+No Windows (BL168.8, via `scripts/portable.py`): os locks são `msvcrt.locking` (obrigatórios: um arquivo de lock ocupado não
+pode ser lido), o lock de GPU e os `--out` padrão ficam na pasta temporária do sistema, um processo estourado é encerrado com a
+árvore (`taskkill /T /F`), a média de carga é desconhecida (`loadavg: null`, registrada em `limits`, nunca um número) e a
+redação também cobre caminhos com unidade (`C:\...`), gravados com `/`.
+
 Saídas: `0` ok, `1` falha, regressão ou recusa, `2` argumento inválido, `3` `BLOCKED` ou `INVALID_GUARD_AFTER_RUN`, `4` `INCONCLUSIVE`.
 Nenhum arquivo gravado por um runner contém caminho absoluto da máquina, usuário ou lista de processos; os comandos exatos estão no doc de tempo.

@@ -87,7 +87,9 @@ pub fn scope_json() -> Value {
             "integrity rules the importer implements",
             "structural edit joins (cuts between shots)",
             "temporal gates (layered field of view, continuous-cut pose and velocity jumps)",
-            "the effects layer `fx` (F016): catalog `vignette`, output scope, ranges, overlap, envelope; edited by `scene.fx.edit`",
+            "the effects layer `fx` (F016/F058/F059): catalog `vignette`, `fade` and `filmGrain`, scopes `output` and `shot:<id>`, ranges, overlap, envelope, keys and seed; edited by `scene.fx.edit`",
+            "render of a frame (`scene.render`, F041) and export to video with the declared audio mix (`scene.export`, F042/F042A)",
+            "scene resources resolved (`scene.resources.resolve`), copied into the project (`scene.resources.adopt`), packaged and restored (F040)",
         ],
         "deferred_fields": DEFERRED_FIELDS,
         "deferred_rules": DEFERRED_RULES,
@@ -96,14 +98,13 @@ pub fn scope_json() -> Value {
             "the families listed in `deferred_in_use` (lighting, weather, rigs...) have no state anywhere",
         ],
         "not_enabled": [
-            "render, preview, export and playback of a directed scene",
             "tessel-scene@1 runtime and MediaKind::Scene assets (a bundle is never one)",
-            "scene resources: relative asset paths are kept as data and are not resolved, copied or packaged (BB05/BB06)",
-            "UI: no panel, tree node or gesture drives scenes yet",
+            "effects outside the catalog above, the `node` scope (`FX_SCOPE_NOT_YET`) and `transitions`",
+            "the families listed in `deferred_fields` / `deferred_in_use` (weather, rigs, maps...): kept as data, never drawn",
         ],
         "transport": {
             "document": "preserved verbatim, unknown fields included",
-            "package": "scenes travel in the document; a scene that names resource files makes the package incomplete, and `unsupported` unless a partial package is allowed (resources are not packaged until BB05/BB06)",
+            "package": "scenes travel in the document and their resource files under `scenes/<id>/`, checked against the bundle's hashes (F040); the package is `complete` only when nothing a scene names was left out, and an incomplete one is refused unless a partial package is allowed",
             "project_import": "importing sequences never carries scenes (they belong to the project); the plan says so in its warnings",
         },
     })

@@ -320,7 +320,8 @@ class NothingIsSignalledTests(unittest.TestCase):
             with mock.patch.object(ab, "webkit_pids", return_value=set(pids)), \
                     mock.patch.object(ab, "process_command", return_value="/x/com.apple.WebKit.WebContent.xpc"), \
                     mock.patch.object(ab.subprocess, "run", side_effect=fake_sample), \
-                    mock.patch.object(os, "kill", side_effect=signalled.append), mock.patch.object(os, "killpg", side_effect=signalled.append):
+                    mock.patch.object(os, "kill", side_effect=signalled.append), \
+                    mock.patch.object(os, "killpg", side_effect=signalled.append, create=True):  # Windows has no killpg: still watched
                 dog.observe(Lab(), 5)
         return dog
 

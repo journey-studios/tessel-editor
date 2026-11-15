@@ -59,6 +59,8 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts" / "directed-scene-proof"))
 import harness as h  # noqa: E402
+sys.path.insert(0, str(ROOT / "scripts"))
+import portable  # noqa: E402  (Windows has no process groups: `stop_lab` ends the editor's tree there)
 
 CORPUS = ROOT / "scripts" / "directed-scene-proof" / "corpus"
 MIN_FREE_GIB = 12
@@ -234,9 +236,9 @@ def capture(lab, path):
     return run.returncode == 0 and os.path.exists(path)
 
 
-def free_gib(path="/tmp"):
-    stat = os.statvfs(path)
-    return stat.f_bavail * stat.f_frsize / 1024 ** 3
+def free_gib(path=portable.TEMP):
+    # f_bavail x f_frsize on Unix (statvfs), the same on Windows, which has no statvfs (BL168.8).
+    return shutil.disk_usage(path).free / 1024 ** 3
 
 
 def decode(ffmpeg, path, width, height):
@@ -384,16 +386,22 @@ def walk_history(win, op, target, check=check, name="history", margin=HISTORY_ST
 
 def stop_lab(lab, pid, check=check):
     """Ends the editor this proof started and every process of its own session (it was started with
-    `start_new_session`, so its group id is its pid), and proves none is left. Never touches another group."""
+    `start_new_session`, so its group id is its pid), and proves none is left. Never touches another group.
+
+    Windows has no session, process group or SIGTERM: there the "group" is the process tree `pid` started
+    (`portable.process_tree`, the WebView2 helpers included), and each step ends it at once (`kill_group`)."""
     try:
         lab.stop()
     except Exception as error:  # the proof's own cleanup must not hide the reason of a failed run
         print(f"lab.stop failed: {error}", flush=True)
-    for sig in (signal.SIGTERM, signal.SIGKILL):
+    for sig in (signal.SIGTERM, getattr(signal, "SIGKILL", None)):
         if not group_alive(pid):
             break
         try:
-            os.killpg(pid, sig)
+            if portable.WINDOWS:
+                portable.kill_group(pid)
+            else:
+                os.killpg(pid, sig)
         except ProcessLookupError:
             break
         for _ in range(20):  # up to 4 s for the signal to take effect
@@ -405,7 +413,10 @@ def stop_lab(lab, pid, check=check):
 
 def group_alive(pgid):
     """True while a live (not zombie) process is in group `pgid`; read from `ps`, so a child waiting to
-    be reaped does not count, and no signal is sent to find out."""
+    be reaped does not count, and no signal is sent to find out. On Windows: while `pgid` or a process it
+    started runs (`portable.process_tree`, a process snapshot: nothing is sent either)."""
+    if portable.WINDOWS:
+        return bool(portable.process_tree(pgid))
     listing = subprocess.run(["ps", "-A", "-o", "pgid=,stat="], capture_output=True, text=True, check=False).stdout
     for line in listing.splitlines():
         fields = line.split()
@@ -474,12 +485,15 @@ EXPECTED_SURFACES = ["window"]
 
 def run(args, surfaces):
     """The whole proof; returns the exit code (0 only if every check passed, 2 on a missing prerequisite)."""
-    binary = pathlib.Path(args.binary).resolve()
+    binary = pathlib.Path(portable.executable(args.binary)).resolve()  # `.exe` on Windows (BL168.8)
     for path in (binary, ROOT / "runtime" / "dist" / "runtime.js", CORPUS / "bundle.json"):
         if not path.exists():
             print(f"missing prerequisite: {path}")
             return 2
-    ffmpeg = shutil.which("ffmpeg")
+    try:
+        ffmpeg = portable.ffmpeg()  # TESSEL_FFMPEG, PATH, then (Windows) the WinGet package (BL168.8)
+    except FileNotFoundError:
+        ffmpeg = None
     if not ffmpeg:
         print("missing prerequisite: ffmpeg")
         return 2
@@ -487,7 +501,7 @@ def run(args, surfaces):
         print(f"only {free_gib():.1f} GiB free; this proof needs {MIN_FREE_GIB}")
         return 2
     lifecycle = load_lifecycle()
-    work = tempfile.mkdtemp(prefix="te-fx-", dir="/tmp")
+    work = tempfile.mkdtemp(prefix="te-fx-", dir=portable.TEMP)
     lab, lab_pid = None, None
     try:
         lab = lifecycle.Lab(str(binary), work, {"TESSEL_VIEWPORT_INSPECT": "1"})

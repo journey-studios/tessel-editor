@@ -1,7 +1,7 @@
 # Piloto `t3/scene-engine-pilot`: tudo o que foi construído, para levar ao Tessel Editor (Rust)
 
 Estado: inventário de funcionalidades para migração. Não altera código. Escrito em 2026-11-07 a partir do branch
-`t3/scene-engine-pilot` do repositório `tesselapp` (HEAD `d40ac3f7c0`, worktree `/Users/wallyssonnunes/.t3/worktrees/tesselapp/t3-5de3852f`).
+`t3/scene-engine-pilot` do repositório `tesselapp` (HEAD `d40ac3f7c0`, worktree `~/.t3/worktrees/tesselapp/t3-5de3852f`).
 Complementa [README.md](README.md) (inventário da `main`, itens `MIG100`–`MIG105` do piloto só em nível de catálogo):
 **este arquivo é o detalhe desse delta**. Fontes de verdade no código: `packages/scene-engine` (o CORE) e `apps/scene-studio` (a casca).
 Planos e decisões de origem: `docs/video-production/scene-fx-plan.md`, `scene-fx-decisions.md` (decisões #1–#134), `scene-shot-trim-plan.md`,

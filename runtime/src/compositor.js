@@ -27,7 +27,8 @@ import {
   releaseSplatMesh,
   resolveSceneResources,
 } from './directed-scene.js';
-import { forEachLitCell, measureText, GLYPH_ROWS } from './font.js';
+import { forEachLitCell, measureText, GLYPH_ROWS, LINE_PITCH_ROWS } from './font.js';
+import { isIdentityGrading, makeGraded, setGrading } from './grading.js';
 import { fnv1a64, meanColor } from './hash.js';
 import { OutputFxPipeline } from './output-fx.js';
 import { BLEND_MODES, RuntimeError } from './protocol.js';
@@ -80,19 +81,37 @@ const canvasTexture = (canvas) => {
   return texture;
 };
 
+/**
+ * The picture of a title. The core lays it out (BL141.1, `text::layout`): `spec.lines` and
+ * `spec.scale` are present only when the title is not one full-size line, and then every line is
+ * centred in the widest one, `LINE_PITCH_ROWS` below the previous, all sharing the mark padding of
+ * the whole title so the bodies stay evenly spaced. Without them this is the single line it always
+ * was, cell for cell.
+ */
 const drawText = (spec, canvasHeight) => {
-  const { columns, rows } = measureText(spec.content);
+  const lines = Array.isArray(spec.lines) && spec.lines.length > 0 ? spec.lines : [spec.content];
+  const scale = Number.isFinite(spec.scale) && spec.scale > 0 ? spec.scale : 1;
+  const { pad } = measureText(lines.join(''));
+  const measured = lines.map((line) => measureText(line));
+  const columns = Math.max(...measured.map((line) => line.columns));
+  const rows = (lines.length - 1) * LINE_PITCH_ROWS + GLYPH_ROWS + 2 * pad;
   // `size` is the text height in percent of the canvas. Glyph cells are drawn at a whole
   // pixel size and the quad is scaled to the exact height, so crisp cells and exact size agree.
-  const cell = (spec.size / 100) * canvasHeight / GLYPH_ROWS;
+  const cell = ((spec.size / 100) * canvasHeight / GLYPH_ROWS) * scale;
   const cellPixels = Math.max(1, Math.ceil(cell));
   const canvas = document.createElement('canvas');
   canvas.width = columns * cellPixels;
   canvas.height = rows * cellPixels;
   const context = canvas.getContext('2d');
   context.fillStyle = spec.color;
-  forEachLitCell(spec.content, (column, row) => {
-    context.fillRect(column * cellPixels, row * cellPixels, cellPixels, cellPixels);
+  lines.forEach((line, index) => {
+    // Lines of n characters are 6n - 1 columns: the difference of two is a multiple of 6, so the
+    // centring offset is a whole number of cells (an empty line draws nothing anyway).
+    const left = Math.floor((columns - measured[index].columns) / 2);
+    const top = index * LINE_PITCH_ROWS + (pad - measured[index].pad);
+    forEachLitCell(line, (column, row) => {
+      context.fillRect((left + column) * cellPixels, (top + row) * cellPixels, cellPixels, cellPixels);
+    });
   });
   const ratio = cell / cellPixels;
   return { canvas, width: canvas.width * ratio, height: canvas.height * ratio };
@@ -164,8 +183,9 @@ export const SCENE_SAMPLE_CHOICES = [0, 2, 4];
 export const PREVIEW_SORT_CHOICES = ['latest', 'exact'];
 export const DEFAULT_PREVIEW_SORT = 'latest';
 
-const createLayerMaterial = (blend, texture, opacity, tint) =>
-  new THREE.MeshBasicMaterial({
+/** `grading` is null for an ungraded layer, which keeps the plain material (and its exact pixels). */
+const createLayerMaterial = (blend, texture, opacity, tint, grading = null) => {
+  const material = new THREE.MeshBasicMaterial({
     map: texture,
     transparent: true,
     depthTest: false,
@@ -174,6 +194,8 @@ const createLayerMaterial = (blend, texture, opacity, tint) =>
     color: new THREE.Color().setScalar(tint),
     ...BLENDING[blend],
   });
+  return grading ? makeGraded(material, grading) : material;
+};
 
 const disposeTarget = (target) => target.dispose();
 const disposeText = (text) => {
@@ -987,13 +1009,13 @@ export class Compositor {
   }
 
   /**
-   * A text layer's texture. The picture of a text depends only on its content, size, color and
-   * the canvas height (the glyph cell is rounded to whole pixels from it), so those are the key.
+   * A text layer's texture. The picture of a text depends only on its content, size, color, its
+   * layout (`lines`, `scale`: BL141.1) and the canvas height (the glyph cell is rounded to whole pixels from it), so those are the key.
    * Bounded by count and bytes: a text that changes every frame (a counter) cycles through the
    * cache instead of growing it.
    */
   retainedText(spec, canvasHeight) {
-    const key = JSON.stringify([spec.content, spec.size, spec.color, canvasHeight]);
+    const key = JSON.stringify([spec.content, spec.size, spec.color, canvasHeight, spec.lines ?? null, spec.scale ?? 1]);
     const hit = this.text.get(key);
     if (hit) {
       this.counters.add('text_reused');
@@ -1107,9 +1129,11 @@ export class Compositor {
     const fades = layer.blend !== 'normal';
     const opacity = fades ? 1 : layer.opacity;
     const tint = fades ? layer.opacity : 1;
+    // Colour correction grades the layer's texel before opacity, tint and blend (grading.js).
+    const grading = isIdentityGrading(layer.grading) ? null : layer.grading;
     const material = this.retain
-      ? this.layerMaterial(layer.blend, order, prepared.texture, opacity, tint)
-      : keep(createLayerMaterial(layer.blend, prepared.texture, opacity, tint));
+      ? this.layerMaterial(layer.blend, order, prepared.texture, opacity, tint, grading)
+      : keep(createLayerMaterial(layer.blend, prepared.texture, opacity, tint, grading));
     const mesh = new THREE.Mesh(geometry, material);
     mesh.position.set((transform.x / 100) * width, (-transform.y / 100) * height, 0);
     mesh.rotation.z = -THREE.MathUtils.degToRad(transform.rotation);
@@ -1117,17 +1141,19 @@ export class Compositor {
     return mesh;
   }
 
-  layerMaterial(blend, slot, texture, opacity, tint) {
-    const key = `${blend}:${slot}`;
+  layerMaterial(blend, slot, texture, opacity, tint, grading = null) {
+    // A graded layer has its own material (another program); the plain one stays as it was.
+    const key = `${blend}:${slot}${grading ? ':graded' : ''}`;
     let material = this.materials.get(key);
     if (material) {
       this.counters.add('material_reused');
       material.map = texture;
       material.opacity = opacity;
       material.color.setScalar(tint);
+      if (grading) setGrading(material, grading);
       return material;
     }
-    material = createLayerMaterial(blend, texture, opacity, tint);
+    material = createLayerMaterial(blend, texture, opacity, tint, grading);
     this.materials.set(key, material);
     this.counters.add('material_created');
     return material;

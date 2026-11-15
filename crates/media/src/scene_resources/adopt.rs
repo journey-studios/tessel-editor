@@ -238,21 +238,24 @@ fn copy_and_claim(
 
 /// `error` of the copy without the leftovers it lists for things this adoption already took back
 /// (the copy's own rollback found them gone). The copy spells paths below the resolved root and
-/// this adoption below the root as it was given, so they are compared below `root`.
+/// this adoption below the root as it was given, so they are compared below `root`, component by
+/// component: on Windows the copy writes `\\?\C:\…\assets\x.png` and a text search for
+/// `/assets/x.png` never matched, so files already taken back were reported as left behind.
 fn without_taken_back(mut error: JobError, failure: &Unclaimed, root: &Path) -> JobError {
     let Some(details) = error.details.as_mut() else {
         return error;
     };
-    let gone: Vec<String> = failure
+    // Never the root itself: an empty tail would match every line.
+    let gone: Vec<&Path> = failure
         .taken_back
         .iter()
         .filter_map(|path| path.strip_prefix(root).ok())
-        .map(|relative| format!("/{}`:", relative.display()))
+        .filter(|relative| relative.components().next().is_some())
         .collect();
     if let Some(Value::Array(leftovers)) = details.get_mut("rollbackLeftovers") {
         leftovers.retain(|line| {
-            let line = line.as_str().unwrap_or_default();
-            !gone.iter().any(|tail| line.contains(tail.as_str()))
+            let named = line.as_str().and_then(rollback_line_path);
+            !named.is_some_and(|path| gone.iter().any(|tail| path.ends_with(tail)))
         });
         if leftovers.is_empty()
             && let Some(map) = details.as_object_mut()
@@ -261,6 +264,12 @@ fn without_taken_back(mut error: JobError, failure: &Unclaimed, root: &Path) -> 
         }
     }
     error
+}
+
+/// The path a line of `rollbackLeftovers` names: the copy writes `` `<path>`: <why> ``.
+fn rollback_line_path(line: &str) -> Option<&Path> {
+    let rest = line.strip_prefix('`')?;
+    rest.find("`:").map(|end| Path::new(&rest[..end]))
 }
 
 /// The project, the workspace and the scene an adoption was started for. Taken on the caller's

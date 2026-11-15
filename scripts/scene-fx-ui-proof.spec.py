@@ -287,11 +287,20 @@ class HistoryTests(unittest.TestCase):
         self.assertTrue(record.failed_with("before the 30 s deadline"), record.items)
 
 
+SLEEP = [sys.executable, "-c", "import time; time.sleep(60)"]
+# The session of the editor: a leader with a child of its own. Windows has no `sh`/`sleep` (nor sessions): there
+# the same shape is two Pythons, and the "session" `stop_lab` ends is the leader's process tree.
+LEADER_WITH_CHILD = ([sys.executable, "-c", f"import subprocess, time; subprocess.Popen({SLEEP!r}); time.sleep(60)"]
+                     if proof.portable.WINDOWS else ["sh", "-c", "sleep 60 & sleep 60"])
+SLEEPER = SLEEP if proof.portable.WINDOWS else ["sleep", "60"]
+
+
 class CleanupTests(unittest.TestCase):
     def test_stop_lab_ends_its_own_session_and_nothing_else(self):
         record = Recorder()
-        own = subprocess.Popen(["sh", "-c", "sleep 60 & sleep 60"], start_new_session=True)
-        other = subprocess.Popen(["sleep", "60"], start_new_session=True)
+        own = subprocess.Popen(LEADER_WITH_CHILD, start_new_session=True)
+        self.addCleanup(lambda: (proof.portable.kill_group(own.pid), own.wait()) if own.poll() is None else None)
+        other = subprocess.Popen(SLEEPER, start_new_session=True)
         self.addCleanup(lambda: (other.kill(), other.wait()))
 
         class Lab:
@@ -300,6 +309,13 @@ class CleanupTests(unittest.TestCase):
             def stop(self):
                 Lab.stopped = True
 
+        if proof.portable.WINDOWS:
+            # The leader's child must exist before the stop, or "its child went too" would prove nothing.
+            deadline = time.monotonic() + 30
+            while len(proof.portable.process_tree(own.pid)) < 2 and time.monotonic() < deadline:
+                time.sleep(0.05)
+            self.assertEqual(len(proof.portable.process_tree(own.pid)), 2, "the leader and its child run")
+            self.assertNotIn(other.pid, proof.portable.process_tree(own.pid))
         self.assertTrue(proof.group_alive(own.pid))
         ok = proof.stop_lab(Lab(), own.pid, check=record)
         own.wait(timeout=10)
@@ -310,7 +326,8 @@ class CleanupTests(unittest.TestCase):
 
     def test_a_stop_that_raises_still_cleans_the_group(self):
         record = Recorder()
-        own = subprocess.Popen(["sleep", "60"], start_new_session=True)
+        own = subprocess.Popen(SLEEPER, start_new_session=True)
+        self.addCleanup(lambda: (own.kill(), own.wait()) if own.poll() is None else None)
 
         class Lab:
             def stop(self):

@@ -85,7 +85,7 @@ bundle hash and the harness version. A pixel claim without these is not a claim.
 ## Commands
 
 ```bash
-cd /Users/wallyssonnunes/www/tessel-editor
+cd ~/www/tessel-editor
 python3 scripts/directed-scene-proof/model.spec.py      # model vs origin oracle (4 tests)
 python3 scripts/directed-scene-proof/proof.spec.py      # harness self-tests (10 tests)
 python3 scripts/directed-scene-proof/corpus.py --check  # corpus is what the generator writes

@@ -1,7 +1,7 @@
 # Relatório da frente K — corpus estendido do oráculo (BL018 / BB10 / F032 existente)
 
 2026-11-05. Rodada H/I/J/K ([plano](next-round-plan.md)). Checkout compartilhado `tessel-editor`.
-Origem (`/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage`, snapshot
+Origem (`~/www/journeystudios/tesselapp-image-coverage`, snapshot
 `d6adac15c61f4ef582a7ec259397b2e025d1f059`) e `tesselapp` não foram tocados. Contrato:
 [`docs/features/migration-oracle.md`](../features/migration-oracle.md) (seção "Corpus estendido").
 

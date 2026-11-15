@@ -159,8 +159,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** fps racional {numerator,denominator}; `editDurationFrames`; `renderProfile` {width,height,fps,colorSpace,alphaMode,videoCodec=h264-yuv420p,threeRevision,browserChannel}; `assets[]` {assetId,revisionId,contentHash,relativePath,format png|spz|f32,widthPx,heightPx,alphaMode,colorSpace}; `sceneDefinitions[]` (nodes group|imagePlane|supportPlane|overlay|splat, sockets, frameAudit, weather, weatherKeys, lighting, effects, weatherGround, rigs, paths); `sceneInstances`; `performanceTracks`; `cameraClips`; `shots`; `compositionPasses`; `audio`; `narration`; `outline`; `metadata`. Unidades: frames de edição, segundos de edição, unidades de cena, px da imagem da camada.
 - **Limitações:** `schemaVersion` é o literal "1.0" (sem migração entre versões). `metadata` é livre e sem consumidor. Campos aceitos pelo schema nem sempre têm runtime (ver MIG024).
 - **API / CLI:** Lib: `renderBundleSchema`, `RenderBundle` (`@tessel/scene-engine/core`). CLI: `scene show|validate`.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/schema/render-bundle.schema.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.spec.ts) (18 casos); [packages/scene-engine/src/node/bundle-file.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/bundle-file.spec.ts) (6 casos)
-- **Código:** [packages/scene-engine/src/schema/render-bundle.schema.ts:481](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L481) · [packages/scene-engine/src/schema/render-bundle.schema.ts:179](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L179) · [packages/scene-engine/src/schema/render-bundle.schema.ts:231](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L231) · [packages/scene-engine/src/schema/render-bundle.schema.ts:427](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L427)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/schema/render-bundle.schema.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.spec.ts) (18 casos); [packages/scene-engine/src/node/bundle-file.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/bundle-file.spec.ts) (6 casos)
+- **Código:** [packages/scene-engine/src/schema/render-bundle.schema.ts:481](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L481) · [packages/scene-engine/src/schema/render-bundle.schema.ts:179](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L179) · [packages/scene-engine/src/schema/render-bundle.schema.ts:231](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L231) · [packages/scene-engine/src/schema/render-bundle.schema.ts:427](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L427)
 
 ### MIG002
 
@@ -174,8 +174,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Dependências:** MIG001 (Modelo do documento `render-bundle.json` (schema 1.0))
 - **Limitações:** Dissolve é recusado no schema (`Dissolve transitions are not supported`). `premultiplied`, `rec709-video`, `premultiplyOnUpload` e asset `linear-srgb` de cor são recusados explicitamente.
 - **API / CLI:** Lib: `validateBundleIntegrity`, `validateEditJoins`. CLI: `scene validate <bundle>` (exit 1 com a lista).
-- **Testes (existentes, não executados):** [packages/scene-engine/src/validate/edit-joins.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/validate/edit-joins.spec.ts) (4 casos); [packages/scene-engine/src/schema/render-bundle.schema.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.spec.ts) (18 casos)
-- **Código:** [packages/scene-engine/src/validate/bundle-integrity.ts:466](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/validate/bundle-integrity.ts#L466) · [packages/scene-engine/src/validate/edit-joins.ts:116](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/validate/edit-joins.ts#L116) · [packages/scene-engine/src/node/validate.ts:13](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/validate.ts#L13)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/validate/edit-joins.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/validate/edit-joins.spec.ts) (4 casos); [packages/scene-engine/src/schema/render-bundle.schema.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.spec.ts) (18 casos)
+- **Código:** [packages/scene-engine/src/validate/bundle-integrity.ts:466](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/validate/bundle-integrity.ts#L466) · [packages/scene-engine/src/validate/edit-joins.ts:116](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/validate/edit-joins.ts#L116) · [packages/scene-engine/src/node/validate.ts:13](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/validate.ts#L13)
 
 ### MIG003
 
@@ -189,8 +189,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Dependências:** MIG001 (Modelo do documento `render-bundle.json` (schema 1.0))
 - **Limitações:** A fila é por processo: dois processos escrevendo o mesmo arquivo não são coordenados (o Studio usa trava por projeto, ver MIG006). Sem backup/versão anterior.
 - **API / CLI:** Lib: `openBundle`, `changeBundle`, `SceneError` (`@tessel/scene-engine/node`).
-- **Testes (existentes, não executados):** [packages/scene-engine/src/node/bundle-file.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/bundle-file.spec.ts) (6 casos); [packages/scene-engine/src/edit/finalize-bundle.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/edit/finalize-bundle.spec.ts) (2 casos)
-- **Código:** [packages/scene-engine/src/node/bundle-file.ts:129](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/bundle-file.ts#L129) · [packages/scene-engine/src/node/bundle-file.ts:195](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/bundle-file.ts#L195) · [packages/scene-engine/src/node/bundle-file.ts:115](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/bundle-file.ts#L115) · [packages/scene-engine/src/edit/finalize-bundle.ts:18](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/edit/finalize-bundle.ts#L18)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/node/bundle-file.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/bundle-file.spec.ts) (6 casos); [packages/scene-engine/src/edit/finalize-bundle.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/edit/finalize-bundle.spec.ts) (2 casos)
+- **Código:** [packages/scene-engine/src/node/bundle-file.ts:129](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/bundle-file.ts#L129) · [packages/scene-engine/src/node/bundle-file.ts:195](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/bundle-file.ts#L195) · [packages/scene-engine/src/node/bundle-file.ts:115](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/bundle-file.ts#L115) · [packages/scene-engine/src/edit/finalize-bundle.ts:18](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/edit/finalize-bundle.ts#L18)
 
 ### MIG004
 
@@ -204,8 +204,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Dependências:** MIG001 (Modelo do documento `render-bundle.json` (schema 1.0))
 - **Limitações:** `sourcePcmHashSha256` é hash do arquivo WAV inteiro (inclui cabeçalho), não do PCM. Decodificação via sharp (nativo Node).
 - **API / CLI:** Lib: `runAssetPreflight`.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/preflight/asset-preflight.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/preflight/asset-preflight.spec.ts) (2 casos)
-- **Código:** [packages/scene-engine/src/preflight/asset-preflight.ts:78](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/preflight/asset-preflight.ts#L78) · [packages/scene-engine/src/node/viewer.ts:105](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/viewer.ts#L105)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/preflight/asset-preflight.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/preflight/asset-preflight.spec.ts) (2 casos)
+- **Código:** [packages/scene-engine/src/preflight/asset-preflight.ts:78](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/preflight/asset-preflight.ts#L78) · [packages/scene-engine/src/node/viewer.ts:105](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/viewer.ts#L105)
 
 ### MIG005
 
@@ -218,8 +218,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** Asset {format?, alphaMode, colorSpace}; mapas: `surface` (RGB linear = up/floor/linha), `normalMap`, `relief` (f32 + intrínsecos), `sceneDepth` (f32 + imagem).
 - **Dependências:** MIG001 (Modelo do documento `render-bundle.json` (schema 1.0))
 - **Limitações:** O schema aceita mais do que o runtime (premultiplied, rec709-video): são recusas explícitas, não suporte. Sem vídeo, sem JPEG/WebP no bundle (apenas PNG nas camadas).
-- **Testes (existentes, não executados):** [packages/scene-engine/src/preflight/asset-preflight.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/preflight/asset-preflight.spec.ts) (2 casos); [packages/scene-engine/src/schema/render-bundle.schema.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.spec.ts) (18 casos)
-- **Código:** [packages/scene-engine/src/schema/render-bundle.schema.ts:53](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L53) · [packages/scene-engine/src/validate/bundle-integrity.ts:534](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/validate/bundle-integrity.ts#L534) · [packages/scene-engine/src/runtime/three-scene-runtime.ts:403](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/three-scene-runtime.ts#L403)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/preflight/asset-preflight.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/preflight/asset-preflight.spec.ts) (2 casos); [packages/scene-engine/src/schema/render-bundle.schema.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.spec.ts) (18 casos)
+- **Código:** [packages/scene-engine/src/schema/render-bundle.schema.ts:53](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L53) · [packages/scene-engine/src/validate/bundle-integrity.ts:534](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/validate/bundle-integrity.ts#L534) · [packages/scene-engine/src/runtime/three-scene-runtime.ts:403](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/three-scene-runtime.ts#L403)
 
 ### MIG006
 
@@ -233,8 +233,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Dependências:** MIG003 (Arquivo do bundle: abrir, escrita atômica serializada, dry-run e finalize)
 - **Limitações:** Não se pode fechar o último projeto. `config.defaults` e `config.rigPresets` não têm consumidor encontrado na UI (ver MIG024). Servidor local, sem rede.
 - **API / CLI:** HTTP local: `GET /projects`, `POST /projects` {path|duplicateOf}, `PATCH /projects/<id>` {name}, `DELETE /projects/<id>`.
-- **Testes (existentes, não executados):** [apps/scene-studio/src/engine/projectsApi.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/projectsApi.spec.ts) (5 casos); [apps/scene-studio/src/engine/projectStores.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/projectStores.spec.ts) (5 casos); [packages/scene-engine/scripts/scene-studio-projects.spec.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-projects.spec.mjs) (script de navegador/Chrome)
-- **Código:** [packages/scene-engine/scripts/studio-projects.mjs:46](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/studio-projects.mjs#L46) · [packages/scene-engine/scripts/studio-project-api.mjs:245](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/studio-project-api.mjs#L245) · [apps/scene-studio/src/engine/projectsRegistry.ts:151](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/projectsRegistry.ts#L151) · [apps/scene-studio/src/engine/projectsApi.ts:83](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/projectsApi.ts#L83)
+- **Testes (existentes, não executados):** [apps/scene-studio/src/engine/projectsApi.spec.ts](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/projectsApi.spec.ts) (5 casos); [apps/scene-studio/src/engine/projectStores.spec.ts](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/projectStores.spec.ts) (5 casos); [packages/scene-engine/scripts/scene-studio-projects.spec.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-projects.spec.mjs) (script de navegador/Chrome)
+- **Código:** [packages/scene-engine/scripts/studio-projects.mjs:46](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/studio-projects.mjs#L46) · [packages/scene-engine/scripts/studio-project-api.mjs:245](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/studio-project-api.mjs#L245) · [apps/scene-studio/src/engine/projectsRegistry.ts:151](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/projectsRegistry.ts#L151) · [apps/scene-studio/src/engine/projectsApi.ts:83](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/projectsApi.ts#L83)
 
 ### MIG007
 
@@ -247,8 +247,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** Estado por projeto: entry {info, readiness, canvas, stores, sleeping, frame}.
 - **Dependências:** MIG006 (Registro de projetos do Studio (abrir, duplicar, renomear, fechar; trava de escrita))
 - **Limitações:** Entrada de caminho é texto livre (sem seletor de arquivo). Sem reordenar abas.
-- **Testes (existentes, não executados):** [apps/scene-studio/src/engine/hotProjects.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/hotProjects.spec.ts) (6 casos)
-- **Código:** [apps/scene-studio/src/components/ProjectTabs.tsx:32](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/ProjectTabs.tsx#L32) · [apps/scene-studio/src/App.tsx:457](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/App.tsx#L457)
+- **Testes (existentes, não executados):** [apps/scene-studio/src/engine/hotProjects.spec.ts](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/hotProjects.spec.ts) (6 casos)
+- **Código:** [apps/scene-studio/src/components/ProjectTabs.tsx:32](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/ProjectTabs.tsx#L32) · [apps/scene-studio/src/App.tsx:457](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/App.tsx#L457)
 
 ### MIG008
 
@@ -261,8 +261,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** `DEFAULT_HOT_LIMIT = 2`; o ativo nunca dorme (mínimo 1).
 - **Dependências:** MIG006 (Registro de projetos do Studio (abrir, duplicar, renomear, fechar; trava de escrita))
 - **Limitações:** Só um projeto toca áudio por vez; estado de edição vive no store, não no runtime.
-- **Testes (existentes, não executados):** [apps/scene-studio/src/engine/hotProjects.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/hotProjects.spec.ts) (6 casos)
-- **Código:** [apps/scene-studio/src/engine/hotProjects.ts:17](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/hotProjects.ts#L17) · [apps/scene-studio/src/engine/projectsRegistry.ts:297](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/projectsRegistry.ts#L297)
+- **Testes (existentes, não executados):** [apps/scene-studio/src/engine/hotProjects.spec.ts](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/hotProjects.spec.ts) (6 casos)
+- **Código:** [apps/scene-studio/src/engine/hotProjects.ts:17](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/hotProjects.ts#L17) · [apps/scene-studio/src/engine/projectsRegistry.ts:297](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/projectsRegistry.ts#L297)
 
 ### MIG009
 
@@ -276,8 +276,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Dependências:** MIG003 (Arquivo do bundle: abrir, escrita atômica serializada, dry-run e finalize)
 - **Limitações:** Dev server Node (Playwright/Chrome para provas). Os mesmos saves existem como `editBundle` na lib, o servidor é só casca.
 - **API / CLI:** HTTP local: 12 rotas PUT (7 saves de cena + `-edit`, `-camera`, `-camera-commands`, `-narration-take`, `-narration-from-mix`) e GET `/p/<id>/bundle.json`, `/p/<id>/bundle-assets/<rel>`, `/narration-voices`, `/projects`.
-- **Testes (existentes, não executados):** [packages/scene-engine/scripts/scene-studio-projects.spec.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-projects.spec.mjs) (script de navegador/Chrome); [packages/scene-engine/scripts/scene-studio-history.spec.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-history.spec.mjs) (script de navegador/Chrome)
-- **Código:** [packages/scene-engine/scripts/studio-harness.mjs:54](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/studio-harness.mjs#L54) · [packages/scene-engine/scripts/studio-harness.mjs:44](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/studio-harness.mjs#L44) · [packages/scene-engine/scripts/studio-project-api.mjs:311](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/studio-project-api.mjs#L311) · [packages/scene-engine/scripts/studio-http.mjs:62](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/studio-http.mjs#L62)
+- **Testes (existentes, não executados):** [packages/scene-engine/scripts/scene-studio-projects.spec.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-projects.spec.mjs) (script de navegador/Chrome); [packages/scene-engine/scripts/scene-studio-history.spec.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-history.spec.mjs) (script de navegador/Chrome)
+- **Código:** [packages/scene-engine/scripts/studio-harness.mjs:54](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/studio-harness.mjs#L54) · [packages/scene-engine/scripts/studio-harness.mjs:44](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/studio-harness.mjs#L44) · [packages/scene-engine/scripts/studio-project-api.mjs:311](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/studio-project-api.mjs#L311) · [packages/scene-engine/scripts/studio-http.mjs:62](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/studio-http.mjs#L62)
 
 ### MIG010
 
@@ -291,8 +291,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Dependências:** MIG001 (Modelo do documento `render-bundle.json` (schema 1.0))
 - **Limitações:** Entradas privadas (`layers/*.png`, `audio/voice.wav`) não vão ao repositório; scripts dependem de caminhos locais.
 - **API / CLI:** Scripts Node (sem CLI unificada).
-- **Testes (existentes, não executados):** [packages/scene-engine/src/node/narrated-scene.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/narrated-scene.spec.ts) (3 casos)
-- **Código:** [packages/scene-engine/scripts/generate-technical-fixture.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/generate-technical-fixture.mjs) · [packages/scene-engine/scripts/import-local-production.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/import-local-production.mjs) · [packages/scene-engine/scripts/splat/import-sharp-scene.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/splat/import-sharp-scene.mjs) · [packages/scene-engine/scripts/elements/rig/build-hands-bundle.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/elements/rig/build-hands-bundle.mjs)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/node/narrated-scene.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/narrated-scene.spec.ts) (3 casos)
+- **Código:** [packages/scene-engine/scripts/generate-technical-fixture.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/generate-technical-fixture.mjs) · [packages/scene-engine/scripts/import-local-production.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/import-local-production.mjs) · [packages/scene-engine/scripts/splat/import-sharp-scene.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/splat/import-sharp-scene.mjs) · [packages/scene-engine/scripts/elements/rig/build-hands-bundle.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/elements/rig/build-hands-bundle.mjs)
 
 ### MIG011
 
@@ -305,7 +305,7 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** Proporções por painel.
 - **Limitações:** Por navegador, sem sincronizar. Sem layouts nomeados.
 - **Testes:** nenhum associado encontrado (Só código).
-- **Código:** [apps/scene-studio/src/hooks/useSavedLayout.ts:35](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/hooks/useSavedLayout.ts#L35)
+- **Código:** [apps/scene-studio/src/hooks/useSavedLayout.ts:35](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/hooks/useSavedLayout.ts#L35)
 
 ## B. Cena, viewport e runtime Three.js
 
@@ -320,8 +320,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** Nó {id,parentId,type,assetRef?,localPosition,localRotation(quat),localScale,widthSceneUnits,heightSceneUnits,renderOrder,socketId,attachToSocket}; unidades de cena; quaternions normalizados.
 - **Dependências:** MIG001 (Modelo do documento `render-bundle.json` (schema 1.0))
 - **Limitações:** Convenção assumida: planos de frente para +z, câmera olhando -z (weather). Sem interpenetração/oclusão automática: todos os planos usam uma fila de pintura sem depth write.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/scene/scene-graph.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/scene/scene-graph.spec.ts) (2 casos); [packages/scene-engine/src/scene/quaternion-roundtrip.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/scene/quaternion-roundtrip.spec.ts) (1 casos)
-- **Código:** [packages/scene-engine/src/scene/scene-graph.ts:5](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/scene/scene-graph.ts#L5) · [packages/scene-engine/src/scene/scene-graph.ts:58](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/scene/scene-graph.ts#L58) · [packages/scene-engine/src/validate/bundle-integrity.ts:649](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/validate/bundle-integrity.ts#L649)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/scene/scene-graph.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/scene/scene-graph.spec.ts) (2 casos); [packages/scene-engine/src/scene/quaternion-roundtrip.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/scene/quaternion-roundtrip.spec.ts) (1 casos)
+- **Código:** [packages/scene-engine/src/scene/scene-graph.ts:5](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/scene/scene-graph.ts#L5) · [packages/scene-engine/src/scene/scene-graph.ts:58](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/scene/scene-graph.ts#L58) · [packages/scene-engine/src/validate/bundle-integrity.ts:649](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/validate/bundle-integrity.ts#L649)
 
 ### MIG013
 
@@ -334,8 +334,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** Plano {widthSceneUnits,heightSceneUnits,renderOrder}; textura sRGB; mapas opcionais (surface, normal, relief); perfil de pés para sombra.
 - **Dependências:** MIG012 (Grafo de cena: nós, hierarquia, sockets, quaternions e ordem de desenho), MIG005 (Matriz de formatos de asset e recusas explícitas)
 - **Limitações:** `imagePlane` exige asset e dimensões. `supportPlane` e `overlay` são aceitos pelo schema mas não são construídos (ver inativos).
-- **Testes (existentes, não executados):** [packages/scene-engine/src/runtime/projection-audit.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/projection-audit.spec.ts) (7 casos); [packages/scene-engine/src/preflight/asset-preflight.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/preflight/asset-preflight.spec.ts) (2 casos)
-- **Código:** [packages/scene-engine/src/runtime/three-scene-runtime.ts:351](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/three-scene-runtime.ts#L351) · [packages/scene-engine/src/runtime/three-scene-runtime.ts:458](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/three-scene-runtime.ts#L458) · [packages/scene-engine/src/runtime/three-scene-runtime.ts:1543](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/three-scene-runtime.ts#L1543)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/runtime/projection-audit.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/projection-audit.spec.ts) (7 casos); [packages/scene-engine/src/preflight/asset-preflight.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/preflight/asset-preflight.spec.ts) (2 casos)
+- **Código:** [packages/scene-engine/src/runtime/three-scene-runtime.ts:351](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/three-scene-runtime.ts#L351) · [packages/scene-engine/src/runtime/three-scene-runtime.ts:458](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/three-scene-runtime.ts#L458) · [packages/scene-engine/src/runtime/three-scene-runtime.ts:1543](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/three-scene-runtime.ts#L1543)
 
 ### MIG014
 
@@ -349,7 +349,7 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Dependências:** MIG013 (Camadas de plano de imagem (PNG com alpha, fila de pintura única))
 - **Limitações:** Dentro dos splats só planos opacos/alpha-test compõem corretamente; personagem vai à frente com render order posterior (README).
 - **Testes:** nenhum associado encontrado (Só código).
-- **Código:** [packages/scene-engine/src/runtime/splat-stage.ts:24](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/splat-stage.ts#L24) · [packages/scene-engine/src/runtime/three-scene-runtime.ts:736](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/three-scene-runtime.ts#L736)
+- **Código:** [packages/scene-engine/src/runtime/splat-stage.ts:24](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/splat-stage.ts#L24) · [packages/scene-engine/src/runtime/three-scene-runtime.ts:736](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/three-scene-runtime.ts#L736)
 
 ### MIG015
 
@@ -362,8 +362,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** Rig {forward,right,up,orbitYaw,orbitPitch}; limites seguros/cautela por eixo.
 - **Dependências:** MIG031 (Clipe de câmera: pose inicial, segmentos (8 receitas + keyframes) e até 3 camadas), MIG014 (Camadas de splat Gaussiano (Spark 2.4, `.spz`))
 - **Limitações:** Números vêm de um laboratório de reconstrução apagado do disco (roadmap VGP-17 registra o worktree perdido); dependem do modelo SHARP.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/camera/splat-camera-limits.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/camera/splat-camera-limits.spec.ts) (4 casos)
-- **Código:** [packages/scene-engine/src/camera/splat-camera-limits.ts:11](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/camera/splat-camera-limits.ts#L11)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/camera/splat-camera-limits.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/camera/splat-camera-limits.spec.ts) (4 casos)
+- **Código:** [packages/scene-engine/src/camera/splat-camera-limits.ts:11](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/camera/splat-camera-limits.ts#L11)
 
 ### MIG016
 
@@ -376,8 +376,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** Faixas `[startFrame,endFrameExclusive)`; `instanceFrame = instanceStartFrame + offset`; `cameraClipFrame = cameraInFrame + offset`.
 - **Dependências:** MIG001 (Modelo do documento `render-bundle.json` (schema 1.0)), MIG002 (Regras de integridade do bundle e de junções de edição)
 - **Limitações:** Lança erro para frame fora de `[0,editDurationFrames)` e para frame sem shot.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/evaluator/evaluate-edit-frame.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/evaluator/evaluate-edit-frame.spec.ts) (6 casos)
-- **Código:** [packages/scene-engine/src/evaluator/evaluate-edit-frame.ts:58](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/evaluator/evaluate-edit-frame.ts#L58) · [packages/scene-engine/src/edit/resolve-shot-at-edit-frame.ts:11](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/edit/resolve-shot-at-edit-frame.ts#L11)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/evaluator/evaluate-edit-frame.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/evaluator/evaluate-edit-frame.spec.ts) (6 casos)
+- **Código:** [packages/scene-engine/src/evaluator/evaluate-edit-frame.ts:58](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/evaluator/evaluate-edit-frame.ts#L58) · [packages/scene-engine/src/edit/resolve-shot-at-edit-frame.ts:11](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/edit/resolve-shot-at-edit-frame.ts#L11)
 
 ### MIG017
 
@@ -390,8 +390,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** cycle {periodFrames,amplitude,axis,phaseOffsetFrames}; event {startInstanceFrame,durationFrames,delta,holdFinal:true}; static {value}; props localRotation|localPosition|localScale.
 - **Dependências:** MIG016 (Avaliação do frame de edição (shots → instância/câmera → estado dos nós))
 - **Limitações:** Sem editor; criado por scripts/fixtures. Dois canais escrevendo a mesma propriedade lançam.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/performance/resolve-performance.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/performance/resolve-performance.spec.ts) (3 casos)
-- **Código:** [packages/scene-engine/src/performance/resolve-performance.ts:32](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/performance/resolve-performance.ts#L32) · [packages/scene-engine/src/schema/render-bundle.schema.ts:297](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L297)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/performance/resolve-performance.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/performance/resolve-performance.spec.ts) (3 casos)
+- **Código:** [packages/scene-engine/src/performance/resolve-performance.ts:32](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/performance/resolve-performance.ts#L32) · [packages/scene-engine/src/schema/render-bundle.schema.ts:297](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L297)
 
 ### MIG018
 
@@ -404,8 +404,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** Faixas contíguas sem lacuna/sobreposição; duração total = soma.
 - **Dependências:** MIG016 (Avaliação do frame de edição (shots → instância/câmera → estado dos nós))
 - **Limitações:** Sem criar/apagar/dividir/aparar/reordenar shots na UI nem na CLI do baseline (existe só no branch piloto). Dissolve rejeitado.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/validate/edit-joins.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/validate/edit-joins.spec.ts) (4 casos); [packages/scene-engine/src/transport/transport-controller.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/transport/transport-controller.spec.ts) (14 casos)
-- **Código:** [packages/scene-engine/src/schema/render-bundle.schema.ts:450](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L450) · [packages/scene-engine/src/transport/shot-navigation.ts:3](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/transport/shot-navigation.ts#L3) · [packages/scene-engine/src/validate/edit-joins.ts:116](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/validate/edit-joins.ts#L116)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/validate/edit-joins.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/validate/edit-joins.spec.ts) (4 casos); [packages/scene-engine/src/transport/transport-controller.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/transport/transport-controller.spec.ts) (14 casos)
+- **Código:** [packages/scene-engine/src/schema/render-bundle.schema.ts:450](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L450) · [packages/scene-engine/src/transport/shot-navigation.ts:3](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/transport/shot-navigation.ts#L3) · [packages/scene-engine/src/validate/edit-joins.ts:116](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/validate/edit-joins.ts#L116)
 
 ### MIG019
 
@@ -418,8 +418,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** {width,height,fps,colorSpace srgb-display,alphaMode,videoCodec h264-yuv420p,threeRevision,browserChannel}.
 - **Dependências:** MIG001 (Modelo do documento `render-bundle.json` (schema 1.0))
 - **Limitações:** Codec e cor fixos; `threeRevision` e `browserChannel` documentam o ambiente, não selecionam nada.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/schema/render-bundle.schema.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.spec.ts) (18 casos)
-- **Código:** [packages/scene-engine/src/schema/render-bundle.schema.ts:469](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L469) · [packages/scene-engine/src/validate/bundle-integrity.ts:476](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/validate/bundle-integrity.ts#L476)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/schema/render-bundle.schema.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.spec.ts) (18 casos)
+- **Código:** [packages/scene-engine/src/schema/render-bundle.schema.ts:469](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L469) · [packages/scene-engine/src/validate/bundle-integrity.ts:476](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/validate/bundle-integrity.ts#L476)
 
 ### MIG020
 
@@ -432,8 +432,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** `frameAudit` {contacts[{anchors,maxErrorPx}], coplanarGroups, drawOrderBackToFront, backgroundNodeId, coverageMarginPx}.
 - **Dependências:** MIG013 (Camadas de plano de imagem (PNG com alpha, fila de pintura única))
 - **Limitações:** Valida geometria/ordem, não estética; só imagePlane.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/runtime/projection-audit.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/projection-audit.spec.ts) (7 casos)
-- **Código:** [packages/scene-engine/src/runtime/projection-audit.ts:10](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/projection-audit.ts#L10) · [packages/scene-engine/src/schema/render-bundle.schema.ts:211](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L211)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/runtime/projection-audit.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/projection-audit.spec.ts) (7 casos)
+- **Código:** [packages/scene-engine/src/runtime/projection-audit.ts:10](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/projection-audit.ts#L10) · [packages/scene-engine/src/schema/render-bundle.schema.ts:211](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L211)
 
 ### MIG021
 
@@ -446,8 +446,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** `PreviewRenderMetrics` {requestedFrame, presentedFrame, droppedRenderRequests, presentationLagFrames}.
 - **Dependências:** MIG025 (Controlador de transporte (play, pause, seek, passo, salto, shots, scrub))
 - **Limitações:** Runtime recusa operações concorrentes (`frameBusy`).
-- **Testes (existentes, não executados):** [packages/scene-engine/src/transport/preview-render-coordinator.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/transport/preview-render-coordinator.spec.ts) (4 casos)
-- **Código:** [packages/scene-engine/src/transport/preview-render-coordinator.ts:23](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/transport/preview-render-coordinator.ts#L23) · [packages/scene-engine/src/runtime/three-scene-runtime.ts:1284](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/three-scene-runtime.ts#L1284)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/transport/preview-render-coordinator.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/transport/preview-render-coordinator.spec.ts) (4 casos)
+- **Código:** [packages/scene-engine/src/transport/preview-render-coordinator.ts:23](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/transport/preview-render-coordinator.ts#L23) · [packages/scene-engine/src/runtime/three-scene-runtime.ts:1284](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/three-scene-runtime.ts#L1284)
 
 ### MIG022
 
@@ -460,8 +460,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** Hashes SHA-256 de pixels por ambiente fixo; WebM de diagnóstico não é export.
 - **Dependências:** MIG013 (Camadas de plano de imagem (PNG com alpha, fila de pintura única))
 - **Limitações:** Hash vale para um ambiente de export fixo, não equivalência entre GPUs (README).
-- **Testes (existentes, não executados):** [packages/scene-engine/scripts/pixel-determinism.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/pixel-determinism.mjs) (script de navegador/Chrome); [packages/scene-engine/scripts/scene-studio-transport.spec.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-transport.spec.mjs) (script de navegador/Chrome)
-- **Código:** [packages/scene-engine/scripts/pixel-determinism.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/pixel-determinism.mjs) · [packages/scene-engine/scripts/studio-av-proof.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/studio-av-proof.mjs) · [packages/scene-engine/src/runtime/three-scene-runtime.ts:1302](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/three-scene-runtime.ts#L1302)
+- **Testes (existentes, não executados):** [packages/scene-engine/scripts/pixel-determinism.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/pixel-determinism.mjs) (script de navegador/Chrome); [packages/scene-engine/scripts/scene-studio-transport.spec.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-transport.spec.mjs) (script de navegador/Chrome)
+- **Código:** [packages/scene-engine/scripts/pixel-determinism.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/pixel-determinism.mjs) · [packages/scene-engine/scripts/studio-av-proof.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/studio-av-proof.mjs) · [packages/scene-engine/src/runtime/three-scene-runtime.ts:1302](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/three-scene-runtime.ts#L1302)
 
 ### MIG023
 
@@ -475,7 +475,7 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Dependências:** MIG013 (Camadas de plano de imagem (PNG com alpha, fila de pintura única))
 - **Limitações:** Classe de 1.560 linhas, excluída da cobertura unitária (browser checks cobrem).
 - **Testes:** nenhum associado encontrado (Só código).
-- **Código:** [packages/scene-engine/src/runtime/three-scene-runtime.ts:180](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/three-scene-runtime.ts#L180) · [packages/scene-engine/src/runtime/three-scene-runtime.ts:1153](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/three-scene-runtime.ts#L1153) · [packages/scene-engine/src/runtime/three-scene-runtime.ts:1514](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/three-scene-runtime.ts#L1514) · [packages/scene-engine/src/runtime/three-scene-runtime.ts:1532](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/three-scene-runtime.ts#L1532)
+- **Código:** [packages/scene-engine/src/runtime/three-scene-runtime.ts:180](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/three-scene-runtime.ts#L180) · [packages/scene-engine/src/runtime/three-scene-runtime.ts:1153](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/three-scene-runtime.ts#L1153) · [packages/scene-engine/src/runtime/three-scene-runtime.ts:1514](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/three-scene-runtime.ts#L1514) · [packages/scene-engine/src/runtime/three-scene-runtime.ts:1532](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/three-scene-runtime.ts#L1532)
 
 ### MIG024
 
@@ -489,7 +489,7 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Dependências:** MIG001 (Modelo do documento `render-bundle.json` (schema 1.0))
 - **Limitações:** Não migrar por padrão: se um bundle trouxer esses campos, o destino deve preservar (round-trip) ou recusar de forma explícita, nunca interpretar.
 - **Testes:** nenhum associado encontrado (Só código).
-- **Código:** [packages/scene-engine/src/schema/render-bundle.schema.ts:182](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L182) · [packages/scene-engine/src/runtime/three-scene-runtime.ts:385](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/three-scene-runtime.ts#L385) · [packages/scene-engine/src/schema/render-bundle.schema.ts:246](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L246) · [packages/scene-engine/src/schema/render-bundle.schema.ts:466](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L466) · [packages/scene-engine/scripts/studio-projects.mjs:31](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/studio-projects.mjs#L31) · [packages/scene-engine/src/schema/render-bundle.schema.ts:591](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L591)
+- **Código:** [packages/scene-engine/src/schema/render-bundle.schema.ts:182](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L182) · [packages/scene-engine/src/runtime/three-scene-runtime.ts:385](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/three-scene-runtime.ts#L385) · [packages/scene-engine/src/schema/render-bundle.schema.ts:246](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L246) · [packages/scene-engine/src/schema/render-bundle.schema.ts:466](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L466) · [packages/scene-engine/scripts/studio-projects.mjs:31](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/studio-projects.mjs#L31) · [packages/scene-engine/src/schema/render-bundle.schema.ts:591](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L591)
 
 ## C. Transporte, tempo e áudio
 
@@ -505,8 +505,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Dependências:** MIG016 (Avaliação do frame de edição (shots → instância/câmera → estado dos nós))
 - **Limitações:** Observado no código: `play()` só age em `phase === "paused"`; a partir de `ended` retorna sem efeito (seek explícito necessário). Não verificado em runtime. Playback segue o fim do áudio/edição declarado.
 - **API / CLI:** Lib: `TransportController`, `stepShot`, `editFrameToEditSeconds` (`@tessel/scene-engine/transport`).
-- **Testes (existentes, não executados):** [packages/scene-engine/src/transport/transport-controller.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/transport/transport-controller.spec.ts) (14 casos); [packages/scene-engine/scripts/scene-studio-transport.spec.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-transport.spec.mjs) (script de navegador/Chrome)
-- **Código:** [packages/scene-engine/src/transport/transport-controller.ts:36](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/transport/transport-controller.ts#L36) · [packages/scene-engine/src/transport/transport-controller.ts:156](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/transport/transport-controller.ts#L156) · [packages/scene-engine/src/transport/transport-controller.ts:237](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/transport/transport-controller.ts#L237) · [packages/scene-engine/src/transport/transport-controller.ts:329](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/transport/transport-controller.ts#L329) · [packages/scene-engine/src/transport/monotonic-playback.ts:4](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/transport/monotonic-playback.ts#L4)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/transport/transport-controller.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/transport/transport-controller.spec.ts) (14 casos); [packages/scene-engine/scripts/scene-studio-transport.spec.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-transport.spec.mjs) (script de navegador/Chrome)
+- **Código:** [packages/scene-engine/src/transport/transport-controller.ts:36](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/transport/transport-controller.ts#L36) · [packages/scene-engine/src/transport/transport-controller.ts:156](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/transport/transport-controller.ts#L156) · [packages/scene-engine/src/transport/transport-controller.ts:237](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/transport/transport-controller.ts#L237) · [packages/scene-engine/src/transport/transport-controller.ts:329](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/transport/transport-controller.ts#L329) · [packages/scene-engine/src/transport/monotonic-playback.ts:4](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/transport/monotonic-playback.ts#L4)
 
 ### MIG026
 
@@ -519,8 +519,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** `AudioTransportPort`; ganho linear = volume × mixGain (zerado por mute).
 - **Dependências:** MIG025 (Controlador de transporte (play, pause, seek, passo, salto, shots, scrub)), MIG083 (Plano de mix: o que soa, onde a voz do mix cala porque há take)
 - **Limitações:** Preview é áudio de monitor; não prova latência física de alto-falante (documentação da origem). Tarefa suspensa do `AudioContext` pausa o transporte.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/transport/browser/web-audio-transport.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/transport/browser/web-audio-transport.spec.ts) (4 casos); [packages/scene-engine/src/transport/audio-window.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/transport/audio-window.spec.ts) (3 casos)
-- **Código:** [packages/scene-engine/src/transport/browser/web-audio-transport.ts:29](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/transport/browser/web-audio-transport.ts#L29) · [packages/scene-engine/src/transport/audio-window.ts:4](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/transport/audio-window.ts#L4) · [apps/scene-studio/src/engine/createStudioSession.ts:169](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/createStudioSession.ts#L169)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/transport/browser/web-audio-transport.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/transport/browser/web-audio-transport.spec.ts) (4 casos); [packages/scene-engine/src/transport/audio-window.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/transport/audio-window.spec.ts) (3 casos)
+- **Código:** [packages/scene-engine/src/transport/browser/web-audio-transport.ts:29](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/transport/browser/web-audio-transport.ts#L29) · [packages/scene-engine/src/transport/audio-window.ts:4](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/transport/audio-window.ts#L4) · [apps/scene-studio/src/engine/createStudioSession.ts:169](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/createStudioSession.ts#L169)
 
 ### MIG027
 
@@ -533,8 +533,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** `WaveformPeak[]`.
 - **Dependências:** MIG026 (Porta de áudio do navegador (relógio de áudio, ganho do monitor, janela de edição))
 - **Limitações:** Sem zoom/pan da timeline nem seleção de intervalo; sem waveform por linha de narração.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/transport/waveform-peaks.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/transport/waveform-peaks.spec.ts) (3 casos)
-- **Código:** [packages/scene-engine/src/transport/waveform-peaks.ts:43](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/transport/waveform-peaks.ts#L43) · [apps/scene-studio/src/components/TimelineWaveform.tsx:15](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/TimelineWaveform.tsx#L15)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/transport/waveform-peaks.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/transport/waveform-peaks.spec.ts) (3 casos)
+- **Código:** [packages/scene-engine/src/transport/waveform-peaks.ts:43](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/transport/waveform-peaks.ts#L43) · [apps/scene-studio/src/components/TimelineWaveform.tsx:15](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/TimelineWaveform.tsx#L15)
 
 ### MIG028
 
@@ -548,7 +548,7 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Dependências:** MIG025 (Controlador de transporte (play, pause, seek, passo, salto, shots, scrub)), MIG049 (Desfazer e refazer (200 passos, por projeto))
 - **Limitações:** Sem atalho de Delete/duplicar/copiar; sem mapa de atalhos configurável; F2 renomeia na árvore de camadas.
 - **Testes:** nenhum associado encontrado (Só código).
-- **Código:** [apps/scene-studio/src/App.tsx:152](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/App.tsx#L152) · [apps/scene-studio/src/App.tsx:46](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/App.tsx#L46) · [apps/scene-studio/src/ui/layer-tree/Row.tsx:167](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/ui/layer-tree/Row.tsx#L167)
+- **Código:** [apps/scene-studio/src/App.tsx:152](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/App.tsx#L152) · [apps/scene-studio/src/App.tsx:46](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/App.tsx#L46) · [apps/scene-studio/src/ui/layer-tree/Row.tsx:167](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/ui/layer-tree/Row.tsx#L167)
 
 ### MIG029
 
@@ -562,7 +562,7 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Dependências:** MIG025 (Controlador de transporte (play, pause, seek, passo, salto, shots, scrub))
 - **Limitações:** `ff` pode chegar ao valor do fps por arredondamento (não verificado).
 - **Testes:** nenhum associado encontrado (Só código).
-- **Código:** [apps/scene-studio/src/App.tsx:106](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/App.tsx#L106) · [apps/scene-studio/src/engine/createStudioSession.ts:475](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/createStudioSession.ts#L475)
+- **Código:** [apps/scene-studio/src/App.tsx:106](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/App.tsx#L106) · [apps/scene-studio/src/engine/createStudioSession.ts:475](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/createStudioSession.ts#L475)
 
 ### MIG030
 
@@ -575,7 +575,7 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** fps = numerator/denominator inteiros positivos.
 - **Limitações:** Conversões em ponto flutuante na origem.
 - **Testes:** nenhum associado encontrado (Só código).
-- **Código:** [packages/scene-engine/src/types/fps.ts:1](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/types/fps.ts#L1) · [packages/scene-engine/src/types/frame-range.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/types/frame-range.ts)
+- **Código:** [packages/scene-engine/src/types/fps.ts:1](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/types/fps.ts#L1) · [packages/scene-engine/src/types/frame-range.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/types/frame-range.ts)
 
 ## D. Câmera
 
@@ -590,8 +590,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** Receitas: hold, dollyIn/Out (distância), zoomIn/Out (Δ fov em graus), truckLeft/Right (distância), orbit (yaw/pitch graus), keyframes. `MAX_CAMERA_LAYERS = 3`. Unidades: frames, unidades de cena, graus.
 - **Dependências:** MIG001 (Modelo do documento `render-bundle.json` (schema 1.0))
 - **Limitações:** Camadas continuam sempre do segmento anterior (sem pose própria), keyframes só na trilha principal, juntas contínuas não cruzam clipes.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/camera/camera-keyframes.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/camera/camera-keyframes.spec.ts) (23 casos); [packages/scene-engine/src/camera/resolve-camera-clip.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/camera/resolve-camera-clip.spec.ts) (5 casos)
-- **Código:** [packages/scene-engine/src/schema/render-bundle.schema.ts:345](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L345) · [packages/scene-engine/src/schema/render-bundle.schema.ts:417](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L417) · [packages/scene-engine/src/schema/render-bundle.schema.ts:427](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L427)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/camera/camera-keyframes.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/camera/camera-keyframes.spec.ts) (23 casos); [packages/scene-engine/src/camera/resolve-camera-clip.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/camera/resolve-camera-clip.spec.ts) (5 casos)
+- **Código:** [packages/scene-engine/src/schema/render-bundle.schema.ts:345](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L345) · [packages/scene-engine/src/schema/render-bundle.schema.ts:417](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L417) · [packages/scene-engine/src/schema/render-bundle.schema.ts:427](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L427)
 
 ### MIG032
 
@@ -604,8 +604,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** 3 easings nomeados; `UNKNOWN_CAMERA_EASING` na validação.
 - **Dependências:** MIG031 (Clipe de câmera: pose inicial, segmentos (8 receitas + keyframes) e até 3 camadas)
 - **Limitações:** Easing desconhecido lança erro em tempo de execução.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/camera/resolve-camera-clip.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/camera/resolve-camera-clip.spec.ts) (5 casos); [packages/scene-engine/src/camera/camera-keyframes.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/camera/camera-keyframes.spec.ts) (23 casos)
-- **Código:** [packages/scene-engine/src/camera/resolve-camera-clip.ts:342](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/camera/resolve-camera-clip.ts#L342) · [packages/scene-engine/src/camera/easing.ts:10](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/camera/easing.ts#L10)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/camera/resolve-camera-clip.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/camera/resolve-camera-clip.spec.ts) (5 casos); [packages/scene-engine/src/camera/camera-keyframes.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/camera/camera-keyframes.spec.ts) (23 casos)
+- **Código:** [packages/scene-engine/src/camera/resolve-camera-clip.ts:342](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/camera/resolve-camera-clip.ts#L342) · [packages/scene-engine/src/camera/easing.ts:10](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/camera/easing.ts#L10)
 
 ### MIG033
 
@@ -619,8 +619,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Dependências:** MIG031 (Clipe de câmera: pose inicial, segmentos (8 receitas + keyframes) e até 3 camadas), MIG032 (Resolução da câmera por frame e easings)
 - **Limitações:** Lote é atômico por chamada; códigos como CLIP_TOO_SHORT, SEGMENT_OUT_OF_RANGE, CANNOT_ABSORB.
 - **API / CLI:** CLI `scene camera analyze|apply`; lib `applyCameraCommands`, `cameraCommandSchema`.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/camera/camera-commands.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/camera/camera-commands.spec.ts) (24 casos); [packages/scene-engine/scripts/scene-studio-camera.spec.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-camera.spec.mjs) (script de navegador/Chrome)
-- **Código:** [packages/scene-engine/src/camera/camera-commands.ts:95](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/camera/camera-commands.ts#L95) · [packages/scene-engine/src/camera/camera-commands.ts:1171](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/camera/camera-commands.ts#L1171) · [packages/scene-engine/src/camera/camera-commands.ts:34](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/camera/camera-commands.ts#L34)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/camera/camera-commands.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/camera/camera-commands.spec.ts) (24 casos); [packages/scene-engine/scripts/scene-studio-camera.spec.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-camera.spec.mjs) (script de navegador/Chrome)
+- **Código:** [packages/scene-engine/src/camera/camera-commands.ts:95](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/camera/camera-commands.ts#L95) · [packages/scene-engine/src/camera/camera-commands.ts:1171](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/camera/camera-commands.ts#L1171) · [packages/scene-engine/src/camera/camera-commands.ts:34](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/camera/camera-commands.ts#L34)
 
 ### MIG034
 
@@ -633,8 +633,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** Kind `vec3`/`number`/`easing`; erros `CAMERA_REFUSED` carregam os erros do motor.
 - **Dependências:** MIG046 (Sistema de property paths (listar, ler, escrever, erros tipados)), MIG033 (Comandos de câmera (15 ops) com erros tipados e dica)
 - **Limitações:** Convertem receitas em keys ao mover pontos do caminho (efeito colateral intencional).
-- **Testes (existentes, não executados):** [packages/scene-engine/src/properties/camera-properties.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/camera-properties.spec.ts) (13 casos)
-- **Código:** [packages/scene-engine/src/properties/camera-properties.ts:268](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/camera-properties.ts#L268) · [packages/scene-engine/src/properties/property-paths.ts:103](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/property-paths.ts#L103)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/properties/camera-properties.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/camera-properties.spec.ts) (13 casos)
+- **Código:** [packages/scene-engine/src/properties/camera-properties.ts:268](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/camera-properties.ts#L268) · [packages/scene-engine/src/properties/property-paths.ts:103](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/property-paths.ts#L103)
 
 ### MIG035
 
@@ -647,8 +647,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** Resumo estruturado (frames, receita, pose inicial/final).
 - **Dependências:** MIG031 (Clipe de câmera: pose inicial, segmentos (8 receitas + keyframes) e até 3 camadas)
 - **Limitações:** Formato não documentado fora do código.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/camera/camera-commands.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/camera/camera-commands.spec.ts) (24 casos)
-- **Código:** [packages/scene-engine/src/camera/camera-commands.ts:1307](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/camera/camera-commands.ts#L1307)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/camera/camera-commands.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/camera/camera-commands.spec.ts) (24 casos)
+- **Código:** [packages/scene-engine/src/camera/camera-commands.ts:1307](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/camera/camera-commands.ts#L1307)
 
 ### MIG036
 
@@ -661,8 +661,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** Barras por trilha (0 principal), fatia pelo frame do clipe.
 - **Dependências:** MIG033 (Comandos de câmera (15 ops) com erros tipados e dica)
 - **Limitações:** Não encontrei snapping, multi-seleção nem atalho de teclado para mover barras no código lido (CameraTrack.tsx).
-- **Testes (existentes, não executados):** [packages/scene-engine/scripts/scene-studio-camera.spec.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-camera.spec.mjs) (script de navegador/Chrome)
-- **Código:** [apps/scene-studio/src/components/CameraTrack.tsx:88](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/CameraTrack.tsx#L88) · [apps/scene-studio/src/hooks/useCameraClip.ts:19](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/hooks/useCameraClip.ts#L19)
+- **Testes (existentes, não executados):** [packages/scene-engine/scripts/scene-studio-camera.spec.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-camera.spec.mjs) (script de navegador/Chrome)
+- **Código:** [apps/scene-studio/src/components/CameraTrack.tsx:88](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/CameraTrack.tsx#L88) · [apps/scene-studio/src/hooks/useCameraClip.ts:19](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/hooks/useCameraClip.ts#L19)
 
 ### MIG037
 
@@ -675,8 +675,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** Handles com `propertyPath`.
 - **Dependências:** MIG034 (Propriedades de câmera por caminho (`camera/<clip>/…`))
 - **Limitações:** Depende das matrizes do último quadro apresentado; handle de camada não existe (camadas só somam).
-- **Testes (existentes, não executados):** [apps/scene-studio/src/engine/cameraPath.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/cameraPath.spec.ts) (6 casos)
-- **Código:** [apps/scene-studio/src/components/CameraPathOverlay.tsx](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/CameraPathOverlay.tsx) · [apps/scene-studio/src/components/CameraPlan.tsx](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/CameraPlan.tsx) · [apps/scene-studio/src/engine/cameraPath.ts:47](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/cameraPath.ts#L47)
+- **Testes (existentes, não executados):** [apps/scene-studio/src/engine/cameraPath.spec.ts](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/cameraPath.spec.ts) (6 casos)
+- **Código:** [apps/scene-studio/src/components/CameraPathOverlay.tsx](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/CameraPathOverlay.tsx) · [apps/scene-studio/src/components/CameraPlan.tsx](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/CameraPlan.tsx) · [apps/scene-studio/src/engine/cameraPath.ts:47](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/cameraPath.ts#L47)
 
 ### MIG038
 
@@ -690,7 +690,7 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Dependências:** MIG033 (Comandos de câmera (15 ops) com erros tipados e dica), MIG045 (Infra do inspector (schema declarativo sobre Leva))
 - **Limitações:** Controles sem rótulo i18n por tecla estão no JSON; feedback de recusa via `refuseClip`.
 - **Testes:** nenhum associado encontrado (Só código).
-- **Código:** [apps/scene-studio/src/inspector/describeCamera.ts:525](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/inspector/describeCamera.ts#L525)
+- **Código:** [apps/scene-studio/src/inspector/describeCamera.ts:525](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/inspector/describeCamera.ts#L525)
 
 ## E. Seleção, camadas, outline, inspector, propriedades e estado
 
@@ -704,8 +704,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Caminho handler → estado → regra/runtime:** `useEditor.select(selection)` → `StudioEditor` escolhe o `describe*` correspondente (grupo > linha > faixa > luz > câmera > follow > path > rig > camada > clima > efeitos > cena) e mostra no `LevaInspector`; seleção inexistente cai para a cena.
 - **Propriedades, unidades, modelo de dados:** `StudioSelection` = scene|weather|effects|camera{track?,segment?}|layer|light|rig{boneId?,constraintId?}|path{pointIndex?}|follow|group|narrationTrack|narrationLine.
 - **Limitações:** Seleção única (sem multi-seleção); seleção de luz/camada vale na definição de cena do playhead.
-- **Testes (existentes, não executados):** [apps/scene-studio/src/engine/editorStore.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/editorStore.spec.ts) (18 casos)
-- **Código:** [apps/scene-studio/src/engine/editorStore.ts:55](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/editorStore.ts#L55) · [apps/scene-studio/src/components/StudioEditor.tsx:80](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/StudioEditor.tsx#L80)
+- **Testes (existentes, não executados):** [apps/scene-studio/src/engine/editorStore.spec.ts](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/editorStore.spec.ts) (18 casos)
+- **Código:** [apps/scene-studio/src/engine/editorStore.ts:55](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/editorStore.ts#L55) · [apps/scene-studio/src/components/StudioEditor.tsx:80](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/StudioEditor.tsx#L80)
 
 ### MIG040
 
@@ -718,8 +718,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** Linhas de árvore (`TreeRowData`) com ícone/rótulo/ações.
 - **Dependências:** MIG039 (Modelo de seleção (12 tipos) e inspector contextual), MIG042 (Outline: grupos de camadas, luzes e áudio com ocultar/silenciar/recolher)
 - **Limitações:** Camadas de imagem são somente leitura (sem ocultar/solo/reordenar/apagar camada de imagem); só luzes e linhas/faixas de narração têm ações.
-- **Testes (existentes, não executados):** [apps/scene-studio/src/engine/editorStore.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/editorStore.spec.ts) (18 casos)
-- **Código:** [apps/scene-studio/src/components/LayersPanel.tsx](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/LayersPanel.tsx) · [apps/scene-studio/src/components/layers/LayersSection.tsx](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/layers/LayersSection.tsx) · [apps/scene-studio/src/components/layers/LightsSection.tsx](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/layers/LightsSection.tsx) · [apps/scene-studio/src/components/layers/AudioSection.tsx](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/layers/AudioSection.tsx)
+- **Testes (existentes, não executados):** [apps/scene-studio/src/engine/editorStore.spec.ts](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/editorStore.spec.ts) (18 casos)
+- **Código:** [apps/scene-studio/src/components/LayersPanel.tsx](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/LayersPanel.tsx) · [apps/scene-studio/src/components/layers/LayersSection.tsx](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/layers/LayersSection.tsx) · [apps/scene-studio/src/components/layers/LightsSection.tsx](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/layers/LightsSection.tsx) · [apps/scene-studio/src/components/layers/AudioSection.tsx](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/layers/AudioSection.tsx)
 
 ### MIG041
 
@@ -733,7 +733,7 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Dependências:** MIG043 (Comandos de outline (6 ops))
 - **Limitações:** Só reordena o outline (grupos/itens), não a ordem de pintura das camadas.
 - **Testes:** nenhum associado encontrado (Só código).
-- **Código:** [apps/scene-studio/src/ui/layer-tree/LayerTree.tsx](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/ui/layer-tree/LayerTree.tsx) · [apps/scene-studio/src/ui/layer-tree/dropPosition.ts:26](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/ui/layer-tree/dropPosition.ts#L26) · [apps/scene-studio/src/ui/layer-tree/Row.tsx](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/ui/layer-tree/Row.tsx)
+- **Código:** [apps/scene-studio/src/ui/layer-tree/LayerTree.tsx](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/ui/layer-tree/LayerTree.tsx) · [apps/scene-studio/src/ui/layer-tree/dropPosition.ts:26](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/ui/layer-tree/dropPosition.ts#L26) · [apps/scene-studio/src/ui/layer-tree/Row.tsx](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/ui/layer-tree/Row.tsx)
 
 ### MIG042
 
@@ -746,8 +746,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** Seções `layers|lights|audio`; `hidden` não vale para camadas; `muted` só para áudio; ids `[a-z0-9_-]{1,64}`.
 - **Dependências:** MIG001 (Modelo do documento `render-bundle.json` (schema 1.0))
 - **Limitações:** Aplicado só a luzes (apaga) e narração (legenda/áudio); camadas de imagem não ocultam.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/outline/outline.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/outline/outline.spec.ts) (44 casos); [packages/scene-engine/src/outline/flags.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/outline/flags.spec.ts) (10 casos)
-- **Código:** [packages/scene-engine/src/outline/outline-schema.ts:50](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/outline/outline-schema.ts#L50) · [packages/scene-engine/src/outline/outline.ts:121](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/outline/outline.ts#L121) · [packages/scene-engine/src/outline/outline.ts:452](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/outline/outline.ts#L452) · [packages/scene-engine/src/outline/outline.ts:394](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/outline/outline.ts#L394) · [packages/scene-engine/src/outline/flags.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/outline/flags.ts)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/outline/outline.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/outline/outline.spec.ts) (44 casos); [packages/scene-engine/src/outline/flags.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/outline/flags.spec.ts) (10 casos)
+- **Código:** [packages/scene-engine/src/outline/outline-schema.ts:50](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/outline/outline-schema.ts#L50) · [packages/scene-engine/src/outline/outline.ts:121](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/outline/outline.ts#L121) · [packages/scene-engine/src/outline/outline.ts:452](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/outline/outline.ts#L452) · [packages/scene-engine/src/outline/outline.ts:394](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/outline/outline.ts#L394) · [packages/scene-engine/src/outline/flags.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/outline/flags.ts)
 
 ### MIG043
 
@@ -761,8 +761,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Dependências:** MIG042 (Outline: grupos de camadas, luzes e áudio com ocultar/silenciar/recolher)
 - **Limitações:** Erros com código/dica; item/grupo desconhecido recusado.
 - **API / CLI:** CLI `scene outline show|apply`; lib `applyOutlineCommands`, `outlineCommandSchema`.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/outline/outline.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/outline/outline.spec.ts) (44 casos)
-- **Código:** [packages/scene-engine/src/outline/outline.ts:570](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/outline/outline.ts#L570) · [packages/scene-engine/src/outline/outline.ts:941](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/outline/outline.ts#L941)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/outline/outline.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/outline/outline.spec.ts) (44 casos)
+- **Código:** [packages/scene-engine/src/outline/outline.ts:570](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/outline/outline.ts#L570) · [packages/scene-engine/src/outline/outline.ts:941](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/outline/outline.ts#L941)
 
 ### MIG044
 
@@ -776,7 +776,7 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Dependências:** MIG039 (Modelo de seleção (12 tipos) e inspector contextual)
 - **Limitações:** Não há edição de posição/escala/rotação/ordem de camadas no Studio.
 - **Testes:** nenhum associado encontrado (Só código).
-- **Código:** [apps/scene-studio/src/inspector/describeNode.ts:25](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/inspector/describeNode.ts#L25) · [apps/scene-studio/src/inspector/describeScene.ts:326](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/inspector/describeScene.ts#L326) · [apps/scene-studio/src/inspector/describeGroup.ts:26](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/inspector/describeGroup.ts#L26)
+- **Código:** [apps/scene-studio/src/inspector/describeNode.ts:25](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/inspector/describeNode.ts#L25) · [apps/scene-studio/src/inspector/describeScene.ts:326](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/inspector/describeScene.ts#L326) · [apps/scene-studio/src/inspector/describeGroup.ts:26](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/inspector/describeGroup.ts#L26)
 
 ### MIG045
 
@@ -789,7 +789,7 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** Tipos de campo: note, slider, switch, choice, text, action.
 - **Limitações:** Dependência `leva` (tema próprio) — descartável.
 - **Testes:** nenhum associado encontrado (Só código).
-- **Código:** [apps/scene-studio/src/ui/leva/schema.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/ui/leva/schema.ts) · [apps/scene-studio/src/ui/leva/buildLevaSchema.ts:7](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/ui/leva/buildLevaSchema.ts#L7) · [apps/scene-studio/src/ui/leva/LevaInspector.tsx:42](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/ui/leva/LevaInspector.tsx#L42)
+- **Código:** [apps/scene-studio/src/ui/leva/schema.ts](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/ui/leva/schema.ts) · [apps/scene-studio/src/ui/leva/buildLevaSchema.ts:7](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/ui/leva/buildLevaSchema.ts#L7) · [apps/scene-studio/src/ui/leva/LevaInspector.tsx:42](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/ui/leva/LevaInspector.tsx#L42)
 
 ### MIG046
 
@@ -803,8 +803,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Dependências:** MIG001 (Modelo do documento `render-bundle.json` (schema 1.0))
 - **Limitações:** O conjunto de caminhos depende do estado (luz criada passa a ter caminhos).
 - **API / CLI:** CLI `scene props [--prefix] [--frame]`, `get`, `set <path>=<json> [--write]`.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/properties/properties.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/properties.spec.ts) (21 casos); [packages/scene-engine/src/properties/bundle-properties.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/bundle-properties.spec.ts) (24 casos); [packages/scene-engine/src/properties/camera-properties.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/camera-properties.spec.ts) (13 casos); [packages/scene-engine/src/properties/effects-properties.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/effects-properties.spec.ts) (14 casos); [packages/scene-engine/src/properties/key-properties.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/key-properties.spec.ts) (23 casos)
-- **Código:** [packages/scene-engine/src/properties/bundle-properties.ts:421](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/bundle-properties.ts#L421) · [packages/scene-engine/src/properties/bundle-properties.ts:321](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/bundle-properties.ts#L321) · [packages/scene-engine/src/properties/index.ts:79](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/index.ts#L79) · [packages/scene-engine/src/properties/types.ts:131](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/types.ts#L131) · [packages/scene-engine/src/properties/property-paths.ts:35](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/property-paths.ts#L35)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/properties/properties.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/properties.spec.ts) (21 casos); [packages/scene-engine/src/properties/bundle-properties.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/bundle-properties.spec.ts) (24 casos); [packages/scene-engine/src/properties/camera-properties.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/camera-properties.spec.ts) (13 casos); [packages/scene-engine/src/properties/effects-properties.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/effects-properties.spec.ts) (14 casos); [packages/scene-engine/src/properties/key-properties.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/key-properties.spec.ts) (23 casos)
+- **Código:** [packages/scene-engine/src/properties/bundle-properties.ts:421](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/bundle-properties.ts#L421) · [packages/scene-engine/src/properties/bundle-properties.ts:321](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/bundle-properties.ts#L321) · [packages/scene-engine/src/properties/index.ts:79](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/index.ts#L79) · [packages/scene-engine/src/properties/types.ts:131](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/types.ts#L131) · [packages/scene-engine/src/properties/property-paths.ts:35](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/property-paths.ts#L35)
 
 ### MIG047
 
@@ -818,8 +818,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Dependências:** MIG046 (Sistema de property paths (listar, ler, escrever, erros tipados))
 - **Limitações:** Mover chave arrastando existe só no branch piloto; no baseline a faixa **Chaves** é de leitura/seleção.
 - **API / CLI:** CLI `scene set …/keys=<json>`; lib `resolveKeyframes`, `addKey`, `removeKey`.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/keyframes/resolve-keyframes.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/keyframes/resolve-keyframes.spec.ts) (7 casos); [packages/scene-engine/src/keyframes/keyframe-rules.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/keyframes/keyframe-rules.spec.ts) (6 casos); [packages/scene-engine/src/properties/key-properties.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/key-properties.spec.ts) (23 casos); [apps/scene-studio/src/engine/editorStoreKeys.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/editorStoreKeys.spec.ts) (6 casos); [apps/scene-studio/src/engine/keyTracks.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/keyTracks.spec.ts) (2 casos)
-- **Código:** [packages/scene-engine/src/keyframes/resolve-keyframes.ts:29](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/keyframes/resolve-keyframes.ts#L29) · [packages/scene-engine/src/keyframes/keyframe-rules.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/keyframes/keyframe-rules.ts) · [packages/scene-engine/src/properties/key-properties.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/key-properties.ts) · [apps/scene-studio/src/components/KeysTrack.tsx:27](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/KeysTrack.tsx#L27)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/keyframes/resolve-keyframes.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/keyframes/resolve-keyframes.spec.ts) (7 casos); [packages/scene-engine/src/keyframes/keyframe-rules.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/keyframes/keyframe-rules.spec.ts) (6 casos); [packages/scene-engine/src/properties/key-properties.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/key-properties.spec.ts) (23 casos); [apps/scene-studio/src/engine/editorStoreKeys.spec.ts](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/editorStoreKeys.spec.ts) (6 casos); [apps/scene-studio/src/engine/keyTracks.spec.ts](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/keyTracks.spec.ts) (2 casos)
+- **Código:** [packages/scene-engine/src/keyframes/resolve-keyframes.ts:29](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/keyframes/resolve-keyframes.ts#L29) · [packages/scene-engine/src/keyframes/keyframe-rules.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/keyframes/keyframe-rules.ts) · [packages/scene-engine/src/properties/key-properties.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/key-properties.ts) · [apps/scene-studio/src/components/KeysTrack.tsx:27](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/KeysTrack.tsx#L27)
 
 ### MIG048
 
@@ -832,8 +832,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** Estado: session, selection, lighting/weather/weatherKeys/grounds/effects/clips por cena, `saves` {saving,saved,error}.
 - **Dependências:** MIG046 (Sistema de property paths (listar, ler, escrever, erros tipados)), MIG049 (Desfazer e refazer (200 passos, por projeto))
 - **Limitações:** Sem estado de salvamento unificado (save por domínio); falha de gravação reverte só se nada mais novo ocorreu.
-- **Testes (existentes, não executados):** [apps/scene-studio/src/engine/editorStore.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/editorStore.spec.ts) (18 casos); [apps/scene-studio/src/engine/editorStoreKeys.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/editorStoreKeys.spec.ts) (6 casos); [apps/scene-studio/src/engine/rigStore.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/rigStore.spec.ts) (18 casos); [apps/scene-studio/src/engine/followStore.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/followStore.spec.ts) (14 casos)
-- **Código:** [apps/scene-studio/src/engine/editorStore.ts:795](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/editorStore.ts#L795) · [apps/scene-studio/src/engine/editorStore.ts:200](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/editorStore.ts#L200) · [apps/scene-studio/src/engine/editorStore.ts:153](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/editorStore.ts#L153)
+- **Testes (existentes, não executados):** [apps/scene-studio/src/engine/editorStore.spec.ts](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/editorStore.spec.ts) (18 casos); [apps/scene-studio/src/engine/editorStoreKeys.spec.ts](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/editorStoreKeys.spec.ts) (6 casos); [apps/scene-studio/src/engine/rigStore.spec.ts](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/rigStore.spec.ts) (18 casos); [apps/scene-studio/src/engine/followStore.spec.ts](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/followStore.spec.ts) (14 casos)
+- **Código:** [apps/scene-studio/src/engine/editorStore.ts:795](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/editorStore.ts#L795) · [apps/scene-studio/src/engine/editorStore.ts:200](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/editorStore.ts#L200) · [apps/scene-studio/src/engine/editorStore.ts:153](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/editorStore.ts#L153)
 
 ### MIG049
 
@@ -845,8 +845,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Caminho handler → estado → regra/runtime:** `createHistory` (LIMIT 200); `recordChange` ignora mudança sem efeito (JSON igual); `restore` volta ao valor pelo mesmo caminho de gravação; nova mudança descarta o ramo refeito.
 - **Propriedades, unidades, modelo de dados:** `HistoryEntry` {id,label,undo,redo}.
 - **Limitações:** Registra só valores comprometidos (nunca movimentos de arraste); falha de gravação remove a entrada.
-- **Testes (existentes, não executados):** [packages/scene-engine/scripts/scene-studio-history.spec.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-history.spec.mjs) (script de navegador/Chrome); [apps/scene-studio/src/engine/editorStore.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/editorStore.spec.ts) (18 casos)
-- **Código:** [apps/scene-studio/src/engine/history.ts:33](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/history.ts#L33) · [apps/scene-studio/src/engine/history.ts:93](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/history.ts#L93) · [apps/scene-studio/src/App.tsx:63](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/App.tsx#L63)
+- **Testes (existentes, não executados):** [packages/scene-engine/scripts/scene-studio-history.spec.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-history.spec.mjs) (script de navegador/Chrome); [apps/scene-studio/src/engine/editorStore.spec.ts](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/editorStore.spec.ts) (18 casos)
+- **Código:** [apps/scene-studio/src/engine/history.ts:33](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/history.ts#L33) · [apps/scene-studio/src/engine/history.ts:93](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/history.ts#L93) · [apps/scene-studio/src/App.tsx:63](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/App.tsx#L63)
 
 ### MIG050
 
@@ -859,8 +859,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** `SceneSave` por tipo: weather, weatherKeys, effects, ground, lighting, rig, path.
 - **Dependências:** MIG003 (Arquivo do bundle: abrir, escrita atômica serializada, dry-run e finalize)
 - **Limitações:** Sem autosave/rascunho: toda alteração é gravação direta no arquivo (sem 'salvar como' nem recuperação).
-- **Testes (existentes, não executados):** [apps/scene-studio/src/engine/projectsApi.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/projectsApi.spec.ts) (5 casos); [packages/scene-engine/scripts/scene-studio-weather.spec.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-weather.spec.mjs) (script de navegador/Chrome); [packages/scene-engine/scripts/scene-studio-light.spec.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-light.spec.mjs) (script de navegador/Chrome); [packages/scene-engine/scripts/scene-studio-effects.spec.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-effects.spec.mjs) (script de navegador/Chrome)
-- **Código:** [apps/scene-studio/src/engine/saveSceneWeather.ts:100](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/saveSceneWeather.ts#L100) · [packages/scene-engine/src/properties/scene-saves.ts:112](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/scene-saves.ts#L112) · [apps/scene-studio/src/engine/saveBundleEdit.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/saveBundleEdit.ts)
+- **Testes (existentes, não executados):** [apps/scene-studio/src/engine/projectsApi.spec.ts](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/projectsApi.spec.ts) (5 casos); [packages/scene-engine/scripts/scene-studio-weather.spec.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-weather.spec.mjs) (script de navegador/Chrome); [packages/scene-engine/scripts/scene-studio-light.spec.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-light.spec.mjs) (script de navegador/Chrome); [packages/scene-engine/scripts/scene-studio-effects.spec.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-effects.spec.mjs) (script de navegador/Chrome)
+- **Código:** [apps/scene-studio/src/engine/saveSceneWeather.ts:100](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/saveSceneWeather.ts#L100) · [packages/scene-engine/src/properties/scene-saves.ts:112](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/scene-saves.ts#L112) · [apps/scene-studio/src/engine/saveBundleEdit.ts](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/saveBundleEdit.ts)
 
 ### MIG051
 
@@ -873,7 +873,7 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** Chaves planas aninhadas por área.
 - **Limitações:** Paridade de chaves verificada entre os três idiomas (383 = 383 = 383). As descrições dos looks do motor (`effects/catalog.ts`) estão só em inglês.
 - **Testes:** nenhum associado encontrado (Só código).
-- **Código:** [apps/scene-studio/src/i18n/useTranslations.ts:27](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/i18n/useTranslations.ts#L27) · [apps/scene-studio/src/i18n/pt-br.json](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/i18n/pt-br.json)
+- **Código:** [apps/scene-studio/src/i18n/useTranslations.ts:27](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/i18n/useTranslations.ts#L27) · [apps/scene-studio/src/i18n/pt-br.json](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/i18n/pt-br.json)
 
 ### MIG052
 
@@ -887,7 +887,7 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Dependências:** MIG021 (Coordenador de preview (latest-wins, descarte de quadro velho, métricas))
 - **Limitações:** Texto fixo, só diagnóstico.
 - **Testes:** nenhum associado encontrado (Só código).
-- **Código:** [apps/scene-studio/src/components/StudioEditor.tsx:580](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/StudioEditor.tsx#L580)
+- **Código:** [apps/scene-studio/src/components/StudioEditor.tsx:580](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/StudioEditor.tsx#L580)
 
 ### MIG053
 
@@ -899,8 +899,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Caminho handler → estado → regra/runtime:** `publishGlobal` expõe a API do projeto ativo + `projects` + `hibernated()` + `setHotLimit`.
 - **Propriedades, unidades, modelo de dados:** 29 métodos por projeto (transport, getState, bundle, getSceneWeather/setSceneWeather, get/setSceneLighting, set/getProperty, add/removeKey, listProperties, getRig/bakeRig/settleRigs/createRig/deleteRig/rigCommand/bindLayer, getPath/setPath/createPath/generatePath/deletePath/pathCommand, getFollow/bakeFollow/setReveal, history) + `projects`, `active`, `hibernated()`, `setHotLimit`.
 - **Limitações:** Superfície só de teste; sem contrato versionado.
-- **Testes (existentes, não executados):** [packages/scene-engine/scripts/scene-studio-camera.spec.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-camera.spec.mjs) (script de navegador/Chrome); [packages/scene-engine/scripts/scene-studio-follow.spec.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-follow.spec.mjs) (script de navegador/Chrome); [packages/scene-engine/scripts/scene-studio-rig.spec.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-rig.spec.mjs) (script de navegador/Chrome)
-- **Código:** [apps/scene-studio/src/engine/projectsRegistry.ts:165](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/projectsRegistry.ts#L165) · [apps/scene-studio/src/engine/projectsRegistry.ts:234](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/projectsRegistry.ts#L234)
+- **Testes (existentes, não executados):** [packages/scene-engine/scripts/scene-studio-camera.spec.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-camera.spec.mjs) (script de navegador/Chrome); [packages/scene-engine/scripts/scene-studio-follow.spec.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-follow.spec.mjs) (script de navegador/Chrome); [packages/scene-engine/scripts/scene-studio-rig.spec.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-rig.spec.mjs) (script de navegador/Chrome)
+- **Código:** [apps/scene-studio/src/engine/projectsRegistry.ts:165](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/projectsRegistry.ts#L165) · [apps/scene-studio/src/engine/projectsRegistry.ts:234](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/projectsRegistry.ts#L234)
 
 ## F. Iluminação e sombras
 
@@ -916,8 +916,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Dependências:** MIG013 (Camadas de plano de imagem (PNG com alpha, fila de pintura única)), MIG046 (Sistema de property paths (listar, ler, escrever, erros tipados))
 - **Limitações:** `MAX_SCENE_LIGHTS = 4`. A cor no inspector é uma escolha de presets (swatches), não seletor livre.
 - **API / CLI:** Props `scene/<s>/light/<l>/…`, `scene/<s>/lighting/ambient`; CLI `scene set`.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/lighting/scene-lighting.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/lighting/scene-lighting.spec.ts) (7 casos); [packages/scene-engine/src/lighting/resolve-scene-lighting.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/lighting/resolve-scene-lighting.spec.ts) (6 casos); [packages/scene-engine/scripts/scene-studio-light.spec.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-light.spec.mjs) (script de navegador/Chrome)
-- **Código:** [packages/scene-engine/src/lighting/scene-lighting.ts:11](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/lighting/scene-lighting.ts#L11) · [packages/scene-engine/src/schema/render-bundle.schema.ts:154](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L154) · [apps/scene-studio/src/hooks/useSceneLighting.ts:159](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/hooks/useSceneLighting.ts#L159) · [packages/scene-engine/src/properties/light-properties.ts:167](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/light-properties.ts#L167)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/lighting/scene-lighting.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/lighting/scene-lighting.spec.ts) (7 casos); [packages/scene-engine/src/lighting/resolve-scene-lighting.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/lighting/resolve-scene-lighting.spec.ts) (6 casos); [packages/scene-engine/scripts/scene-studio-light.spec.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-light.spec.mjs) (script de navegador/Chrome)
+- **Código:** [packages/scene-engine/src/lighting/scene-lighting.ts:11](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/lighting/scene-lighting.ts#L11) · [packages/scene-engine/src/schema/render-bundle.schema.ts:154](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L154) · [apps/scene-studio/src/hooks/useSceneLighting.ts:159](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/hooks/useSceneLighting.ts#L159) · [packages/scene-engine/src/properties/light-properties.ts:167](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/light-properties.ts#L167)
 
 ### MIG055
 
@@ -930,8 +930,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** `keys.{intensity|color|position}` = Keyframe[].
 - **Dependências:** MIG054 (Modelo de iluminação da cena (ambiente + até 4 luzes pontuais)), MIG047 (Keyframes de valores (resolver, regras, adicionar/remover no playhead))
 - **Limitações:** Arrastar chaves da luz na timeline só no branch piloto.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/lighting/light-keys.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/lighting/light-keys.spec.ts) (11 casos); [packages/scene-engine/src/lighting/resolve-scene-lighting.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/lighting/resolve-scene-lighting.spec.ts) (6 casos)
-- **Código:** [packages/scene-engine/src/lighting/light-keys.ts:15](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/lighting/light-keys.ts#L15) · [packages/scene-engine/src/lighting/resolve-scene-lighting.ts:12](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/lighting/resolve-scene-lighting.ts#L12)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/lighting/light-keys.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/lighting/light-keys.spec.ts) (11 casos); [packages/scene-engine/src/lighting/resolve-scene-lighting.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/lighting/resolve-scene-lighting.spec.ts) (6 casos)
+- **Código:** [packages/scene-engine/src/lighting/light-keys.ts:15](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/lighting/light-keys.ts#L15) · [packages/scene-engine/src/lighting/resolve-scene-lighting.ts:12](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/lighting/resolve-scene-lighting.ts#L12)
 
 ### MIG056
 
@@ -944,8 +944,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** `normalMap {assetRef, source}`; `relief {depthAssetRef, cols, rows, intrinsics, planeDepth, source:moge-3}`.
 - **Dependências:** MIG054 (Modelo de iluminação da cena (ambiente + até 4 luzes pontuais))
 - **Limitações:** Depende de mapas produzidos por ferramentas externas (MoGe-3); sem geração no editor.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/lighting/foot-profile.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/lighting/foot-profile.spec.ts) (6 casos)
-- **Código:** [packages/scene-engine/src/runtime/plane-effects-material.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/plane-effects-material.ts) · [packages/scene-engine/src/schema/render-bundle.schema.ts:106](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L106) · [packages/scene-engine/src/schema/render-bundle.schema.ts:117](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L117)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/lighting/foot-profile.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/lighting/foot-profile.spec.ts) (6 casos)
+- **Código:** [packages/scene-engine/src/runtime/plane-effects-material.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/plane-effects-material.ts) · [packages/scene-engine/src/schema/render-bundle.schema.ts:106](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L106) · [packages/scene-engine/src/schema/render-bundle.schema.ts:117](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L117)
 
 ### MIG057
 
@@ -958,8 +958,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** `lighting.shadows {casters[1..4 ids de imagePlane], contact 0–1}`.
 - **Dependências:** MIG056 (Planos iluminados: mapas de normais e relevo)
 - **Limitações:** `MAX_SHADOW_CASTERS = 4`; recusa caster que não seja imagePlane; WebGL não coberto por teste unitário.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/lighting/foot-profile.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/lighting/foot-profile.spec.ts) (6 casos); [packages/scene-engine/src/lighting/scene-lighting.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/lighting/scene-lighting.spec.ts) (7 casos)
-- **Código:** [packages/scene-engine/src/runtime/plane-shadows.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/plane-shadows.ts) · [packages/scene-engine/src/lighting/foot-profile.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/lighting/foot-profile.ts) · [packages/scene-engine/src/lighting/scene-lighting.ts:65](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/lighting/scene-lighting.ts#L65)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/lighting/foot-profile.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/lighting/foot-profile.spec.ts) (6 casos); [packages/scene-engine/src/lighting/scene-lighting.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/lighting/scene-lighting.spec.ts) (7 casos)
+- **Código:** [packages/scene-engine/src/runtime/plane-shadows.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/plane-shadows.ts) · [packages/scene-engine/src/lighting/foot-profile.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/lighting/foot-profile.ts) · [packages/scene-engine/src/lighting/scene-lighting.ts:65](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/lighting/scene-lighting.ts#L65)
 
 ### MIG058
 
@@ -973,7 +973,7 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Dependências:** MIG054 (Modelo de iluminação da cena (ambiente + até 4 luzes pontuais)), MIG014 (Camadas de splat Gaussiano (Spark 2.4, `.spz`))
 - **Limitações:** Só enquanto há luz ou relâmpago; sem teste unitário.
 - **Testes:** nenhum associado encontrado (Só código).
-- **Código:** [packages/scene-engine/src/runtime/splat-lighting.ts:24](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/splat-lighting.ts#L24)
+- **Código:** [packages/scene-engine/src/runtime/splat-lighting.ts:24](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/splat-lighting.ts#L24)
 
 ### MIG059
 
@@ -986,8 +986,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** Posição arredondada a 0,01.
 - **Dependências:** MIG054 (Modelo de iluminação da cena (ambiente + até 4 luzes pontuais))
 - **Limitações:** Overlay depende das matrizes do último quadro; 2D sobre a projeção.
-- **Testes (existentes, não executados):** [packages/scene-engine/scripts/scene-studio-light.spec.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-light.spec.mjs) (script de navegador/Chrome)
-- **Código:** [apps/scene-studio/src/components/LightOverlay.tsx](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/LightOverlay.tsx) · [apps/scene-studio/src/components/layers/LightsSection.tsx](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/layers/LightsSection.tsx) · [apps/scene-studio/src/inspector/describeLight.ts:168](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/inspector/describeLight.ts#L168)
+- **Testes (existentes, não executados):** [packages/scene-engine/scripts/scene-studio-light.spec.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-light.spec.mjs) (script de navegador/Chrome)
+- **Código:** [apps/scene-studio/src/components/LightOverlay.tsx](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/LightOverlay.tsx) · [apps/scene-studio/src/components/layers/LightsSection.tsx](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/layers/LightsSection.tsx) · [apps/scene-studio/src/inspector/describeLight.ts:168](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/inspector/describeLight.ts#L168)
 
 ### MIG060
 
@@ -1001,7 +1001,7 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Dependências:** MIG005 (Matriz de formatos de asset e recusas explícitas)
 - **Limitações:** Requer ambiente Python e saída do MoGe-3 (GPU, fora do repositório).
 - **Testes:** nenhum associado encontrado (Só código).
-- **Código:** [packages/scene-engine/scripts/lighting/build_normal_map.py](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/lighting/build_normal_map.py) · [packages/scene-engine/scripts/lighting/build_relief_map.py](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/lighting/build_relief_map.py) · [packages/scene-engine/scripts/surface-map/build_surface_map.py](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/surface-map/build_surface_map.py) · [packages/scene-engine/scripts/surface-map/import-surface-map.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/surface-map/import-surface-map.mjs) · [packages/scene-engine/scripts/lighting/import-normal-map.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/lighting/import-normal-map.mjs)
+- **Código:** [packages/scene-engine/scripts/lighting/build_normal_map.py](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/lighting/build_normal_map.py) · [packages/scene-engine/scripts/lighting/build_relief_map.py](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/lighting/build_relief_map.py) · [packages/scene-engine/scripts/surface-map/build_surface_map.py](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/surface-map/build_surface_map.py) · [packages/scene-engine/scripts/surface-map/import-surface-map.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/surface-map/import-surface-map.mjs) · [packages/scene-engine/scripts/lighting/import-normal-map.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/lighting/import-normal-map.mjs)
 
 ## G. Clima
 
@@ -1016,8 +1016,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** Palavras: rain, snow, puddles, settle, covered, lightning, day, dusk, night, overcast, storm (= rain+puddles+lightning+night), blizzard (= snow+settle+overcast), none; intensidade 0–1,5 (padrão 1).
 - **Dependências:** MIG001 (Modelo do documento `render-bundle.json` (schema 1.0))
 - **Limitações:** `settle` exige neve; palavras que precisam de cena em profundidade (`free`) são recusadas em planos.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/weather/weather-spec.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/weather-spec.spec.ts) (14 casos); [packages/scene-engine/src/weather/weather-choice.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/weather-choice.spec.ts) (7 casos)
-- **Código:** [packages/scene-engine/src/weather/weather-spec.ts:35](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/weather-spec.ts#L35) · [packages/scene-engine/src/weather/weather-spec.ts:45](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/weather-spec.ts#L45) · [packages/scene-engine/src/weather/weather-choice.ts:7](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/weather-choice.ts#L7)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/weather/weather-spec.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/weather-spec.spec.ts) (14 casos); [packages/scene-engine/src/weather/weather-choice.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/weather-choice.spec.ts) (7 casos)
+- **Código:** [packages/scene-engine/src/weather/weather-spec.ts:35](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/weather-spec.ts#L35) · [packages/scene-engine/src/weather/weather-spec.ts:45](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/weather-spec.ts#L45) · [packages/scene-engine/src/weather/weather-choice.ts:7](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/weather-choice.ts#L7)
 
 ### MIG062
 
@@ -1030,8 +1030,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** Tamanho de partícula escala com o plano mais alto; relâmpago em 1,2 s e 1,34 s (duplo) e 3,9 s (simples).
 - **Dependências:** MIG061 (Gramática do clima (palavras, intensidade, erro de digitação)), MIG013 (Camadas de plano de imagem (PNG com alpha, fila de pintura única))
 - **Limitações:** Grade é cor sobre a arte pintada, não re-iluminação. Camadas WebGL sem teste unitário.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/weather/weather-model.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/weather-model.spec.ts) (16 casos); [packages/scene-engine/src/weather/weather-volume.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/weather-volume.spec.ts) (6 casos)
-- **Código:** [packages/scene-engine/src/runtime/weather-layer.ts:107](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/weather-layer.ts#L107) · [packages/scene-engine/src/weather/weather-model.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/weather-model.ts) · [packages/scene-engine/src/weather/weather-volume.ts:9](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/weather-volume.ts#L9) · [packages/scene-engine/src/runtime/three-scene-runtime.ts:1086](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/three-scene-runtime.ts#L1086)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/weather/weather-model.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/weather-model.spec.ts) (16 casos); [packages/scene-engine/src/weather/weather-volume.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/weather-volume.spec.ts) (6 casos)
+- **Código:** [packages/scene-engine/src/runtime/weather-layer.ts:107](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/weather-layer.ts#L107) · [packages/scene-engine/src/weather/weather-model.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/weather-model.ts) · [packages/scene-engine/src/weather/weather-volume.ts:9](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/weather-volume.ts#L9) · [packages/scene-engine/src/runtime/three-scene-runtime.ts:1086](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/three-scene-runtime.ts#L1086)
 
 ### MIG063
 
@@ -1044,8 +1044,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** `node.surface {assetRef, intrinsics, floor{normal,offset}|null}`.
 - **Dependências:** MIG062 (Renderização do clima em planos (chuva, neve, relâmpago, grade de cor)), MIG060 (Ferramentas de mapas (normais, relevo, superfície))
 - **Limitações:** Plano sem mapa não recebe neve (a UI avisa quais planos); só o chão tem fallback (linha reta).
-- **Testes (existentes, não executados):** [packages/scene-engine/src/weather/weather-surface.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/weather-surface.spec.ts) (13 casos); [packages/scene-engine/scripts/scene-studio-weather.spec.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-weather.spec.mjs) (script de navegador/Chrome)
-- **Código:** [packages/scene-engine/src/weather/weather-surface.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/weather-surface.ts) · [packages/scene-engine/src/schema/render-bundle.schema.ts:65](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L65) · [apps/scene-studio/src/inspector/describeScene.ts:293](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/inspector/describeScene.ts#L293)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/weather/weather-surface.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/weather-surface.spec.ts) (13 casos); [packages/scene-engine/scripts/scene-studio-weather.spec.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-weather.spec.mjs) (script de navegador/Chrome)
+- **Código:** [packages/scene-engine/src/weather/weather-surface.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/weather-surface.ts) · [packages/scene-engine/src/schema/render-bundle.schema.ts:65](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/schema/render-bundle.schema.ts#L65) · [apps/scene-studio/src/inspector/describeScene.ts:293](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/inspector/describeScene.ts#L293)
 
 ### MIG064
 
@@ -1058,8 +1058,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** `top` = fração da imagem.
 - **Dependências:** MIG063 (Superfícies do clima: neve que acumula, poças com reflexo e respingos)
 - **Limitações:** Aproximação: em corredor o chão é trapézio e a linha reta põe poças ao pé das paredes.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/weather/weather-ground.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/weather-ground.spec.ts) (6 casos)
-- **Código:** [packages/scene-engine/src/weather/weather-ground.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/weather-ground.ts) · [packages/scene-engine/src/properties/property-paths.ts:77](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/property-paths.ts#L77)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/weather/weather-ground.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/weather-ground.spec.ts) (6 casos)
+- **Código:** [packages/scene-engine/src/weather/weather-ground.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/weather-ground.ts) · [packages/scene-engine/src/properties/property-paths.ts:77](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/property-paths.ts#L77)
 
 ### MIG065
 
@@ -1072,8 +1072,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** Keyframe<number> 0–1,5.
 - **Dependências:** MIG047 (Keyframes de valores (resolver, regras, adicionar/remover no playhead)), MIG061 (Gramática do clima (palavras, intensidade, erro de digitação))
 - **Limitações:** Mover chaves arrastando só no piloto.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/weather/weather-keys.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/weather-keys.spec.ts) (7 casos)
-- **Código:** [packages/scene-engine/src/weather/weather-keys.ts:40](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/weather-keys.ts#L40)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/weather/weather-keys.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/weather-keys.spec.ts) (7 casos)
+- **Código:** [packages/scene-engine/src/weather/weather-keys.ts:40](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/weather-keys.ts#L40)
 
 ### MIG066
 
@@ -1086,8 +1086,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** `sceneDepth {depthAssetRef, imageAssetRef, cols, rows, binPx, focalPx, pivotDepth}`.
 - **Dependências:** MIG062 (Renderização do clima em planos (chuva, neve, relâmpago, grade de cor)), MIG014 (Camadas de splat Gaussiano (Spark 2.4, `.spz`))
 - **Limitações:** Portado de um laboratório apagado do disco; sem UI própria além do painel de clima.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/weather/splat/splat-weather-sim.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/splat/splat-weather-sim.spec.ts) (22 casos); [packages/scene-engine/src/weather/splat/scene-depth.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/splat/scene-depth.spec.ts) (4 casos)
-- **Código:** [packages/scene-engine/src/weather/splat/splat-weather-sim.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/splat/splat-weather-sim.ts) · [packages/scene-engine/src/weather/splat/scene-depth.ts:6](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/splat/scene-depth.ts#L6) · [packages/scene-engine/src/runtime/splat-weather-layer.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/splat-weather-layer.ts)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/weather/splat/splat-weather-sim.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/splat/splat-weather-sim.spec.ts) (22 casos); [packages/scene-engine/src/weather/splat/scene-depth.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/splat/scene-depth.spec.ts) (4 casos)
+- **Código:** [packages/scene-engine/src/weather/splat/splat-weather-sim.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/splat/splat-weather-sim.ts) · [packages/scene-engine/src/weather/splat/scene-depth.ts:6](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/weather/splat/scene-depth.ts#L6) · [packages/scene-engine/src/runtime/splat-weather-layer.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/splat-weather-layer.ts)
 
 ## H. Efeitos de pós-produção
 
@@ -1103,8 +1103,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Dependências:** MIG013 (Camadas de plano de imagem (PNG com alpha, fila de pintura única)), MIG046 (Sistema de property paths (listar, ler, escrever, erros tipados))
 - **Limitações:** Tinta cintila onde a imagem se move; raios em px para 1280×720; filme escurece cenas noturnas.
 - **API / CLI:** CLI `scene effects`; props `scene/<s>/effects/<kind>`.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/effects/catalog.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/effects/catalog.spec.ts) (5 casos); [packages/scene-engine/src/effects/scene-effects.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/effects/scene-effects.spec.ts) (7 casos); [packages/scene-engine/src/runtime/post-effects/assemble.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/post-effects/assemble.spec.ts) (20 casos); [packages/scene-engine/src/properties/effects-properties.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/effects-properties.spec.ts) (14 casos); [packages/scene-engine/scripts/scene-studio-effects.spec.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-effects.spec.mjs) (script de navegador/Chrome); [packages/scene-engine/src/node/render-effects.e2e.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/render-effects.e2e.spec.ts) (1 casos)
-- **Código:** [packages/scene-engine/src/effects/catalog.ts:26](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/effects/catalog.ts#L26) · [packages/scene-engine/src/effects/scene-effects.ts:23](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/effects/scene-effects.ts#L23) · [packages/scene-engine/src/runtime/post-effects/post-effects.ts:43](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/post-effects/post-effects.ts#L43) · [packages/scene-engine/src/runtime/post-effects/assemble.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/post-effects/assemble.ts) · [apps/scene-studio/src/inspector/describeEffects.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/inspector/describeEffects.ts)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/effects/catalog.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/effects/catalog.spec.ts) (5 casos); [packages/scene-engine/src/effects/scene-effects.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/effects/scene-effects.spec.ts) (7 casos); [packages/scene-engine/src/runtime/post-effects/assemble.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/post-effects/assemble.spec.ts) (20 casos); [packages/scene-engine/src/properties/effects-properties.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/effects-properties.spec.ts) (14 casos); [packages/scene-engine/scripts/scene-studio-effects.spec.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-effects.spec.mjs) (script de navegador/Chrome); [packages/scene-engine/src/node/render-effects.e2e.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/render-effects.e2e.spec.ts) (1 casos)
+- **Código:** [packages/scene-engine/src/effects/catalog.ts:26](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/effects/catalog.ts#L26) · [packages/scene-engine/src/effects/scene-effects.ts:23](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/effects/scene-effects.ts#L23) · [packages/scene-engine/src/runtime/post-effects/post-effects.ts:43](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/post-effects/post-effects.ts#L43) · [packages/scene-engine/src/runtime/post-effects/assemble.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/post-effects/assemble.ts) · [apps/scene-studio/src/inspector/describeEffects.ts](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/inspector/describeEffects.ts)
 
 ### MIG068
 
@@ -1117,8 +1117,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** —
 - **Dependências:** MIG067 (Looks de pós-produção (tinta, sonho, filme) com catálogo)
 - **Limitações:** Só os 3 looks.
-- **Testes (existentes, não executados):** [apps/scene-studio/src/inspector/describeEffects.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/inspector/describeEffects.spec.ts) (4 casos)
-- **Código:** [apps/scene-studio/src/inspector/describeEffects.ts:30](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/inspector/describeEffects.ts#L30)
+- **Testes (existentes, não executados):** [apps/scene-studio/src/inspector/describeEffects.spec.ts](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/inspector/describeEffects.spec.ts) (4 casos)
+- **Código:** [apps/scene-studio/src/inspector/describeEffects.ts:30](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/inspector/describeEffects.ts#L30)
 
 ## I. Rig, paths e follow (mão que escreve)
 
@@ -1133,8 +1133,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** Osso {id,parentId,rest{position?,angleDeg −360..360,length>0},limits{minDeg,maxDeg ±180},role?:wrist,pin?{nodeId,point}}; unidades px da imagem da camada (x→, y↓); filho começa onde o pai termina.
 - **Dependências:** MIG001 (Modelo do documento `render-bundle.json` (schema 1.0))
 - **Limitações:** Convenção de ângulo: 0 ao longo de +x, 90 para baixo. Sem importação de rigs externos.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/rig/rig-commands.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/rig-commands.spec.ts) (11 casos); [packages/scene-engine/src/rig/rig-geometry.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/rig-geometry.spec.ts) (3 casos); [apps/scene-studio/src/engine/rigStore.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/rigStore.spec.ts) (18 casos)
-- **Código:** [packages/scene-engine/src/rig/rig-schema.ts:72](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/rig-schema.ts#L72) · [packages/scene-engine/src/rig/rig-schema.ts:17](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/rig-schema.ts#L17) · [packages/scene-engine/src/rig/rig-geometry.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/rig-geometry.ts) · [apps/scene-studio/src/engine/rigSlice.ts:197](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/rigSlice.ts#L197)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/rig/rig-commands.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/rig-commands.spec.ts) (11 casos); [packages/scene-engine/src/rig/rig-geometry.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/rig-geometry.spec.ts) (3 casos); [apps/scene-studio/src/engine/rigStore.spec.ts](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/rigStore.spec.ts) (18 casos)
+- **Código:** [packages/scene-engine/src/rig/rig-schema.ts:72](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/rig-schema.ts#L72) · [packages/scene-engine/src/rig/rig-schema.ts:17](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/rig-schema.ts#L17) · [packages/scene-engine/src/rig/rig-geometry.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/rig-geometry.ts) · [apps/scene-studio/src/engine/rigSlice.ts:197](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/rigSlice.ts#L197)
 
 ### MIG070
 
@@ -1147,8 +1147,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** Constraint {effectorBoneId,chainLength 1–16,iterations 1–500,mode,target.keys[{frame,x,y,easing}]}; `RigTrack` por frame.
 - **Dependências:** MIG069 (Rig: ossos sobre uma camada, limites, punho e pino)
 - **Limitações:** Depende da implementação do CCDIK do Three.js 0.187: reimplementar em Rust muda o resultado numérico. Bake em worker no Studio.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/rig/bake-rig.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/bake-rig.spec.ts) (17 casos); [apps/scene-studio/src/engine/rigBaker.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/rigBaker.spec.ts) (5 casos)
-- **Código:** [packages/scene-engine/src/rig/bake-rig.ts:104](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/bake-rig.ts#L104) · [packages/scene-engine/src/rig/bake-rig.ts:15](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/bake-rig.ts#L15) · [apps/scene-studio/src/engine/rigBake.worker.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/rigBake.worker.ts) · [apps/scene-studio/src/engine/rigBakeClient.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/rigBakeClient.ts) · [packages/scene-engine/src/runtime/three-scene-runtime.ts:591](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/three-scene-runtime.ts#L591)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/rig/bake-rig.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/bake-rig.spec.ts) (17 casos); [apps/scene-studio/src/engine/rigBaker.spec.ts](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/rigBaker.spec.ts) (5 casos)
+- **Código:** [packages/scene-engine/src/rig/bake-rig.ts:104](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/bake-rig.ts#L104) · [packages/scene-engine/src/rig/bake-rig.ts:15](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/bake-rig.ts#L15) · [apps/scene-studio/src/engine/rigBake.worker.ts](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/rigBake.worker.ts) · [apps/scene-studio/src/engine/rigBakeClient.ts](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/rigBakeClient.ts) · [packages/scene-engine/src/runtime/three-scene-runtime.ts:591](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/three-scene-runtime.ts#L591)
 
 ### MIG071
 
@@ -1161,8 +1161,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** Pesos por vértice (soma 1).
 - **Dependências:** MIG070 (IK (CCDIKSolver) e bake determinístico da pose)
 - **Limitações:** WebGL sem teste unitário; pesos por distância, não pintados.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/rig/rig-geometry.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/rig-geometry.spec.ts) (3 casos)
-- **Código:** [packages/scene-engine/src/runtime/rig-layer.ts:45](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/rig-layer.ts#L45) · [packages/scene-engine/src/rig/rig-skin.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/rig-skin.ts) · [packages/scene-engine/src/rig/rig-schema.ts:84](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/rig-schema.ts#L84) · [apps/scene-studio/src/inspector/describeRig.ts:540](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/inspector/describeRig.ts#L540)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/rig/rig-geometry.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/rig-geometry.spec.ts) (3 casos)
+- **Código:** [packages/scene-engine/src/runtime/rig-layer.ts:45](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/rig-layer.ts#L45) · [packages/scene-engine/src/rig/rig-skin.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/rig-skin.ts) · [packages/scene-engine/src/rig/rig-schema.ts:84](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/rig-schema.ts#L84) · [apps/scene-studio/src/inspector/describeRig.ts:540](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/inspector/describeRig.ts#L540)
 
 ### MIG072
 
@@ -1176,8 +1176,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Dependências:** MIG069 (Rig: ossos sobre uma camada, limites, punho e pino), MIG046 (Sistema de property paths (listar, ler, escrever, erros tipados))
 - **Limitações:** As 11 ops estão em `RIG_COMMAND_OPS`; op desconhecida é recusada com a lista.
 - **API / CLI:** Lib `applyRigCommand`, `rigCommandSchema`, `RIG_COMMAND_OPS`.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/rig/rig-commands.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/rig-commands.spec.ts) (11 casos); [packages/scene-engine/src/rig/follow-commands.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/follow-commands.spec.ts) (6 casos); [packages/scene-engine/src/properties/properties.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/properties.spec.ts) (21 casos)
-- **Código:** [packages/scene-engine/src/rig/rig-commands.ts:527](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/rig-commands.ts#L527) · [packages/scene-engine/src/rig/rig-commands.ts:65](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/rig-commands.ts#L65) · [packages/scene-engine/src/properties/rig-properties.ts:485](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/rig-properties.ts#L485)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/rig/rig-commands.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/rig-commands.spec.ts) (11 casos); [packages/scene-engine/src/rig/follow-commands.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/follow-commands.spec.ts) (6 casos); [packages/scene-engine/src/properties/properties.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/properties.spec.ts) (21 casos)
+- **Código:** [packages/scene-engine/src/rig/rig-commands.ts:527](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/rig-commands.ts#L527) · [packages/scene-engine/src/rig/rig-commands.ts:65](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/rig-commands.ts#L65) · [packages/scene-engine/src/properties/rig-properties.ts:485](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/rig-properties.ts#L485)
 
 ### MIG073
 
@@ -1190,8 +1190,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** `TIP_ERROR_LIMIT_PX = 8`.
 - **Dependências:** MIG070 (IK (CCDIKSolver) e bake determinístico da pose)
 - **Limitações:** Regras vêm da skill 'scene-element-recipes' (documento externo).
-- **Testes (existentes, não executados):** [packages/scene-engine/src/rig/rig-validation.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/rig-validation.spec.ts) (13 casos)
-- **Código:** [packages/scene-engine/src/rig/rig-validation.ts:167](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/rig-validation.ts#L167) · [packages/scene-engine/src/rig/rig-diagnostics.ts:9](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/rig-diagnostics.ts#L9) · [apps/scene-studio/src/components/RigValidationPanel.tsx](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/RigValidationPanel.tsx)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/rig/rig-validation.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/rig-validation.spec.ts) (13 casos)
+- **Código:** [packages/scene-engine/src/rig/rig-validation.ts:167](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/rig-validation.ts#L167) · [packages/scene-engine/src/rig/rig-diagnostics.ts:9](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/rig-diagnostics.ts#L9) · [apps/scene-studio/src/components/RigValidationPanel.tsx](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/RigValidationPanel.tsx)
 
 ### MIG074
 
@@ -1204,8 +1204,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** 36 chaves i18n de inspector.
 - **Dependências:** MIG072 (Comandos e propriedades de rig (11 ops + caminhos `rig/<id>/…`)), MIG073 (Validação e diagnósticos do rig)
 - **Limitações:** Handles dependem das matrizes do último quadro.
-- **Testes (existentes, não executados):** [apps/scene-studio/src/engine/rigView.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/rigView.spec.ts) (7 casos); [packages/scene-engine/scripts/scene-studio-rig.spec.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-rig.spec.mjs) (script de navegador/Chrome)
-- **Código:** [apps/scene-studio/src/components/RigMenu.tsx](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/RigMenu.tsx) · [apps/scene-studio/src/components/RigOverlay.tsx](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/RigOverlay.tsx) · [apps/scene-studio/src/components/RigTree.tsx](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/RigTree.tsx) · [apps/scene-studio/src/components/RigTrack.tsx](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/RigTrack.tsx) · [apps/scene-studio/src/inspector/describeRig.ts:497](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/inspector/describeRig.ts#L497) · [apps/scene-studio/src/hooks/useRigEditor.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/hooks/useRigEditor.ts)
+- **Testes (existentes, não executados):** [apps/scene-studio/src/engine/rigView.spec.ts](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/rigView.spec.ts) (7 casos); [packages/scene-engine/scripts/scene-studio-rig.spec.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-rig.spec.mjs) (script de navegador/Chrome)
+- **Código:** [apps/scene-studio/src/components/RigMenu.tsx](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/RigMenu.tsx) · [apps/scene-studio/src/components/RigOverlay.tsx](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/RigOverlay.tsx) · [apps/scene-studio/src/components/RigTree.tsx](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/RigTree.tsx) · [apps/scene-studio/src/components/RigTrack.tsx](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/RigTrack.tsx) · [apps/scene-studio/src/inspector/describeRig.ts:497](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/inspector/describeRig.ts#L497) · [apps/scene-studio/src/hooks/useRigEditor.ts](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/hooks/useRigEditor.ts)
 
 ### MIG075
 
@@ -1218,8 +1218,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** `closed` não combina com caneta levantada.
 - **Dependências:** MIG001 (Modelo do documento `render-bundle.json` (schema 1.0))
 - **Limitações:** Só espaço 'plane'.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/path/path-geometry.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/path/path-geometry.spec.ts) (9 casos); [packages/scene-engine/src/path/path-commands.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/path/path-commands.spec.ts) (5 casos); [apps/scene-studio/src/engine/followStore.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/followStore.spec.ts) (14 casos)
-- **Código:** [packages/scene-engine/src/path/path-schema.ts:28](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/path/path-schema.ts#L28) · [packages/scene-engine/src/path/path-geometry.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/path/path-geometry.ts) · [packages/scene-engine/src/path/path-commands.ts:124](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/path/path-commands.ts#L124) · [packages/scene-engine/src/properties/path-properties.ts:180](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/path-properties.ts#L180)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/path/path-geometry.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/path/path-geometry.spec.ts) (9 casos); [packages/scene-engine/src/path/path-commands.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/path/path-commands.spec.ts) (5 casos); [apps/scene-studio/src/engine/followStore.spec.ts](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/followStore.spec.ts) (14 casos)
+- **Código:** [packages/scene-engine/src/path/path-schema.ts:28](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/path/path-schema.ts#L28) · [packages/scene-engine/src/path/path-geometry.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/path/path-geometry.ts) · [packages/scene-engine/src/path/path-commands.ts:124](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/path/path-commands.ts#L124) · [packages/scene-engine/src/properties/path-properties.ts:180](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/properties/path-properties.ts#L180)
 
 ### MIG076
 
@@ -1232,8 +1232,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** Função pura da máscara.
 - **Dependências:** MIG075 (Paths sobre a imagem de uma camada (catmull-rom, linear, bezier, caneta levantada))
 - **Limitações:** Heurística: o usuário corrige os handles.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/path/path-ink.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/path/path-ink.spec.ts) (6 casos)
-- **Código:** [packages/scene-engine/src/path/path-ink.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/path/path-ink.ts) · [apps/scene-studio/src/engine/pathSlice.ts:139](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/pathSlice.ts#L139) · [apps/scene-studio/src/engine/layerInk.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/layerInk.ts)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/path/path-ink.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/path/path-ink.spec.ts) (6 casos)
+- **Código:** [packages/scene-engine/src/path/path-ink.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/path/path-ink.ts) · [apps/scene-studio/src/engine/pathSlice.ts:139](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/pathSlice.ts#L139) · [apps/scene-studio/src/engine/layerInk.ts](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/layerInk.ts)
 
 ### MIG077
 
@@ -1246,8 +1246,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** O path é a fonte da verdade: nada escala o path ou afrouxa junta.
 - **Dependências:** MIG075 (Paths sobre a imagem de uma camada (catmull-rom, linear, bezier, caneta levantada)), MIG072 (Comandos e propriedades de rig (11 ops + caminhos `rig/<id>/…`))
 - **Limitações:** Mover/escalar chaves de progresso arrastando só no piloto.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/rig/follow.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/follow.spec.ts) (17 casos); [packages/scene-engine/src/rig/follow-commands.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/follow-commands.spec.ts) (6 casos); [packages/scene-engine/scripts/scene-studio-follow.spec.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-follow.spec.mjs) (script de navegador/Chrome)
-- **Código:** [packages/scene-engine/src/rig/follow-schema.ts:21](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/follow-schema.ts#L21) · [packages/scene-engine/src/rig/follow.ts:20](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/follow.ts#L20) · [packages/scene-engine/src/rig/follow-validation.ts:240](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/follow-validation.ts#L240) · [apps/scene-studio/src/inspector/describeFollow.ts:343](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/inspector/describeFollow.ts#L343)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/rig/follow.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/follow.spec.ts) (17 casos); [packages/scene-engine/src/rig/follow-commands.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/follow-commands.spec.ts) (6 casos); [packages/scene-engine/scripts/scene-studio-follow.spec.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-follow.spec.mjs) (script de navegador/Chrome)
+- **Código:** [packages/scene-engine/src/rig/follow-schema.ts:21](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/follow-schema.ts#L21) · [packages/scene-engine/src/rig/follow.ts:20](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/follow.ts#L20) · [packages/scene-engine/src/rig/follow-validation.ts:240](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/follow-validation.ts#L240) · [apps/scene-studio/src/inspector/describeFollow.ts:343](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/inspector/describeFollow.ts#L343)
 
 ### MIG078
 
@@ -1260,8 +1260,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** `INK_ALPHA_MIN`; grade de ~N px por célula.
 - **Dependências:** MIG077 (Follow: a ponta de um osso caminha pelo path (chaves de progresso, alcance))
 - **Limitações:** A camada deve ser a mesma do path do follow.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/path/path-reveal.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/path/path-reveal.spec.ts) (9 casos)
-- **Código:** [packages/scene-engine/src/path/path-reveal.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/path/path-reveal.ts) · [packages/scene-engine/src/runtime/reveal-layer.ts:60](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/reveal-layer.ts#L60) · [packages/scene-engine/src/rig/follow-schema.ts:41](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/follow-schema.ts#L41)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/path/path-reveal.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/path/path-reveal.spec.ts) (9 casos)
+- **Código:** [packages/scene-engine/src/path/path-reveal.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/path/path-reveal.ts) · [packages/scene-engine/src/runtime/reveal-layer.ts:60](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/runtime/reveal-layer.ts#L60) · [packages/scene-engine/src/rig/follow-schema.ts:41](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/rig/follow-schema.ts#L41)
 
 ### MIG079
 
@@ -1274,8 +1274,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** 33 chaves i18n do inspector.
 - **Dependências:** MIG077 (Follow: a ponta de um osso caminha pelo path (chaves de progresso, alcance)), MIG076 (Gerar o primeiro path de um texto a partir dos pixels da camada)
 - **Limitações:** —
-- **Testes (existentes, não executados):** [apps/scene-studio/src/engine/followStore.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/followStore.spec.ts) (14 casos)
-- **Código:** [apps/scene-studio/src/components/FollowMenu.tsx](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/FollowMenu.tsx) · [apps/scene-studio/src/components/FollowOverlay.tsx](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/FollowOverlay.tsx) · [apps/scene-studio/src/components/FollowTree.tsx](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/FollowTree.tsx) · [apps/scene-studio/src/components/FollowTrack.tsx](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/FollowTrack.tsx) · [apps/scene-studio/src/hooks/useFollowEditor.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/hooks/useFollowEditor.ts)
+- **Testes (existentes, não executados):** [apps/scene-studio/src/engine/followStore.spec.ts](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/engine/followStore.spec.ts) (14 casos)
+- **Código:** [apps/scene-studio/src/components/FollowMenu.tsx](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/FollowMenu.tsx) · [apps/scene-studio/src/components/FollowOverlay.tsx](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/FollowOverlay.tsx) · [apps/scene-studio/src/components/FollowTree.tsx](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/FollowTree.tsx) · [apps/scene-studio/src/components/FollowTrack.tsx](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/FollowTrack.tsx) · [apps/scene-studio/src/hooks/useFollowEditor.ts](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/hooks/useFollowEditor.ts)
 
 ### MIG080
 
@@ -1289,7 +1289,7 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Dependências:** MIG069 (Rig: ossos sobre uma camada, limites, punho e pino)
 - **Limitações:** Específico de uma produção; dependem de arte local.
 - **Testes:** nenhum associado encontrado (Só código).
-- **Código:** [packages/scene-engine/scripts/elements/rig/build-hands-bundle.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/elements/rig/build-hands-bundle.mjs) · [packages/scene-engine/scripts/elements/rig/rig.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/elements/rig/rig.mjs) · [packages/scene-engine/scripts/elements/rig/capture-hands-editor.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/elements/rig/capture-hands-editor.mjs) · [packages/scene-engine/scripts/elements/rig/prep_rig_assets.py](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/elements/rig/prep_rig_assets.py) · [packages/scene-engine/scripts/elements/validate_hand_layer.py](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/elements/validate_hand_layer.py)
+- **Código:** [packages/scene-engine/scripts/elements/rig/build-hands-bundle.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/elements/rig/build-hands-bundle.mjs) · [packages/scene-engine/scripts/elements/rig/rig.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/elements/rig/rig.mjs) · [packages/scene-engine/scripts/elements/rig/capture-hands-editor.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/elements/rig/capture-hands-editor.mjs) · [packages/scene-engine/scripts/elements/rig/prep_rig_assets.py](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/elements/rig/prep_rig_assets.py) · [packages/scene-engine/scripts/elements/validate_hand_layer.py](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/elements/validate_hand_layer.py)
 
 ## J. Narração, legendas e mix de áudio
 
@@ -1304,8 +1304,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** Clip {id,text 1–600,startSeconds,durationSeconds ≤120,voice?,style?,audio{relativePath,sha256}?,words[]?,delivery{exaggeration .25–2,cfgWeight 0–1,seed int}?,fromMix{start,dur}?,hidden?,muted?}; caption {backdropOpacity 0–1, position bottom|top, fontScale .02–.1, holdSeconds 0–3}. Tempo em segundos de edição.
 - **Dependências:** MIG001 (Modelo do documento `render-bundle.json` (schema 1.0))
 - **Limitações:** Linhas na mesma faixa não podem se sobrepor (`CLIP_OVERLAP`).
-- **Testes (existentes, não executados):** [packages/scene-engine/src/narration/narration.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/narration/narration.spec.ts) (25 casos); [packages/scene-engine/src/narration/take-rules.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/narration/take-rules.spec.ts) (3 casos)
-- **Código:** [packages/scene-engine/src/narration/narration-schema.ts:83](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/narration/narration-schema.ts#L83) · [packages/scene-engine/src/narration/narration-schema.ts:21](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/narration/narration-schema.ts#L21) · [packages/scene-engine/src/narration/narration.ts:625](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/narration/narration.ts#L625)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/narration/narration.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/narration/narration.spec.ts) (25 casos); [packages/scene-engine/src/narration/take-rules.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/narration/take-rules.spec.ts) (3 casos)
+- **Código:** [packages/scene-engine/src/narration/narration-schema.ts:83](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/narration/narration-schema.ts#L83) · [packages/scene-engine/src/narration/narration-schema.ts:21](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/narration/narration-schema.ts#L21) · [packages/scene-engine/src/narration/narration.ts:625](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/narration/narration.ts#L625)
 
 ### MIG082
 
@@ -1319,8 +1319,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Dependências:** MIG081 (Modelo de narração (faixas, linhas, palavras, entrega, fromMix, legenda))
 - **Limitações:** —
 - **API / CLI:** CLI `scene narration`; lib `applyNarrationCommands`, `narrationCommandSchema`.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/narration/narration.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/narration/narration.spec.ts) (25 casos); [packages/scene-engine/src/node/scene-cli.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/scene-cli.spec.ts) (18 casos)
-- **Código:** [packages/scene-engine/src/narration/narration.ts:216](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/narration/narration.ts#L216) · [packages/scene-engine/src/narration/narration.ts:683](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/narration/narration.ts#L683)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/narration/narration.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/narration/narration.spec.ts) (25 casos); [packages/scene-engine/src/node/scene-cli.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/scene-cli.spec.ts) (18 casos)
+- **Código:** [packages/scene-engine/src/narration/narration.ts:216](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/narration/narration.ts#L216) · [packages/scene-engine/src/narration/narration.ts:683](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/narration/narration.ts#L683)
 
 ### MIG083
 
@@ -1333,8 +1333,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** `AudioMixPlan {durationSeconds, mix{relativePath, sourceStartSeconds, silences[{startSeconds,endSeconds}]}|null, takes[{clipId,relativePath,startSeconds,durationSeconds}]}`.
 - **Dependências:** MIG081 (Modelo de narração (faixas, linhas, palavras, entrega, fromMix, legenda))
 - **Limitações:** —
-- **Testes (existentes, não executados):** [packages/scene-engine/src/narration/mix-plan.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/narration/mix-plan.spec.ts) (7 casos)
-- **Código:** [packages/scene-engine/src/narration/mix-plan.ts:105](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/narration/mix-plan.ts#L105) · [packages/scene-engine/src/narration/narration.ts:603](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/narration/narration.ts#L603)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/narration/mix-plan.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/narration/mix-plan.spec.ts) (7 casos)
+- **Código:** [packages/scene-engine/src/narration/mix-plan.ts:105](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/narration/mix-plan.ts#L105) · [packages/scene-engine/src/narration/narration.ts:603](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/narration/narration.ts#L603)
 
 ### MIG084
 
@@ -1348,8 +1348,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Dependências:** MIG082 (Comandos de narração (10 ops))
 - **Limitações:** Depende de serviço HTTP externo (local, ex.: Chatterbox/Kokoro); sem URL configurada a feature recusa. Rede é o único ponto de integração do editor.
 - **API / CLI:** CLI `scene takes`; HTTP `/bundle-narration-take`.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/node/tts.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/tts.spec.ts) (5 casos); [packages/scene-engine/src/node/takes.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/takes.spec.ts) (7 casos)
-- **Código:** [packages/scene-engine/src/node/tts.ts:157](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/tts.ts#L157) · [packages/scene-engine/src/node/tts.ts:48](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/tts.ts#L48) · [packages/scene-engine/src/node/takes.ts:136](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/takes.ts#L136) · [apps/scene-studio/src/hooks/useNarrationVoices.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/hooks/useNarrationVoices.ts)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/node/tts.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/tts.spec.ts) (5 casos); [packages/scene-engine/src/node/takes.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/takes.spec.ts) (7 casos)
+- **Código:** [packages/scene-engine/src/node/tts.ts:157](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/tts.ts#L157) · [packages/scene-engine/src/node/tts.ts:48](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/tts.ts#L48) · [packages/scene-engine/src/node/takes.ts:136](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/takes.ts#L136) · [apps/scene-studio/src/hooks/useNarrationVoices.ts](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/hooks/useNarrationVoices.ts)
 
 ### MIG085
 
@@ -1362,8 +1362,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** —
 - **Dependências:** MIG083 (Plano de mix: o que soa, onde a voz do mix cala porque há take)
 - **Limitações:** Só funciona sobre WAV PCM.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/node/takes.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/takes.spec.ts) (7 casos); [packages/scene-engine/src/node/wav.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/wav.spec.ts) (6 casos)
-- **Código:** [packages/scene-engine/src/node/takes.ts:218](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/takes.ts#L218) · [packages/scene-engine/src/node/wav.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/wav.ts)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/node/takes.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/takes.spec.ts) (7 casos); [packages/scene-engine/src/node/wav.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/wav.spec.ts) (6 casos)
+- **Código:** [packages/scene-engine/src/node/takes.ts:218](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/takes.ts#L218) · [packages/scene-engine/src/node/wav.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/wav.ts)
 
 ### MIG086
 
@@ -1376,8 +1376,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** —
 - **Dependências:** MIG082 (Comandos de narração (10 ops))
 - **Limitações:** Tempos do SRT são segundos do áudio de origem, não da edição.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/narration/srt.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/narration/srt.spec.ts) (6 casos)
-- **Código:** [packages/scene-engine/src/narration/srt.ts:24](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/narration/srt.ts#L24) · [packages/scene-engine/src/narration/srt.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/narration/srt.ts)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/narration/srt.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/narration/srt.spec.ts) (6 casos)
+- **Código:** [packages/scene-engine/src/narration/srt.ts:24](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/narration/srt.ts#L24) · [packages/scene-engine/src/narration/srt.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/narration/srt.ts)
 
 ### MIG087
 
@@ -1390,8 +1390,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** Letras ainda por vir ficam invisíveis mas ocupam lugar.
 - **Dependências:** MIG081 (Modelo de narração (faixas, linhas, palavras, entrega, fromMix, legenda))
 - **Limitações:** Fonte via fontconfig (`TESSEL_SCENE_ENGINE_CAPTION_FONT`); pixel da legenda no export ≠ pixel do overlay do navegador (duas implementações de pintura).
-- **Testes (existentes, não executados):** [packages/scene-engine/src/narration/caption-layout.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/narration/caption-layout.spec.ts) (5 casos); [packages/scene-engine/src/node/captions.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/captions.spec.ts) (3 casos)
-- **Código:** [packages/scene-engine/src/narration/narration.ts:160](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/narration/narration.ts#L160) · [packages/scene-engine/src/narration/caption-layout.ts:43](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/narration/caption-layout.ts#L43) · [packages/scene-engine/src/node/captions.ts:76](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/captions.ts#L76) · [apps/scene-studio/src/components/CaptionOverlay.tsx](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/CaptionOverlay.tsx)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/narration/caption-layout.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/narration/caption-layout.spec.ts) (5 casos); [packages/scene-engine/src/node/captions.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/captions.spec.ts) (3 casos)
+- **Código:** [packages/scene-engine/src/narration/narration.ts:160](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/narration/narration.ts#L160) · [packages/scene-engine/src/narration/caption-layout.ts:43](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/narration/caption-layout.ts#L43) · [packages/scene-engine/src/node/captions.ts:76](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/captions.ts#L76) · [apps/scene-studio/src/components/CaptionOverlay.tsx](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/CaptionOverlay.tsx)
 
 ### MIG088
 
@@ -1405,7 +1405,7 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Dependências:** MIG083 (Plano de mix: o que soa, onde a voz do mix cala porque há take), MIG026 (Porta de áudio do navegador (relógio de áudio, ganho do monitor, janela de edição))
 - **Limitações:** Depende do relógio de áudio do navegador.
 - **Testes:** nenhum associado encontrado (Só código).
-- **Código:** [apps/scene-studio/src/hooks/useNarrationPlayback.ts:49](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/hooks/useNarrationPlayback.ts#L49)
+- **Código:** [apps/scene-studio/src/hooks/useNarrationPlayback.ts:49](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/hooks/useNarrationPlayback.ts#L49)
 
 ### MIG089
 
@@ -1419,7 +1419,7 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Dependências:** MIG082 (Comandos de narração (10 ops)), MIG084 (Gerar takes de TTS (cliente OpenAI-compatível) e gravar no bundle)
 - **Limitações:** —
 - **Testes:** nenhum associado encontrado (Só código).
-- **Código:** [apps/scene-studio/src/inspector/describeNarration.ts:113](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/inspector/describeNarration.ts#L113) · [apps/scene-studio/src/hooks/useNarration.ts:58](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/hooks/useNarration.ts#L58) · [apps/scene-studio/src/components/layers/AudioSection.tsx](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/layers/AudioSection.tsx)
+- **Código:** [apps/scene-studio/src/inspector/describeNarration.ts:113](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/inspector/describeNarration.ts#L113) · [apps/scene-studio/src/hooks/useNarration.ts:58](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/hooks/useNarration.ts#L58) · [apps/scene-studio/src/components/layers/AudioSection.tsx](~/www/journeystudios/tesselapp-image-coverage/apps/scene-studio/src/components/layers/AudioSection.tsx)
 
 ## K. Render, export, CLI e APIs programáticas
 
@@ -1435,8 +1435,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Dependências:** MIG013 (Camadas de plano de imagem (PNG com alpha, fila de pintura única)), MIG083 (Plano de mix: o que soa, onde a voz do mix cala porque há take)
 - **Limitações:** Sem cancelamento, sem estimativa de disco, sem job/fila; `onProgress(frame,total)` apenas. Pixels dependem do ambiente (SwiftShader/GPU).
 - **API / CLI:** CLI `scene render`; lib `renderBundle(path, {outDir,label,sampleFrames,captions,onProgress})`.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/node/render-effects.e2e.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/render-effects.e2e.spec.ts) (1 casos); [packages/scene-engine/src/node/narrated-scene.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/narrated-scene.spec.ts) (3 casos); [packages/scene-engine/src/node/audio-graph.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/audio-graph.spec.ts) (5 casos)
-- **Código:** [packages/scene-engine/src/node/render.ts:298](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/render.ts#L298) · [packages/scene-engine/src/node/render.ts:148](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/render.ts#L148) · [packages/scene-engine/src/node/viewer.ts:85](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/viewer.ts#L85) · [packages/scene-engine/src/node/viewer.ts:263](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/viewer.ts#L263)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/node/render-effects.e2e.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/render-effects.e2e.spec.ts) (1 casos); [packages/scene-engine/src/node/narrated-scene.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/narrated-scene.spec.ts) (3 casos); [packages/scene-engine/src/node/audio-graph.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/audio-graph.spec.ts) (5 casos)
+- **Código:** [packages/scene-engine/src/node/render.ts:298](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/render.ts#L298) · [packages/scene-engine/src/node/render.ts:148](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/render.ts#L148) · [packages/scene-engine/src/node/viewer.ts:85](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/viewer.ts#L85) · [packages/scene-engine/src/node/viewer.ts:263](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/viewer.ts#L263)
 
 ### MIG091
 
@@ -1449,8 +1449,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** H.264/yuv420p, +faststart.
 - **Dependências:** MIG090 (Render offline: Chrome + Three.js quadro a quadro → ffmpeg H.264)
 - **Limitações:** Transferência é sRGB, **não** a curva Rec.709 (documentado); frames comparados em RGBA sem perda, não no MP4.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/node/render-effects.e2e.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/render-effects.e2e.spec.ts) (1 casos)
-- **Código:** [packages/scene-engine/src/node/render.ts:106](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/render.ts#L106) · [packages/scene-engine/src/node/render.ts:115](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/render.ts#L115) · [packages/scene-engine/src/node/render.ts:71](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/render.ts#L71)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/node/render-effects.e2e.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/render-effects.e2e.spec.ts) (1 casos)
+- **Código:** [packages/scene-engine/src/node/render.ts:106](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/render.ts#L106) · [packages/scene-engine/src/node/render.ts:115](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/render.ts#L115) · [packages/scene-engine/src/node/render.ts:71](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/render.ts#L71)
 
 ### MIG092
 
@@ -1463,8 +1463,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** Estéreo, `fltp`, taxa fixa `SAMPLE_RATE`.
 - **Dependências:** MIG083 (Plano de mix: o que soa, onde a voz do mix cala porque há take)
 - **Limitações:** O plano do mix é o mesmo do Studio (`audioMixPlan`).
-- **Testes (existentes, não executados):** [packages/scene-engine/src/node/audio-graph.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/audio-graph.spec.ts) (5 casos)
-- **Código:** [packages/scene-engine/src/node/audio-graph.ts:24](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/audio-graph.ts#L24) · [packages/scene-engine/src/node/audio-graph.ts:78](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/audio-graph.ts#L78)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/node/audio-graph.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/audio-graph.spec.ts) (5 casos)
+- **Código:** [packages/scene-engine/src/node/audio-graph.ts:24](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/audio-graph.ts#L24) · [packages/scene-engine/src/node/audio-graph.ts:78](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/audio-graph.ts#L78)
 
 ### MIG093
 
@@ -1478,8 +1478,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Dependências:** MIG094 (API de edição em lote `editBundle` (6 formas de edit)), MIG046 (Sistema de property paths (listar, ler, escrever, erros tipados))
 - **Limitações:** `render` sem `--frames`/contact-sheet no baseline (existe no piloto).
 - **API / CLI:** Ver `HELP` na origem; 14 comandos (13 com bundle + `effects`).
-- **Testes (existentes, não executados):** [packages/scene-engine/src/node/scene-cli.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/scene-cli.spec.ts) (18 casos)
-- **Código:** [packages/scene-engine/bin/scene.mjs:172](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/bin/scene.mjs#L172) · [packages/scene-engine/bin/scene.mjs:40](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/bin/scene.mjs#L40) · [packages/scene-engine/src/node/index.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/index.ts)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/node/scene-cli.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/scene-cli.spec.ts) (18 casos)
+- **Código:** [packages/scene-engine/bin/scene.mjs:172](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/bin/scene.mjs#L172) · [packages/scene-engine/bin/scene.mjs:40](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/bin/scene.mjs#L40) · [packages/scene-engine/src/node/index.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/node/index.ts)
 
 ### MIG094
 
@@ -1493,8 +1493,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Dependências:** MIG046 (Sistema de property paths (listar, ler, escrever, erros tipados)), MIG033 (Comandos de câmera (15 ops) com erros tipados e dica), MIG082 (Comandos de narração (10 ops)), MIG043 (Comandos de outline (6 ops))
 - **Limitações:** Uma entrada recusada recusa o lote inteiro (nada gravado).
 - **API / CLI:** Lib `editBundle`, `bundleEditSchema`, `BUNDLE_EDIT_SHAPES`.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/edit/edit-bundle.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/edit/edit-bundle.spec.ts) (20 casos)
-- **Código:** [packages/scene-engine/src/edit/edit-bundle.ts:432](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/edit/edit-bundle.ts#L432) · [packages/scene-engine/src/edit/edit-bundle.ts:94](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/edit/edit-bundle.ts#L94)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/edit/edit-bundle.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/edit/edit-bundle.spec.ts) (20 casos)
+- **Código:** [packages/scene-engine/src/edit/edit-bundle.ts:432](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/edit/edit-bundle.ts#L432) · [packages/scene-engine/src/edit/edit-bundle.ts:94](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/edit/edit-bundle.ts#L94)
 
 ### MIG095
 
@@ -1507,8 +1507,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** —
 - **Dependências:** MIG001 (Modelo do documento `render-bundle.json` (schema 1.0))
 - **Limitações:** —
-- **Testes (existentes, não executados):** [packages/scene-engine/src/edit/show-bundle.spec.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/edit/show-bundle.spec.ts) (5 casos)
-- **Código:** [packages/scene-engine/src/edit/show-bundle.ts:7](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/edit/show-bundle.ts#L7) · [packages/scene-engine/src/edit/show-bundle.ts:73](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/edit/show-bundle.ts#L73)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/edit/show-bundle.spec.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/edit/show-bundle.spec.ts) (5 casos)
+- **Código:** [packages/scene-engine/src/edit/show-bundle.ts:7](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/edit/show-bundle.ts#L7) · [packages/scene-engine/src/edit/show-bundle.ts:73](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/edit/show-bundle.ts#L73)
 
 ### MIG096
 
@@ -1521,7 +1521,7 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** Pacote ESM privado; `bin: scene`.
 - **Limitações:** Pacote privado do monorepo; sem versionamento público.
 - **Testes:** nenhum associado encontrado (Só código).
-- **Código:** [packages/scene-engine/src/core.ts](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/core.ts) · [packages/scene-engine/package.json:10](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/package.json#L10)
+- **Código:** [packages/scene-engine/src/core.ts](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/src/core.ts) · [packages/scene-engine/package.json:10](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/package.json#L10)
 
 ### MIG097
 
@@ -1533,8 +1533,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Caminho handler → estado → regra/runtime:** Scripts compilam o pacote e o app (vite), sobem o harness e dirigem `window.__sceneStudio` via Chrome.
 - **Propriedades, unidades, modelo de dados:** 9 specs .mjs de navegador + provas.
 - **Limitações:** Exigem Chrome, ffmpeg, pnpm; não rodam em CI padrão (`vitest` exclui e2e).
-- **Testes (existentes, não executados):** [packages/scene-engine/scripts/scene-studio-camera.spec.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-camera.spec.mjs) (script de navegador/Chrome); [packages/scene-engine/scripts/scene-studio-transport.spec.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-transport.spec.mjs) (script de navegador/Chrome); [packages/scene-engine/scripts/scene-studio-follow.spec.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-follow.spec.mjs) (script de navegador/Chrome); [packages/scene-engine/scripts/scene-studio-rig.spec.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-rig.spec.mjs) (script de navegador/Chrome); [packages/scene-engine/scripts/scene-studio-light.spec.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-light.spec.mjs) (script de navegador/Chrome); [packages/scene-engine/scripts/scene-studio-weather.spec.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-weather.spec.mjs) (script de navegador/Chrome); [packages/scene-engine/scripts/scene-studio-effects.spec.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-effects.spec.mjs) (script de navegador/Chrome); [packages/scene-engine/scripts/scene-studio-projects.spec.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-projects.spec.mjs) (script de navegador/Chrome); [packages/scene-engine/scripts/scene-studio-history.spec.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-history.spec.mjs) (script de navegador/Chrome)
-- **Código:** [packages/scene-engine/scripts/scene-studio-preview.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-preview.mjs) · [packages/scene-engine/scripts/studio-av-proof.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/studio-av-proof.mjs) · [packages/scene-engine/scripts/studio-harness.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/studio-harness.mjs)
+- **Testes (existentes, não executados):** [packages/scene-engine/scripts/scene-studio-camera.spec.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-camera.spec.mjs) (script de navegador/Chrome); [packages/scene-engine/scripts/scene-studio-transport.spec.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-transport.spec.mjs) (script de navegador/Chrome); [packages/scene-engine/scripts/scene-studio-follow.spec.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-follow.spec.mjs) (script de navegador/Chrome); [packages/scene-engine/scripts/scene-studio-rig.spec.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-rig.spec.mjs) (script de navegador/Chrome); [packages/scene-engine/scripts/scene-studio-light.spec.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-light.spec.mjs) (script de navegador/Chrome); [packages/scene-engine/scripts/scene-studio-weather.spec.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-weather.spec.mjs) (script de navegador/Chrome); [packages/scene-engine/scripts/scene-studio-effects.spec.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-effects.spec.mjs) (script de navegador/Chrome); [packages/scene-engine/scripts/scene-studio-projects.spec.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-projects.spec.mjs) (script de navegador/Chrome); [packages/scene-engine/scripts/scene-studio-history.spec.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-history.spec.mjs) (script de navegador/Chrome)
+- **Código:** [packages/scene-engine/scripts/scene-studio-preview.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-studio-preview.mjs) · [packages/scene-engine/scripts/studio-av-proof.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/studio-av-proof.mjs) · [packages/scene-engine/scripts/studio-harness.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/studio-harness.mjs)
 
 ### MIG098
 
@@ -1547,8 +1547,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** Modelos e execuções fora do repo (`SCENE_PIPELINE_HOME`).
 - **Dependências:** MIG014 (Camadas de splat Gaussiano (Spark 2.4, `.spz`))
 - **Limitações:** SHARP não é reprodutível bit a bit (README do pipeline); a licença dos pesos SHARP é restrita a pesquisa segundo anotação prévia do usuário (não verificada aqui). O laboratório original foi apagado e reconstruído a partir de transcrições.
-- **Testes (existentes, não executados):** [packages/scene-engine/scripts/scene-pipeline/scene_gaussian.spec.py](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-pipeline/scene_gaussian.spec.py) (script de navegador/Chrome)
-- **Código:** [packages/scene-engine/scripts/scene-pipeline/image-to-splat-scene.mjs](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-pipeline/image-to-splat-scene.mjs) · [packages/scene-engine/scripts/scene-pipeline/scene_gaussian.py](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-pipeline/scene_gaussian.py) · [packages/scene-engine/scripts/scene-pipeline/sharp/run-sharp.sh](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-pipeline/sharp/run-sharp.sh) · [packages/scene-engine/scripts/scene-pipeline/moge/run_moge3.py](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-pipeline/moge/run_moge3.py)
+- **Testes (existentes, não executados):** [packages/scene-engine/scripts/scene-pipeline/scene_gaussian.spec.py](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-pipeline/scene_gaussian.spec.py) (script de navegador/Chrome)
+- **Código:** [packages/scene-engine/scripts/scene-pipeline/image-to-splat-scene.mjs](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-pipeline/image-to-splat-scene.mjs) · [packages/scene-engine/scripts/scene-pipeline/scene_gaussian.py](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-pipeline/scene_gaussian.py) · [packages/scene-engine/scripts/scene-pipeline/sharp/run-sharp.sh](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-pipeline/sharp/run-sharp.sh) · [packages/scene-engine/scripts/scene-pipeline/moge/run_moge3.py](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/scene-pipeline/moge/run_moge3.py)
 
 ### MIG099
 
@@ -1561,7 +1561,7 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** —
 - **Limitações:** Experimento isolado; JOU-1191; gasta dinheiro; não alimenta o editor.
 - **Testes:** nenhum associado encontrado (Só código).
-- **Código:** [packages/scene-engine/scripts/world-model/README.md](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/world-model/README.md) · [packages/scene-engine/scripts/world-model/run-world-test.sh](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/world-model/run-world-test.sh)
+- **Código:** [packages/scene-engine/scripts/world-model/README.md](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/world-model/README.md) · [packages/scene-engine/scripts/world-model/run-world-test.sh](~/www/journeystudios/tesselapp-image-coverage/packages/scene-engine/scripts/world-model/run-world-test.sh)
 
 ## L. Delta do branch piloto `t3/scene-engine-pilot` (experimental, fora da main)
 
@@ -1576,8 +1576,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** Famílias look|transition; kinds pass|geometry-pass|transform|preset.
 - **Dependências:** MIG067 (Looks de pós-produção (tinta, sonho, filme) com catálogo)
 - **Limitações:** Branch não mergeado; `src/fx` tem 206 arquivos (inclui specs, goldens e spikes). Estende o `effects` de 3 looks da main.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/fx/fx-commands.spec.ts](/Users/wallyssonnunes/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/src/fx/fx-commands.spec.ts) (12 casos)
-- **Código:** [packages/scene-engine/src/fx/fx-command-schema.ts:22](/Users/wallyssonnunes/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/src/fx/fx-command-schema.ts#L22) · [packages/scene-engine/src/fx/fx-commands.ts](/Users/wallyssonnunes/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/src/fx/fx-commands.ts) · [packages/scene-engine/src/fx/fx-explain.ts](/Users/wallyssonnunes/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/src/fx/fx-explain.ts)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/fx/fx-commands.spec.ts](~/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/src/fx/fx-commands.spec.ts) (12 casos)
+- **Código:** [packages/scene-engine/src/fx/fx-command-schema.ts:22](~/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/src/fx/fx-command-schema.ts#L22) · [packages/scene-engine/src/fx/fx-commands.ts](~/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/src/fx/fx-commands.ts) · [packages/scene-engine/src/fx/fx-explain.ts](~/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/src/fx/fx-explain.ts)
 
 ### MIG101
 
@@ -1590,8 +1590,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** `family: look|transition`; parâmetros em `param-defs.ts`.
 - **Dependências:** MIG100 (Camada de efeitos por clipe (faixas, clipes, parâmetros, envelope, escopo, chaves))
 - **Limitações:** Pixels dourados são de um ambiente; sem execução aqui.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/fx/catalog/golden-files.spec.ts](/Users/wallyssonnunes/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/src/fx/catalog/golden-files.spec.ts) (1 casos); [packages/scene-engine/src/fx/catalog/index.spec.ts](/Users/wallyssonnunes/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/src/fx/catalog/index.spec.ts) (37 casos)
-- **Código:** [packages/scene-engine/src/fx/catalog/index.ts](/Users/wallyssonnunes/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/src/fx/catalog/index.ts) · [packages/scene-engine/src/fx/catalog/fx-effect-meta.ts](/Users/wallyssonnunes/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/src/fx/catalog/fx-effect-meta.ts) · [packages/scene-engine/src/fx/__baseline__/pixels.json](/Users/wallyssonnunes/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/src/fx/__baseline__/pixels.json)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/fx/catalog/golden-files.spec.ts](~/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/src/fx/catalog/golden-files.spec.ts) (1 casos); [packages/scene-engine/src/fx/catalog/index.spec.ts](~/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/src/fx/catalog/index.spec.ts) (37 casos)
+- **Código:** [packages/scene-engine/src/fx/catalog/index.ts](~/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/src/fx/catalog/index.ts) · [packages/scene-engine/src/fx/catalog/fx-effect-meta.ts](~/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/src/fx/catalog/fx-effect-meta.ts) · [packages/scene-engine/src/fx/__baseline__/pixels.json](~/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/src/fx/__baseline__/pixels.json)
 
 ### MIG102
 
@@ -1604,8 +1604,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** Imagem e áudio são independentes: encurtar o vídeo não mexe no mix.
 - **Dependências:** MIG018 (Estrutura de shots, instâncias de cena e transições (somente leitura))
 - **Limitações:** Branch não mergeado; sem split/duplicar/reordenar shots.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/shots/shot-commands.spec.ts](/Users/wallyssonnunes/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/src/shots/shot-commands.spec.ts) (19 casos); [packages/scene-engine/src/shots/shot-duration.spec.ts](/Users/wallyssonnunes/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/src/shots/shot-duration.spec.ts) (12 casos)
-- **Código:** [packages/scene-engine/src/shots/shot-commands.ts](/Users/wallyssonnunes/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/src/shots/shot-commands.ts) · [packages/scene-engine/src/shots/shot-schema.ts:61](/Users/wallyssonnunes/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/src/shots/shot-schema.ts#L61) · [packages/scene-engine/src/shots/shot-plan.ts](/Users/wallyssonnunes/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/src/shots/shot-plan.ts)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/shots/shot-commands.spec.ts](~/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/src/shots/shot-commands.spec.ts) (19 casos); [packages/scene-engine/src/shots/shot-duration.spec.ts](~/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/src/shots/shot-duration.spec.ts) (12 casos)
+- **Código:** [packages/scene-engine/src/shots/shot-commands.ts](~/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/src/shots/shot-commands.ts) · [packages/scene-engine/src/shots/shot-schema.ts:61](~/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/src/shots/shot-schema.ts#L61) · [packages/scene-engine/src/shots/shot-plan.ts](~/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/src/shots/shot-plan.ts)
 
 ### MIG103
 
@@ -1618,8 +1618,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** —
 - **Dependências:** MIG102 (Edição de shots: aparar bordas, mover corte, duração do shot e da edição (ripple/roll)), MIG100 (Camada de efeitos por clipe (faixas, clipes, parâmetros, envelope, escopo, chaves)), MIG047 (Keyframes de valores (resolver, regras, adicionar/remover no playhead))
 - **Limitações:** Branch não mergeado; `studioCoreBoundary.spec.ts` garante a fronteira.
-- **Testes (existentes, não executados):** [packages/scene-engine/src/gestures/shot-drag.spec.ts](/Users/wallyssonnunes/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/src/gestures/shot-drag.spec.ts) (17 casos); [packages/scene-engine/src/gestures/key-retime.spec.ts](/Users/wallyssonnunes/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/src/gestures/key-retime.spec.ts) (8 casos)
-- **Código:** [packages/scene-engine/src/gestures/index.ts](/Users/wallyssonnunes/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/src/gestures/index.ts) · [packages/scene-engine/src/gestures/shot-drag.ts](/Users/wallyssonnunes/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/src/gestures/shot-drag.ts) · [apps/scene-studio/src/studioCoreBoundary.spec.ts](/Users/wallyssonnunes/.t3/worktrees/tesselapp/t3-5de3852f/apps/scene-studio/src/studioCoreBoundary.spec.ts)
+- **Testes (existentes, não executados):** [packages/scene-engine/src/gestures/shot-drag.spec.ts](~/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/src/gestures/shot-drag.spec.ts) (17 casos); [packages/scene-engine/src/gestures/key-retime.spec.ts](~/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/src/gestures/key-retime.spec.ts) (8 casos)
+- **Código:** [packages/scene-engine/src/gestures/index.ts](~/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/src/gestures/index.ts) · [packages/scene-engine/src/gestures/shot-drag.ts](~/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/src/gestures/shot-drag.ts) · [apps/scene-studio/src/studioCoreBoundary.spec.ts](~/.t3/worktrees/tesselapp/t3-5de3852f/apps/scene-studio/src/studioCoreBoundary.spec.ts)
 
 ### MIG104
 
@@ -1632,8 +1632,8 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** —
 - **Dependências:** MIG103 (Gestos de timeline como funções puras (arrastar shot, clipe de fx, transição, chaves))
 - **Limitações:** Branch não mergeado.
-- **Testes (existentes, não executados):** [apps/scene-studio/src/engine/editorStoreShots.spec.ts](/Users/wallyssonnunes/.t3/worktrees/tesselapp/t3-5de3852f/apps/scene-studio/src/engine/editorStoreShots.spec.ts) (7 casos); [apps/scene-studio/src/engine/editorStoreFx.spec.ts](/Users/wallyssonnunes/.t3/worktrees/tesselapp/t3-5de3852f/apps/scene-studio/src/engine/editorStoreFx.spec.ts) (11 casos)
-- **Código:** [apps/scene-studio/src/components/ShotsTrack.tsx](/Users/wallyssonnunes/.t3/worktrees/tesselapp/t3-5de3852f/apps/scene-studio/src/components/ShotsTrack.tsx) · [apps/scene-studio/src/components/FxTrack.tsx](/Users/wallyssonnunes/.t3/worktrees/tesselapp/t3-5de3852f/apps/scene-studio/src/components/FxTrack.tsx) · [apps/scene-studio/src/components/TransitionsTrack.tsx](/Users/wallyssonnunes/.t3/worktrees/tesselapp/t3-5de3852f/apps/scene-studio/src/components/TransitionsTrack.tsx) · [apps/scene-studio/src/components/EditLength.tsx](/Users/wallyssonnunes/.t3/worktrees/tesselapp/t3-5de3852f/apps/scene-studio/src/components/EditLength.tsx)
+- **Testes (existentes, não executados):** [apps/scene-studio/src/engine/editorStoreShots.spec.ts](~/.t3/worktrees/tesselapp/t3-5de3852f/apps/scene-studio/src/engine/editorStoreShots.spec.ts) (7 casos); [apps/scene-studio/src/engine/editorStoreFx.spec.ts](~/.t3/worktrees/tesselapp/t3-5de3852f/apps/scene-studio/src/engine/editorStoreFx.spec.ts) (11 casos)
+- **Código:** [apps/scene-studio/src/components/ShotsTrack.tsx](~/.t3/worktrees/tesselapp/t3-5de3852f/apps/scene-studio/src/components/ShotsTrack.tsx) · [apps/scene-studio/src/components/FxTrack.tsx](~/.t3/worktrees/tesselapp/t3-5de3852f/apps/scene-studio/src/components/FxTrack.tsx) · [apps/scene-studio/src/components/TransitionsTrack.tsx](~/.t3/worktrees/tesselapp/t3-5de3852f/apps/scene-studio/src/components/TransitionsTrack.tsx) · [apps/scene-studio/src/components/EditLength.tsx](~/.t3/worktrees/tesselapp/t3-5de3852f/apps/scene-studio/src/components/EditLength.tsx)
 
 ### MIG105
 
@@ -1647,7 +1647,7 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Dependências:** MIG100 (Camada de efeitos por clipe (faixas, clipes, parâmetros, envelope, escopo, chaves))
 - **Limitações:** Branch não mergeado; detalhado só por assunto de commit e nomes de arquivo (não lido em profundidade).
 - **Testes:** nenhum associado encontrado (Só código).
-- **Código:** [packages/scene-engine/bin/scene.mjs:84](/Users/wallyssonnunes/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/bin/scene.mjs#L84)
+- **Código:** [packages/scene-engine/bin/scene.mjs:84](~/.t3/worktrees/tesselapp/t3-5de3852f/packages/scene-engine/bin/scene.mjs#L84)
 
 ## M. Planejado apenas (documentos, sem código no baseline)
 
@@ -1662,7 +1662,7 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** —
 - **Limitações:** Planos descrevem trabalho; não são implementação pronta. Parte virou código só no branch piloto.
 - **Testes:** nenhum associado encontrado (Só documento).
-- **Código:** [docs/video-production/scene-studio-plan.md:78](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/docs/video-production/scene-studio-plan.md#L78)
+- **Código:** [docs/video-production/scene-studio-plan.md:78](~/www/journeystudios/tesselapp-image-coverage/docs/video-production/scene-studio-plan.md#L78)
 
 ### MIG107
 
@@ -1675,7 +1675,7 @@ Total: **121** features (baseline: 115; branch piloto: 6).
 - **Propriedades, unidades, modelo de dados:** —
 - **Limitações:** Fora do escopo: migração de produtos Tessel que não pertencem ao editor.
 - **Testes:** nenhum associado encontrado (Só documento).
-- **Código:** [docs/video-production/ai-asset-production-spec.md](/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/docs/video-production/ai-asset-production-spec.md)
+- **Código:** [docs/video-production/ai-asset-production-spec.md](~/www/journeystudios/tesselapp-image-coverage/docs/video-production/ai-asset-production-spec.md)
 
 ## N. Ausente na origem (investigado e não encontrado)
 

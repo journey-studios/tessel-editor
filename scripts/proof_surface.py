@@ -7,7 +7,13 @@
   (`ui op|get|set|invoke`). No pointer, no coordinates.
 * `Recorder`: named checks; a failed one stops the run with its detail; a `skip` is recorded as a
   SKIP, never as a pass, and is not counted as passed.
-* `window_id` / `Native.capture`: the OS capture of the editor's own window (`screencapture -l`).
+* `window_id` / `Native.capture`: the OS capture of the editor's own window (`screencapture -l`; on
+  Windows `PrintWindow` of the process's main window, an observation that never clicks).
+* Windows (BL168.8): the window gets its own socket through `TESSEL_UI_SOCKET` (its default lives
+  under `%LOCALAPPDATA%`, where tool discovery also looks, so that is left alone), a stop ends the
+  whole process tree (`taskkill /T`: the WebView2 helpers too), the repository's `sh` scripts
+  run through Git's `sh` (`script_command`) and a `#!` stand-in binary under its interpreter
+  (`portable.program`; Windows starts executables only).
 * `run_surface`: runs one scenario on one surface and NEVER raises: a surface that cannot start,
   answers garbage, hangs or crashes is a recorded failure, the cause is kept, cleanup problems are
   reported next to it (never replace it), and the caller can still try the other surface and write
@@ -24,10 +30,15 @@ import queue
 import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import threading
 import time
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import portable  # noqa: E402,F401 — on Windows, re-runs the proof in Python's UTF-8 mode (BL168.8)
+
+WINDOWS = portable.WINDOWS
 MIN_FREE_GIB = 12
 REQUEST_TIMEOUT = 120      # seconds a headless reply or a `ui` call may take
 CAPTURE_TIMEOUT = 60       # seconds for `swift` (cold start is slow) and `screencapture`
@@ -90,12 +101,19 @@ def free_gib(path='/'):
     return shutil.disk_usage(path).free / 2 ** 30
 
 
+# The repository's `sh` scripts on any OS (kept here for the proofs that import them from this module).
+git_sh = portable.git_sh
+script_command = portable.script_command
+
+
 def _stop_process(process, grace, group=False):
     """Ends `process` without raising; returns what went wrong (empty when nothing)."""
     problems = []
     if process is None:
         return problems
     try:
+        if process.poll() is None and group and WINDOWS:
+            _kill_tree(process.pid, quiet=True)
         if process.poll() is None:
             process.terminate()
             try:
@@ -103,16 +121,31 @@ def _stop_process(process, grace, group=False):
             except subprocess.TimeoutExpired:
                 problems.append(f'pid {process.pid} ignored terminate for {grace}s: killed')
                 try:
-                    if group:
+                    if group and WINDOWS:
+                        _kill_tree(process.pid)
+                    elif group:
                         os.killpg(process.pid, signal.SIGKILL)
                     else:
                         process.kill()
-                except (OSError, ProcessLookupError) as error:
+                except (OSError, ProcessLookupError, subprocess.SubprocessError) as error:
                     problems.append(f'kill failed: {error}')
                 process.wait(10)
+        elif group and WINDOWS:
+            # Already gone; its WebView2 helpers may not be.
+            _kill_tree(process.pid, quiet=True)
     except (OSError, subprocess.TimeoutExpired) as error:
         problems.append(f'cleanup of pid {process.pid} failed: {error}')
     return problems
+
+
+def _kill_tree(pid, quiet=False):
+    """Ends `pid` and every process it started (Windows has no process group to signal)."""
+    # taskkill answers in the console's OEM code page and in the system's language ("ÊXITO" in
+    # cp850), not UTF-8: read bytes and decode them as such.
+    done = subprocess.run(['taskkill', '/T', '/F', '/PID', str(pid)], capture_output=True, timeout=30)
+    if done.returncode != 0 and not quiet:
+        reason = done.stderr.decode('oem', errors='replace').strip()[:120]
+        raise OSError(f'taskkill /T /F /PID {pid}: {done.returncode} {reason}')
 
 
 class Headless:
@@ -127,8 +160,8 @@ class Headless:
         self._eof = False
         self.refused = 0          # replies with `ok: false`; `tessel-headless` then exits with status 1
         try:
-            self.process = subprocess.Popen([binary, *extra], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                            stderr=subprocess.DEVNULL, text=True, bufsize=1)
+            self.process = subprocess.Popen(portable.program(binary, *extra), stdin=subprocess.PIPE,
+                                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1)
         except OSError as error:
             raise SurfaceError(f'cannot start `{binary}`: {error}') from error
         self._reader = threading.Thread(target=self._pump, daemon=True)
@@ -238,7 +271,12 @@ class Native:
     def __init__(self, binary, home):
         self.binary = binary
         self.env = {**os.environ, 'HOME': home, 'TESSEL_VIEWPORT_INSPECT': '1'}
-        self.socket = os.path.join(home, '.cache/tessel-editor/ui.sock')
+        if WINDOWS:
+            # The default socket is under %LOCALAPPDATA%, not HOME: this window gets its own path.
+            self.socket = os.path.join(home, 'ui.sock')
+            self.env['TESSEL_UI_SOCKET'] = self.socket
+        else:
+            self.socket = os.path.join(home, '.cache/tessel-editor/ui.sock')
         self.home = home
         self.process = None
         self.log = None
@@ -246,8 +284,8 @@ class Native:
         self.log_path = os.path.join(home, 'editor.log')
         try:
             self.log = open(self.log_path, 'w')
-            self.process = subprocess.Popen([binary], env=self.env, stdout=self.log, stderr=self.log,
-                                            start_new_session=True)
+            self.process = subprocess.Popen(portable.program(binary), env=self.env, stdout=self.log,
+                                            stderr=self.log, start_new_session=True)
         except OSError as error:
             if self.log is not None:
                 self.log.close()
@@ -255,8 +293,8 @@ class Native:
 
     def ui(self, *args, timeout=90):
         try:
-            done = subprocess.run([self.binary, 'ui', *args], env=self.env, capture_output=True, text=True,
-                                  timeout=timeout)
+            done = subprocess.run(portable.program(self.binary, 'ui', *args), env=self.env, capture_output=True,
+                                  text=True, timeout=timeout)
         except subprocess.TimeoutExpired as error:
             raise SurfaceError(f'ui {args}: no answer within {timeout}s') from error
         except OSError as error:
@@ -323,6 +361,8 @@ class Native:
         except SurfaceError as error:
             return None, f'could not activate the window: {error}'
         time.sleep(0.8)
+        if WINDOWS:
+            return portable.capture_window(self.process.pid, path)
         wid = window_id(self.process.pid)
         if not wid:
             return None, 'no on-screen window for this PID (screen locked, covered or capture denied)'

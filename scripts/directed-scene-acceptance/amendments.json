@@ -424,6 +424,86 @@
     "../directed-scene-export-proof/export_verify.py": "d1741797e78663323b100c997fad537669e5a0350650920f5bd93a586e4c6dcd",
     "../directed-scene-export-proof/export_corpus.py": "20bbed3797586800f729269c826fd376deea1466c85d697bbcb2dccfc47dc00e"
    }
+  },
+  {
+   "id": "R6",
+   "reason": "BL168.8 (docs/backlog.md): the Python proofs were run on Windows 11 for the first time. The pinned helpers did not start there (fcntl, os.statvfs, socket.AF_UNIX, select() on pipes and `/tmp` do not exist in Python on Windows), and the corpus and ledger checks compared paths with the OS separator, so on Windows every committed corpus file was reported as stray and Git was asked for `scripts\\\\...` paths and returned no history. The same run found one defect that exists on every platform: the EditorLab of directed-scene-proof never set TESSEL_VIEWPORT_INSPECT, so the monitor never computed `last_frame.hash` and its pixel check could not pass. No oracle rule, verifier rule, control, corpus byte, tolerance or exit code changes; R1-R5 and the baseline are not edited.",
+   "applied": "Written after the Windows runs of BL168.8 that used these edits (directed-scene-proof: every runnable phase passes; directed-scene-export-proof: 22 of 23 phases, the 23rd being the known ui_export_flow oracle of S10). No live run of the 24 S10 phases was made for this head on any platform, so this book claims none. On macOS and Linux every edit except A23 and the TESSEL_FFMPEG/TESSEL_FFPROBE order of A20 is the same code path as before (`relative_to(...).as_posix()` equals `str(relative_to(...))` with `/` as the separator; the portable helpers return the Unix calls unchanged).",
+   "before": {
+    "tolerances.json": "8f150233f6f89669efafe133aed67fd33fbcc01da24fa3c035d1e427f9c409e3",
+    "oracle.py": "8ac1a7ed6a2d8ac979c4b103ef2fba917347a2b5448d67bffb71f89c1a17af4e",
+    "corpus.py": "adb847e46a2376f98893712ba38bdef00f994243618d70ca2742e4a52397758b",
+    "verify.py": "033783db6452783675a1e8bf9bc4f57c34d37a16d863a0263b398beb3a2624bb",
+    "controls.py": "47d7025058052ef367ecc0342995531b80214c530b9e3accb8dc5f250f445392",
+    "corpus/expected.json": "b87443f8f9dbccd36b561890126ee3aae5c336a0f63730d03d26ed3975ecf838",
+    "proof.py": "51bd998cec8a91f1bb27364afaa9c1964420733e90da19d83f55b9aeba0b057f",
+    "link.py": "268e1197a2ca8fa2cc078727045a155585859a9229ddef1524e1957f5577a701",
+    "sensitivity.py": "e4618d0d687e2c366e16e7af59b87ea170c063478000e57e7858a3ad0f45a4b2",
+    "ledger.py": "4dead68e9187ca2e4d11902cc04917b1e0e1533f11ce8bc87dfd333ea8bf4cd8",
+    "../directed-scene-proof/model.py": "322af021aceb5ae45d8b99992c126c5360faa243c571e5bf5db73c6c7991e9bd",
+    "../directed-scene-proof/harness.py": "b6da5243475c8ba7520b31209c68a8417e82d5ed2b626b0f970389d66d8059ec",
+    "../directed-scene-export-proof/export_verify.py": "d1741797e78663323b100c997fad537669e5a0350650920f5bd93a586e4c6dcd",
+    "../directed-scene-export-proof/export_corpus.py": "20bbed3797586800f729269c826fd376deea1466c85d697bbcb2dccfc47dc00e"
+   },
+   "pins": [],
+   "amendments": [
+    {
+     "id": "A20",
+     "finding": "BL168.8: proof.py, harness.py and export_verify.py cannot start on Windows",
+     "files": [
+      "proof.py",
+      "../directed-scene-proof/harness.py",
+      "../directed-scene-export-proof/export_verify.py"
+     ],
+     "change": "proof.py and harness.py: free_gib() reads shutil.disk_usage (the f_bavail x f_frsize of statvfs on Unix). harness.py goes through scripts/portable.py: the GPU lock is portable.lock_file (flock on Unix, msvcrt on Windows) at portable.temp_path('tessel-scene-gpu.lock') (`/tmp/...` on Unix, unchanged); the workspace is made under portable.TEMP (`/tmp` on Unix); binaries are started by portable.executable (adds `.exe` on Windows); the JSONL session reads its child with select() on Unix as before and, on Windows (no select() on pipes), through a reader thread and a queue with the same deadline; EditorLab connects with portable.connect_ui (AF_UNIX on Unix, Winsock on Windows), takes its socket from portable.window_socket (on Unix the same `HOME/.cache/tessel-editor/ui.sock`) and on Windows gives the window TESSEL_UI_SOCKET and ends it with its process tree (WebView2 helpers). export_verify.py finds FFmpeg/ffprobe with portable.ffmpeg()/ffprobe(): TESSEL_FFMPEG/TESSEL_FFPROBE first (as the editor does), then PATH, then (Windows) the WinGet package, then `/opt/homebrew/bin` as before.",
+     "motivating_result": "On Windows, before: ModuleNotFoundError fcntl at import, AttributeError statvfs, AttributeError AF_UNIX. After: directed-scene-proof runs every runnable phase and directed-scene-export-proof 22 of 23 phases there."
+    },
+    {
+     "id": "A21",
+     "finding": "BL168.8: the corpus and ledger checks compare paths with the OS separator",
+     "files": [
+      "corpus.py",
+      "../directed-scene-export-proof/export_corpus.py",
+      "ledger.py"
+     ],
+     "change": "corpus.check(), export_corpus.check() and ledger._relative() name a path relative to its folder with as_posix(), the form the generators, provenance.json and Git use. On Unix the strings are identical to before; on Windows the committed files are no longer reported as stray/unexpected and `git log`/`git show` are asked for paths Git knows.",
+     "motivating_result": "On Windows, before: corpus.check(CORPUS_DIR) listed every committed asset as `stray assets\\\\...` and committed_versions() returned [] (the append-only check then read an empty history). After: the CorpusCli, CorpusWriter, ExitSemantics corpus and Ledger tests of proof.spec.py pass on Windows."
+    },
+    {
+     "id": "A22",
+     "finding": "BL168.8: link.tool_versions() cannot start a tool installed as `.cmd` on Windows",
+     "files": [
+      "link.py"
+     ],
+     "change": "On Windows only, tool_versions() resolves the tool with shutil.which (PATHEXT) before starting it with cwd=ROOT, because CreateProcess appends only `.exe` to a bare name. Unix is unchanged.",
+     "motivating_result": "The LinkScope test (tool_versions from another directory) runs on Windows with `.cmd` stand-ins."
+    },
+    {
+     "id": "A23",
+     "finding": "BL168.8: the EditorLab monitor pixel check could not pass on any platform",
+     "files": [
+      "../directed-scene-proof/harness.py"
+     ],
+     "change": "EditorLab starts the window with TESSEL_VIEWPORT_INSPECT=1, so the monitor reads its pictures back and `last_frame.hash` exists to be compared with an explicit render (docs/ui-automation.md). The comparison itself, its tolerance and its verdict are unchanged.",
+     "motivating_result": "directed-scene-proof on Windows: the monitor check failed with an empty `last_frame.hash`; the editor computes it only under TESSEL_VIEWPORT_INSPECT, on every platform. With it the check passes."
+    }
+   ],
+   "after": {
+    "tolerances.json": "8f150233f6f89669efafe133aed67fd33fbcc01da24fa3c035d1e427f9c409e3",
+    "oracle.py": "8ac1a7ed6a2d8ac979c4b103ef2fba917347a2b5448d67bffb71f89c1a17af4e",
+    "corpus.py": "0798e4cd5b94a11fd68b2eaa2d5a9c50fec590d7f661bd0c74f0d18985ad19a3",
+    "verify.py": "033783db6452783675a1e8bf9bc4f57c34d37a16d863a0263b398beb3a2624bb",
+    "controls.py": "47d7025058052ef367ecc0342995531b80214c530b9e3accb8dc5f250f445392",
+    "corpus/expected.json": "b87443f8f9dbccd36b561890126ee3aae5c336a0f63730d03d26ed3975ecf838",
+    "proof.py": "971e12df0be962c565fc547bd2a5f8c76f0f01e3fcbaa648efa59cdef340c54b",
+    "link.py": "5bd87ac1bca002440ef0ecd27513c82304f71add73252603aedb62610b959bb4",
+    "sensitivity.py": "e4618d0d687e2c366e16e7af59b87ea170c063478000e57e7858a3ad0f45a4b2",
+    "ledger.py": "e262be3fe5c45677210671a6fc9151ba335514ada18dcc52b485fcd3c89b9262",
+    "../directed-scene-proof/model.py": "322af021aceb5ae45d8b99992c126c5360faa243c571e5bf5db73c6c7991e9bd",
+    "../directed-scene-proof/harness.py": "67f2ef0359b915668908a9238a78634fe9778f8890c7ce99d0ebed268f9c06f3",
+    "../directed-scene-export-proof/export_verify.py": "9bfe405374a584c383a773af3b07ed93c11ecda81a1fd719b4e25a6dba42b20b",
+    "../directed-scene-export-proof/export_corpus.py": "d9a1b45c42cf7061431940cf18c5c342a3d379a7958326d07a0f6e8b2c49eab3"
+   }
   }
  ]
 }

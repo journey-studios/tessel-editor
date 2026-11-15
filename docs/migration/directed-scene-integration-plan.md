@@ -37,6 +37,6 @@ Pixels/provas headless, socket nativo, UI semântica e ponteiro físico têm evi
 ## Execução
 
 Ler AGENTS e skill tessel-feature-contract. Sem subdelegação, Git write, push, PR ou alteração da origem tesselapp. Não encerrar nem reiniciar app do usuário.
-Cargo somente via /Users/wallyssonnunes/.cache/tessel-editor/cargo-serial.py, que serializa ./scripts/cargo com cache; nunca trocar HOME em wrapper. Se helper ausente, entregar bloqueio ao coordenador, não compilar em paralelo.
+Cargo somente via ~/.cache/tessel-editor/cargo-serial.py, que serializa ./scripts/cargo com cache; nunca trocar HOME em wrapper. Se helper ausente, entregar bloqueio ao coordenador, não compilar em paralelo.
 Cada agente pode rodar testes proporcionais serializados; não rodar quatro gates completos. Node/Chrome e provas GPU uma de cada vez usando o mesmo lock de bancada acordado pelo coordenador; não matar processos alheios.
 Temporários próprios até 2 GiB e piso de 6 GiB livres; sem clean/gc manual. Relatar exatamente testes executados, não executados e comandos de integração.

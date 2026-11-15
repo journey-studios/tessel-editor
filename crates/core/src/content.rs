@@ -221,10 +221,17 @@ mod tests {
             "unsupported_text"
         );
         assert_eq!(
-            TextSpec::new("linha\nlinha", 12.0, "#ffffff")
+            TextSpec::new("linha\tlinha", 12.0, "#ffffff")
                 .unwrap_err()
                 .code,
             "unsupported_text"
+        );
+        assert_eq!(
+            TextSpec::new("linha\nlinha", 12.0, "#ffffff")
+                .unwrap()
+                .content,
+            "linha\nlinha",
+            "an explicit line break is kept (BL141.1)"
         );
         assert!(TextSpec::new("A", 0.0, "#ffffff").is_err());
         assert!(TextSpec::new("A", 10.0, "red").is_err());

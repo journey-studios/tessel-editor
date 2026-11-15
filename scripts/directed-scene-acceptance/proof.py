@@ -103,8 +103,8 @@ def free_gib(path="/tmp"):
     path = pathlib.Path(path)
     while not path.exists() and path != path.parent:
         path = path.parent
-    stat = os.statvfs(path)
-    return stat.f_bavail * stat.f_frsize / 1024 ** 3
+    # f_bavail x f_frsize on Unix (statvfs), the same on Windows, which has no statvfs (BL168.8).
+    return shutil.disk_usage(path).free / 1024 ** 3
 
 
 class WorkspaceError(Exception):

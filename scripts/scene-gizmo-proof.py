@@ -55,6 +55,8 @@ import time
 import traceback
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / 'scripts'))
+import portable  # noqa: E402 — starts a `#!` stand-in of `tessel-headless` on Windows too (BL168.8)
 CORPUS = ROOT / 'scripts/directed-scene-proof/corpus'
 BUNDLE = CORPUS / 'bundle.json'
 MIN_FREE_GIB = 12
@@ -226,8 +228,8 @@ class Headless:
         self.stderr_path = os.path.join(work, 'headless.stderr.log')
         self.stderr = open(self.stderr_path, 'w')
         try:
-            self.process = subprocess.Popen([binary, '--empty'], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                            stderr=self.stderr, text=True, bufsize=1)
+            self.process = subprocess.Popen(portable.program(binary, '--empty'), stdin=subprocess.PIPE,
+                                            stdout=subprocess.PIPE, stderr=self.stderr, text=True, bufsize=1)
         except BaseException:
             self.stderr.close()
             raise
@@ -700,7 +702,7 @@ class Deps:
         self.scenario = scenario
         self.dialog = native_dialog
         self.required = REQUIRED
-        self.free_gib = lambda: shutil.disk_usage('/tmp').free / 1024 ** 3
+        self.free_gib = lambda: shutil.disk_usage(portable.TEMP).free / 1024 ** 3
         self.tree_status = tree_status
         self.head = git_head
         self.__dict__.update(overrides)
@@ -722,7 +724,7 @@ def stop_surface(surface):
 
 
 def run_surface(name, binary, report, deps):
-    work = tempfile.mkdtemp(prefix='te-s8-', dir='/tmp')
+    work = tempfile.mkdtemp(prefix='te-s8-', dir=portable.TEMP)  # `/tmp` on Unix (short socket paths)
     scratch = Path(work) / 'scratch'
     scratch.mkdir()
     check = Recorder(name)
@@ -784,6 +786,8 @@ def main(argv=None, deps=None):
     parser.add_argument('--allow-dirty', action='store_true',
                         help='skip the clean-tree requirement (development only; never final evidence)')
     args = parser.parse_args(argv)
+    # `target/debug/tessel-editor` is `...\tessel-editor.exe` on Windows (BL168.8); unchanged on Unix.
+    args.editor, args.headless = portable.executable(args.editor), portable.executable(args.headless)
     out = Path(args.out) if args.out else None
     report = {
         'ok': False, 'final_evidence': False, 'error': 'the run did not finish',

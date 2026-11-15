@@ -235,7 +235,10 @@ if len(sys.argv) > 1 and sys.argv[1] == 'ui':
     elif mode == 'slow':
         time.sleep(60)
     sys.exit(0)
-sock = os.path.join(os.environ['HOME'], '.cache/tessel-editor/ui.sock')
+if os.name == 'nt':
+    sock = os.environ['TESSEL_UI_SOCKET']   # where `Native` puts the window's socket on Windows
+else:
+    sock = os.path.join(os.environ['HOME'], '.cache/tessel-editor/ui.sock')
 os.makedirs(os.path.dirname(sock), exist_ok=True)
 open(sock, 'w').close()
 time.sleep(120)

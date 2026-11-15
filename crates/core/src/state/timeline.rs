@@ -119,6 +119,11 @@ pub enum TrimEdge {
 pub struct TrimPlan {
     pub start: i64,
     pub end: i64,
+    /// The requested frame when snap moved the edge somewhere else (as `MovePlan` reports it).
+    pub snapped_from: Option<i64>,
+    /// Whether the edge lands somewhere new: a trim that snaps back onto the edge it started
+    /// from is accepted and changes nothing, and the reply says so instead of a bare `ok`.
+    pub changed: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -704,7 +709,12 @@ impl Timeline {
             .ok_or_else(|| CommandError::unknown_element("clip", id))?;
         entry.duration = end - start;
         draft.plan_move(id, None, Some(start), Some(false))?;
-        Ok(TrimPlan { start, end })
+        Ok(TrimPlan {
+            start,
+            end,
+            snapped_from: (resolved != frame).then_some(frame),
+            changed: (start, end) != (clip.start, clip.end()),
+        })
     }
 
     /// Trims one edge of a clip. `speed` is the clip's playback speed as a ratio (`1` is 100 %):
@@ -752,7 +762,8 @@ impl Timeline {
         self.selected_track = Some(clip.track);
         Ok(
             json!({"target":format!("clip:{id}"),"action":"trim","start":plan.start,
-            "end":plan.end,"duration":clip.duration,"previous":previous}),
+            "end":plan.end,"duration":clip.duration,"previous":previous,
+            "snapped_from":plan.snapped_from,"changed":plan.changed}),
         )
     }
 
@@ -1390,6 +1401,43 @@ mod trim_tests {
         assert_eq!(
             t.plan_trim("first-light", TrimEdge::End, 190).unwrap().end,
             192
+        );
+        assert_eq!(t.clips, before);
+    }
+
+    #[test]
+    fn a_snapped_trim_reports_where_it_was_asked_to_go_and_whether_anything_moved() {
+        let mut t = Timeline {
+            snap: false,
+            ..Timeline::default()
+        };
+        let free = t
+            .trim_clip("first-light", TrimEdge::End, 120, Ratio::from_int(1))
+            .unwrap();
+        assert_eq!(
+            (&free["snapped_from"], &free["changed"]),
+            (&Value::Null, &json!(true))
+        );
+        t.snap = true;
+        // 190 is 2 frames from an edge at 192: the edge goes there and the reply says why.
+        let snapped = t
+            .trim_clip("first-light", TrimEdge::End, 190, Ratio::from_int(1))
+            .unwrap();
+        assert_eq!(snapped["end"], 192);
+        assert_eq!(
+            (&snapped["snapped_from"], &snapped["changed"]),
+            (&json!(190), &json!(true))
+        );
+        // Asking for 189 snaps straight back to 192: accepted, nothing moves, and the reply
+        // says so instead of a bare `ok` that looks like the trim happened.
+        let before = t.clips.clone();
+        let back = t
+            .trim_clip("first-light", TrimEdge::End, 189, Ratio::from_int(1))
+            .unwrap();
+        assert_eq!(back["end"], 192);
+        assert_eq!(
+            (&back["snapped_from"], &back["changed"]),
+            (&json!(189), &json!(false))
         );
         assert_eq!(t.clips, before);
     }
