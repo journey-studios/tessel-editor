@@ -4,7 +4,8 @@
 //! Every case drives the real `adopt` / `import::{prepare_observed, apply}` / `MediaHost` APIs
 //! with synthetic PNGs. Cancellation and races come from the callbacks the APIs already expose
 //! (`on_progress`, `on_published`), never from timing, so each run is deterministic. What stays
-//! unproven: Windows, a hostile writer (the lease is cooperative), a full disk, a window.
+//! unproven: Windows other than 11 on NTFS (BL168.6.3), a hostile writer (the lease is
+//! cooperative), a full disk, a window.
 
 mod directed_resources_common;
 
@@ -177,10 +178,19 @@ fn an_adoption_records_the_files_and_folders_it_made_and_nothing_on_a_reuse() {
         &mut |_| {},
     )
     .unwrap();
+    // Relative to the workspace, `/` between components on every platform (`display` would
+    // give `scenes\street` on Windows for the same folder).
     let names = |paths: Vec<&Path>| -> Vec<String> {
         paths
             .iter()
-            .map(|path| path.strip_prefix(&workspace).unwrap().display().to_string())
+            .map(|path| {
+                path.strip_prefix(&workspace)
+                    .unwrap()
+                    .components()
+                    .map(|part| part.as_os_str().to_string_lossy().into_owned())
+                    .collect::<Vec<_>>()
+                    .join("/")
+            })
             .collect()
     };
     assert_eq!(

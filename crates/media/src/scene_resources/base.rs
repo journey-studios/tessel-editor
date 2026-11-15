@@ -218,10 +218,33 @@ mod tests {
         );
     }
 
+    /// An absolute workspace and its managed base, spelled as each platform spells them.
+    #[cfg(not(windows))]
+    const WORKSPACE: (&str, &str) = ("/p/ws", "/p/ws/scenes/street");
+    #[cfg(windows)]
+    const WORKSPACE: (&str, &str) = (r"C:\p\ws", r"C:\p\ws\scenes\street");
+
+    /// `\p\ws` has no drive on Windows: it means "on whatever drive the process runs from", the
+    /// same guess as a relative path, so it is refused like one.
+    #[cfg(windows)]
+    #[test]
+    fn a_workspace_without_a_drive_is_refused_on_windows() {
+        for spelled in ["/p/ws", r"\p\ws", r"C:p\ws"] {
+            assert_eq!(
+                ResourceBase::managed(Path::new(spelled), "a")
+                    .unwrap_err()
+                    .code,
+                "base_not_absolute",
+                "{spelled}"
+            );
+        }
+    }
+
     #[test]
     fn the_managed_base_is_derived_from_the_workspace_and_the_scene_id() {
-        let base = ResourceBase::managed(Path::new("/p/ws"), "street").unwrap();
-        assert_eq!(base.root(), Path::new("/p/ws/scenes/street"));
+        let (workspace, managed) = WORKSPACE;
+        let base = ResourceBase::managed(Path::new(workspace), "street").unwrap();
+        assert_eq!(base.root(), Path::new(managed));
         assert_eq!(base.kind(), BaseKind::Managed);
         assert_eq!(entry_prefix("street").unwrap(), "scenes/street");
     }
