@@ -608,3 +608,19 @@ Child.kill+wait liberar o lock real; SIGSTOP continua Unix. Na falha por panic,
 o scope aguarda até20s para o watchdog matar/recolher o peer e só então relança.
 Essa latência de falha é um limite aceito do harness, não um vazamento nem um
 orçamento do produto. Só conclusão normal cancela o watchdog sem matar o peer.
+
+## Recursos dos dois decks de uma transição (BL082.4.4, S2-H)
+
+`from_root`, `SceneSlots`, `approved_map` e o `resource_map` do export consomem `ScenePlan::resource_union()` (por
+`assetId`, `used_by` qualificado por deck). Um recurso usado só por `transition.other` é aprovado, mapeado e carregado
+como qualquer outro; o compartilhado conta uma vez nos slots e nos bytes, e o teto de splats soma cada uso qualificado.
+A chave de aprovação é a cena do projeto mais o `assetId` (não o `source.scene_definition_id`, a instância ou o shot).
+Falhas de um recurso conservam o código (`resource_unknown`, `resource_not_carried`, `scene_resources_not_loaded`,
+`stale_generation`, `resource_budget_exceeded`) e ganham `details.resource` com os usos por deck; o
+livro de slots continua atômico (nada muda numa recusa). Contrato e provas:
+[fx-transitions.md](fx-transitions.md) e [p4b-s2-host-resource-report.md](../migration/p4b-s2-host-resource-report.md).
+
+`resource_changed` pertence ao snapshot de arquivos do job de export, não aos quatro carregadores H.
+
+No job de export, o label string de snapshot e o objeto de usos dos loaders compartilham `details.resource`;
+o cliente discrimina código/tipo JSON conforme [F042](scene-export.md#recursos-do-plano-com-transição-bl08244-s2-h).
