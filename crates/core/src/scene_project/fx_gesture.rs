@@ -277,6 +277,19 @@ impl EditorState {
         // The budget first: a batch past it is refused before any op is looked at or run.
         scene_edit::check_fx_batch_len(ops.len())?;
         for (index, op) in ops.iter().enumerate() {
+            // A gesture edits a look clip. A transition op is no shortcut around that: it is
+            // refused before anything is run, so the candidate, the intent and the revision stay.
+            if matches!(op, FxOp::Transition(_)) {
+                return Err(CommandError::new(
+                    "gesture_op_not_allowed",
+                    format!(
+                        "Gesture `{id}` edits one look clip; operation {index} is a transition \
+                         op. Use `scene.fx.edit` for that"
+                    ),
+                )
+                .target(id)
+                .details(json!({ "gesture": id, "index": index })));
+            }
             let target = match op.clip_id() {
                 Some(clip) if !matches!(op, FxOp::AddClip(_) | FxOp::RemoveClip { .. }) => clip,
                 _ => {

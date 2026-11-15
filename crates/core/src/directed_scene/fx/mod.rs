@@ -44,8 +44,10 @@ mod scope;
 mod transition;
 mod transition_catalog;
 mod transition_explain;
+mod transition_problem;
 mod transition_read;
 mod window;
+mod window_guard;
 
 use serde_json::{Value, json};
 
@@ -58,11 +60,16 @@ pub use transition_catalog::{
 };
 pub(super) use transition_explain::transition_issues;
 pub use transition_explain::transition_warnings;
+pub use transition_problem::{
+    RawProblem, TransitionProblem, project_issues, project_problem, templates, translated_keys,
+};
 pub(super) use transition_read::TransitionDraft;
+pub use transition_read::param_fault_args;
 pub use window::{
     TransitionWindow, WindowError, available_frames, check_duration, default_transition_duration,
     max_transition_frames, transition_window,
 };
+pub use window_guard::{OverlayTarget, TRANSITION_WINDOW, WindowRefusal};
 
 pub use catalog::{
     EffectSpec, FADE, FADE_AMOUNT, FADE_COLOR, FADE_INTENSITY, FILM_GRAIN, FILM_GRAIN_AMOUNT,
@@ -156,6 +163,12 @@ pub const TRANSITION_TOO_LONG: &str = "TRANSITION_TOO_LONG";
 pub const TRANSITION_NO_HANDLES: &str = "TRANSITION_NO_HANDLES";
 /// Two transition windows that share a frame.
 pub const TRANSITION_OVERLAP: &str = "TRANSITION_OVERLAP";
+/// An edit op named a transition id the scene does not have (F064, S3a). An op error, never an
+/// importer issue.
+pub const UNKNOWN_TRANSITION: &str = "UNKNOWN_TRANSITION";
+/// `set_transition` named an `id` that is not the id of the transition already on that cut (S3a):
+/// the edit does not rename a transition and does not ignore the id either.
+pub const TRANSITION_ID_MISMATCH: &str = "TRANSITION_ID_MISMATCH";
 /// Warning: a transition on a cut whose destination is a continuous junction.
 pub const TRANSITION_ON_CONTINUOUS: &str = "TRANSITION_ON_CONTINUOUS";
 /// Warning: a transition between two shots that both draw a splat scene.

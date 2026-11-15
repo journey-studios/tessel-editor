@@ -66,7 +66,7 @@ impl FxIntent {
             key: None,
         };
         Some(match op {
-            FxOp::AddClip(_) | FxOp::RemoveClip { .. } => return None,
+            FxOp::AddClip(_) | FxOp::RemoveClip { .. } | FxOp::Transition(_) => return None,
             FxOp::SetParam { .. }
             | FxOp::SetField { .. }
             | FxOp::SetHidden { .. }

@@ -282,3 +282,168 @@ fn a_real_headless_process_refuses_transitions_and_keeps_its_session() {
     );
     assert_eq!(answers[8]["result"], answers[3]["result"]);
 }
+
+// ---- S3a (BL082.4.5): the transition ops are no door either ---------------------------------------
+
+/// The ops a user would send to edit transitions, against the public scene `street` (`shot-a`,
+/// `shot-b`).
+fn transition_edits() -> Vec<Value> {
+    let edit = |ops: Value| json!({"op": "scene.fx.edit", "scene": "street", "ops": ops});
+    vec![
+        edit(
+            json!([{"op": "set_transition", "fromShotId": "shot-a", "toShotId": "shot-b",
+                     "effect": "crossDissolve"}]),
+        ),
+        edit(
+            json!([{"op": "set_transition", "fromShotId": "shot-a", "toShotId": "shot-b",
+                     "effect": "crossDissolve", "durationFrames": 12, "alignment": "start",
+                     "handles": "hold", "params": {"curve": "linear"}, "hidden": true}]),
+        ),
+        edit(json!([{"op": "resize_transition", "id": "tr-1", "durationFrames": 8}])),
+        edit(
+            json!([{"op": "set_transition_param", "id": "tr-1", "param": "curve",
+                     "value": "linear"}]),
+        ),
+        edit(json!([{"op": "set_transition_hidden", "id": "tr-1", "hidden": true}])),
+        edit(json!([{"op": "remove_transition", "id": "tr-1"}])),
+        // In a batch with a look that would be fine alone: nothing of it lands either.
+        edit(json!([
+            {"op": "add_clip", "effect": "vignette", "start_frame": 0, "duration_frames": 10,
+             "id": "v1"},
+            {"op": "set_transition", "fromShotId": "shot-a", "toShotId": "shot-b",
+             "effect": "crossDissolve"},
+        ])),
+    ]
+}
+
+#[test]
+fn the_transition_ops_through_the_executor_are_refused_and_change_nothing() {
+    let mut state = state_with_scene();
+    let before = snapshot(&mut state);
+    let requests = transition_edits();
+    for (index, request) in requests.iter().enumerate() {
+        let mut dry = request.clone();
+        dry["dry_run"] = json!(true);
+        for request in [request.clone(), dry] {
+            let error = headless::execute(&mut state, &request).unwrap_err();
+            // A set is judged by the importer, which still says "not yet"; an op on a transition
+            // that cannot exist says so.
+            let expected = match index {
+                0 | 1 | 6 => "invalid_bundle",
+                _ => "unknown_transition",
+            };
+            assert_eq!(error.code, expected, "{request}: {error:?}");
+            let details = error.details.as_ref().unwrap();
+            assert_eq!(
+                details["errors"][0]["code"],
+                if expected == "invalid_bundle" {
+                    fx::FX_TRANSITION_NOT_YET
+                } else {
+                    fx::UNKNOWN_TRANSITION
+                }
+            );
+            if expected == "invalid_bundle" {
+                assert_eq!(details["issues"][0]["code"], fx::FX_TRANSITION_NOT_YET);
+                assert_eq!(details["errors"][0]["message"], NOT_YET);
+            }
+            assert_eq!(snapshot(&mut state), before, "{request}");
+        }
+    }
+    assert!(
+        state
+            .scenes
+            .get("street")
+            .unwrap()
+            .scene
+            .bundle()
+            .fx
+            .transitions
+            .is_empty()
+    );
+    // The public catalog and the plan of a frame are what they were.
+    let catalog = ok(&mut state, json!({"op": "scene.fx.catalog"}));
+    let ids: Vec<&str> = catalog["effects"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|effect| effect["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, ["vignette", "fade", "filmGrain"]);
+    let frame = ok(
+        &mut state,
+        json!({"op": "scene.fx.frame", "scene": "street", "frame": 20}),
+    );
+    assert!(frame.get("transition").is_none());
+}
+
+#[test]
+fn a_real_headless_process_refuses_the_transition_ops_and_keeps_its_session() {
+    let mut requests = vec![
+        json!({"op": "scene.attach", "id": "street", "bundle": bundle_of(CUT)}),
+        json!({"op": "status"}),
+        json!({"op": "history.status"}),
+    ];
+    let edits = transition_edits();
+    let count = edits.len();
+    requests.extend(edits);
+    requests.extend([
+        json!({"op": "status"}),
+        json!({"op": "history.status"}),
+        json!({"op": "scene.fx.catalog"}),
+    ]);
+    let input = requests
+        .iter()
+        .map(Value::to_string)
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let mut child = Process::new(env!("CARGO_BIN_EXE_tessel-headless"))
+        .arg("--empty")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(input.as_bytes())
+        .unwrap();
+    let output = child.wait_with_output().unwrap();
+    // Refused requests end a session with exit 1, after answering every one.
+    assert_eq!(output.status.code(), Some(1));
+    let answers: Vec<Value> = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(answers.len(), requests.len());
+    assert_eq!(answers[0]["ok"], true, "{:?}", answers[0]);
+    for answer in &answers[3..3 + count] {
+        assert_eq!(answer["ok"], false, "{answer:?}");
+        let code = answer["error"]["code"].as_str().unwrap();
+        assert!(
+            code == "invalid_bundle" || code == "unknown_transition",
+            "{answer:?}"
+        );
+        let first = answer["error"]["details"]["errors"][0]["code"]
+            .as_str()
+            .unwrap();
+        assert!(
+            first == fx::FX_TRANSITION_NOT_YET || first == fx::UNKNOWN_TRANSITION,
+            "{answer:?}"
+        );
+    }
+    // The same revision and history before and after: nothing moved.
+    assert_eq!(
+        answers[3 + count]["result"]["persistence"]["revision"],
+        answers[1]["result"]["persistence"]["revision"]
+    );
+    assert_eq!(answers[4 + count]["result"], answers[2]["result"]);
+    let looks: Vec<&str> = answers[5 + count]["result"]["effects"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|effect| effect["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(looks, ["vignette", "fade", "filmGrain"]);
+}

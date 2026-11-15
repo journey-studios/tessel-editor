@@ -19,6 +19,13 @@
 //! * `plan`: `ScenePlan.transition`, resources of two decks, requirement, corruption (T08, T09, T28).
 //! * `limits`: bytes, items and depth ceilings of a plan with a transition.
 //! * `compat`: the Rust capability list against the runtime's.
+//!
+//! P4b S3a (BL082.4.5, BL082.4.15, BL082.4.24), editing through the core; the gate stays closed:
+//!
+//! * `edit`: the five transition ops, atomic batches, ids, quotas and the importer's rules in
+//!   front of an edit (E01-E11, E19).
+//! * `edit_problems`: localized problems and sufficient camera-head repairs (E12/E15).
+//! * `window_guard`: the shared pure overlay refusal predicate (E14).
 
 #[path = "scene_fx_transition/boundary.rs"]
 mod boundary;
@@ -30,6 +37,10 @@ mod compat;
 mod corpus;
 #[path = "scene_fx_transition/document.rs"]
 mod document;
+#[path = "scene_fx_transition/edit.rs"]
+mod edit;
+#[path = "scene_fx_transition/edit_problems.rs"]
+mod edit_problems;
 #[path = "scene_fx_transition/limits.rs"]
 mod limits;
 #[path = "scene_fx_transition/parameter_order.rs"]
@@ -50,3 +61,5 @@ mod scan_checks;
 mod stages;
 #[path = "scene_fx_transition/support.rs"]
 mod support;
+#[path = "scene_fx_transition/window_guard.rs"]
+mod window_guard;

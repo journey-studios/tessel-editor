@@ -557,3 +557,164 @@ retorna 0 limpa e 1 com extra preservado, assim como check/verify dessa saída.
 O mutante da comparação falha por asserção. Nenhum Rust/build/GPU reexecutado
 nessa rodada; os cinco Rust continuam sendo prova da R3. Origem não executada,
 pin ausente no Windows não verificado; consumidor S1b/S2 e pixels pendentes.
+
+## S3a (BL082.4.5, BL082.4.15, BL082.4.24): edição de `crossDissolve` no core — admissão **fechada**
+
+Plano de execução: [p4b-s3a-editing-plan.md](../migration/p4b-s3a-editing-plan.md). Esta seção fixa as decisões de API
+**antes** do código que as implementa; ela especializa o §9 do [plano canônico](../migration/p4b-cross-dissolve-plan.md).
+O portão público continua `Refuse`: nenhuma operação abaixo é alcançável com sucesso por `scene.attach`, `scene.fx.edit`,
+`tessel-headless` ou pela janela. Só testes com a política interna `Accept` (herdada pelo candidato) as exercitam.
+
+### Operações (`scene.fx.edit`, mesmo `FxOp`, mesmo candidato)
+
+| Op (`op`) | Campos | Efeito no documento |
+|---|---|---|
+| `set_transition` | `fromShotId`, `toShotId`, `effect`; `id?`, `durationFrames?`, `alignment?`, `handles?`, `easing?`, `params?`, `hidden?` | Upsert **por corte** (par de shots exatos) |
+| `resize_transition` | `id`, `durationFrames`; `alignment?` | Troca a janela; o importador julga vizinhança, edição, sobreposição e handles |
+| `set_transition_param` | `id`, `param`, `value` | Um parâmetro do catálogo da transição (`curve`, `intensity`) |
+| `set_transition_hidden` | `id`, `hidden` (booleano) | `true` grava `hidden: true`; `false` **omite** o membro |
+| `remove_transition` | `id` | Remove; id ausente é `UNKNOWN_TRANSITION`, nunca sucesso silencioso |
+
+- **Sem aliases.** Os nomes são os do documento (`fromShotId`…); `from_shot_id` é recusado como campo desconhecido.
+  Inteiros são estritos (`12.0`, `12.5`, texto e booleano são recusados na leitura da op como `invalid_op`).
+- **Upsert existente** conserva `id` e todo campo omitido, inclusive os membros desconhecidos da transição (os de
+  `params` são recusados pelo importador, `UNKNOWN_PARAM`, então não existem num documento válido). `params` faz
+  *merge* só das chaves enviadas. Um valor **igual** ao do documento (comparado já tipado: `1` e `1.0`) não reescreve a
+  grafia autorada; um parâmetro que o documento **não** grava (lê-se como o padrão) e que a op envia com o valor padrão é
+  uma mudança: o padrão passa a estar escrito. Um `id` explícito diferente do existente é recusado (`TRANSITION_ID_MISMATCH`): o Tessel **não**
+  segue a spec de origem aqui (ela ignora o `id` do comando com uma nota).
+- **Upsert novo** grava `id`, `effect`, `fromShotId`, `toShotId`, `durationFrames`, `alignment`, `handles`, `easing` e
+  `params` completos (`curve`, `intensity`) com os padrões `center`, `hold`, `easeInOutCubic`, `smooth`, `1`; a duração
+  padrão é `default_transition_duration` (24 típica, cortada a `maxTransitionFrames`); máximo 0 recusa com
+  `TRANSITION_TOO_LONG`. Um valor explícito ilegal **nunca** é cortado para ser aceito. `id` omitido é gerado como
+  `tr-<n>`.
+- **Namespace de ids (BL082.4.15).** Trilhas, clipes **e transições** dividem o espaço; a verificação de duplicata é
+  exata e a de reservados (`track`, `fx`, `transition`) não distingue maiúsculas. O alocador de ids de `add_clip` e de
+  trilha passa a considerar as transições (antes, uma transição `fx-1` podia colidir com um clipe gerado).
+- **Um só candidato por lote.** Todas as ops do lote atuam numa cópia JSON; **um** `reimport` (política herdada) julga o
+  resultado. Uma op inválida recusa o lote inteiro; `ops: []` é identidade; ida-e-volta líquida (criar e remover) não
+  modifica nada; um no-op marca `noop` na mudança e não cria revisão nem entrada de undo; a edição real cria **uma**
+  entrada de undo. `dry_run` roda o mesmo caminho e não grava; recusa em dry-run continua recusa.
+  `base_revision` obsoleta é `stale_revision` antes de qualquer cópia. Teto de 1024 ops antes da cópia (existente).
+- **`FxChange` de transição:** `track` vazio, `clip` = id da transição, `transition` = `Some(id)`; o JSON da mudança
+  troca `track`/`clip` por `transition` e mantém `index`, `action`, `target`, `before`, `after`, `noop`.
+  O ponteiro usado para atribuir problemas a ops é `/fx/transitions/<i>`.
+- **Gesto de look.** `scene.fx.gesture.*` recusa uma op de transição com `gesture_op_not_allowed` e mensagem própria,
+  sem mudar candidato, intenção nem revisão (a recusa fica registrada como a mais recente, como a de qualquer op de
+  gesto recusada). Não existe gesto de transição (S3b/S4b).
+- **`UNKNOWN_SHOT` de op.** Um shot que a edição não tem recusa o `set_transition` com a lista dos shots; a frase nomeia
+  a transição pelo `id` pedido ou, na falta dele, pelo que seria gerado (`tr-<n>`), pois num corte com shot ausente não
+  existe transição.
+- **N/A:** troca de efeito (só existe `crossDissolve`); `keys`/escopo de nó de transição (`FX_TRANSITION_KEYS_NOT_YET`);
+  comando de editar shots (P5/BL082.5, ver abaixo).
+
+### Dois níveis de código e o envelope de erro
+
+| Nível | Onde aparece | Exemplos |
+|---|---|---|
+| **`CommandError.code`** (envelope) | `error.code` da resposta de `scene.fx.edit` | `invalid_bundle` (candidato recusado), `invalid_op`, `unknown_transition`, `transition_id_mismatch`, `stale_revision`, `gesture_op_not_allowed` |
+| **`Issue.code`** (regra) | `error.details.issues[].code` e `error.details.errors[].code` | `FX_TRANSITION_NOT_YET`, `TRANSITION_OUT_OF_RANGE`, `TRANSITION_TOO_LONG`, `TRANSITION_NO_HANDLES`, `UNKNOWN_SHOT`, `FX_LIMIT`, `DUPLICATE_ID` |
+
+- Uma recusa do **candidato** (`invalid_bundle`) traz `details.issues[]` (formato **existente**, intacto) e agora também
+  `details.errors[]`: a mesma lista na forma `{code, message, hint, transitionId?, shotId?, details}`, em **inglês**
+  (o envelope não tem `locale` nesta fase; não se alega seleção pública de idioma no JSONL).
+- Um erro **da op** (antes do candidato: `UNKNOWN_TRANSITION`, `TRANSITION_ID_MISMATCH`, `UNKNOWN_SHOT`, `TOO_LONG` sem
+  espaço…) traz o código do envelope em minúsculas e `details.errors[]` com **um** item cujo `code` é o do nível de
+  regra. Sucesso e no-op não ganham `errors` vazio. Erros de **look** não ganham `errors[]` nesta fase (formato igual).
+  Essa projeção começa após o parsing das ops tipadas. Erros de sintaxe/forma no parser,
+  como alias `from_shot_id` ou duração fracionária, continuam `invalid_op` sem `errors[]`.
+- Projeção pura, uma só função do core para biblioteca, dry-run e futuro inspector:
+  `directed_scene::fx::project_problem(problem: &RawProblem<'_>, locale: Locale) -> TransitionProblem` e
+  `project_issues(issues: &[Issue], locale: Locale) -> Vec<TransitionProblem>`. `Locale` é o do Kit/core (`pt-br`,
+  `en`, `es`). Os textos moram numa tabela do core indexada por código (e por `código:variante` quando a mensagem muda
+  de forma, ex.: `TRANSITION_OUT_OF_RANGE:duration_below_one`); um teste enumera **todos** os códigos e variantes e exige
+  as três línguas com os mesmos marcadores `{…}`. Um código **fora** dessa tabela não cai num texto inventado: devolve o
+  texto original do importador (inglês) e `details.untranslated = true`. Problemas estruturais genéricos (tipo, campo
+  ausente, valor inválido de campo livre) usam um texto localizado com `{path}` e levam a razão original, em inglês,
+  em `details.reason`.
+- `details.args` (aditivo, **não** substitui `hint`) leva os números e ids de que o texto precisa; é a entrada da projeção.
+  O corpus mantém code/message/transitionId/lacks. Uma adaptação explícita de vocabulário
+  troca apenas `setTransition` por `set_transition` na dica de TRANSITION_DUPLICATE, pois
+  o comando camelCase do piloto não existe neste editor. O fixture fixado não é regravado.
+- Código de recusa de janela de overlay: `transition_window` (nível de **gesto**, ver predicado abaixo), com texto nas
+  três línguas na mesma tabela.
+
+### BL082.4.24: diagnóstico de handles com `cameraIn` além do fim
+
+A cabeça real contígua exige `cameraIn >= before` **e** `cameraIn <= total` (câmera de `total` quadros); as duas faltas
+são **independentes** e o reparo de cada uma é diferente. `details.lacks[]` ganha, só quando a falta de fim existe,
+`cameraEnd = cameraIn − total` (junto de `cameraIn` e `cameraFrames`); `camera` passa a ser **só** a falta de início,
+`max(0, before − cameraIn)`, e `instance` não muda. Sem `cameraEnd` o formato e os valores continuam byte a byte os do
+corpus. A dica oferece o reparo de cada falta: (início) estender o clipe de câmera em `camera` quadros antes do início
+(`extend its camera clip … by N frames before its start`); (fim) estender o clipe de câmera em `cameraEnd` quadros no fim. Exemplos: `cameraIn 60`, câmera 48, `before 6` →
+`cameraEnd 12` (acrescentar 6 **não** basta); `49/48` → `cameraEnd 1`; `48/48` válido; `cameraIn < before` → só a falta
+de início (estender o fim não resolve); as duas faltas juntas (`cameraIn 4`, câmera 3, `before 6`: `camera 2`,
+`cameraEnd 1`) pedem os dois reparos, nenhum basta sozinho; `before 0` não exige cabeça, **nem** a falta de fim (uma
+janela alinhada ao início não lê nada antes do corte). A admissão **não** é enfraquecida.
+
+**Análogo conhecido, não corrigido aqui (BL082.4.25, proposto):** a cauda do plano que sai tem a mesma subestimativa.
+Com `cameraIn 40` e câmera de 60 quadros num plano de 48, a janela pede 6 quadros após o fim e a dica manda estender o
+clipe em 6, mas é preciso `cameraIn + duração + after − total = 34`; estender 6 continua recusado. É outra dívida (o
+campo `camera` da cauda e a linha do oráculo que o compara) e fica fora desta entrega.
+
+### Predicado de janela (§9.6, sem consumidor ainda)
+
+`directed_scene/fx/window_guard.rs`: `Fx::overlay_refusal(&self, shots: &[Shot], edit_duration_frames: u64, edit_frame:
+i64, target: OverlayTarget) -> Option<WindowRefusal>` (o esboço do plano não tinha `shots`/duração, necessários para
+escolher a janela). Reaproveita a **mesma** escolha de `resolve_frame` (`frame::active`: transição visível, janela
+`[início, fim)` meio-aberta). Transição `hidden` não recusa. Sem estado e sem ordem. Nenhum overlay real é ligado: o
+gizmo, o press e as alças continuam como estão; a S4a consome esta decisão.
+
+**Alvo de edição durante a janela (registro, não implementado).** O dono de uma entidade é o seu escopo
+(`FxScope::Shot(id)`, `scope_start..scope_end`); o shot de um quadro é `shot_at`. Uma propriedade estática sem chave não
+depende do quadro; uma chave de look vale em quadro **explícito** dentro do `editRange` do dono. Uma entidade do deck
+vizinho sem quadro explícito válido é recusada com `neighbor_deck_frame_out_of_shot` (código **proposto**, ainda sem
+produtor); nunca se grava uma chave fora do `editRange` do plano dono.
+
+### Shot removido ou encurtado (P5 inexistente)
+
+Não existe comando de editar `shots[]`. A S3a prova só pelo importador do candidato: substituir ou anexar um documento
+sem o shot citado, com o shot encurtado ou não vizinho é recusado com o código da regra e **nada** é cortado nem
+consertado. **N/A:** edição de shots e reavaliação de transições pela P5 (BL082.5).
+
+### Prova Mac da integração S3a
+
+No head limpo `33323a2` (main79ed312 incorporada sem conflito de código), core
+completo:1666/0/7 em65 resultados, com lib605/transições170/corpus10/X5/baseline1.
+Com preserve_order:170/10/5/1; desktopFX80/80; fmt/check/clippy-all-targets/no-run/
+build passaram e tree sem GPUI/wry. Windows continua como prova separada: autor934
+relatou dois gizmos da base vermelhos; revisão independente integrada pendente.
+Sem workspace global executado, runtime, GPU, origem ou UI física. F064 produto P,
+Refuse fechado; .25 (dica da cauda) e consumidor do predicado continuam pendentes.
+
+### Correções após a revisão Windows R1
+
+R1 validou o escopo interno em33323a2, com dois gizmos da base vermelhos e sem
+workspace global verde. Achado BL082.4.26: ida e volta numérica no mesmo lote
+(`intensity` autorado1 →0.5→1) escrevia1.0 e gerava revisão/undo. O fechamento
+restaura a grafia anterior de parâmetros presentes cujo valor tipado voltou ao
+original, preservando a distinção entre parâmetro omitido e default escrito.
+Vale também se outra propriedade do mesmo lote mudou; defaults não são apagados.
+As provas novas incluem documento/revisão/histórico em dry-run e commit, hints
+traduzidos, erro de look em lote misto e orçamento candidato ao adicionar/remover
+transição. Esses ajustes ainda precisam de gates próprios; não herdam a R1.
+
+BL082.4.28: contagens obrigatórias ausentes/inválidas na projeção preservam
+mensagem/hint originais e marcam `untranslated`; zero válido não é ausência.
+A atribuição de erro retém o tipo clip/transição ao reutilizar um ID num lote.
+A dica TRANSITION_DUPLICATE usa `set_transition` nas três línguas e no importador,
+com a adaptação de vocabulário do corpus registrada acima.
+
+### Aceite interno S3a após R2 Windows
+
+R2 aceitou512685a/códigob097979:175/10/5/1 debug e preserve_order,lib606,
+desktopFX80,gatesfmt/check/clippy/no-run/build0. Dois mutantes R1 agora mortos;
+controle repetido após restauração. Mac1673/0/7 é prova separada. Sem execução
+do workspace global, runtime/GPU/UI física; Refuse fechado e F064 produto P.
+
+Ressalvas de cobertura: guarda effect/from/to e cameraEnd inválido sem testes
+permanentes discriminantes, embora probes confirmem o comportamento; E13 novo
+prova edit/list/inspect, não frame/gesto. Reutilização de ID dentro do mesmo tipo
+ainda pode atribuir erro à remoção anterior (.29); .28 trata tipos diferentes.
+No-op líquido relata alterações intermediárias por op, sem revisar/gravar o
+resultado líquido. Dica da cauda(.25) pendente; detalhes no relatório S3a§13.

@@ -42,7 +42,9 @@ mod fx_choice;
 mod fx_inspector;
 mod fx_intent;
 mod fx_keys;
+mod fx_op;
 mod fx_scope;
+mod fx_transition;
 mod op;
 mod reference;
 mod value;
@@ -62,8 +64,7 @@ pub use error::{
     UNKNOWN_NODE, UNKNOWN_PATH, UNKNOWN_SCENE,
 };
 pub use fx::{
-    AddClip, ClipField, FxChange, FxOp, FxOutcome, FxSummary, MAX_FX_BATCH_OPS, apply_fx,
-    apply_fx_measured, apply_fx_with, check_fx_batch_len, dry_run_fx, parse_fx_batch,
+    FxChange, FxOutcome, FxSummary, apply_fx, apply_fx_measured, apply_fx_with, dry_run_fx,
 };
 pub use fx_animation::{
     ClipAnimation, ParamAnimation, REASON_FRAME_OUTSIDE_CLIP, REASON_NEEDS_TWO_KEYS,
@@ -81,6 +82,8 @@ pub use fx_inspector::{
 pub use fx_intent::{FxIntent, GESTURE_INTENT_MISMATCH, GESTURE_TARGET_MISMATCH, IntentRefusal};
 pub use fx_keys::FxWork;
 pub use fx_keys::STATIC_UNDER_KEYS;
+pub use fx_op::{AddClip, ClipField, FxOp, MAX_FX_BATCH_OPS, check_fx_batch_len, parse_fx_batch};
+pub use fx_transition::{SetTransition, TransitionOp};
 pub use op::{EditOp, parse_batch};
 pub use reference::PropertyRef;
 pub use value::{PropertyValue, ValueKind};
