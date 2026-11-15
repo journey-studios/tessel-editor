@@ -912,3 +912,20 @@ garantia universal sobre objetos executáveis/profundos. O caminho textual receb
 JSON, não esses objetos, e o parser interno continua fora das portas produtivas.
 Esses limites ficam em BL082.4.4 para o desenho/transporte seguinte. Produto P,
 Refuse fechado e JS13; não é aceite de pixels, cache/lifecycle ou ativação.
+
+### BL082.4.4: desenho dirigido atual extraído do compositor (S2-R1a)
+
+Antes de qualquer desenho de dois decks, o desenho do plano dirigido atual foi movido sem mudança
+de comportamento para `runtime/src/directed-deck-draw.js` (R1a, código `02f16a3`, controles
+`bdd38bd`): corpos idênticos por comparação normalizada, wrappers no `Compositor`, ordem, chaves,
+telemetria e posse de `frame.keep` preservados. A produção ainda recusa toda transição, JS13/Rust14,
+admissão pública `Refuse`, produto P. Não há desenho de transição, cache, orçamento, router,
+liberação de lease entre decks nem pixel de transição: isso é R1b/c. Evidências por head, mutantes e
+patches em [relatório R1a](../migration/p4b-s2-r1a-draw-extraction-report.md).
+
+
+R1a integrada à main `805a0c6` no head `e14dc51`: grading e layout preservados, compositor
+1192→1080, corpos extraídos idênticos por SHA normalizado. Mac: Node195/browser74 sem skips,
+render44 (scene_frames8/interop5), core216/10/5/8/1 EXPECT0/1 e estáticos/no-run/build0.
+BL168.11 corrigido só no teste de capacidades, mantendo JS13/Rust14. Revisão independente
+Windows aprovada em e14dc51 (Node195/browser71+3/render44+9, core e estáticos verdes); produto P/Refuse, sem desenho ou pixels de transição, GPU física ou desempenho.

@@ -21,6 +21,7 @@ cada acesso pela UI, CLI com UI, CLI headless e biblioteca Rust.
 - [P4b S2-C0b — relógios e estado dos dois decks](migration/p4b-s2-c0b-report.md): timing/alignment, limites de plano e consumidor X de estado; admissão pública fechada.
 - [P4b S2-H — união de recursos no host](migration/p4b-s2-host-resource-report.md): quatro carregadores, erros por deck e orçamentos; H interna aceita (PR73), com limites por plataforma, admissão pública fechada.
 - [P4b S2-R0 — leitor interno do plano de dois decks](migration/p4b-s2-r0-parser-report.md): parser interno aceito pela R2 Windows (a3c357b), recusa pública fechada; sem desenho ou ativação.
+- [P4b S2-R1a — extração do desenho dirigido](migration/p4b-s2-r1a-draw-extraction-report.md): módulo próprio, controles de borda e integração com grading/layout; Mac validou e14dc51, revisão Windows independente aprovada em e14dc51; sem desenho de transição.
 - [Backlog compartilhado](backlog.md): registro único de pendências, responsáveis, dependências e aceite; obrigatório para todos os agentes.
 - [Inventário de migração do Scene Studio](migration/README.md): 121 itens classificados,
   evidências na origem, diferenças do branch piloto, matriz de migração e fatias sugeridas.
