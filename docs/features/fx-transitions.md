@@ -812,3 +812,19 @@ um passe ou uma luz a mais é recusado em `/transition`. O texto de exatamente 4
 (`dissolve-representable-cases.json`) é lida como **estado** pelo plano real, sem Python e sem pixel (BL082.4.17).
 Continua fora: o gate público (`Refuse`), runtime/shader/export, UI e qualquer pixel. Evidências, mutantes, limites e os
 patches do coordenador: [p4b-s2-c0b-report.md](../migration/p4b-s2-c0b-report.md).
+
+### BL082.4.4: carregadores do host leem a união dos dois decks (S2-H)
+
+Os quatro carregadores de recursos do renderer (`SceneResourceMap::from_root`, `SceneSlots::resolve`/`prepare`,
+`scene_operation::approved_map` e `scene_export::resource_map`) passam a percorrer `ScenePlan::resource_union()` em vez
+de `plan.resources`: um `assetId` que só o deck vizinho (`transition.other`) usa deixa de ser perdido, e um `assetId`
+compartilhado é resolvido, aprovado e carregado **uma vez**. A aprovação continua por `(cena do projeto, Asset(assetId))`;
+nenhum id de nó, `scene_definition_id`, `scene_instance_id`, shot ou papel de deck entra na chave. Metadados divergentes
+para o mesmo `assetId` seguem recusados na validação (`/transition/other/resources/N`) **antes** de resolver, abrir
+arquivo ou tocar a raiz. Todo erro atribuível a um recurso carrega `details.resource = {asset_id, used_by:[{deck, node_id}]}`
+e a mensagem nomeia o(s) deck(s); o código do erro não muda (`resource_unknown` continua `resource_unknown` no
+`approved_map`). Erros globais (raiz inexistente, teto total) não recebem atribuição inventada. O custo de splats conta
+**cada uso qualificado** dos dois decks (ids de nó iguais em decks diferentes contam duas vezes) e os bytes de um arquivo
+compartilhado contam uma vez; as somas saturam e nunca dão a volta. Continua **sem** admissão pública (`Refuse`): os
+testes usam a admissão oculta `Accept` somente em `crates/render/tests`. Plano, mutantes, limites e os patches do
+coordenador: [p4b-s2-host-resource-report.md](../migration/p4b-s2-host-resource-report.md).

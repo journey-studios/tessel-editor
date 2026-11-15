@@ -102,7 +102,9 @@ agulha. `other` não aninha (profundidade 1): um vizinho com `transition` é rec
 antes de ser lido. A saída (`fx` de escopo `output`) age uma vez, no topo, e não é duplicada em `other`.
 
 `resource_union()` é **derivada, não serializada**: por `assetId`, com `used_by` qualificado por deck (`primary`,
-depois `other`); o mesmo `assetId` com conteúdo diferente é inválido em `/transition/other/resources/N`. `requires`
+depois `other`); o mesmo `assetId` com conteúdo diferente é inválido em `/transition/other/resources/N`. Os quatro
+carregadores do host (`from_root`, `SceneSlots`, `approved_map`, `resource_map`) consomem esta união, não `resources`
+(S2-H, BL082.4.4; [fx-transitions.md](fx-transitions.md)). `requires`
 ganha `fxTransition` (14ª `Capability`, **ausente** da lista `SCENE_CAPABILITIES` do JS até a S2) e a união das
 capacidades dos dois decks. Tetos: 4 194 304 bytes, 20 000 itens e profundidade 1.
 O teto de bytes é verificado antes do parse quando a chave `transition` está literal; uma chave com escape
