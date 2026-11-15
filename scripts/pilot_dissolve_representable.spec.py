@@ -35,6 +35,7 @@ from decimal import Decimal, getcontext
 from fractions import Fraction
 from functools import lru_cache
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 HERE = Path(__file__).parent
@@ -778,6 +779,21 @@ class Structure(unittest.TestCase):
         wanted = g.expected_files()
         self.assertEqual(wanted, g.expected_files(), "deterministic")
         self.assertEqual(g.compare(g.FIXTURES, wanted), [])
+
+    def test_unlisted_assets_fail_both_inventory_gates_without_being_deleted(self):
+        with TemporaryDirectory(prefix="dissolve-inventory-") as temporary:
+            directory = Path(temporary)
+            wanted = g.expected_files()
+            for name, data in wanted.items():
+                target = directory / name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(data)
+            self.assertEqual(g.main(["verify", "--out", temporary]), g.EXIT_OK)
+            orphan = directory / g.ASSET_DIR / "flat-ffffff.png"
+            orphan.write_bytes(next(data for name, data in wanted.items() if name.endswith(".png")))
+            self.assertEqual(g.main(["generate", "--check", "--out", temporary]), g.EXIT_FINDING)
+            self.assertEqual(g.main(["verify", "--out", temporary]), g.EXIT_FINDING)
+            self.assertTrue(orphan.exists(), "verification must not delete an unlisted file")
         self.assertEqual(wanted[g.CASES_NAME], CASES_BYTES)
 
     def test_manifest_provenance(self):
@@ -821,7 +837,7 @@ class Structure(unittest.TestCase):
                 imported.add((node.module or "").split(".")[0])
         # Explicit roots also work on Python 3.9, which has no sys.stdlib_module_names.
         stdlib = {"argparse", "binascii", "hashlib", "importlib", "json", "struct", "sys",
-                  "fractions", "pathlib", "zlib"}
+                  "fractions", "pathlib"}
         self.assertTrue(imported <= stdlib, imported - stdlib)
 
     def test_the_generator_refuses_a_store_stub_and_has_a_cli(self):

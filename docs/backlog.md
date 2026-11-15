@@ -2188,3 +2188,9 @@ BL082.4.17: reforço026b72a noMac passou37normal/-O/metadata3.10ausente,
 agoramorrem,JSONrestaurado/5verdes. Os98quadros/390sondas,bundles,limiares e
 PNGs são iguais a932; sómetadata-resumoremovida e mapaassets adicionado.
 R2Windowsdo reforço ainda pendente; semconsumer/pixels ouorigemexecutada.
+
+BL082.4.17: R2 Windows aprovou93037e0 (37Python normal/-O/metadat ausente,
+14arquivos,5Rust,3mutantesdejanela,fmt/clippy/tree), sembloqueio. OrfãoPNGfoi
+confirmadoe corrigidopelocoordenador: comparelistaentradasda pastaexclusivae
+recusaextra semapagá-lo, emgenerate--check/verify. Mac38normal/-O passam;
+Windowsdo novo guard serárechecado. Math/dados/manifest/PNGs intactos desde930.

@@ -228,8 +228,8 @@ Só os campos-resumo enganosos e a convenção do mapa mudaram nos cases; manife
 
 Limites da R1 preservados: câmera presa não tem discriminante em pixel quando pose satura;
 UNH em cena estática precisa do estado. Viés agregado por cenário vs texto por quadro deve ser
-decidido antes do consumidorS2. O plano inicial se refere à S1b737; o reforço posterior dessa
-PR passou a comparar câmera/offset/pose, sem fechar o metadado legado(.23). Nada aqui afirma
+decidido antes do consumidorS2. O plano inicial registra a divergência legada (.23) descoberta na S1b; esta PR não depende
+de nenhum consumidor S1b/S2 e o .23 continua aberto. Nada aqui afirma
 pixels ou avaliação de dois decks. Os gates do reforço ainda precisam de execução/rechecagem.
 
 Hashes após os ajustes de metadados/testes (os valores do §6 são históricos de932):
@@ -252,3 +252,20 @@ sobreviventes, agora falham por asserção no teste Rust; JSON restaurado por by
 novamente verdes. O patch não alterou qualquer estado, sonda, bundle, limiar ouPNG de932;
 só remove os resumos de papel e adiciona o mapa explícito de assets. Não há consumidorS1b/S2.
 A rechecagem Windows das correções permanece pendente; a R1 de932 é histórica, não herdada.
+
+## 12. R2 Windows e inventário de assets
+
+R2 aprovou93037e0 sem bloqueio. Windows:37normal/-O,37commetadataausente,14arquivos,
+verifyoffline/origin e strictpin4ausente,5Rust/fmt/clippy/tree. R5/R6 e mutanteextra dajanela
+296→295 morreram por asserção, fontes restauradas porSHA/mtime e5/5 verdes.
+
+R2 confirmouumPNGórfão que passava no inventário. O coordenador adicionou guard comparti-
+lhado de compare(), usado porgenerate--check everify: toda entrada na subpasta exclusiva de
+assets deve estar emwanted. Não há remoção automática. Um controle novo usa cópia própria,
+confere controleintacto0, adiciona PNGextra, exige1nasduasportas econferequeoextra permanece.
+Mac38specs normal/-O passam. Python3.9 real não foi executado; gramática e atributo ausente
+continuam separados de execução. Dado/manifesto/12PNGs não foram regenerados por este guard.
+O Windows do guard ainda precisa de rechecagem. Hashes do§10 são do reforço f0; os atuais:
+
+- scripts/pilot_dissolve_representable.py: 79407b1ac72a1bb369055c244bc0c3c029c0ca3f184b1a4472fa99de1878eb28
+- scripts/pilot_dissolve_representable.spec.py: 176ca90bf6c7700ce0929de16d787f5463eb931208b1d1db26a9e1ba6a1b1e8c

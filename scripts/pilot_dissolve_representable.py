@@ -794,6 +794,9 @@ def compare(directory, wanted):
             differences.append("missing: " + name)
         elif path.read_bytes() != data:
             differences.append("%s is not what the generator produces today" % name)
+    for path in sorted((directory / ASSET_DIR).glob("*")):
+        if path.relative_to(directory).as_posix() not in wanted:
+            differences.append("unexpected asset: " + path.name)
     return differences
 
 

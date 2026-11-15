@@ -444,7 +444,7 @@ asset_resolution mapeia assets/<nome>.png do bundle para dissolve-representable-
 junto ao corpus; o consumidor deve resolver/copiar o basename e conferir o hash do manifesto.
 Rust compara alinhamento/duração importados e transition_window com o oráculo; o teste de imports
 Python usa uma allow-list de stdlib e sintaxe3.9, sem sys.stdlib_module_names. Python3.9 real não
-foi executado pelo coordenador; o atributo ausente será simulado no intérprete atual.
+foi executado pelo coordenador; o atributo ausente foi simulado no intérprete atual (Mac e Windows R2:37testes).
 
 Hold da câmera não se distingue em pixel se a pose já satura. held_camera/camera_clip_frame só
 se provam por ESTADO no consumidor S1b. UNH concorda em pixel nas cenas estáticas; instance_frame
@@ -456,3 +456,10 @@ No reforço026b72a, Mac passou37normal/-O e37com metadata opcional de3.10 ausent
 reproduzidos, verify com pin em blobs e5Rust/clippy do alvo. Dois mutantes novos de duração e
 alinhamento morreram; dados restaurados. Windows pós-correções a validar. Gramática3.9 foi
 parseada; não houve execução de Python3.9 real nem de origem/renderer.
+
+R2 Windows aprovou93037e0:37normal/-O e37sem metadata opcional,14arquivos,
+verify/blobs/pin ausente4,5Rust/clippy, mutantes alinhamento/duração/janela mortos.
+A verificação recebeu ainda um guard de inventário: generate--check/verify agora recusam
+qualquer entrada não declarada na pasta exclusiva de assets; não apagam arquivos extras.
+Mac38specs normal/-O passaram com o novo controle. Dados de sondas/bundles/limiares/PNGs
+não mudaram. Windows do guard de inventário será rechecado separadamente.
