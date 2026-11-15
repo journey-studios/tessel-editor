@@ -38,9 +38,15 @@ fn issue(
     transition: &str,
     message: String,
     hint: String,
+    args: Value,
 ) -> Issue {
-    Issue::new(code, path, message)
-        .with_details(json!({ "transitionId": transition, "hint": hint }))
+    // `args` are the numbers and ids the message and the hint were built from: the input of the
+    // localized projection (`transition_problem`), additive to the English `hint`.
+    let mut details = json!({ "transitionId": transition, "hint": hint });
+    if !args.is_null() {
+        details["args"] = args;
+    }
+    Issue::new(code, path, message).with_details(details)
 }
 
 fn frames(value: u64) -> i64 {
@@ -55,11 +61,22 @@ fn reach(bundle: &Bundle, shot: &Shot) -> Option<Reach> {
     bundle.shot_reach(shot)
 }
 
+/// What one shot lacks on one side of the window.
+///
+/// The incoming shot's head can fail in two **independent** ways (BL082.4.24), each with its own
+/// repair, so they are kept apart: `camera` is the start fault (the frames missing *before*
+/// `cameraInFrame`: `max(0, needed - cameraInFrame)`), and `camera_end` is the end fault
+/// (`cameraInFrame` is past the end of a clip of `camera_frames`: `cameraInFrame - camera_frames`).
+/// Extending the end does not feed the start and the other way round. `camera_end` is 0 on the
+/// outgoing side and whenever the camera clip cannot be measured.
 struct Lack<'a> {
     shot: &'a Shot,
     side: &'static str,
     instance: i64,
     camera: i64,
+    camera_end: i64,
+    camera_in: i64,
+    camera_frames: i64,
 }
 
 fn lack<'a>(
@@ -68,33 +85,56 @@ fn lack<'a>(
     needed: i64,
     instance_handle: i64,
     camera_handle: i64,
+    camera_end: (i64, i64),
 ) -> Option<Lack<'a>> {
     let instance = (needed - instance_handle).max(0);
     let camera = (needed - camera_handle).max(0);
-    (instance > 0 || camera > 0).then_some(Lack {
+    // A window that asks for no frames on this side (`needed` 0: a start-aligned window has none
+    // before the cut) reads nothing of the head, so a camera entered past its end is no fault.
+    let (camera_end, camera_frames) = if needed > 0 { camera_end } else { (0, 0) };
+    (instance > 0 || camera > 0 || camera_end > 0).then_some(Lack {
         shot,
         side,
         instance,
         camera,
+        camera_end,
+        camera_in: frames(shot.camera_in_frame),
+        camera_frames,
     })
 }
 
-fn describe_lack(lack: &Lack<'_>) -> String {
-    let most = lack.instance.max(lack.camera);
-    let what = if lack.instance > 0 && lack.camera > 0 {
-        format!(
-            "scene instance {}, camera clip {}",
-            lack.instance, lack.camera
-        )
-    } else if lack.instance > 0 {
-        "scene instance".to_string()
-    } else {
-        "camera clip".to_string()
-    };
-    format!(
-        "{} lacks {most} frames {} ({what})",
-        lack.shot.id, lack.side
-    )
+/// The sentences of what is missing, in the order the contract fixes: the start fault (instance,
+/// camera) first, then the end fault of the camera clip.
+fn describe_lack(lack: &Lack<'_>) -> Vec<String> {
+    let mut pieces = Vec::new();
+    if lack.instance > 0 || lack.camera > 0 {
+        let most = lack.instance.max(lack.camera);
+        let what = if lack.instance > 0 && lack.camera > 0 {
+            format!(
+                "scene instance {}, camera clip {}",
+                lack.instance, lack.camera
+            )
+        } else if lack.instance > 0 {
+            "scene instance".to_string()
+        } else {
+            "camera clip".to_string()
+        };
+        pieces.push(format!(
+            "{} lacks {most} frames {} ({what})",
+            lack.shot.id, lack.side
+        ));
+    }
+    if lack.camera_end > 0 {
+        pieces.push(format!(
+            "{}'s cameraInFrame {} is {} frames past the end of its camera clip {} ({} frames)",
+            lack.shot.id,
+            lack.camera_in,
+            lack.camera_end,
+            lack.shot.camera_clip_id,
+            lack.camera_frames
+        ));
+    }
+    pieces
 }
 
 fn fixes_of(lack: &Lack<'_>) -> Vec<String> {
@@ -111,12 +151,32 @@ fn fixes_of(lack: &Lack<'_>) -> Vec<String> {
             lack.shot.camera_clip_id, lack.camera, lack.side
         ));
     }
+    if lack.camera_end > 0 {
+        fixes.push(format!(
+            "extend its camera clip {} by {} frames at its end, so that cameraInFrame {} lies inside it",
+            lack.shot.camera_clip_id, lack.camera_end, lack.camera_in
+        ));
+    }
     fixes
+}
+
+/// The camera numbers of the incoming shot's head: what the clip offers before `cameraInFrame`
+/// (all of it, `i64::MAX` when the clip cannot be measured) and the end fault with the clip's
+/// length. The evaluator's `head_camera` folds both faults into one number; the diagnosis must not.
+fn head_camera(bundle: &Bundle, shot: &Shot) -> (i64, (i64, i64)) {
+    match bundle.camera_clip_frames(&shot.camera_clip_id) {
+        None => (i64::MAX, (0, 0)),
+        Some(total) => {
+            let (total, camera_in) = (frames(total), frames(shot.camera_in_frame));
+            (camera_in, ((camera_in - total).max(0), total))
+        }
+    }
 }
 
 /// `TRANSITION_NO_HANDLES` for `use` and `refuse`: the window asks the outgoing shot for frames
 /// after its end and the incoming one for frames before its start. `hold` never asks.
 fn handle_issue(
+    bundle: &Bundle,
     draft: &TransitionDraft,
     handles: Handles,
     from: (&Shot, &Reach),
@@ -127,6 +187,7 @@ fn handle_issue(
     if !handles.needs_frames() {
         return None;
     }
+    let (head_camera, head_end) = head_camera(bundle, to.0);
     let lacks: Vec<Lack<'_>> = [
         lack(
             from.0,
@@ -134,13 +195,15 @@ fn handle_issue(
             window.after,
             from.1.tail_instance,
             from.1.tail_camera,
+            (0, 0),
         ),
         lack(
             to.0,
             "before its start",
             window.before,
             to.1.head_instance,
-            to.1.head_camera,
+            head_camera,
+            head_end,
         ),
     ]
     .into_iter()
@@ -163,22 +226,45 @@ fn handle_issue(
         handles.name(),
         lacks
             .iter()
-            .map(describe_lack)
+            .flat_map(describe_lack)
             .collect::<Vec<_>>()
             .join(" and ")
     );
+    // `cameraEnd` (with `cameraIn` and `cameraFrames`) appears only when the end fault exists, so
+    // every lack without it keeps its bytes (the oracle's rows).
     let lacks_json: Vec<Value> = lacks
         .iter()
         .map(|lack| {
-            json!({
+            let mut entry = json!({
                 "shot": lack.shot.id, "side": lack.side,
                 "instance": lack.instance, "camera": lack.camera,
+            });
+            if lack.camera_end > 0 {
+                entry["cameraEnd"] = json!(lack.camera_end);
+                entry["cameraIn"] = json!(lack.camera_in);
+                entry["cameraFrames"] = json!(lack.camera_frames);
+            }
+            entry
+        })
+        .collect();
+    // The projection's input: the same facts with the ids the repairs name and the side as a word.
+    let args_lacks: Vec<Value> = lacks
+        .iter()
+        .map(|lack| {
+            json!({
+                "shot": lack.shot.id,
+                "side": if lack.side.starts_with("before") { "before" } else { "after" },
+                "instance": lack.instance, "camera": lack.camera, "cameraEnd": lack.camera_end,
+                "cameraIn": lack.camera_in, "cameraFrames": lack.camera_frames,
+                "sceneInstance": lack.shot.scene_instance_id,
+                "cameraClip": lack.shot.camera_clip_id,
             })
         })
         .collect();
     Some(
         Issue::new(TRANSITION_NO_HANDLES, path, message).with_details(json!({
             "transitionId": draft.id, "hint": hint, "lacks": lacks_json,
+            "args": { "handles": handles.name(), "lacks": args_lacks },
         })),
     )
 }
@@ -222,6 +308,10 @@ pub(in crate::directed_scene) fn transition_issues(
                             .collect::<Vec<_>>()
                             .join(", ")
                     ),
+                    json!({
+                        "shot": wanted,
+                        "shots": shots.iter().map(|shot| shot.id.as_str()).collect::<Vec<_>>(),
+                    }),
                 ));
             }
         }
@@ -231,9 +321,17 @@ pub(in crate::directed_scene) fn transition_issues(
         let (from_shot, to_shot) = (shots[from_index], shots[to_index]);
 
         if to_index != from_index + 1 {
-            let tail = match shots.get(from_index + 1) {
-                None => " (this is the last shot)".to_string(),
-                Some(next) => format!(" (after it comes {})", next.id),
+            let (tail, args) = match shots.get(from_index + 1) {
+                None => (
+                    " (this is the last shot)".to_string(),
+                    json!({ "kind": "last", "from": from_shot.id, "to": to_shot.id }),
+                ),
+                Some(next) => (
+                    format!(" (after it comes {})", next.id),
+                    json!({
+                        "kind": "next", "from": from_shot.id, "to": to_shot.id, "next": next.id,
+                    }),
+                ),
             };
             issues.push(issue(
                 TRANSITION_NOT_AT_CUT,
@@ -244,6 +342,7 @@ pub(in crate::directed_scene) fn transition_issues(
                     to_shot.id, from_shot.id
                 ),
                 format!("A transition sits on a cut, between a shot and the one after it{tail}."),
+                args,
             ));
             continue;
         }
@@ -258,22 +357,25 @@ pub(in crate::directed_scene) fn transition_issues(
                     from_shot.id, to_shot.id
                 ),
                 "One transition per cut: setTransition replaces the one that is there.".to_string(),
+                json!({ "first": first, "from": from_shot.id, "to": to_shot.id }),
             ));
         }
         cuts.insert((from_index, to_index), id);
 
         let duration = draft.duration_frames;
         if let Err(error) = check_duration(duration, edit) {
-            let (message, hint) = match error {
+            let (message, hint, args) = match error {
                 WindowError::DurationBelowOne => (
                     format!("Transition {id} lasts {duration} frames"),
                     "A transition lasts at least 1 frame.".to_string(),
+                    json!({ "kind": "duration_below_one", "duration": duration }),
                 ),
                 _ => (
                     format!(
                         "Transition {id} lasts {duration} frames, more than the whole edit ({edit})"
                     ),
                     "A transition cannot be longer than the edit: shorten it.".to_string(),
+                    json!({ "kind": "duration_above_edit", "duration": duration, "edit": edit }),
                 ),
             };
             issues.push(issue(
@@ -282,6 +384,7 @@ pub(in crate::directed_scene) fn transition_issues(
                 id,
                 message,
                 hint,
+                args,
             ));
             continue;
         }
@@ -302,6 +405,10 @@ pub(in crate::directed_scene) fn transition_issues(
                     ),
                     "Shorten it or change its alignment so the window stays inside the edit."
                         .to_string(),
+                    json!({
+                        "kind": "window_outside_edit",
+                        "start": window.start, "end": window.end, "edit": edit,
+                    }),
                 ));
                 window
             }
@@ -315,6 +422,7 @@ pub(in crate::directed_scene) fn transition_issues(
                     ),
                     "Shorten it or change its alignment so the window stays inside the edit."
                         .to_string(),
+                    json!({ "kind": "overflow", "duration": duration, "cut": cut }),
                 ));
                 continue;
             }
@@ -338,12 +446,18 @@ pub(in crate::directed_scene) fn transition_issues(
                     "With alignment {} the longest these two shots hold is {most} frames.",
                     alignment.name()
                 ),
+                json!({
+                    "before": window.before, "from": from_shot.id, "fromLength": from_length,
+                    "after": window.after, "to": to_shot.id, "toLength": to_length,
+                    "alignment": alignment.name(), "most": most,
+                }),
             ));
         }
         if let Some(handles) = draft.handles
             && let (Some(from_reach), Some(to_reach)) =
                 (reach(bundle, from_shot), reach(bundle, to_shot))
             && let Some(found) = handle_issue(
+                bundle,
                 draft,
                 handles,
                 (from_shot, &from_reach),
@@ -372,6 +486,10 @@ pub(in crate::directed_scene) fn transition_issues(
                 ),
                 "Shorten one of them or change its alignment: the windows of neighbouring cuts cannot share a frame."
                     .to_string(),
+                json!({
+                    "beforeId": before_id, "beforeStart": before.start, "beforeEnd": before.end,
+                    "afterId": after_id, "afterStart": after.start,
+                }),
             ));
         }
     }
@@ -438,6 +556,7 @@ pub fn transition_warnings(bundle: &Bundle) -> Vec<Issue> {
                     to.id, from.id
                 ),
                 "A continuous junction means the picture should not change; a transition on it is allowed, check that it is wanted.".to_string(),
+                Value::Null,
             ));
         }
         if has_splat(from) && has_splat(to) {
@@ -450,6 +569,7 @@ pub fn transition_warnings(bundle: &Bundle) -> Vec<Issue> {
                     from.id, to.id
                 ),
                 "Use handles \"hold\" for a lighter preview, or keep the window short.".to_string(),
+                Value::Null,
             ));
         }
     }

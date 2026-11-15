@@ -18,7 +18,7 @@ use serde_json::{Map, Value, json};
 use crate::directed_scene::issue::{INVALID_TYPE, INVALID_VALUE, Issue};
 use crate::directed_scene::read::{Arr, Bound, Obj, Sink, child, kind_of};
 
-use super::catalog::{EffectSpec, ParamKind};
+use super::catalog::{EffectSpec, ParamKind, ParamSpec};
 use super::read::parse_param;
 use super::{
     Alignment, FX_EASINGS, FX_LIMIT, FX_TRANSITION_KEYS_NOT_YET, FxEasing, FxValue, Handles,
@@ -94,17 +94,55 @@ fn describe(kind: &ParamKind) -> String {
     }
 }
 
+/// The arguments of a `PARAM_TYPE` or `PARAM_OUT_OF_RANGE` problem, shared by the importer (a
+/// document) and the edit ops (a value): the parameter, what it accepts and, for a value out of
+/// range, how the value is shown. The input of the localized projection (`transition_problem`).
+pub fn param_fault_args(param: &ParamSpec, code: &str, name: &str, value: &Value) -> Value {
+    let mut args = match param.kind {
+        ParamKind::Number {
+            min,
+            max,
+            default,
+            unit,
+            ..
+        } => json!({
+            "acceptsKind": "number", "min": plain(min), "max": plain(max),
+            "default": plain(default), "unit": unit,
+        }),
+        ParamKind::Choice { options, default } => json!({
+            "acceptsKind": "choice", "options": options.join("|"), "default": default,
+        }),
+        _ => json!({}),
+    };
+    args["param"] = json!(name);
+    if code != PARAM_TYPE {
+        args["shown"] = json!(shown_value(value));
+    }
+    args
+}
+
+/// A value as a message shows it: a number plain, a text quoted, anything else as JSON.
+fn shown_value(value: &Value) -> String {
+    match value {
+        Value::Number(number) => spelled(number),
+        Value::String(text) => format!("\"{text}\""),
+        other => other.to_string(),
+    }
+}
+
 fn early_issue(
     code: &'static str,
     path: String,
     transition: &str,
     message: String,
     hint: Option<String>,
+    args: Value,
 ) -> Issue {
     let mut details = json!({ "transitionId": transition });
     if let Some(hint) = hint {
         details["hint"] = json!(hint);
     }
+    details["args"] = args;
     Issue::new(code, path, message).with_details(details)
 }
 
@@ -146,6 +184,7 @@ fn read_params(
                     spec.id
                 ),
                 Some(format!("Parameters of {}: {known}.", spec.id)),
+                json!({ "effect": spec.id, "param": name, "known": known }),
             ));
             continue;
         };
@@ -155,20 +194,19 @@ fn read_params(
                 let problem = if code == PARAM_TYPE {
                     format!("Parameter {name} has the wrong type")
                 } else {
-                    let shown = match value {
-                        Value::Number(number) => spelled(number),
-                        Value::String(text) => format!("\"{text}\""),
-                        other => other.to_string(),
-                    };
+                    let shown = shown_value(value);
                     debug_assert_eq!(code, PARAM_OUT_OF_RANGE);
                     format!("Parameter {name} is {shown}, outside what it accepts")
                 };
+                let args = param_fault_args(param, code, name, value);
+
                 early.push(early_issue(
                     code,
                     at,
                     transition,
                     format!("Transition {transition}: {problem}"),
                     Some(format!("{name}: {}.", describe(&param.kind))),
+                    args,
                 ));
             }
         }
@@ -262,6 +300,7 @@ fn read_one(obj: &Obj<'_>, index: usize, sink: &Sink) -> Option<TransitionDraft>
                     "A transition takes an effect of the transition family; a look goes on a fx track as a clip."
                         .to_string(),
                 ),
+                json!({ "effect": effect_name, "family": look.family }),
             ));
             None
         }
@@ -272,6 +311,7 @@ fn read_one(obj: &Obj<'_>, index: usize, sink: &Sink) -> Option<TransitionDraft>
                 id,
                 format!("transition {id}: there is no effect {effect_name}"),
                 None,
+                json!({ "effect": effect_name }),
             ));
             None
         }
@@ -286,6 +326,7 @@ fn read_one(obj: &Obj<'_>, index: usize, sink: &Sink) -> Option<TransitionDraft>
             id,
             format!("Transition {id} easing {easing} is not supported"),
             Some(format!("Use {}.", FX_EASINGS.join(", "))),
+            json!({ "easing": easing, "known": FX_EASINGS.join(", ") }),
         ));
     }
     let parsed_alignment = Alignment::parse(alignment);
@@ -299,6 +340,10 @@ fn read_one(obj: &Obj<'_>, index: usize, sink: &Sink) -> Option<TransitionDraft>
                 Alignment::NAMES.join(", ")
             ),
             None,
+            json!({
+                "kind": "enum", "field": "alignment", "value": alignment,
+                "options": Alignment::NAMES.join(", "),
+            }),
         ));
     }
     let parsed_handles = Handles::parse(handles);
@@ -309,6 +354,10 @@ fn read_one(obj: &Obj<'_>, index: usize, sink: &Sink) -> Option<TransitionDraft>
             id,
             format!("`{handles}` is not one of: {}", Handles::NAMES.join(", ")),
             None,
+            json!({
+                "kind": "enum", "field": "handles", "value": handles,
+                "options": Handles::NAMES.join(", "),
+            }),
         ));
     }
     let resolved = match (early.is_empty(), spec, values, parsed_easing) {
