@@ -2,8 +2,8 @@
 
 Entrega de BL082.4.4 (parte core), .17, .20, .21 e .23 sobre a base `c9c5fa0`
 (`main`), branch `feat/p4b-s2-c0b-plan-clocks`. Plano e contrato final:
-[p4b-s2-c0b-plan.md](p4b-s2-c0b-plan.md). **Estado: implementado, a validar** — falta a revisão Windows
-independente e o Mac do coordenador. Nada de runtime, renderer, host loader, mídia, UI, export, `Domain` ou capability JS
+[p4b-s2-c0b-plan.md](p4b-s2-c0b-plan.md). **Estado: fundação interna validada.** R1 Windows em4ee9370/f3f1c8c,
+rechecagem do fechamento emff39b2e e Mac porhead, conforme§§9–11. Nada de runtime, renderer, host loader, mídia, UI, export, `Domain` ou capability JS
 novo; `Refuse` continua fechado nas entradas públicas e F064 segue produto **P**. Sem GPU, sem lock de desempenho,
 sem origem executada.
 
@@ -68,7 +68,7 @@ Os 12 PNG representáveis (`dissolve-representable-assets/`), os manifestos fade
 | Arquivo | Testes | Cobre |
 |---|---|---|
 | `scene_fx_transition/timing.rs` | 13 | timing literal nos quadros 44/50, `clocks()` dos dois decks, C−1/C, último quadro real sem hold, câmera `cameraIn` além do fim antes de C, **legado bruto 23 / amostrado 11**, comprimento = maior faixa (main/layers diferentes), primário com câmera curta, D1/D ímpar/start/end com quadros fora da janela = plano puro, wire e bytes, sem transição = mesmo byte e versão 1, wire anterior recusado, lâmpada com keys no quadro real, plano compartilhado, cold vs timeline em ordem crescente/reversa/repetida |
-| `scene_fx_transition/timing_refusals.rs` | 4 | cada número do timing × 9 tipos errados (float, 2.0, negativo, bool, string, null, array, objeto, > u64), campos extras, `alignment` errado, 32 planos tipados incoerentes nas **três portas** com o ponteiro do campo (janela, `primary` cedo/tarde, corte, extremos, instância curta, ids compartilhados com comprimentos diferentes, amostras sem clamp, quadros brutos/legados, `held=false` adulterado, FPS/`Ratio`) |
+| `scene_fx_transition/timing_refusals.rs` | 5 | cada número do timing × 9 tipos errados (float, 2.0, negativo, bool, string, null, array, objeto, > u64), campos extras, `alignment` errado, 32 planos tipados incoerentes nas **três portas** com o ponteiro do campo (janela, `primary` cedo/tarde, corte, extremos, instância curta, ids compartilhados com comprimentos diferentes, amostras sem clamp, quadros brutos/legados, `held=false` adulterado, FPS/`Ratio`) |
 | `scene_fx_transition/ceiling.rs` | 5 | 20.000 itens válidos (`[3,2,0,9993,2,0]` por deck, contados à mão), +1 passe em cada deck, caso assimétrico, luzes e vizinho no mesmo contador (`(1,0)` aceito, `(2,0)` e `(1,1)` recusados), contador tipado e de arrays, 4.194.304 bytes e +1 (inclusive chave com escape) |
 | `pilot_dissolve_representable_state.rs` + `/reference.rs` | 5 | leitura inteira (7/98/390/84 em janela), 84 quadros em janela comparados em estado, 14 fora da janela = plano puro, avaliador de deslocamento nos 98, independência de ordem (`PlanTimeline` crescente/reverso/repetido) |
 | `pilot_dissolve_representable_state/isolation.rs` | 3 | 11 classes na entrega original, 19 após f3f1c8c (8 adicionais de target/FOV), recusadas pela comparação (primário no corte, held da instância, held da câmera, instância marcada presa na borda, instância e câmera sem clamp, relógios trocados, relógio do primário no vizinho, fps nominal, lâmpada no relógio da instância e noutro quadro; cada classe exercida por ≥1 quadro), estado estático do hold e comprimento de câmera com layers |
@@ -156,7 +156,7 @@ Não mutados: o ramo `DurationAboveEdit` de `check_timing_window` (nenhum teste 
 
 ## 7. Limites e pendências
 
-- Windows independente e Mac: pendentes (coordenador). Nada aqui é aceite de produto, render ou desempenho.
+- Windows independente e Mac concluídos por head (§§9–11). Nada aqui é aceite de produto, render ou desempenho.
 - Core completo: 2 vermelhos da base; workspace global não executado (só compilado).
 - O plano externo de 20.000 itens/4 MiB é construído em memória (nada commitado); um bundle real não chega perto.
 - A comparação X é de **estado**. Pixels (390 sondas, 12 PNG) seguem para o renderer da S2; nenhuma tolerância nova.
@@ -243,8 +243,8 @@ produção mudou entre4ee9370 e f3f1c8c; a única mudança Rust é em testes/com
 
 Os patches comuns foram integrados pelo coordenador na PR71 com status A validar.
 O teto de bytes só é julgado na porta textual; as portas Value e tipada não recebem
-texto. A contagem20000 é julgada nas três portas. Revisão Windows independente
-em execução; Refuse fechado e F064produtoP.
+texto. A contagem20000 é julgada nas três portas. Revisões Windows concluídas
+(§§10–11); Refuse fechado e F064produtoP.
 
 ## 10. Revisão independente Windows R1 e fechamento das ressalvas
 
@@ -263,13 +263,36 @@ A1: o coordenador acrescenta teste permanente de frame50 com fim51 (aceito), fim
 No Mac, o teste matou a remoção do ramo `f >= shotEndFrameExclusive`: 0passam/1falha
 por aceitar frame50/fim50. A produção restaurada passou1/1. Logs `primary-end-mutant.log`
 e `primary-end-green.log` em~/.cache/tessel-pr71-mac-20261115; clone restaurado limpo.
-Nenhuma mudança de produção foi necessária. Os checks do commit publicado ainda serão registrados porhead.
+Nenhuma mudança de produção foi necessária. Os checks do commit publicado ff39b2e
+passaram no Mac e no Windows, conforme§11.
 M1: F064 e plano canônico corrigidos para bytes apenas na porta textual, itens nas3.
 M2: contagem de linhas corrigida, distinguindo Rust da exceção documental do plano.
 M3: o M07 compilável do autor é um substituto. A exclusão literal de `lights` do
-pré-check (`ITEM_ARRAYS` com5entradas) foi morta na R1/T19 pelo teste preexistente
+pré-check (no mutante, `ITEM_ARRAYS` com5entradas; no código real,6) foi morta na R1/T19 pelo teste preexistente
 `review::lights_of_either_deck_count_before_any_item_is_read`, não isoladamente por ceiling.
 M4: target/FOV do X provados em f3f1c8c; as classes agora são19 (11+8). Os mutantes
 R1 de targetx e FOV morreram no consumidorX. Permanecem fora da comparação: orientação
 e escala do marcador, cor e posição das luzes (a intensidade é comparada) e varreduraFOV.
 Isso não muda nenhum limiar ou fixture nem constitui prova de pixel/render.
+
+## 11. Aceite do fechamento em ff39b2e
+
+Rechecagem independente Windows emff39b2e29aeb4738afeb7b84dc048b1a0ada2b4e:
+fmt0,clippycorealltargets-Dwarnings0; transições215/215 eXestado8/8 comEXPECT0 e
+preserveEXPECT1. T11 compilou e o teste novo falhou pela aceitação indevida def50/end50;
+fonte restaurada porbytes/hash e mtime, controle1/1verde. Docs M1/M2/M3,19classes e
+os3docs de d5d5dd3 foram lidos. Árvore terminou limpa. Não repetiu corecompleto,
+workspaceglobal,baseline,release,desktop ou os29mutantes do autor. Nenhuma prova
+anterior foi atribuída silenciosamente ao novohead.
+
+Mac no mesmo ff39b2e:fmt0,clippycorealltargets0,215transições+8Xestado nosperfis
+isolado e preserve. Logs porHEAD em `a1-summary.json`/`a1-*.log` no diretório§9.
+O mutante e controle do novo teste também foram conferidos pelo coordenador noMac.
+A produção e os dados são idênticos aos das revisõesanteriores; o último commit
+de aceite altera somente Markdown, validado por19specsde tabelas,diffcheck e
+varredura de bytesdecontrole/BOM. Não exigir uma nova compilação por mudanças de prosa.
+
+R1 e fechamento aprovam apenas C0b interna. Refuse/F064P, Rust14/JS13, H/R/S2A/UI
+ainda pendentes. DoisgizmosWindowsbase continuamvermelhos no corecompleto executado
+em4ee9370; o corecompletoMac1731/0/7 também pertence a4ee9370. Não foi executado
+workspaceglobal, engine, pixels, origem, GPU, desempenho nem ponteiro físico.
