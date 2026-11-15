@@ -21,9 +21,12 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 use tessel_editor_core::backend::BackendError;
+use tessel_editor_core::directed_scene::AssetFormat;
 use tessel_editor_core::directed_scene::{DirectedScene, Issue};
-use tessel_editor_core::scene_plan::{PlanError, PlanResource, ScenePlan};
+use tessel_editor_core::scene_plan::{PlanError, ScenePlan, UnionResource};
 use tessel_editor_core::splat::{self, SplatFormat};
+
+use crate::resource_union::{attribute_backend, union_failure, union_of};
 
 /// `kind` of the layer a runtime that has the `directed_scene` feature draws.
 pub const DIRECTED_LAYER_KIND: &str = "directed_scene";
@@ -36,7 +39,8 @@ pub const DEFAULT_SLOTS: usize = 32;
 pub const DEFAULT_BYTE_BUDGET: u64 = 512 * 1024 * 1024;
 /// Splats a frame may draw in all, the sum over its splat *nodes* of the splats of the file each
 /// reads (a file used by many nodes counts once per node: each is sorted and drawn, even though the
-/// decode is shared). The runtime's `LIMITS.frameSplats` is the same number.
+/// decode is shared; the nodes of both decks of a transition count, and a node id both decks share
+/// is two nodes). The runtime's `LIMITS.frameSplats` is the same number.
 pub const DEFAULT_FRAME_SPLATS: u64 = 8 * 1024 * 1024;
 
 fn error(code: &str, message: impl Into<String>) -> BackendError {
@@ -159,7 +163,14 @@ impl SceneResourceMap {
     /// (the bundle's own folder, or a restored package's root). The plan's `relativePath` is
     /// already known to be relative and free of `..`; this also refuses a symlink that leaves
     /// `root`. Revision and hash are the plan's own: the root is trusted to hold those files.
+    ///
+    /// A plan with a transition resolves the union of both decks (see [`crate::resource_union`]):
+    /// an asset only the neighbour deck draws is carried too, and an error that belongs to one
+    /// names its asset and decks in `details.resource`.
     pub fn from_root(generation: u64, plan: &ScenePlan, root: &Path) -> Result<Self, BackendError> {
+        // Both decks, before the root or any file is touched: an asset only the neighbour deck
+        // draws is a file of this plan too, and two decks that disagree about one are refused.
+        let union = union_of(plan).map_err(|failure| union_failure(plan, &failure))?;
         let canonical_root = root.canonicalize().map_err(|failure| {
             error(
                 "resource_unresolved",
@@ -170,24 +181,30 @@ impl SceneResourceMap {
             )
         })?;
         let mut map = Self::new(generation);
-        for resource in &plan.resources {
+        for resource in &union {
             let path = canonical_root.join(&resource.relative_path);
             let canonical = path.canonicalize().map_err(|failure| {
-                error(
-                    "resource_unresolved",
-                    format!(
-                        "`{}` ({}) is not readable under the root: {failure}",
-                        resource.asset_id, resource.relative_path
-                    ),
+                attribute_backend(
+                    error(
+                        "resource_unresolved",
+                        format!(
+                            "`{}` ({}) is not readable under the root: {failure}",
+                            resource.asset_id, resource.relative_path
+                        ),
+                    )
+                    .with_details(json!({ "asset_id": resource.asset_id })),
+                    resource,
                 )
-                .with_details(json!({ "asset_id": resource.asset_id }))
             })?;
             if !canonical.starts_with(&canonical_root) {
-                return Err(error(
-                    "resource_path_invalid",
-                    format!("`{}` resolves outside the resource root", resource.asset_id),
-                )
-                .with_details(json!({ "asset_id": resource.asset_id })));
+                return Err(attribute_backend(
+                    error(
+                        "resource_path_invalid",
+                        format!("`{}` resolves outside the resource root", resource.asset_id),
+                    )
+                    .with_details(json!({ "asset_id": resource.asset_id })),
+                    resource,
+                ));
             }
             map.insert(
                 resource.asset_id.clone(),
@@ -238,6 +255,15 @@ struct Identity {
     asset_id: String,
     revision_id: String,
     content_hash: String,
+}
+
+/// One resource of the plan's union as `resolve` checked it: what to load, from where, and what
+/// it costs. Private: a single entry per asset id however many nodes of either deck use it.
+struct Wanted {
+    resource: UnionResource,
+    identity: Identity,
+    path: PathBuf,
+    bytes: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -306,8 +332,18 @@ impl Default for SceneSlots {
 
 /// What the runtime holds for a picture: its decoded RGBA. The plan stores the height as a float;
 /// for a picture it is a whole number of pixels.
-fn picture_bytes(resource: &PlanResource) -> u64 {
-    (resource.width_px as f64 * resource.height_px * 4.0) as u64
+fn picture_bytes(resource: &UnionResource) -> Option<u64> {
+    let bytes = resource.width_px as f64 * resource.height_px * 4.0;
+    // u64::MAX rounds to 2^64 as f64. A cost at that boundary is not representable.
+    (bytes.is_finite() && bytes < u64::MAX as f64).then_some(bytes as u64)
+}
+
+fn byte_overflow(budget: u64) -> BackendError {
+    error(
+        "resource_budget",
+        "The decoded resource byte cost exceeds u64",
+    )
+    .with_details(json!({ "bytes": u64::MAX, "max_bytes": budget, "overflow": true }))
 }
 
 /// What the runtime holds for a splat file: the kept bytes plus 16 packed bytes per splat (the
@@ -395,7 +431,10 @@ impl SceneSlots {
             }
             return Err(refusal);
         }
-        plan.validate().map_err(|failure| plan_error(&failure))?;
+        // Contains the union of both decks: the same asset id with other content in the neighbour
+        // is `invalid_plan` here, before any file is looked at and before the book is touched.
+        plan.validate()
+            .map_err(|failure| union_failure(plan, &failure))?;
         if resources.generation < self.generation {
             return Err(error(
                 "resource_stale",
@@ -410,7 +449,11 @@ impl SceneSlots {
         }
 
         let wanted = self.resolve(plan, resources)?;
-        let needed_bytes: u64 = wanted.iter().map(|(_, _, _, bytes)| bytes).sum();
+        // Overflow is a refusal even when the caller's byte budget is u64::MAX.
+        let needed_bytes: u64 = wanted
+            .iter()
+            .try_fold(0_u64, |total, item| total.checked_add(item.bytes))
+            .ok_or_else(|| byte_overflow(self.byte_budget))?;
         if needed_bytes > self.byte_budget || wanted.len() > self.slots.len() {
             return Err(error(
                 "resource_budget",
@@ -444,19 +487,23 @@ impl SceneSlots {
         }
 
         self.clock += 1;
-        let identities: Vec<&Identity> =
-            wanted.iter().map(|(_, identity, _, _)| identity).collect();
+        let identities: Vec<&Identity> = wanted.iter().map(|item| &item.identity).collect();
         let incoming: u64 = wanted
             .iter()
-            .filter(|(_, identity, _, _)| self.index_of(identity).is_none())
-            .map(|(_, _, _, bytes)| *bytes)
-            .sum();
+            .filter(|item| self.index_of(&item.identity).is_none())
+            .fold(0, |total: u64, item| total.saturating_add(item.bytes));
         releases.extend(self.evict_to_fit(&identities, incoming));
 
         let mut loads = Vec::new();
         let mut waiting = Vec::new();
         let mut references = Vec::new();
-        for (resource, identity, path, bytes) in &wanted {
+        for Wanted {
+            resource,
+            identity,
+            path,
+            bytes,
+        } in &wanted
+        {
             // `wanted.len() <= slots.len()` was checked, and every slot the frame already uses
             // is excluded from eviction, so a slot is always left for a picture that has none.
             let Some(index) = self
@@ -530,12 +577,15 @@ impl SceneSlots {
     fn evict_to_fit(&mut self, needed: &[&Identity], incoming: u64) -> Vec<Value> {
         let mut releases = Vec::new();
         loop {
-            let held: u64 = self
+            let held = self
                 .slots
                 .iter()
                 .filter_map(|slot| slot.held.as_ref().map(|(_, _, bytes)| *bytes))
-                .sum();
-            if held + incoming <= self.byte_budget {
+                .try_fold(0_u64, |total, bytes| total.checked_add(bytes));
+            if held
+                .and_then(|held| held.checked_add(incoming))
+                .is_some_and(|total| total <= self.byte_budget)
+            {
                 return releases;
             }
             let victim = self
@@ -557,50 +607,64 @@ impl SceneSlots {
         }
     }
 
-    /// The identity, the file and the plan resource of everything the plan needs, checked.
-    fn resolve<'a>(
+    /// The identity, the file and the union resource of everything the plan needs (both decks, one
+    /// entry per asset id, ascending), checked. A failure that belongs to one resource names it and
+    /// its decks in `details.resource`; the two frame-wide budgets name none.
+    fn resolve(
         &self,
-        plan: &'a ScenePlan,
+        plan: &ScenePlan,
         resources: &SceneResourceMap,
-    ) -> Result<Vec<(&'a PlanResource, Identity, PathBuf, u64)>, BackendError> {
+    ) -> Result<Vec<Wanted>, BackendError> {
+        let union = union_of(plan).map_err(|failure| union_failure(plan, &failure))?;
         let mut wanted = Vec::new();
         let mut frame_splats: u64 = 0;
-        for resource in &plan.resources {
+        for resource in union {
             let asset_id = &resource.asset_id;
             let resolved = resources.get(asset_id).ok_or_else(|| {
-                error(
-                    "resource_unresolved",
-                    format!("No resolved file for `{asset_id}`"),
+                attribute_backend(
+                    error(
+                        "resource_unresolved",
+                        format!("No resolved file for `{asset_id}`"),
+                    )
+                    .with_details(json!({ "asset_id": asset_id })),
+                    &resource,
                 )
-                .with_details(json!({ "asset_id": asset_id }))
             })?;
             if resolved.revision_id != resource.revision_id
                 || resolved.content_hash != resource.content_hash
             {
-                return Err(error(
-                    "resource_mismatch",
-                    format!("`{asset_id}` was resolved for another revision or content than the plan requires"),
-                )
-                .with_details(json!({
-                    "asset_id": asset_id,
-                    "expected": { "revision_id": resource.revision_id, "content_hash": resource.content_hash },
-                    "got": { "revision_id": resolved.revision_id, "content_hash": resolved.content_hash },
-                })));
+                return Err(attribute_backend(
+                    error(
+                        "resource_mismatch",
+                        format!("`{asset_id}` was resolved for another revision or content than the plan requires"),
+                    )
+                    .with_details(json!({
+                        "asset_id": asset_id,
+                        "expected": { "revision_id": resource.revision_id, "content_hash": resource.content_hash },
+                        "got": { "revision_id": resolved.revision_id, "content_hash": resolved.content_hash },
+                    })),
+                    &resource,
+                ));
             }
             if !resolved.path.is_file() {
-                return Err(error(
-                    "resource_unresolved",
-                    format!(
-                        "`{asset_id}` is not a readable file at `{}`",
-                        resolved.path.display()
-                    ),
-                )
-                .with_details(json!({ "asset_id": asset_id })));
+                return Err(attribute_backend(
+                    error(
+                        "resource_unresolved",
+                        format!(
+                            "`{asset_id}` is not a readable file at `{}`",
+                            resolved.path.display()
+                        ),
+                    )
+                    .with_details(json!({ "asset_id": asset_id })),
+                    &resource,
+                ));
             }
-            let bytes = if resource.is_splat() {
+            let bytes = if resource.format == AssetFormat::Spz {
                 match splat::inspect(&resolved.path) {
                     Ok(info) if info.format == SplatFormat::Spz => {
-                        // Every node that reads the file sorts and draws all of its splats.
+                        // Every node that reads the file sorts and draws all of its splats, in
+                        // either deck: `used_by` is qualified, so equal node ids of the two decks
+                        // are two uses.
                         let nodes = resource.used_by.len().max(1) as u64;
                         frame_splats =
                             frame_splats.saturating_add(info.count.saturating_mul(nodes));
@@ -610,31 +674,36 @@ impl SceneSlots {
                         )
                     }
                     _ => {
-                        return Err(error(
-                            "resource_mismatch",
-                            format!(
-                                "`{asset_id}` is planned as an SPZ splat but the file is not one"
+                        return Err(attribute_backend(
+                            error(
+                                "resource_mismatch",
+                                format!(
+                                    "`{asset_id}` is planned as an SPZ splat but the file is not one"
+                                ),
+                            )
+                            .with_details(
+                                json!({ "asset_id": asset_id, "expected": { "format": "spz" } }),
                             ),
-                        )
-                        .with_details(
-                            json!({ "asset_id": asset_id, "expected": { "format": "spz" } }),
+                            &resource,
                         ));
                     }
                 }
             } else {
-                picture_bytes(resource)
+                picture_bytes(&resource)
+                    .ok_or_else(|| attribute_backend(byte_overflow(self.byte_budget), &resource))?
             };
-            wanted.push((
-                resource,
-                Identity {
-                    generation: resources.generation,
-                    asset_id: asset_id.clone(),
-                    revision_id: resource.revision_id.clone(),
-                    content_hash: resource.content_hash.clone(),
-                },
-                resolved.path.clone(),
+            let identity = Identity {
+                generation: resources.generation,
+                asset_id: asset_id.clone(),
+                revision_id: resource.revision_id.clone(),
+                content_hash: resource.content_hash.clone(),
+            };
+            wanted.push(Wanted {
+                identity,
+                path: resolved.path.clone(),
                 bytes,
-            ));
+                resource,
+            });
         }
         if frame_splats > self.frame_splats {
             return Err(error(
@@ -699,10 +768,10 @@ fn release_message(slot: &str) -> Value {
     json!({ "v": tessel_editor_core::bridge::BRIDGE_VERSION, "type": "asset.release", "id": slot })
 }
 
-fn load_message(slot: &str, identity: &Identity, resource: &PlanResource, path: &Path) -> Value {
+fn load_message(slot: &str, identity: &Identity, resource: &UnionResource, path: &Path) -> Value {
     // A splat is loaded as the runtime's `splat` kind (the same descriptor the Spark asset uses);
     // anything else in a plan is a still picture.
-    let (kind, meta) = if resource.is_splat() {
+    let (kind, meta) = if resource.format == AssetFormat::Spz {
         ("splat", json!({ "format": "spz" }))
     } else {
         (

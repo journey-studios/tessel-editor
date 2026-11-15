@@ -1,0 +1,342 @@
+# P4b S2-R0 — relatório: leitor interno do plano de dois decks
+
+Fatia **R0** de BL082.4.4 / F064 (`docs/features/fx-transitions.md`): um leitor JS **puro e interno** do wire C0b
+(`ScenePlan.transition`), mais a recusa que faltava na entrada de produção. Contrato fixado antes do código em
+[p4b-s2-r0-parser-plan.md](p4b-s2-r0-parser-plan.md). Windows nativo (Git Bash real, Node v26.12.1, rustc 1.99.1), base
+`a61b7a9`, origem `journey-studios/tessel-editor`. **Isto não é aceite de produto nem fecha R/S2:** não há renderização, GL,
+pixel de transição, bridge, compositor, mudança de `hello`, flag nem ativação.
+
+## O que ficou como estava (afirmado por teste, não por intenção)
+
+- `parseDirectedLayer` (a entrada de produção) continua **recusando** todo plano com `transition`: com `fxTransition` em
+  `requires` é `unsupported` com `details.missing: ["fxTransition"]` (como antes); **sem** ela é agora `invalid_plan` em
+  `/requires` (a recusa que faltava). Planos JSON sem a chave: mesmo resultado, mensagem e ordem; versões cíclicas/BigInt têm a correção defensiva descrita no reforço.
+- `SCENE_CAPABILITIES` (JS) = 13 nomes, sem `fxTransition`; `Capability` (Rust) = 14; admissão pública `Refuse`; F064 produto **P**.
+- `runtime/dist/runtime.js` não contém o leitor (nada de produção o importa; só os próprios módulos e os testes).
+- Intocados (diff contra `a61b7a9` só lista os arquivos abaixo): `compositor.js`, `assets.js`, `splat-stage.js`, bridge/worker,
+  shaders, `output-fx.js`, `crates/core/src`, media, desktop, `render/src`, `Cargo.*`, `package.json`/lockfile, fixtures e
+  goldens (`docs/migration/fixtures`: 0 arquivos no diff). Backlog, matriz e índice: só patches abaixo.
+
+## Commits (por SHA)
+
+| SHA | Conteúdo |
+| --- | --- |
+| `b4cd13a` | Contrato (plano) antes do código. |
+| `7253fa5` | Extração **mecânica** do leitor de deck: `runtime/src/directed-deck.js` (novo) de `parseDirectedLayer`; `directed-scene.js` reexporta os nomes movidos. |
+| `4fb2672` | Guarda: `Object.hasOwn(plan, 'transition')` sem `fxTransition` ⇒ `invalid_plan` em `/requires`, logo depois da conferência de `requires` e antes do corpo; uma pinagem em `directed-scene.test.mjs`. |
+| `c9563bc` | Leitor de transição: `directed-transition{,-fields,-timing,-decks,-limits}.js`. |
+| `e529482` | Testes JS e fixtures feitas à mão (`directed-transition{,-refusals,-limits}.test.mjs`, `directed-transition-fixtures.mjs`). |
+| `b57304e` | Interoperabilidade: `directed-transition-interop.mjs` e `crates/render/tests/scene_transition_parser.rs`. |
+| `ca234c1` | Dois mutantes sobreviventes da primeira bateria (M03, M34) ganham teste; M15b é equivalente. |
+| `9c3a643` | Docs da entrega original; sua árvore de código era a de `ca234c1`. |
+| `0175cec` | Recusa arrays herdados, MDC exato nas razões e teto com plano core-válido 20000/+1. |
+| `a3c357b` | Versão cíclica/BigInt tipada e serializável nos casos testados; dez testes de borda. |
+| fechamento R2 | Docs e testes apenas; produção idêntica a `a3c357b`. |
+
+Todos os gates abaixo rodaram em `ca234c1` (a árvore de código da entrega9c3a643 é a dele; reforços posteriores separados abaixo).
+
+## API
+
+`runtime/src/directed-transition.js`:
+
+- `parseTransitionPlan(plan, references)` — objeto (o que `JSON.parse` ou a bridge entregam).
+- `parseTransitionPlanText(text, references)` — texto JSON: mede os bytes UTF-8 do texto **recebido** antes do `JSON.parse`;
+  texto que não é JSON (truncado incluído) ⇒ `invalid_plan` com `details.pointer === ''` (a mensagem diz `Scene plan /`).
+- `TRANSITION_CAPABILITIES` (= `SCENE_CAPABILITIES` + `fxTransition`), `MAX_TRANSITION_PLAN_ITEMS` (20 000),
+  `MAX_TRANSITION_PLAN_BYTES` (4 194 304).
+- Retorno: `{ primary, other, mix, window, timing, clocks, passes, references }`. `primary`/`other` têm a forma de
+  `parseDirectedLayer` (`output, fx, camera, planes, splats, lights, resources`); `mix` = `id, effect, fromShotId, toShotId,
+  primary, easing, curve, intensity, progress, amount`; `window` = `startFrame, durationFrames, frameInWindow, alignment,
+  cutFrame, editFrame`; `clocks.{primary,other}.{instance,camera}` = `{raw, sampled, held}`; `passes` = `primary` (shot do
+  primário), `other` (shot do vizinho), `output` (só do topo). Recusa = `RuntimeError` tipado (`invalid_plan` com
+  `details.pointer` e mensagem `Scene plan <ponteiro>: …`; `unsupported`/`unsupported_plan_version` como a produção). Nada
+  parcial é devolvido e a entrada nunca é escrita (os testes leem um plano congelado em profundidade e comparam o JSON depois).
+- Ordem das recusas: plano/kind/versão, `transition` própria, tetos (antes de ler qualquer elemento), profundidade 1,
+  parcialidade e capacidades do topo, campos e `timing` por chaves/tipos, corpo e identidade do topo, vizinho (cabeçalho,
+  corpo, identidade) com `withinOther`, relações entre decks, relógios/tempos, passes, recursos.
+
+## Extração
+
+`directed-deck.js` recebeu, sem mudar o corpo, os helpers de campo, `splatMatrixFault`, `SPLAT_SIMILARITY_TOLERANCE`,
+`MAX_POINT_LIGHTS`, `parseResourceReferences` e `readDeckBody(plan, requires)` (de `/output` a `/lights`, na ordem de
+antes); `directed-scene.js` os reexporta e chama. Prova de preservação: uma bateria de controle de **4665 casos** (planos
+válidos e todas as recusas da produção) com resultado serializado, idêntica byte a byte antes e depois (SHA-256 do controle
+`172E8D40…B47027`); os 65 testes puros de `directed-scene*`/`output-fx`/luz da base seguiram verdes em cada commit.
+`output-fx.js` **não** mudou: `parseOutputFx(raw, requires, frame)` já devolve uma lista em ordem de plano; o prefixo do
+vizinho e a recusa de `scope: output` nele são de quem chama.
+
+## Limites JS ≠ Rust (honestos)
+
+- Inteiros do JS são `Number.isSafeInteger`; relações usam BigInt e relógios brutos fora de `2^53−1` são **recusados**, nunca
+  arredondados. O Rust lê `u64`/`i64`: um plano com contadores acima de `2^53−1` é válido no core e recusado aqui.
+- O leitor julga **coerência, não procedência**: um plano inteiramente consistente e forjado descreve outra cena. A igualdade
+  exata de `requires` com a união do core não é recalculada (só a cobertura: o do topo cobre o do vizinho).
+- `from_json(Value)` do core e `parseTransitionPlan(objeto)` não medem bytes; só o texto tem teto. A bridge não promete o
+  teto de bytes na R0 (nenhuma entrada de transporte foi ligada).
+- Não resolve slots, não abre arquivo, não verifica hash: a resolução de recursos continua sendo de
+  `resolveSceneResources`/host (fora da R0).
+- Nenhuma medição de custo/desempenho; o lock de GPU não foi tomado.
+
+## Texto × objeto
+
+| | `parseTransitionPlan` | `parseTransitionPlanText` |
+| --- | --- | --- |
+| Entrada | objeto | texto UTF-16 do JS (medido em UTF-8) |
+| 4 194 304 bytes | não mede | `= 4194304` lido; `+1` ⇒ `/transition` antes do parse |
+| 20 000 itens, profundidade 1 | sim | sim |
+| Não-JSON/truncado | n/a | `invalid_plan`, ponteiro `''` |
+| Chave com escape (`"\u0074ransition"`) | n/a | bytes do texto recebido (mais longo que o `JSON.stringify` do objeto) |
+
+## Casos e mutantes
+
+Fixtures JS feitas **à mão** com a aritmética em comentário (`directed-transition-fixtures.mjs`; 11 cenários: quadro 36 e 42,
+C−1 e C, centro ímpar D5, `start`, `end`, D1, 30000/1001, câmera de 0 quadros e último quadro real; `raw 41 / sample 39`).
+O resultado do leitor é comparado a literais, não a uma função do código sob teste. Contagens em `ca234c1`:
+`directed-transition.test.mjs` 19, `…-refusals.test.mjs` 79, `…-limits.test.mjs` 10 (108 novos) + a pinagem da guarda; `scene_transition_parser.rs` 4.
+
+Cobertura: wire antigo (recusado em `/transition/alignment`), cada uma das 17 chaves e dos 16 campos de `timing`
+obrigatórios, chaves desconhecidas, tipos inválidos (float, bool, string, `null`, `NaN`, `±Infinity`, negativos, `2^53`,
+array/objeto), nomes de protótipo (`constructor`, `toString`, `__proto__` por texto, campo só herdado ausente), outra versão/output/FPS/bundle
+no vizinho, `scope: output` no vizinho, `clipId` duplicado, `assetId` conflitante (e ids de nó iguais **válidos**),
+`primary` trocado (com os dois decks concordando, só o corte recusa), quadro no fim exclusivo do shot, corte/janela
+adulterados, amostra/`held` falsos (`false` incluído), relógios ligados entre si, `Ratio` errado, instância curta no
+próprio shot, 20 000 itens aceitos/+1 recusado, lights e neighbour contados, 4 MiB exatos/+1 em texto com 2/3/4 bytes e
+substituto solitário, chave com escape, bomba aninhada em texto e em objeto (100 000 níveis), objetos cíclicos.
+
+Interop com o core real (`scene_transition_parser.rs`, Node **obrigatório**; ausente é `expect` ⇒ falha, nunca skip):
+12 quadros da janela × 3 conteúdos (`plain`, `sky`, `sky-and-splats`), comparados ao plano tipado (mistura, janela, relógios
+brutos/amostrados/presos dos dois decks, contagens e recursos de cada deck); quadros fora da janela recusados em
+`/transition`; os tetos iguais aos do core; **28 planos adulterados** recusados pelo core (`ScenePlan::from_json_str`) e
+pelo leitor **no mesmo ponteiro e código**; o texto de exatamente o teto aceito/recusado pelos dois.
+
+Mutantes (`agent-tools/mutate.mjs`, um por vez, bytes restaurados com hash conferido, mtime tocado, controle limpo depois de
+cada um; suíte: os três arquivos novos + `directed-scene.test.mjs`, 117→118 testes). **45 mutantes**: 44 mortos, 1 equivalente.
+
+| Mutante | Resultado |
+| --- | --- |
+| M01 guarda de `transition` sem `fxTransition` removida | morto (2) |
+| M02 vizinho sem prefixo; M03 prefixo duas vezes; M04 deck de cima prefixado como vizinho | mortos (M03 só depois do teste unitário de `withinOther`, ver abaixo) |
+| M05 profundidade removida | morto |
+| M06 vizinho fora da contagem; M07 `lights` fora; M07b `fx` fora; M08 `>`→`>=` itens | mortos |
+| M09 `>`→`>=` bytes; M10 bytes por `length`; M10b par substituto 3; M10c 2 bytes contado 1; M10d 3 bytes contado 2; M10e substituto solitário 1; M28 porta de texto sem medir | mortos |
+| M11 progress sem +0,5; M12 sem easing; M13 amount × progress; M27 tolerância 1e-6 | mortos |
+| M14 fim exclusivo aceito; M17 cobertura de shot omitida; M23 centro arredonda para cima; M29 `end` como `center`; M30 janela fora da edição | mortos |
+| M15 vizinho com raw em vez de sample; M15c câmera do primário com sample; M24 câmera no relógio da instância | mortos |
+| M16/M16b/M16c `held` falso/verdadeiro ignorado; M21 clipe sem quadros não preso; M22 último quadro real preso | mortos |
+| M18 output no vizinho; M19 `clipId` duplicado; M20 asset conflitante; M32 output do vizinho; M33 versão do vizinho; M35 cobertura de `requires`; M36 `fxTransition` no vizinho | mortos |
+| M25 `transition` herdada aceita; M26 razão não reduzida; M31 amostra não conferida; M34 primário sem checar o corte | mortos (M34 só depois do teste novo) |
+| **M15b** primário guarda `sampled` em vez do `raw` da instância | **equivalente** (não contado como morto) |
+
+Primeira bateria: 3 sobreviventes (M03, M15b, M34). M03 e M34 ganharam teste em `ca234c1` (um teste unitário de
+`withinOther` sobre um erro já prefixado; os dois ids de shot concordando com o `primary` declarado, de modo que só o corte
+recusa) e morreram; M15b é equivalente porque a cobertura do shot pela instância (M17, verificada antes) garante
+`raw ∈ [0, L)` para o primário, então `raw` e `sampled` da instância são o mesmo número em qualquer plano aceito.
+`directed-scene.test.mjs` mata M01 junto com o teste de produção.
+
+## Gates (Windows nativo, `ca234c1`)
+
+Executados:
+
+- `./scripts/runtime setup` (pnpm frozen) — ok; `./scripts/runtime build` — ok (`dist/runtime.js` 4199 KiB, sem o leitor).
+- Grupo Node (contém testes puros e browser existentes, não é só puro): `directed-scene`, `directed-scene-light`, `directed-scene-splats`, `output-fx`, `fx-handles-overlay` e os três arquivos novos: **182 passam, 0 falham**.
+- `cargo fmt --all -- --check` 0; `./scripts/cargo check --workspace --all-targets --locked` 0; `clippy --workspace --all-targets --locked -- -D warnings` 0;
+  `test --workspace --no-run --locked` 0 (só compila); `build -p tessel-editor --locked` 0. Alvo mbx padrão, `--locked`, sem
+  clean/gc/lanes/target-dir.
+- `scene_transition_parser`: 4/4 (debug).
+- Core, **debug e release**, `--locked`: `scene_fx_transition` 216 (inclui compat, public, reload, boundary/scan, timing,
+  ceiling, corpus), `scene_plan_transition_baseline` 1, `pilot_dissolve_corpus` 10, `pilot_dissolve_representable_import` 5,
+  `pilot_dissolve_representable_state` (X) 8: todos verdes nos dois perfis.
+
+Lidos / não executados: `pnpm test` global (tem testes de browser que exigem Chrome/GL; os arquivos listados acima também contêm testes de browser/pixel antigos; nenhum teste de transição desenha pixels), `cargo test --workspace` completo (**não** declaro workspace verde: os dois gizmos Windows da base seguem sem
+verde e não foram tocados nem executados aqui), o ramo "Node ausente" do teste de interop (só lido: `locate(...).expect(...)`
+panica; não consegui tirar o Node da máquina sem alterar o ambiente — Program Files é um fallback), Mac, origem
+(`ORIGIN_NOT_EXECUTED`), GPU/desempenho/lock, UI física, aceite humano. N/A: pixels, shader, bridge/worker, CLI/UI (nenhuma
+superfície de edição mudou).
+
+## Ownership
+
+Arquivos novos/alterados (todos desta entrega, nenhum fora do ownership da R0): `runtime/src/directed-deck.js`,
+`directed-transition*.js` (5), `runtime/src/directed-scene.js`, `runtime/test/directed-transition*` (4 + fixtures + interop),
+`runtime/test/directed-scene.test.mjs` (uma pinagem), `crates/render/tests/scene_transition_parser.rs`, `docs/migration/p4b-s2-r0-parser-plan.md`,
+este relatório, `docs/features/fx-transitions.md`, `docs/features/scene-plan.md`. Todos < 1000 linhas; nenhum arquivo acima de 1000 linhas cresceu.
+`AGENTS.md`, `docs/backlog.md`, `docs/features/README.md` e `docs/README.md` não foram editados.
+
+## Patches literais para o coordenador (IDs existentes: BL082.4.4, F064; sem ID novo)
+
+1. `docs/backlog.md`, linha `BL082.4.4`: na coluna de estado, trocar `R pendente` por
+   `R0 leitor interno JS integrado a validar; R restante pendente`; e **acrescentar ao fim da célula de notas**:
+
+   `R0 (ca234c1): leitor puro do plano de dois decks (parseTransitionPlan/Text, runtime/src/directed-transition*.js), extração mecânica do leitor de deck com controle de 4665 casos idêntico, guarda de transition sem fxTransition em /requires; 108 testes JS novos, interop com o core real (12 quadros × 3 conteúdos e 28 planos adulterados no mesmo ponteiro), 45 mutantes: 44 mortos, M15b equivalente. Windows: runtime build, Node puro 182/0, fmt/check/clippy/no-run/build0, core 216/1/10/5/8 em debug e release. Produção inalterada: JS13/Rust14, Refuse, F064 P. Sem render/GL/pixel/bridge/hello/flag, sem Mac, sem workspace global, sem browser. [Relatório R0](migration/p4b-s2-r0-parser-report.md) por SHA.`
+
+2. `docs/features/README.md`, linha `F064`: **acrescentar ao fim da célula de status**, antes do `|` final:
+   `R0/ca234c1: leitor JS interno do plano de dois decks (puro, sem produto) e guarda de /requires; produção ainda recusa toda transição, JS13/Rust14, Refuse, F064 P. [Relatório R0](../migration/p4b-s2-r0-parser-report.md).`
+
+3. `docs/README.md`, após o item `P4b S2-H`:
+   `- [P4b S2-R0 — leitor interno do plano de dois decks](migration/p4b-s2-r0-parser-report.md): leitor JS puro do wire C0b com tetos, relógios e interop com o core; sem renderização, produção ainda recusa transições.`
+
+
+## Coordenação Mac e reforço antes do merge
+
+Prova nativa do coordenador em9c3a643 (códigoca234c1), checkout limpo: runtime setup/build,
+grupo Node182/0/0skips (puro e browser legado), fmt, check workspace-all-targets, clippy workspace-all-targets-Dwarnings,
+core216/10/5/8/1 isolado EXPECT0 e preserve_order EXPECT1, interop4, workspace-no-run,
+build desktop e tree sem gpui/wry passaram. No-run só compila; workspace global, core
+completo, pixel de transição, GPU real/desempenho, UI física e origem não foram executados nessa rodada.
+O grupo Node inclui browser Chrome/SwiftShader de luz, splat e overlays antigos; chamá-lo de só puro seria incorreto.
+Logs: ~/.cache/tessel-pr75-mac-20261115/summary.json e arquivos por gate.
+
+Uma sonda independente comparou utf8Length com Buffer.byteLength para todas as65.536
+unidades UTF-16 isoladas: zero divergências. Outra confirmou a limitação lexical já
+pré-registrada: durationFrames:12.0 vira Number12 e é aceito no JS; o leitor Rust textual
+pode recusar essa grafia. O leitor JS recusa valores fracionários, não a grafia original.
+
+A sonda de arrays herdados revelou um defeito da API de objeto em9c3a643: mover resources
+para o protótipo permitia aceitar20.003 recursos no primário, pois o pré-check contava
+só campos próprios e o leitor de deck ainda os consumia. O reforço recusa os seis campos
+herdados em ambos os decks no próprio ponteiro, antes de ler elementos; preserva o
+leitor compartilhado e o caminho dos planos JSON/sem transição. A regressão nova falhou
+por asserção no código anterior (0/1), depois passou (1/1), incluindo arrays válidos
+pequenos e recursos acima do teto. Logs inherited-red/green. Não é uma prova de desenho.
+
+O teste JS de20.000 recursos sintéticos prova o contador do leitor, mas não que aquele
+plano seria válido no core. Foi acrescentado um teste Rust→Node que constrói20.000 itens
+com passes válidos, exige aceitação/validate no core, confere o texto abaixo de4MiB e
+aceitação no JS;20.001 é recusado pelos dois em /transition. Não muda quotas do documento
+nem grava fixture gigante. Uma primeira execução do teste novo falhou por unwrap em
+fx omitido (array vazio não serializado); a construção foi corrigida para contar arrays
+ausentes como0 e conferir fx vazio no plano tipado, antes de gerar os passes.
+
+Revisão independente R1 Windows está em execução sobre9c3a643. O reforço acima exige
+rechecagem própria; nenhum resultado de R1 ou Mac anterior é herdado como prova dele.
+Backlog/matriz/índice atualizados pelo coordenador, sem promover F064 nem anunciar capacidade.
+
+
+O OpenCodeReview apontou outro defeito confirmado em9c3a643: primary.editTime=6/4
+no frame36/24fps passava pela leitura da razão e a comparação com o vizinho3/2 culpava
+/transition/other/frame/editTime. ratioAt agora exige MDC=1 no próprio campo, inclusive
+0/1, antes de comparar decks. MDC exato é compartilhado com o cálculo dos tempos.
+A regressão nova falhou por ponteiro incorreto no código anterior; cobre os três tempos
+em ambos os decks. Interop inclui esse vetor também, aumentando adulterações de28 para29.
+
+Uma execução do grupo misto na worktree do coordenador deu170/13falhas porque usou
+dist antigo (capabilities de pointLights/overlays ausentes). O build oficial local
+foi executado antes da repetição; não atribuir essa execução inválida à guarda nova
+nem omitir as13falhas históricas. O checkout de validação nativo já tinha build correto
+e passou182/0 em9c3a643. Resultados finais do reforço são registrados separadamente.
+
+
+Reforço final do coordenador (Mac): grupo Node184/0/0skips, interop5/0 (29
+adulterações, teto válido20000/+1), clippy do alvo interop-Dwarnings, fmt e build
+oficial do runtime passaram. Fontes/testes conferidos por SHA-256 antes/depois dos
+gates; summary final-reinforcement-summary.json. As duas regressões novas falham
+no código anterior e passam no corrigido. Gates completos de workspace/core
+pertencem a9c3a643; não foram rebatizados como execução do reforço. Só módulos
+internos do parser e testes mudaram depois: leitor produtivo/extração permanecem
+iguais. Revisão independente do reforço ainda pendente, F064 P/Refuse/JS13.
+
+
+## R1 Windows independente e fechamento das ressalvas
+
+A [R1 Windows](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:0174d16d961d8ad76f48c9c83077d6e0dda0d16e20c336cfd5b2cdd74c79ef6e)
+aprova9c3a643 sem bloqueio, não o reforço0175cec. Executou setup, Node182,
+fmt/check/clippy workspace-all-targets/no-run/build, interop4, core216/10/5/8/1
+isolado e preserve_order, tree sem gpui/wry. No-run só compila. Comparou27.345
+entradas entre parser antigo/novo:10.356 diferenças, todas da guarda, zero
+inesperadas; fuzz de34.806variantes contra o core e cerca de59probes manuais.
+Provas da R1, não reexecutadas pelo coordenador:134mutantes JS (98mortos/36sobreviventes);
+33sobreviventes foram rodados na interop, só T12 morreu e32sobreviveram. Seis foram
+considerados provavelmente equivalentes, sem prova; não reclassificados como mortos.
+Os45mutantes do autor constituem outra bateria, não substituem essa evidência.
+
+A R1 chamou182testes de puros e relatou browser não executado. Os arquivos contêm
+browser de luz/splat/overlays; a declaração por tipo de superfície não deve ser
+herdada. O coordenador confirmou a execução desses casos no Mac, sem pixels de transição
+e sem prova de GPU física/desempenho ou janela nativa.
+
+Diferenças confirmadas pela R1 e registradas no contrato: JS aceita lexemas12.0,34.0,
+2e0,4.1e1,-0,3.0 que o Rust textual recusa; id da transição é só não vazio, sem
+64bytes/alfabeto do core; JS é mais estrito em IDs de instância/câmera e hashes/revisões
+vazios, FOV fora de(0,180) e2^53. A igualdade exata de requires é do core; JS só
+verifica reconhecimento/cobertura. Nada disso abre uma entrada produtiva ou promete
+equivalência de todos os planos forjados.
+
+F2 foi reproduzido: versão cíclica lança TypeError no código anterior. O helper
+compartilhado agora conserva unsupported_plan_version e detalhes serializáveis,
+com um rótulo estável para a versão que JSON.stringify não representa. A regressão
+falha antes/passou depois para ciclo, BigInt e objeto com BigInt nas duas entradas.
+Valores JSON normais conservam o resultado/mensagem. Essa é uma mudança defensiva
+no erro malformado, além da guarda de requires; não dizer produção inteiramente intocada.
+
+Dez novos testes puros cobrem F2, fim exclusivo da janela com plano coerente nos demais
+campos, quadro anterior ao shot primário, L0/raw1, janela[0,100) do tamanho da edição,
+intensidade0, tolerância5e-10 de progress, amount>1 mesmo dentro de epsilon, aridade/nome
+de params,1000fps/u32limite,2^53-1/2^53, conflitos format/alpha/colorSpace (helper) e
+ordem de guardas/capacidades contra corpo quebrado. Isso reforça os casos específicos;
+não declara todas as32sobrevivências fechadas. Nits de separação de cabeçalho e newline
+final corrigidos. O head consolidado ainda exige R2 própria, sem herdar aprovação da R1.
+
+
+Mac no fechamento R1: build oficial runtime, grupo Node194/0/0skips (dez novos
+testes são puros; demais incluem browser legado), interop5 e fmt0. O teste de
+versão também confere found/message exatos para undefined/null/2/string2/false/
+objeto/array representáveis por JSON. Onze mutantes focados foram mortos: versão,
+fim exclusivo, janela inteira, intensidade0, tolerância de progresso, teto amount,
+1000fps, inteiro seguro e os três campos de recurso. Sete falharam por asserção e
+quatro por recusa tipada invalid_plan de entrada válida; nenhum erro de sintaxe.
+Cada fonte foi restaurado por bytes/SHA, mtime atualizado e seguido de10/10controles.
+O classificador inicial exigia ERR_ASSERTION e terminou com erro ao encontrar as
+quatro recusas tipadas; os logs foram relidos e classificados, sem fingir erro de
+compilação ou repetir o lote. Artefatos r1-close-* e r1-mut-* no cache Mac da PR75.
+Esses11mutantes são do coordenador, não a reexecução dos134da R1 nem prova de todas
+as32sobrevivências. R2 do head consolidado ainda pendente.
+
+
+## R2 Windows em a3c357b — aprovação interna e fechamento
+
+A [R2](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:222645598b8326c7fe1dee8ec9ec23d8bd9e6989e9a48416e100df053c9488e6)
+aprova a3c357b sem bloqueio, revendo0175cec e a3c357b independentemente da R1.
+Windows nativo, checkout limpo, wrapper/defaultmbx. Build runtime0; Node194/0/0skips,
+dos quais120puros e74dos arquivos antigos que incluem browser; interop5;
+core216/10/5/8/1 EXPECT0 e preserve_order EXPECT1; fmt/check/clippy workspace-all-targets,
+no-run/build0, tree sem gpui/wry. No-run só compila; workspace global/core completo,
+gizmos, release, áudio, stress, GPU/performance, UI física e origem não executados.
+
+R2 executou21mutantes:17mortos/4sobreviventes (M5:0/2 recusado tarde; M7/M9/M18:
+rótulo/typeof e found da versão). Três mutantes adicionais na interop morreram.
+Retirar import gerando ReferenceError e tentativas de quoting inválido foram
+descartados, não contam como controles discriminantes. Fontes restauradas por SHA
+e controles120/0. Esses números não são somados aos do autor/R1/coordenador.
+
+N1 e N2 são limites preservados: getter próprio que troca o array depois da contagem
+aceita30.002 recursos, e toJSON que falha na segunda chamada faz falhar a serialização
+posterior do erro. Ambos reproduzidos pelo coordenador sem modificar fonte. R2 também
+relata versão profunda; não reexecutada pelo coordenador. Não há defesa universal
+contra objetos JavaScript ativos/profundos. Nenhuma porta produtiva chega ao parser
+interno; JSON textual não contém esses mecanismos. Limites registrados em F064 e
+BL082.4.4, sem promover proteção da API de objeto ou ativar produto.
+
+N3/N2b: testes reforçados sem mudar produção. 0/2 no other com heldInstance errado
+exige o ponteiro da razão antes do erro de held;0/2 no primary exige seu próprio
+ponteiro. As duas entradas também pinam found, typeof no rótulo e mensagem da versão
+cíclica/BigInt. O coordenador aplicou os quatro mutantes correspondentes:4/4mortos
+por asserção, restauração por bytes/SHA/mtime e2/2controles após cada um. Logs r2-close-*.
+Isso fecha essas quatro lacunas, não todas as sobrevivências da R1.
+
+N5: na R2, o plano exato era normalizado e o excedente não (3.852.871 contra3.573.246
+bytes), ambos abaixo de4MiB. O teste final deriva ambos da mesma árvore normalizada,
+clona um passe normalizado com ID novo e verifica que removê-lo restaura exatamente
+a árvore original. Agora compara o mesmo plano mais um passe, com20.000/20.001itens.
+N4: contagem29adulterações e tabela de commits corrigidas.
+
+A produção final é byte-idêntica à aprovada em a3c357b; só docs/testes mudam neste
+fechamento. Provas finais Mac são separadas por conteúdo e head; os gates Windows
+permanecem atribuídos a a3c357b. F064 P/Refuse/JS13; desenho R/S2A pendentes.
+
+
+Fechamento Mac (conteúdo final conferido por SHA-256): grupo Node195/0/0skips,
+interop5/0 com o par normalizado20000/+1, clippy do alvo interop-Dwarnings,
+fmt e19specs de tabelas passaram. Logs r2-final-summary.json e r2-final-hashes.json;
+fontes e testes não mudaram durante os gates. Os quatro mutantes reforçados morreram
+por asserção com controles2/2 (r2-close-mutants.json). Produção idêntica a a3c357b
+por diff; aprovação Windows R2 é desse código. Este fechamento não rebatiza os
+gates completos do workspace como nova execução Mac/Windows.
