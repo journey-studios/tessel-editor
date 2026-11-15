@@ -1,0 +1,273 @@
+{
+  "corpus": {
+    "cases": 163,
+    "file": "cases.json",
+    "sha256": "0c091a8d1aaf96f49e70fe79bf8d7180496a7f08874ab0b158595307858b2d83"
+  },
+  "deferred_fields_source": "crates/core/src/directed_scene/mod.rs:81-100",
+  "flags": [
+    "ORIGIN_NOT_EXECUTED",
+    "PLAN_COMMANDS_ABSENT_FROM_CLONE",
+    "PIN_HAS_NO_FX"
+  ],
+  "generator": "shot-trim-reference/1",
+  "oracle_choices": [
+    "AUDIO_WARNING",
+    "AUTO_RESERVE",
+    "BOUNDARY",
+    "CHAIN_MIDDLE",
+    "EMPTY_CONTAINER",
+    "GATE",
+    "LOCKED_AUTO",
+    "REFUSAL_ORDER",
+    "TRANSITION_KEYS"
+  ],
+  "origin": {
+    "notes": [
+      "ORIGIN_NOT_EXECUTED: no origin code was run; every rule is a transcription of the two documents or of the file read.",
+      "PLAN_COMMANDS_ABSENT_FROM_CLONE: `packages/scene-engine/src/shots/` (the pilot of the plan commands) does not exist in the clone; no `trimShot` appears in any ref.",
+      "PIN_HAS_NO_FX: `d6adac15` is the main of the origin and has no `src/fx/`, `evaluateShotFrame` or `resolveShotAtOffset`; those are read at the tip `3655790` (the effects branch the P4b oracle already reads). The schema, integrity, joins, evaluator of the edit frame, light/weather keys, narration and rig files are read at the pin."
+    ],
+    "pin": "d6adac15c61f4ef582a7ec259397b2e025d1f059",
+    "repository": "journey-studios tesselapp, local clone, read only by git objects",
+    "tip": "365579076782c1fc19c6464f3bc0199b30c0ab8f"
+  },
+  "regenerate": "python scripts/shot-trim-reference.py   # writes; add --check to compare without writing",
+  "rule_documents": [
+    {
+      "path": "docs/migration/origin-specs/scene-shot-trim-plan.md",
+      "sha256": "733b2cbf88b7241bbbb53524231c173e4f049d6af87f06c78303eaf90d681625"
+    },
+    {
+      "path": "docs/migration/origin-specs/scene-shot-trim-decisions.md",
+      "sha256": "da5aa25b6f21acfdf8cb9a4024a091ac9a135e8c110ee169d8e50f475567a8c8"
+    }
+  ],
+  "rule_sources": [
+    {
+      "blob": "d4b10d3617d7baece759c21080d8defb4b2fcc00",
+      "commit": "d6adac15c61f4ef582a7ec259397b2e025d1f059",
+      "path": "packages/scene-engine/src/schema/render-bundle.schema.ts",
+      "sha256": "953ddfbdfca5dc98a2f3baa29ddbc59f26922131bfa32b998b1f70bc107e0f30",
+      "which": "pin"
+    },
+    {
+      "blob": "d45b0e302abcac5fb480c3734b6ba0dc7b1d5b57",
+      "commit": "d6adac15c61f4ef582a7ec259397b2e025d1f059",
+      "path": "packages/scene-engine/src/validate/bundle-integrity.ts",
+      "sha256": "ddb33e6fca2ede35a7a3eaa3d060629558c7b8351cff29aa9aaf838676dd2b56",
+      "which": "pin"
+    },
+    {
+      "blob": "32985a9140c4d9f8b14e9724ad70c6d8459e66cf",
+      "commit": "d6adac15c61f4ef582a7ec259397b2e025d1f059",
+      "path": "packages/scene-engine/src/validate/edit-joins.ts",
+      "sha256": "14a5c2486820b1dd361a34180e0ca1bee5b0deefef4792aabe7207905396bedd",
+      "which": "pin"
+    },
+    {
+      "blob": "ef8fffa87ab1f31456742c0171ec52a920617194",
+      "commit": "d6adac15c61f4ef582a7ec259397b2e025d1f059",
+      "path": "packages/scene-engine/src/edit/resolve-shot-at-edit-frame.ts",
+      "sha256": "bc9e72b01b6149b39adf8d062100e5a79956439c4188bee343697a07892c2b28",
+      "which": "pin"
+    },
+    {
+      "blob": "bb178c234c592d3bff261942670d7d249c89acbd",
+      "commit": "d6adac15c61f4ef582a7ec259397b2e025d1f059",
+      "path": "packages/scene-engine/src/evaluator/evaluate-edit-frame.ts",
+      "sha256": "653513af4ca6c8ee5b775970ce9d7afe63d718d9e8618cfe7aea83867b6cb46d",
+      "which": "pin"
+    },
+    {
+      "blob": "a5212bda7f4c966852584f07e5d048cbc808ee24",
+      "commit": "d6adac15c61f4ef582a7ec259397b2e025d1f059",
+      "path": "packages/scene-engine/src/performance/resolve-performance.ts",
+      "sha256": "3e3f2f4f888a48eddf00bae6d712995035f1e7e74dd58f938a003e6fabeedcc7",
+      "which": "pin"
+    },
+    {
+      "blob": "aaa7d0c87e7cf54f0f21a937488d2f7867a5fbb0",
+      "commit": "d6adac15c61f4ef582a7ec259397b2e025d1f059",
+      "path": "packages/scene-engine/src/keyframes/keyframe-rules.ts",
+      "sha256": "e1beb696ba477a40b0ff0188acc3e18fee79180aaf8f79f0c2eac2bf14f74ae2",
+      "which": "pin"
+    },
+    {
+      "blob": "b9aee27cb16ade8599276e71556843e379586357",
+      "commit": "d6adac15c61f4ef582a7ec259397b2e025d1f059",
+      "path": "packages/scene-engine/src/narration/narration-schema.ts",
+      "sha256": "0af031103fcef0eacb761d14342cebebff976253556a783baeaa2123e6fec461",
+      "which": "pin"
+    },
+    {
+      "blob": "eea86648083ebbd7a6f853d950481d9f8f9465f8",
+      "commit": "d6adac15c61f4ef582a7ec259397b2e025d1f059",
+      "path": "packages/scene-engine/src/outline/outline-schema.ts",
+      "sha256": "00305d09ef920188fbe47a4f038ea2814b5dc1f7ea48451ae3abb8298b7c57b4",
+      "which": "pin"
+    },
+    {
+      "blob": "616d018bb3d50f793376c10c6b911fdc3406a3e3",
+      "commit": "d6adac15c61f4ef582a7ec259397b2e025d1f059",
+      "path": "packages/scene-engine/src/effects/scene-effects.ts",
+      "sha256": "d76e0bce25684d1dda57beb2181380f23188182ea93621893c011352277effa4",
+      "which": "pin"
+    },
+    {
+      "blob": "648eccb920752fc9bd0abd39518c29f772193192",
+      "commit": "d6adac15c61f4ef582a7ec259397b2e025d1f059",
+      "path": "packages/scene-engine/src/rig/rig-schema.ts",
+      "sha256": "ea094dccfd1c69bf452672ae4fc11658b06cc37eea9c8493f9675955bb5be834",
+      "which": "pin"
+    },
+    {
+      "blob": "a3f2ffc0dc4fa421dee9d38d02a009add95abcd5",
+      "commit": "d6adac15c61f4ef582a7ec259397b2e025d1f059",
+      "path": "packages/scene-engine/src/rig/follow-schema.ts",
+      "sha256": "b437822b5c62c46d670c626afc136fca934c2eca9ca33aa9617dfdc17d40048c",
+      "which": "pin"
+    },
+    {
+      "blob": "c2f9affe47c221b36843e401ab127b8dc6a8a685",
+      "commit": "d6adac15c61f4ef582a7ec259397b2e025d1f059",
+      "path": "packages/scene-engine/src/rig/rig-targets.ts",
+      "sha256": "dfcd1c93afd89d853fcd18c388ab049b725a0724b3b4114442ae0e89ce1d4dff",
+      "which": "pin"
+    },
+    {
+      "blob": "e0780672769dbcba2027391d3f10b651cfe10915",
+      "commit": "d6adac15c61f4ef582a7ec259397b2e025d1f059",
+      "path": "packages/scene-engine/src/path/path-schema.ts",
+      "sha256": "79b53b9f089a795720ee7789a7a53e72283b847d3522fd7bb3fd724df9d63e15",
+      "which": "pin"
+    },
+    {
+      "blob": "96c34bcefad88c1c54a6e6aa9a215c91d6669f29",
+      "commit": "d6adac15c61f4ef582a7ec259397b2e025d1f059",
+      "path": "packages/scene-engine/src/weather/weather-keys.ts",
+      "sha256": "28e54ca8fa5f6a69c7174da2da57c94cecc00d4168d3097cfa5f8c3a82413985",
+      "which": "pin"
+    },
+    {
+      "blob": "240d4a59309b51db4bea4a691b990b4399014119",
+      "commit": "d6adac15c61f4ef582a7ec259397b2e025d1f059",
+      "path": "packages/scene-engine/src/lighting/light-keys.ts",
+      "sha256": "5df1b807e779c5f36b096e3215cf72e0401b42762f0b6e75e102a4f7ab61da1f",
+      "which": "pin"
+    },
+    {
+      "blob": "e57f90df88571f904f8e519196a57ab5dbacb673",
+      "commit": "d6adac15c61f4ef582a7ec259397b2e025d1f059",
+      "path": "packages/scene-engine/src/runtime/three-scene-runtime.ts",
+      "sha256": "787c409e999ca87bfc403fcae85db379633c905566721ab0f1461f28bb58a0fd",
+      "which": "pin"
+    },
+    {
+      "blob": "ed197947236ec267919cb8af253fb889cda53071",
+      "commit": "d6adac15c61f4ef582a7ec259397b2e025d1f059",
+      "path": "packages/scene-engine/src/runtime/rig-layer.ts",
+      "sha256": "22c77ea8a98617024ca21ad09f52fb809505151264bef79c6a1df5b42bd841b6",
+      "which": "pin"
+    },
+    {
+      "blob": "0851da51e1cc8c6a8961f4cd3dcc503382417cdb",
+      "commit": "365579076782c1fc19c6464f3bc0199b30c0ab8f",
+      "path": "packages/scene-engine/src/edit/resolve-shot-at-offset.ts",
+      "sha256": "18e82cc298a29e3386c5328364503f31e75a26864a990542c045697c290ab047",
+      "which": "tip"
+    },
+    {
+      "blob": "c19160b92b5d3fba32cb1dd979c70410a3f50053",
+      "commit": "365579076782c1fc19c6464f3bc0199b30c0ab8f",
+      "path": "packages/scene-engine/src/edit/resolve-shot-at-offset.spec.ts",
+      "sha256": "7a61db5bfe29a8461730e8eecc87ba88a25a1be5faadff81b133bfa68ab0c26b",
+      "which": "tip"
+    },
+    {
+      "blob": "0efd01c7f416949bd9ff0d07533f7f3e820f4b02",
+      "commit": "365579076782c1fc19c6464f3bc0199b30c0ab8f",
+      "path": "docs/video-production/scene-fx-plan.md",
+      "sha256": "5eb282c0b9ea98ba480255ebf1226da24f8125f3d9ba0b7a2644a78d44858069",
+      "which": "tip"
+    },
+    {
+      "blob": "a8d0c64b35a14fd971fa8aa7edd4cd9de5645290",
+      "commit": "365579076782c1fc19c6464f3bc0199b30c0ab8f",
+      "path": "packages/scene-engine/src/evaluator/evaluate-edit-frame.ts",
+      "sha256": "a67280dd59aea96c05e12c34c04a142db856fd1bc8923f717668607c71daa910",
+      "which": "tip"
+    },
+    {
+      "blob": "534967558b8d6dac94b4f2c6579919eb019dff60",
+      "commit": "365579076782c1fc19c6464f3bc0199b30c0ab8f",
+      "path": "packages/scene-engine/src/evaluator/evaluate-shot-frame.spec.ts",
+      "sha256": "7452f3e94b539f374dbb138bea4eb9c5a7f76ee765bb4753d35fc358ffb80317",
+      "which": "tip"
+    },
+    {
+      "blob": "5c85ce56f21fe22bf7c53314386b0c2124e20361",
+      "commit": "365579076782c1fc19c6464f3bc0199b30c0ab8f",
+      "path": "packages/scene-engine/src/fx/fx-schema.ts",
+      "sha256": "4044611e48418de75cd05dd95ae27ae777568156fda92fc6cb6e6b53b8e2a21d",
+      "which": "tip"
+    },
+    {
+      "blob": "bcf38615372e8cf830ea21a87159e390f3a7674f",
+      "commit": "365579076782c1fc19c6464f3bc0199b30c0ab8f",
+      "path": "packages/scene-engine/src/fx/fx-windows.ts",
+      "sha256": "55db48362fc406695cc2ff08e29cf79cfa7563f851b2f88e39c0a726d70c4bd3",
+      "which": "tip"
+    },
+    {
+      "blob": "0cb7607fe7010c6f2c50159cb2c53219f4e50abc",
+      "commit": "365579076782c1fc19c6464f3bc0199b30c0ab8f",
+      "path": "packages/scene-engine/src/fx/fx-explain-clips.ts",
+      "sha256": "10a447cc467093e4a311c51ad7e64c6637d2952b5cc2d255539a1999f80ab61c",
+      "which": "tip"
+    },
+    {
+      "blob": "f075eec56b82012ad9facfacf68cad8ecdb36805",
+      "commit": "365579076782c1fc19c6464f3bc0199b30c0ab8f",
+      "path": "packages/scene-engine/src/fx/fx-explain-transitions.ts",
+      "sha256": "6aa0dd88253702b91a13cc5a57c4e977257d79f272c791a6c2f0e1123acfaabf",
+      "which": "tip"
+    },
+    {
+      "blob": "f4ecbfbbce4e5e4aa5a6cb4bf9669f505a1922a0",
+      "commit": "365579076782c1fc19c6464f3bc0199b30c0ab8f",
+      "path": "packages/scene-engine/src/fx/fx-keys.ts",
+      "sha256": "4d174b21f8440b50a67c44c99c8c46f557b0f3435042aaad2297288052d69b5d",
+      "which": "tip"
+    },
+    {
+      "blob": "3fe9ccf1bdcf669c3249f590848d0e4417f2fc62",
+      "commit": "365579076782c1fc19c6464f3bc0199b30c0ab8f",
+      "path": "packages/scene-engine/src/fx/fx-command-clips.ts",
+      "sha256": "e4e0e9c9c3c3b4e2b230f451bec76c594839a5e9b1432bc17511e47f22ef84b8",
+      "which": "tip"
+    },
+    {
+      "blob": "8e2aacd77d6b9f79baa74653d61f0aaef81a2da0",
+      "commit": "365579076782c1fc19c6464f3bc0199b30c0ab8f",
+      "path": "packages/scene-engine/src/fx/fx-command-step.ts",
+      "sha256": "594a2a71bb82587cb9164d1c5a8ace7b5fe49eb74f08c9f01e0e9e035cbf8381",
+      "which": "tip"
+    },
+    {
+      "blob": "bde079b7fe26b3c25fb0ef6fe931f2233a1a9b8e",
+      "commit": "365579076782c1fc19c6464f3bc0199b30c0ab8f",
+      "path": "packages/scene-engine/src/fx/fx-command-transitions.ts",
+      "sha256": "fb1006ff87527afb0696eff165d1055976a68d5416fd00d927eeeafdb354749b",
+      "which": "tip"
+    },
+    {
+      "blob": "44c4c11f8725450e9c05bf835a273c57bcca8e0c",
+      "commit": "365579076782c1fc19c6464f3bc0199b30c0ab8f",
+      "path": "packages/scene-engine/src/fx/resolve-fx-frame.ts",
+      "sha256": "20fac1cb27ac7d2cb77e2f93f2163312525057ac2defb2ff1bf986c5d015ea18",
+      "which": "tip"
+    }
+  ],
+  "schema": 1
+}

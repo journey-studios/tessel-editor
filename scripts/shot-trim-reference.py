@@ -75,6 +75,8 @@ ORIGIN_SOURCES = [
     ("pin", "runtime/three-scene-runtime.ts", "e57f90df88571f904f8e519196a57ab5dbacb673", "787c409e999ca87bfc403fcae85db379633c905566721ab0f1461f28bb58a0fd"),
     ("pin", "runtime/rig-layer.ts", "ed197947236ec267919cb8af253fb889cda53071", "22c77ea8a98617024ca21ad09f52fb809505151264bef79c6a1df5b42bd841b6"),
     ("tip", "edit/resolve-shot-at-offset.ts", "0851da51e1cc8c6a8961f4cd3dcc503382417cdb", "18e82cc298a29e3386c5328364503f31e75a26864a990542c045697c290ab047"),
+    ("tip", "edit/resolve-shot-at-offset.spec.ts", "c19160b92b5d3fba32cb1dd979c70410a3f50053", "7a61db5bfe29a8461730e8eecc87ba88a25a1be5faadff81b133bfa68ab0c26b"),
+    ("tip", "docs/video-production/scene-fx-plan.md", "0efd01c7f416949bd9ff0d07533f7f3e820f4b02", "5eb282c0b9ea98ba480255ebf1226da24f8125f3d9ba0b7a2644a78d44858069"),
     ("tip", "evaluator/evaluate-edit-frame.ts", "a8d0c64b35a14fd971fa8aa7edd4cd9de5645290", "a67280dd59aea96c05e12c34c04a142db856fd1bc8923f717668607c71daa910"),
     ("tip", "evaluator/evaluate-shot-frame.spec.ts", "534967558b8d6dac94b4f2c6579919eb019dff60", "7452f3e94b539f374dbb138bea4eb9c5a7f76ee765bb4753d35fc358ffb80317"),
     ("tip", "fx/fx-schema.ts", "5c85ce56f21fe22bf7c53314386b0c2124e20361", "4044611e48418de75cd05dd95ae27ae777568156fda92fc6cb6e6b53b8e2a21d"),
@@ -87,6 +89,15 @@ ORIGIN_SOURCES = [
     ("tip", "fx/fx-command-transitions.ts", "bde079b7fe26b3c25fb0ef6fe931f2233a1a9b8e", "fb1006ff87527afb0696eff165d1055976a68d5416fd00d927eeeafdb354749b"),
     ("tip", "fx/resolve-fx-frame.ts", "44c4c11f8725450e9c05bf835a273c57bcca8e0c", "20fac1cb27ac7d2cb77e2f93f2163312525057ac2defb2ff1bf986c5d015ea18"),
 ]
+
+
+
+def origin_path(path):
+    """The path inside the origin repository: sources live under `packages/scene-engine/src/`, docs by full path."""
+    if path.startswith("docs/"):
+        return path
+    return ORIGIN_SRC + path
+
 
 # The one list read from the destination: the fields the Rust importer keeps without interpreting
 # (`crates/core/src/directed_scene/mod.rs`, `DEFERRED_FIELDS`, lines 81-100 of the base `de83087`). `lighting` is
@@ -103,7 +114,7 @@ DEFERRED_FIELDS_SOURCE = "crates/core/src/directed_scene/mod.rs:81-100"
 DEFERRED_AUDIT = [
     {"field": "narration", "clock": "edit-seconds", "shape": "narration.tracks[].clips[].startSeconds / durationSeconds / fromMix.{startSeconds,durationSeconds} (float seconds)", "destination": "stays",
      "why": "Real edit seconds, but in another shape and moved only with `withNarration` (#16, D13): without it no line moves, and the option is refused here (SHOTS_OPTION_NOT_YET).",
-     "evidence": ["pin:narration/narration-schema.ts:4-5", "pin:narration/narration-schema.ts:24-25", "pin:narration/narration-schema.ts:49-57"]},
+     "evidence": ["pin:narration/narration-schema.ts:4-5", "pin:narration/narration-schema.ts:24-25", "pin:narration/narration-schema.ts:49-58"]},
     {"field": "outline", "clock": "none", "shape": "groups and items: ids, labels, order (no frame, no second)", "destination": "stays",
      "why": "Nothing to move (#23).",
      "evidence": ["pin:outline/outline-schema.ts:28-54"]},
@@ -118,10 +129,10 @@ DEFERRED_AUDIT = [
      "evidence": ["pin:schema/render-bundle.schema.ts:211-229", "pin:schema/render-bundle.schema.ts:247"]},
     {"field": "sceneDefinitions[].weather", "clock": "none", "shape": "a name with an intensity (\"snow:0.6\")", "destination": "stays",
      "why": "The name carries no frame; its intensity is replaced by `weatherKeys` over time, and the settling snow integrates the intensity of every earlier edit frame, so what is drawn after an edited point changes on purpose.",
-     "evidence": ["pin:schema/render-bundle.schema.ts:250-259", "pin:weather/weather-keys.ts:37-57"]},
+     "evidence": ["pin:schema/render-bundle.schema.ts:250-259", "pin:weather/weather-keys.ts:36-58"]},
     {"field": "sceneDefinitions[].weatherKeys", "clock": "edit-frames", "shape": "weatherKeys[].frame (integer, from 0, strictly increasing; {frame, value, easing})", "destination": "remap",
      "why": "Keys 'on the edit's frames'; the runtime reads them with the edit frame. Same shape as a light's keys (#15: after the point by the delta, dropped inside the removed stretch, an empty list is absent).",
-     "evidence": ["pin:schema/render-bundle.schema.ts:130-146", "pin:schema/render-bundle.schema.ts:260-267", "pin:runtime/three-scene-runtime.ts:1373-1381", "pin:validate/bundle-integrity.ts:570-575", "pin:keyframes/keyframe-rules.ts:10-44"]},
+     "evidence": ["pin:schema/render-bundle.schema.ts:133-147", "pin:schema/render-bundle.schema.ts:260-267", "pin:runtime/three-scene-runtime.ts:1373-1381", "pin:validate/bundle-integrity.ts:570-575", "pin:keyframes/keyframe-rules.ts:10-44"]},
     {"field": "sceneDefinitions[].effects", "clock": "none", "shape": "an amount 0..1 per look (strict object); the look reads the edit frame only as a seed", "destination": "stays",
      "why": "No time in the data; the drawn grain depends on the edit frame, so it changes after an edited point on purpose.",
      "evidence": ["pin:effects/scene-effects.ts:4-7", "pin:effects/scene-effects.ts:19-37"]},
@@ -130,24 +141,46 @@ DEFERRED_AUDIT = [
      "evidence": ["pin:schema/render-bundle.schema.ts:284-290"]},
     {"field": "sceneDefinitions[].rigs", "clock": "instance-frames", "shape": "rigs[].constraints[].target.keys[].frame and rigs[].follows[].progress[].frame ('frame of the scene instance')", "destination": "stays",
      "why": "Scene clock (#5): the rig, the baked pose and the follow run on the instance frame, which does not change when a shot grows. Frames past the baked track hold.",
-     "evidence": ["pin:rig/rig-schema.ts:43-49", "pin:rig/rig-schema.ts:68", "pin:rig/rig-schema.ts:79", "pin:rig/follow-schema.ts:12-18", "pin:rig/rig-targets.ts:89", "pin:runtime/rig-layer.ts:72"]},
+     "evidence": ["pin:rig/rig-schema.ts:43-49", "pin:rig/rig-schema.ts:68", "pin:rig/rig-schema.ts:79", "pin:rig/follow-schema.ts:12-18", "pin:rig/rig-targets.ts:89-93", "pin:runtime/rig-layer.ts:72"]},
     {"field": "sceneDefinitions[].paths", "clock": "none", "shape": "lines in the image px of a layer; the pen's progress is in the follow of a rig", "destination": "stays",
      "why": "No time of its own (the path file has no frame or second).",
-     "evidence": ["pin:path/path-schema.ts:1-1", "pin:rig/follow-schema.ts:12-26"]},
+     "evidence": ["pin:path/path-schema.ts:3-6", "pin:path/path-schema.ts:28-38", "pin:rig/follow-schema.ts:12-26"]},
     {"field": "sceneDefinitions[].nodes[].surface (only its assetRef.assetId is read)", "clock": "none", "shape": "a map and a camera/floor", "destination": "stays",
-     "why": "No time.", "evidence": ["pin:schema/render-bundle.schema.ts:63-83", "pin:schema/render-bundle.schema.ts:192"]},
+     "why": "No time.", "evidence": ["pin:schema/render-bundle.schema.ts:63-84", "pin:schema/render-bundle.schema.ts:192"]},
     {"field": "sceneDefinitions[].nodes[].normalMap (only its assetRef.assetId is read)", "clock": "none", "shape": "a map and its source", "destination": "stays",
-     "why": "No time.", "evidence": ["pin:schema/render-bundle.schema.ts:105-111", "pin:schema/render-bundle.schema.ts:196"]},
+     "why": "No time.", "evidence": ["pin:schema/render-bundle.schema.ts:103-110", "pin:schema/render-bundle.schema.ts:196"]},
     {"field": "sceneDefinitions[].nodes[].sceneDepth", "clock": "none", "shape": "a depth grid of a splat and its camera", "destination": "stays",
-     "why": "No time.", "evidence": ["pin:schema/render-bundle.schema.ts:88-102", "pin:schema/render-bundle.schema.ts:194"]},
+     "why": "No time.", "evidence": ["pin:schema/render-bundle.schema.ts:86-101", "pin:schema/render-bundle.schema.ts:194"]},
     {"field": "sceneDefinitions[].nodes[].relief", "clock": "none", "shape": "a depth grid of a plane and its camera", "destination": "stays",
-     "why": "No time.", "evidence": ["pin:schema/render-bundle.schema.ts:113-131", "pin:schema/render-bundle.schema.ts:198"]},
+     "why": "No time.", "evidence": ["pin:schema/render-bundle.schema.ts:112-131", "pin:schema/render-bundle.schema.ts:198"]},
     {"field": "sceneDefinitions[].nodes[].rigBind", "clock": "none", "shape": "{rigId, mode, boneId?, blendPx?}", "destination": "stays",
      "why": "No time.", "evidence": ["pin:rig/rig-schema.ts:83-91", "pin:schema/render-bundle.schema.ts:200"]},
     {"field": "sceneDefinitions[].nodes[].reveal", "clock": "none", "shape": "{rigId, followId}: the time is in the follow, on the instance clock", "destination": "stays",
      "why": "No time of its own; the follow it names counts instance frames (#5).",
      "evidence": ["pin:rig/follow-schema.ts:37-44", "pin:schema/render-bundle.schema.ts:202"]},
 ]
+
+# ---------------------------------------------------------------------------------------------------------
+# D07 / Q2: when a shot outlasts its content and the instance grows (#6), are the new frames HELD (the last
+# frame again) or EVALUATED AS REAL frames of a longer instance? Read at the pin and at the tip (`resolveShotAtOffset`
+# and `heldInstance` only exist at the tip, `3655790`); the pilot code of the plan commands is not in the clone.
+# ---------------------------------------------------------------------------------------------------------
+
+D07_AUDIT = {
+    "question": "Frames added by the growth of an instance (#6): held or evaluated as real?",
+    "conclusion": "real",
+    "q2_triggered": False,
+    "summary": "The frames of an instance grown by #6 are evaluated as real frames of a longer instance. `heldInstance` is not what holds them: it is set only for the OTHER deck of an effects transition, when the wanted instance frame falls outside `[0, durationFrames - 1]` of the (already grown) instance; and inside the shot's own range `resolveShotAtOffset` answers what `resolveShotAtEditFrame` answers. What 'holds' in decision #6 are the channels that hold by themselves (event channels with `holdFinal`, the baked rig pose, the reveal); a `cycle` channel keeps cycling.",
+    "findings": [
+        {"claim": "The evaluator never clamps the instance frame of a shot's own range: it throws past the end, and passes the real frame to the overrides and to the rig and reveal layers. The integrity rule makes the instance grow so that it never does.",
+         "evidence": ["pin:evaluator/evaluate-edit-frame.ts:70-74", "pin:evaluator/evaluate-edit-frame.ts:83-87", "pin:runtime/three-scene-runtime.ts:1430-1438", "pin:validate/bundle-integrity.ts:817-828"]},
+        {"claim": "`heldInstance` exists only at the tip, in `resolveShotAtOffset`: it clamps to `[0, instance.durationFrames - 1]` and is true only when that moved the frame; its reader is the other deck of a transition, and inside the range it equals `resolveShotAtEditFrame`.",
+         "evidence": ["tip:edit/resolve-shot-at-offset.ts:16-24", "tip:edit/resolve-shot-at-offset.ts:35-44", "tip:edit/resolve-shot-at-offset.ts:54-86", "tip:edit/resolve-shot-at-offset.spec.ts:89-101", "tip:docs/video-production/scene-fx-plan.md:369-376", "tip:docs/video-production/scene-fx-plan.md:578-590"]},
+        {"claim": "The channels: `cycle` continues with a modulo of the instance frame (not held); `event` holds its final value by design; the baked rig pose and the reveal hold past the end of their own track.",
+         "evidence": ["pin:performance/resolve-performance.ts:64-82", "pin:performance/resolve-performance.ts:17-30", "pin:performance/resolve-performance.ts:84-100", "pin:schema/render-bundle.schema.ts:308-317", "pin:runtime/rig-layer.ts:72-76", "pin:rig/rig-targets.ts:89-93"]},
+    ],
+    "for_q2": "The plan's D07 behaviour (new frames evaluated as real: `cycle` continues, `event` holds its final value) is what the origin does, so it is NOT a divergence and Q2 is not triggered: the owner has no decision to take. Caveats: decision #6 says 'the runtime holds the last frame ... heldInstance', which reads like a hold of the whole instance; the code does not do that, and the pilot code of #6 (`shots/`) is not in the clone (ORIGIN_NOT_EXECUTED), so the reading is from the text and the code around it. The reference does not evaluate frames: D07 changes no case of the corpus.",
+}
 
 # Where the two origin documents are silent or ambiguous, and what this oracle does (mirrored in the manifest).
 ORACLE_CHOICES = {
@@ -1573,6 +1606,40 @@ def _outcome(result):
     return result["refusal"]["code"]
 
 
+def op_at_limit(document, wrapped, limit_frame):
+    """The same op with its frame moved to `limit_frame` (#33: always a frame of the edit, in the op's own frame; in
+    the duration ops it is the END of the shot, so the duration is `limit_frame - start`)."""
+    name = next(iter(wrapped))
+    body = dict(wrapped[name])
+    if name in ("trim_shot", "move_cut"):
+        body["frame"] = limit_frame
+    elif name == "set_shot_duration":
+        body["frames"] = limit_frame - _start(_find_shot(document, body["shot"]))
+    else:
+        body["frames"] = limit_frame
+    return {name: body}
+
+
+def _limit_companion(case, result):
+    """A refusal that names a `limitFrame` gets a twin whose op sits AT that frame: it must not refuse with the same
+    code (#33). Only single-op cases (a batch would have to rebuild the intermediate document)."""
+    if case["kind"] != "ops" or "ok" not in result or result["ok"] or len(case["ops"]) != 1:
+        return None
+    refusal = result["refusal"]
+    if refusal.get("limitFrame") is None:
+        return None
+    return {
+        "id": case["id"] + "@limit",
+        "kind": "ops",
+        "rows": list(case["rows"]) + ["T21"],
+        "title": "At the limitFrame of %s the op does not refuse with %s" % (case["id"], refusal["code"]),
+        "tags": list(case["tags"]) + ["AT_LIMIT"],
+        "document": case["document"],
+        "ops": [op_at_limit(case["document"], case["ops"][0], refusal["limitFrame"])],
+        "want": "not " + refusal["code"],
+    }
+
+
 def build_corpus():
     """`cases.json` as a Python value. Raises when a case does not do what its author meant."""
     cases = []
@@ -1580,13 +1647,22 @@ def build_corpus():
         result = run_case(case)
         outcome = _outcome(result)
         want = case["want"]
-        if want == "OK_OR_REJECTED":
-            want = outcome if outcome in ("ok", "CANDIDATE_REJECTED") else "?"
         if outcome != want:
             raise SystemExit("ORACLE_CASE_MISMATCH: %s wanted %s, the reference gave %s: %s" % (case["id"], want, outcome, json.dumps(result.get("refusal"))))
         entry = dict((key, case[key]) for key in ("id", "kind", "rows", "title", "tags", "document", "ops"))
         entry["expect"] = result
         cases.append(entry)
+        companion = _limit_companion(case, result)
+        if companion is None:
+            continue
+        again = run_case(companion)
+        code = result["refusal"]["code"]
+        if _outcome(again) == code:
+            raise SystemExit("ORACLE_LIMIT_MISMATCH: %s refuses again with %s at its own limitFrame %s" % (case["id"], code, result["refusal"]["limitFrame"]))
+        extra = dict((key, companion[key]) for key in ("id", "kind", "rows", "title", "tags", "document", "ops"))
+        extra["limit_of"] = case["id"]
+        extra["expect"] = again
+        cases.append(extra)
     return {
         "schema": SCHEMA,
         "generator": GENERATOR_VERSION,
@@ -1594,6 +1670,7 @@ def build_corpus():
         "max_edit_frames": MAX_EDIT_FRAMES,
         "oracle_choices": ORACLE_CHOICES,
         "deferred_audit": DEFERRED_AUDIT,
+        "d07_audit": D07_AUDIT,
         "cases": cases,
     }
 
@@ -1604,13 +1681,14 @@ def build_corpus():
 
 
 def _sha256_file(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    """The sha256 of a text file with the line ends normalised to LF (a checkout with CRLF hashes the same)."""
+    return hashlib.sha256(Path(path).read_bytes().replace(b"\r\n", b"\n")).hexdigest()
 
 
 def build_manifest(corpus_text):
     sources = []
     for which, path, blob, digest in ORIGIN_SOURCES:
-        sources.append({"commit": PIN if which == "pin" else TIP, "which": which, "path": ORIGIN_SRC + path, "blob": blob, "sha256": digest})
+        sources.append({"commit": PIN if which == "pin" else TIP, "which": which, "path": origin_path(path), "blob": blob, "sha256": digest})
     docs = [{"path": path, "sha256": _sha256_file(ROOT / path)} for path in ORIGIN_DOCS]
     return {
         "schema": SCHEMA,
@@ -1644,9 +1722,25 @@ def generate_texts():
     return {CASES_NAME: corpus_text, MANIFEST_NAME: dump(build_manifest(corpus_text))}
 
 
+def evidence_refs():
+    """Every `which:path:first-last` the audit and the D07 conclusion cite, as `(which, path, first, last)`."""
+    refs = []
+    items = [(entry["field"], entry["evidence"]) for entry in DEFERRED_AUDIT]
+    items.extend((finding["claim"], finding["evidence"]) for finding in D07_AUDIT["findings"])
+    for _, evidence in items:
+        for text in evidence:
+            which, rest = text.split(":", 1)
+            path, span = rest.rsplit(":", 1)
+            first, _, last = span.partition("-")
+            refs.append((which, path, int(first), int(last or first)))
+    return refs
+
+
 def verify_origin(path):
-    """Re-reads every source blob of the manifest by git id, read only, and compares the sha256."""
+    """Re-reads every source blob of the manifest by git id, read only, compares the sha256, and checks that every
+    cited line range exists in the file it cites."""
     findings = []
+    lines = {}
     for which, rel, blob, digest in ORIGIN_SOURCES:
         try:
             data = subprocess.run(["git", "-C", str(path), "cat-file", "blob", blob], capture_output=True, check=True).stdout
@@ -1655,6 +1749,12 @@ def verify_origin(path):
             continue
         if hashlib.sha256(data).hexdigest() != digest:
             findings.append("%s: sha256 differs from the manifest" % rel)
+        lines[(which, rel)] = len(data.decode("utf-8").split("\n"))
+    for which, rel, first, last in evidence_refs():
+        if (which, rel) not in lines:
+            findings.append("%s:%s cited as evidence but it is not a verified source" % (which, rel))
+        elif first < 1 or last < first or last > lines[(which, rel)]:
+            findings.append("%s:%s:%d-%d is outside the file (%d lines)" % (which, rel, first, last, lines[(which, rel)]))
     return findings
 
 
@@ -1665,7 +1765,6 @@ def main(argv=None):
     parser.add_argument("--out", metavar="DIR", help="fixture directory (default: docs/migration/fixtures/shot-trim)")
     args = parser.parse_args(argv)
     problem = interpreter_problem()
-    sys.stderr.write("python: %s\n" % sys.version.replace("\n", " "))
     if problem:
         sys.stderr.write("INTERPRETER_NOT_REAL: %s\n" % problem)
         return EXIT_BAD_INTERPRETER
