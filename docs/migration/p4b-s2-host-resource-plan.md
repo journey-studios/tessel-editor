@@ -309,6 +309,22 @@ importada pelo Accept oculto SOMENTE nos testes (`crates/render/tests`, fora do 
 `crates/*/src` lê). Os arquivos são PNGs/SPZ reais pequenos (`core::fixtures`), hashes reais
 (`media::fsx::hash_file`) e aprovação por `media::scene_resources::{load, SceneResourceSession}`.
 
+### 6a. Ajuste de nomes registrado antes do commit de código (rotina; as regras não mudam)
+
+Ao escrever o helper, `union_failure_context` ficou privada e devolve `Option<(Value, String)>`
+(o contexto e o sufixo da mensagem), e a conversão da falha da união ganhou duas funções
+`pub(crate)` que fecham a seção 3 sem repetir a regra em cada porta:
+
+```rust
+fn union_failure(plan: &ScenePlan, error: &PlanError) -> BackendError;          // plan_error + contexto
+fn union_failure_command(plan: &ScenePlan, error: &PlanError) -> CommandError;  // From<PlanError> + contexto
+```
+
+`prepare` usa `union_failure` também para o erro de `plan.validate()` (que contém a união), então a
+divergência de metadados dá o mesmo `invalid_plan` com `details.resource` pela porta pública do
+livro. Os dois helpers só acrescentam contexto quando o pointer é exatamente
+`/transition/other/resources/{n}`.
+
 ### 7. Arquivos tocados (registro prévio)
 
 `crates/render/src/{scene.rs, scene_operation.rs, scene_export/mod.rs, lib.rs, resource_union.rs}`;
