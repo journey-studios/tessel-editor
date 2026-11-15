@@ -84,6 +84,7 @@ plano/relatório continuam como histórico; o contrato atual fica em `features/`
 - [Inspector neutro de efeitos e o `fade` (F057)](features/fx-inspector.md) e o [smoke de integração antes/depois de P2](migration/p2-integration-smoke-2026-11-10.md).
 - [P4a — efeitos no escopo de plano `shot`](migration/p4a-shot-scope-fx-plan.md): brief da entrega (BL082.3), composição em etapas e a costura para as transições (P4b).
 - [P4b — crossDissolve entre dois decks](migration/p4b-cross-dissolve-plan.md): plano revisado e fases com portão de ativação; S0/S1a internas concluídas; S1b em revisão independente; transições públicas recusadas até S2A.
+- [P5 — duração e cortes dos planos](migration/p5-shot-duration-plan.md): plano revisado (R1) de `trim_shot`, `move_cut`, `set_shot_duration` e `set_edit_duration` com ripple/roll, o que acompanha cada camada e as fatias S0–S5 (BL082.5); nenhum código ainda.
 - [Contrato e corpus das transições (F064)](features/fx-transitions.md): S0/S1a internas aprovadas, S1b em revisão; produto lib/JSONL/UI pendente e nenhuma transição pública habilitada.
 
 G1 (PR #40): rotação local/mundo implementada, **a validar** no head final;
