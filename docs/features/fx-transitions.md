@@ -714,10 +714,12 @@ do workspace global, runtime/GPU/UI física; Refuse fechado e F064 produto P.
 
 Ressalvas de cobertura: guarda effect/from/to e cameraEnd inválido sem testes
 permanentes discriminantes, embora probes confirmem o comportamento; E13 novo
-prova edit/list/inspect, não frame/gesto. Reutilização de ID dentro do mesmo tipo
-ainda pode atribuir erro à remoção anterior (.29); .28 trata tipos diferentes.
+provava edit/list/inspect, não frame/gesto. Naquela S3a, reutilização de ID no mesmo
+tipo ainda podia atribuir erro à remoção anterior(.29); a C0a abaixo corrige esse
+caso por gerações e acrescenta a cobertura permanente de frame/gesto e contagens.
 No-op líquido relata alterações intermediárias por op, sem revisar/gravar o
-resultado líquido. Dica da cauda(.25) pendente; detalhes no relatório S3a§13.
+resultado líquido. A dica da cauda(.25), pendente naquela S3a, também é corrigida
+na C0a abaixo; o relatório S3a§13 conserva a evidência histórica.
 
 ## S2-C0a (BL082.4.19, .25, .26, .27, .28, .29): pré-requisitos do core — admissão pública **fechada**
 
@@ -783,3 +785,12 @@ Fmt/check/clippy-all-targets/no-run/build0, árvore sem GPUI/wry. Workspace glob
 não executado, sem engine/GPU/desempenho/origem/UI física. Windows independente
 pendente e dois gizmos da base Windows continuam registrados como vermelhos.
 Prova por head no relatório S2-C0a§11; produto P e Refuse fechado.
+
+### Aceite Windows independente da C0a
+
+R1 aprovou9f7cc83:192/10/5/1 em debug/preserve/release,lib615,desktopFX80,
+fmt/check/clippy/no-run/build0. Mac1699/0/7 é separado. .19/.25/.26–.29 estão
+implementadas e validadas no escopo descrito, com quatro costuras defensivas .19
+sem prova de alcançabilidade por cena importada (relatório§12). Sem core completo
+ou workspace global executado nessa revisão Windows; gizmos da base não ficam verdes.
+Refuse/F064P e C0b/H/R/S2A pendentes; não é aceite de produto/render.

@@ -208,3 +208,31 @@ Logs pequenos e summary.json em `~/.cache/tessel-pr69-mac-20261115/`, com HEAD,
 exit e contagens por comando. Clone terminou limpo em9f7cc83. A revisão Windows
 independente segue pendente; não é substituída por estes gates ou pelos do autor.
 F064 produto P/Refuse fechado; C0b/H/R/S2A continuam fora desta entrega.
+
+## 12. Revisão independente Windows — C0a aceita
+
+R1 aprovou `9f7cc83793231ce52781ddee2cbd9455021aeca8` somente como core, sem
+bloqueador. fmt/check/clippy/no-run/build exit0;192/10/5/1 debug, preserve_order
+e release;lib615;desktopFX80;tree semGPUI/wry. Não executou core completo nem
+workspace global, nem herdou o Mac. Os dois gizmos Windows continuam vermelhos.
+
+Probes próprias confirmaram 1024 ops, recusa antes da cópia em1025, gerações/
+upserts/noop e atribuição entre tipos; reparo de cauda e extremos, sem overflow
+virar admissão.14mutantes próprios:8 mortos,2equivalentes de lineage e4lacunas
+defensivas da qualificação(.19). Os19mutantes do autor são outra execução.
+
+Cobertos: refuse_unsupported/check_splat_transforms/plan_of. Sem prova de
+alcançabilidade por cena importada: evaluate_shot_at_offset em build e timeline,
+Prepared::new e assemble_with. Remover essas quatro qualificações não falhou nos
+testes. Ficam registradas em .19; não são promovidas a prova executada nem bloqueiam.
+A redundância de estado vivo/tipo no lineage foi classificada como equivalente,
+sem risco. Probe de remoção de track com clipe foi inconclusiva: falhou antes
+com UNKNOWN_FX_TRACK, portanto não conta como prova desse cenário.
+
+Fixtures/Python/PNG/manifesto/snapshots permaneceram intactos. A árvore terminou
+limpa e os mutantes foram restaurados por hash/mtime com controle. Fechamento
+seguinte é sódocs; não altera o código aprovado. Qualificação do other em Invalid
+e perda do tipo original são contrato documentado, não um novo Domain.
+
+Produto F064 continua P e Refuse fechado. Wire/C0b, recursos no host, runtime,
+renderer, export, GPU, UI e aparência humana não foram aceitos por esta revisão.
