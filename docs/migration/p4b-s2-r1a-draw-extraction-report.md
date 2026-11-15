@@ -223,3 +223,16 @@ R1a não resolve nada do que a R0 deixou (limites de accessors/Proxy/toJSON e di
 antecipa R1b/c: nada de dois decks, `from/to` em chaves de material, liberação de lease entre decks, cache T31, orçamento de
 1 GiB, nove alvos, capacidade 14 ou router. A tolerância dos controles de pixel existentes não mudou e nenhum golden, fixture ou
 baseline foi regenerado.
+
+## Integração do coordenador com main805a0c6 — gates pendentes
+
+PR77 merge7086105 tem pais791b368 e805a0c6. O único conflito era de imports em compositor.js:
+foram preservados directed-deck-draw, LINE_PITCH_ROWS e grading. Os corpos de prepareDirectedScene
+e sceneMaterial na main805a0c6 são idênticos aos do helper após a normalização acima, com os
+mesmos hashes0fb5936f…/c143d7c9…. O compositor da main tem1192 linhas e o integrado1080 (−112).
+As mudanças da main em títulos/grading e core são integração, não produção nova da extração.
+
+BL168.11, já no backlog, corrige o contrato do teste scene_frames: exige o conjunto exato de
+Capability::ALL menos FxTransition reservada. Não altera runtime, anúncio, guardas nem a lista
+do core. A falha histórica7/8 da entrega original permanece registrada acima; os gates deste
+ajuste e do merge serão registrados separadamente. Revisão independente Windows e Mac pendentes.

@@ -141,3 +141,13 @@ de um deck. targetBytes omite attachments de depth, portanto sua soma não é li
 físico de VRAM. Mesma instância/arquivo não prova um só sort: transforms, câmera, painter
 placement e mapping precisam permitir o reuso; devolver uma lease antes não demonstra
 essa propriedade. Nenhuma dessas observações muda o comportamento autorizado na R1a.
+
+## Emenda de integração do coordenador — antes dos gates do merge
+
+A main805a0c6 acrescenta grading e layout de títulos no compositor, fora dos dois métodos
+extraídos. O merge7086105 resolve só os imports, preserva essas mudanças e compara os corpos
+contra essa main: os mesmos hashes normalizados, compositor1192→1080 (−112).
+BL168.11 já registra o teste de capacidades desatualizado. O coordenador corrige só esse teste
+para exigir exatamente todas as capacidades do core exceto FxTransition reservada. Não muda
+anúncio/negociação/guardas. A revisão independente inclui esse ajuste; nenhuma prova da base
+7d é tratada como gate da integração. Browser de grading/títulos entra na regressão do merge.
