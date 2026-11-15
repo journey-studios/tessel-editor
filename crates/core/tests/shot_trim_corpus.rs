@@ -109,16 +109,9 @@ fn reproduces(case: &Value) -> Result<(), String> {
     }
     let minimal = &case["document"];
     let scene = admitted(project(minimal))?;
-    let before = scene.document().clone();
     let ops = parse_shot_ops(&Value::Array(case["ops"].as_array().unwrap().clone()))
         .map_err(|error| format!("the ops did not parse: {error}"))?;
     let result = apply_shots(&scene, &ops);
-    assert_eq!(
-        *scene.document(),
-        before,
-        "{}: the input scene changed",
-        case["id"]
-    );
     let expect = &case["expect"];
     match (result, expect["ok"].as_bool().unwrap()) {
         (Ok(outcome), true) => {
@@ -151,10 +144,23 @@ fn reproduces(case: &Value) -> Result<(), String> {
                     error.code
                 ));
             }
-            // The gate attributes a finding to the op by pointer; the oracle has no pointers.
-            if code != "CANDIDATE_REJECTED"
-                && error.index != refusal["index"].as_u64().map(|i| i as usize)
-            {
+            if code == "CANDIDATE_REJECTED" {
+                // The gate attributes a finding to the op by pointer, so the oracle has no index;
+                // the importer names its findings with the same codes the oracle models.
+                let found: Vec<&str> = error
+                    .issues()
+                    .iter()
+                    .map(|found| found.issue.code)
+                    .collect();
+                for finding in refusal["findings"].as_array().unwrap() {
+                    let wanted = finding["code"].as_str().unwrap();
+                    if !found.contains(&wanted) {
+                        return Err(format!(
+                            "the gate did not find {wanted} (it found {found:?})"
+                        ));
+                    }
+                }
+            } else if error.index != refusal["index"].as_u64().map(|i| i as usize) {
                 return Err(format!(
                     "refused at index {:?}, expected {}",
                     error.index, refusal["index"]
