@@ -188,7 +188,14 @@ fn lights_and_the_neighbour_count_toward_the_same_ceiling() {
     let one = plan_of((9_993, 9_992), (1, 0));
     assert_eq!(lengths(&one)[5], 1);
     assert_eq!(counted(&one), 20_000);
-    accepted_as_a_whole(&one, "19999 + one light");
+    let mut typed = accepted_as_a_whole(&one, "19999 + one light");
+    // The typed counter counts lights too: a second one, built by hand, is the 20,001st item.
+    let mut second = typed.lights[0].clone();
+    second.id = "lamp-typed".into();
+    typed.lights.push(second);
+    let (pointer, message) = invalid(typed.validate().expect_err("20001 typed items"));
+    assert_eq!(pointer, "/transition");
+    assert!(message.contains("20000"), "{message}");
     // A second light in the same deck (two of the four allowed) is the 20,001st item.
     let same = plan_of((9_993, 9_992), (2, 0));
     assert_eq!(lengths(&same)[5], 2);

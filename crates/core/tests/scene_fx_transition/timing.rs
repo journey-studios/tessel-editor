@@ -214,6 +214,10 @@ fn the_helper_holds_a_clip_without_frames_and_every_overflow_is_an_error() {
     let clocks = empty.clocks_at(12).unwrap();
     assert_eq!(clocks.instance, sample(5, 0, true));
     assert_eq!(clocks.camera, sample(6, 0, true));
+    // Frame 0 wanted of a clip with no frames is still held: there is no real frame to be on.
+    let zero = deck(10, 20, 0, 0, 0, 0, 0, 0).clocks_at(10).unwrap();
+    assert_eq!(zero.instance, sample(0, 0, true));
+    assert_eq!(zero.camera, sample(0, 0, true));
     let normal = deck(10, 20, 3, 8, 4, 6, 0, 0);
     // The last real frame is not held, the one after it is.
     assert_eq!(
@@ -341,6 +345,36 @@ fn the_camera_length_is_the_longest_of_the_main_track_and_its_layers() {
             .camera,
         sample(50, 48, true)
     );
+}
+
+#[test]
+fn a_keyed_lamp_of_either_deck_is_read_on_the_real_edit_frame() {
+    // Intensity 2 at frame 0 to 12 at frame 100, no flicker: on the real frame 44 it is 6.4 and on
+    // 50 it is 7.0, for the primary and for the neighbour alike. The neighbour's own instance
+    // frame (0 at 44, 70 at 50) would give 2.0 and 9.0.
+    let mut raw = with_transitions(Edit::spec().bundle(), vec![tr(json!({}))]);
+    for definition in raw["sceneDefinitions"].as_array_mut().unwrap() {
+        definition["lighting"] = json!({"ambient": 1, "lights": [{
+            "id": "lamp", "position": {"x": 0, "y": 1, "z": 2},
+            "color": {"r": 1, "g": 1, "b": 1}, "intensity": 1, "radius": 5, "flicker": 0,
+            "keys": {"intensity": [
+                {"frame": 0, "value": 2.0, "easing": "linear"},
+                {"frame": 100, "value": 12.0, "easing": "linear"}]}}]});
+    }
+    let scene = scene_of(raw);
+    for (frame, want) in [(44, 6.4), (50, 7.0)] {
+        let built = plan_at(&scene, frame);
+        let t = built.transition.as_deref().unwrap();
+        for (name, deck) in [("primary", &built), ("neighbour", &t.other)] {
+            assert_eq!(deck.lights.len(), 1, "{name} {frame}");
+            assert!(
+                (deck.lights[0].intensity - want).abs() < 1e-9,
+                "{name} {frame}: {}",
+                deck.lights[0].intensity
+            );
+        }
+        accepted_by_all(&built, "keyed lamps");
+    }
 }
 
 // ---- the window's own shape ----------------------------------------------------------------
