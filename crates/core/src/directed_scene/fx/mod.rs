@@ -31,8 +31,10 @@
 //! ([`Fx::resolve`]); the plan (`scene_plan`) carries the result to a runtime, which only draws.
 
 mod admission;
+mod budget;
 mod catalog;
 mod control;
+mod frame;
 mod handles;
 mod hash;
 mod keys;
@@ -48,6 +50,7 @@ mod window;
 use serde_json::{Value, json};
 
 pub use admission::TransitionAdmission;
+pub use frame::{DeckSide, FxFrame, FxTransitionFrame};
 pub use transition::{Alignment, FxTransition, Handles};
 pub use transition_catalog::{
     CROSS_DISSOLVE, CROSS_DISSOLVE_CURVE, CROSS_DISSOLVE_CURVES, CROSS_DISSOLVE_INTENSITY,
@@ -455,40 +458,7 @@ impl Fx {
     /// every frame of its interval, exactly as an output clip does, and the peak is the most
     /// passes [`Self::resolve`] returns at any frame, the shot's and the output's together.
     pub fn pass_budget(&self, edit_duration_frames: u64) -> PassBudget {
-        let length = i64::try_from(edit_duration_frames).unwrap_or(i64::MAX);
-        let mut edges: Vec<(i64, i32)> = Vec::new();
-        for track in self.tracks.iter().filter(|track| !track.hidden) {
-            for clip in track.clips.iter().filter(|clip| !clip.hidden) {
-                let start = clip.start_frame.max(0);
-                let end = clip.end_frame_exclusive().min(length);
-                if start < end {
-                    edges.push((start, 1));
-                    edges.push((end, -1));
-                }
-            }
-        }
-        // At a frame both ends and starts happen: a clip ends *before* the one starting there begins.
-        edges.sort_unstable();
-        let mut running: i64 = 0;
-        let mut peak: i64 = 0;
-        let mut first_frame_over = None;
-        let mut frames_over = 0;
-        let budget = i64::try_from(FX_PASS_BUDGET).unwrap_or(i64::MAX);
-        for (index, &(frame, delta)) in edges.iter().enumerate() {
-            running += i64::from(delta);
-            peak = peak.max(running);
-            let next = edges.get(index + 1).map_or(frame, |&(next, _)| next);
-            if running > budget && next > frame {
-                first_frame_over.get_or_insert(frame);
-                frames_over += next - frame;
-            }
-        }
-        PassBudget {
-            budget: FX_PASS_BUDGET,
-            peak: usize::try_from(peak).unwrap_or(0),
-            first_frame_over,
-            frames_over,
-        }
+        self.budget_with(edit_duration_frames, Vec::new())
     }
 
     /// Whether no clip exists at all (the document may still hold empty tracks).

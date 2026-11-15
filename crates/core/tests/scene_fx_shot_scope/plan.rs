@@ -189,10 +189,11 @@ fn the_capability_is_asked_for_only_by_a_plan_with_a_pass_of_a_shot() {
 fn a_runtime_without_the_capability_refuses_the_shot_plan_by_name_and_serves_the_others() {
     assert_eq!(
         Capability::ALL.len(),
-        13,
-        "the 13th capability, `fxShotScope`"
+        14,
+        "`fxShotScope` stays the 13th capability; `fxTransition` (S1b) is the 14th"
     );
     assert_eq!(Capability::ALL[12], Capability::FxShotScope);
+    assert_eq!(Capability::ALL[13], Capability::FxTransition);
     assert_eq!(Capability::FxShotScope.as_str(), "fxShotScope");
     let state = session_with_layer(layer_in_stages());
     let scene = scene_of(&state);

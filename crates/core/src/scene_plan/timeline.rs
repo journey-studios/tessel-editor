@@ -39,8 +39,10 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
+use crate::directed_scene::fx::FxPass;
 use crate::directed_scene::{
-    CameraTimeline, DirectedScene, NodeTimeline, SceneInstance, Shot, TemporalError,
+    CameraTimeline, DirectedScene, FrameEvaluation, NodeTimeline, SceneInstance, Shot,
+    TemporalError,
 };
 
 use super::build::Prepared;
@@ -144,11 +146,53 @@ impl<'a> PlanTimeline<'a> {
         edit_frame: i64,
         options: PlanOptions,
     ) -> Result<ScenePlan, PlanError> {
-        let frame = self.scene.bundle().evaluate_frame_with(
+        let bundle = self.scene.bundle();
+        let frame = bundle.evaluate_frame_with(
             edit_frame,
             |instance| self.node_timeline(instance),
             |clip_id| self.camera_timeline(clip_id),
         )?;
+        // No transition in the document: the passes are the ones `resolve` always gave.
+        if bundle.fx.transitions.is_empty() {
+            return self.plan_of(&frame, options, bundle.fx.resolve(edit_frame));
+        }
+        let stages =
+            bundle
+                .fx
+                .resolve_frame(&bundle.shots, bundle.edit_duration_frames, edit_frame);
+        let plan = self.plan_of(&frame, options, stages.flat_passes())?;
+        let Some(window) = &stages.transition else {
+            return Ok(plan);
+        };
+        // The neighbour's clocks come from the same shared layouts as the primary's.
+        let shot = bundle
+            .shot(window.other_shot_id)
+            .ok_or_else(|| PlanError::Unresolved {
+                kind: "shot",
+                id: window.other_shot_id.to_string(),
+            })?;
+        let neighbour = bundle.evaluate_shot_at_offset_with(
+            shot,
+            edit_frame,
+            |instance| self.node_timeline(instance),
+            |clip_id| self.camera_timeline(clip_id),
+        )?;
+        let other = self.plan_of(&neighbour.evaluation, options, window.other_passes.clone())?;
+        plan.with_transition(
+            window,
+            (neighbour.held_instance, neighbour.held_camera),
+            other,
+        )
+    }
+
+    /// The plan of one evaluated frame (the primary's or the neighbour's) with the passes the
+    /// caller resolved, cut from the shot's shared template.
+    fn plan_of(
+        &self,
+        frame: &FrameEvaluation<'a>,
+        options: PlanOptions,
+        passes: Vec<FxPass>,
+    ) -> Result<ScenePlan, PlanError> {
         let Some(&slot) = self.shot_slots.get(&address_of(frame.mapping.shot)) else {
             // Not reachable for a frame of this bundle; kept total instead of panicking.
             return Err(PlanError::Unresolved {
@@ -158,7 +202,7 @@ impl<'a> PlanTimeline<'a> {
         };
         let layout = self.shots[slot]
             .get_or_init(|| {
-                Prepared::new(self.scene, &frame).map(|prepared| ShotLayout {
+                Prepared::new(self.scene, frame).map(|prepared| ShotLayout {
                     prepared,
                     template: OnceLock::new(),
                 })
@@ -168,11 +212,15 @@ impl<'a> PlanTimeline<'a> {
         layout.prepared.refuse_unsupported(options)?;
         let template = layout
             .template
-            .get_or_init(|| layout.prepared.assemble(self.scene, &frame))
+            .get_or_init(|| {
+                layout
+                    .prepared
+                    .assemble_with(self.scene, frame, passes.clone())
+            })
             .as_ref()
             .map_err(Clone::clone)?;
-        let plan = template.at_frame(&frame, &self.scene.bundle().fx)?;
-        Ok(plan.relit(layout.prepared.lights_at(&frame)))
+        let plan = template.at_frame_with(frame, passes)?;
+        Ok(plan.relit(layout.prepared.lights_at(frame)))
     }
 
     fn node_timeline(

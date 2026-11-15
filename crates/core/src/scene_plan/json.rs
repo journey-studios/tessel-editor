@@ -225,6 +225,10 @@ impl ScenePlan {
         if !self.lights.is_empty() {
             wire["lights"] = Value::Array(self.lights.iter().map(light_json).collect());
         }
+        // The same for `transition` (F064): written only inside a transition window.
+        if let Some(transition) = &self.transition {
+            wire["transition"] = super::transition_json::to_json(transition);
+        }
         wire
     }
 
@@ -245,12 +249,12 @@ impl ScenePlan {
 // ---- reading -------------------------------------------------------------------------------
 
 /// A JSON object being read, with its JSON Pointer so every refusal names where it happened.
-struct Obj<'a> {
-    map: &'a Map<String, Value>,
-    at: String,
+pub(super) struct Obj<'a> {
+    pub(super) map: &'a Map<String, Value>,
+    pub(super) at: String,
 }
 
-fn as_obj(value: &Value, at: String) -> Result<Obj<'_>, PlanError> {
+pub(super) fn as_obj(value: &Value, at: String) -> Result<Obj<'_>, PlanError> {
     match value.as_object() {
         Some(map) => Ok(Obj { map, at }),
         None => Err(PlanError::invalid(at, "expected an object")),
@@ -258,31 +262,31 @@ fn as_obj(value: &Value, at: String) -> Result<Obj<'_>, PlanError> {
 }
 
 impl<'a> Obj<'a> {
-    fn path(&self, key: &str) -> String {
+    pub(super) fn path(&self, key: &str) -> String {
         format!("{}/{key}", self.at)
     }
 
-    fn fail(&self, key: &str, message: &str) -> PlanError {
+    pub(super) fn fail(&self, key: &str, message: &str) -> PlanError {
         PlanError::invalid(self.path(key), message)
     }
 
-    fn field(&self, key: &str) -> Result<&'a Value, PlanError> {
+    pub(super) fn field(&self, key: &str) -> Result<&'a Value, PlanError> {
         self.map
             .get(key)
             .ok_or_else(|| self.fail(key, "missing field"))
     }
 
-    fn text_ref(&self, key: &str) -> Result<&'a str, PlanError> {
+    pub(super) fn text_ref(&self, key: &str) -> Result<&'a str, PlanError> {
         self.field(key)?
             .as_str()
             .ok_or_else(|| self.fail(key, "expected a string"))
     }
 
-    fn text(&self, key: &str) -> Result<String, PlanError> {
+    pub(super) fn text(&self, key: &str) -> Result<String, PlanError> {
         self.text_ref(key).map(str::to_string)
     }
 
-    fn nullable_text(&self, key: &str) -> Result<Option<String>, PlanError> {
+    pub(super) fn nullable_text(&self, key: &str) -> Result<Option<String>, PlanError> {
         let value = self.field(key)?;
         if value.is_null() {
             return Ok(None);
@@ -293,13 +297,13 @@ impl<'a> Obj<'a> {
             .ok_or_else(|| self.fail(key, "expected a string or null"))
     }
 
-    fn number(&self, key: &str) -> Result<f64, PlanError> {
+    pub(super) fn number(&self, key: &str) -> Result<f64, PlanError> {
         self.field(key)?
             .as_f64()
             .ok_or_else(|| self.fail(key, "expected a number"))
     }
 
-    fn nullable_number(&self, key: &str) -> Result<Option<f64>, PlanError> {
+    pub(super) fn nullable_number(&self, key: &str) -> Result<Option<f64>, PlanError> {
         let value = self.field(key)?;
         if value.is_null() {
             return Ok(None);
@@ -310,13 +314,13 @@ impl<'a> Obj<'a> {
             .ok_or_else(|| self.fail(key, "expected a number or null"))
     }
 
-    fn integer(&self, key: &str) -> Result<i64, PlanError> {
+    pub(super) fn integer(&self, key: &str) -> Result<i64, PlanError> {
         self.field(key)?
             .as_i64()
             .ok_or_else(|| self.fail(key, "expected an integer"))
     }
 
-    fn nullable_integer(&self, key: &str) -> Result<Option<i64>, PlanError> {
+    pub(super) fn nullable_integer(&self, key: &str) -> Result<Option<i64>, PlanError> {
         let value = self.field(key)?;
         if value.is_null() {
             return Ok(None);
@@ -327,23 +331,23 @@ impl<'a> Obj<'a> {
             .ok_or_else(|| self.fail(key, "expected an integer or null"))
     }
 
-    fn unsigned(&self, key: &str) -> Result<u64, PlanError> {
+    pub(super) fn unsigned(&self, key: &str) -> Result<u64, PlanError> {
         self.field(key)?
             .as_u64()
             .ok_or_else(|| self.fail(key, "expected a non-negative integer"))
     }
 
-    fn boolean(&self, key: &str) -> Result<bool, PlanError> {
+    pub(super) fn boolean(&self, key: &str) -> Result<bool, PlanError> {
         self.field(key)?
             .as_bool()
             .ok_or_else(|| self.fail(key, "expected true or false"))
     }
 
-    fn object(&self, key: &str) -> Result<Obj<'a>, PlanError> {
+    pub(super) fn object(&self, key: &str) -> Result<Obj<'a>, PlanError> {
         as_obj(self.field(key)?, self.path(key))
     }
 
-    fn nullable_object(&self, key: &str) -> Result<Option<Obj<'a>>, PlanError> {
+    pub(super) fn nullable_object(&self, key: &str) -> Result<Option<Obj<'a>>, PlanError> {
         let value = self.field(key)?;
         if value.is_null() {
             return Ok(None);
@@ -351,13 +355,13 @@ impl<'a> Obj<'a> {
         as_obj(value, self.path(key)).map(Some)
     }
 
-    fn array(&self, key: &str) -> Result<&'a Vec<Value>, PlanError> {
+    pub(super) fn array(&self, key: &str) -> Result<&'a Vec<Value>, PlanError> {
         self.field(key)?
             .as_array()
             .ok_or_else(|| self.fail(key, "expected an array"))
     }
 
-    fn items(&self, key: &str) -> Result<Vec<Obj<'a>>, PlanError> {
+    pub(super) fn items(&self, key: &str) -> Result<Vec<Obj<'a>>, PlanError> {
         self.array(key)?
             .iter()
             .enumerate()
@@ -365,7 +369,7 @@ impl<'a> Obj<'a> {
             .collect()
     }
 
-    fn texts(&self, key: &str) -> Result<Vec<String>, PlanError> {
+    pub(super) fn texts(&self, key: &str) -> Result<Vec<String>, PlanError> {
         self.array(key)?
             .iter()
             .map(|item| {
@@ -377,14 +381,14 @@ impl<'a> Obj<'a> {
     }
 
     /// Refuses a key that is not in `allowed`.
-    fn only(&self, allowed: &[&str]) -> Result<(), PlanError> {
+    pub(super) fn only(&self, allowed: &[&str]) -> Result<(), PlanError> {
         match self.map.keys().find(|key| !allowed.contains(&key.as_str())) {
             Some(key) => Err(self.fail(key, "unknown field")),
             None => Ok(()),
         }
     }
 
-    fn vec3(&self, key: &str) -> Result<Vec3, PlanError> {
+    pub(super) fn vec3(&self, key: &str) -> Result<Vec3, PlanError> {
         let vector = self.object(key)?;
         vector.only(&["x", "y", "z"])?;
         Ok(Vec3 {
@@ -394,7 +398,7 @@ impl<'a> Obj<'a> {
         })
     }
 
-    fn matrix(&self, key: &str) -> Result<Mat4, PlanError> {
+    pub(super) fn matrix(&self, key: &str) -> Result<Mat4, PlanError> {
         let items = self.array(key)?.as_slice();
         if items.len() != 16 {
             return Err(self.fail(key, "expected 16 numbers"));
@@ -408,7 +412,7 @@ impl<'a> Obj<'a> {
         Ok(Mat4(elements))
     }
 
-    fn ratio(&self, key: &str) -> Result<Ratio, PlanError> {
+    pub(super) fn ratio(&self, key: &str) -> Result<Ratio, PlanError> {
         let object = self.object(key)?;
         object.only(&["numerator", "denominator"])?;
         let (numerator, denominator) =
@@ -419,7 +423,7 @@ impl<'a> Obj<'a> {
             .ok_or_else(|| self.fail(key, "expected a reduced ratio with a positive denominator"))
     }
 
-    fn fps(&self, key: &str) -> Result<Fps, PlanError> {
+    pub(super) fn fps(&self, key: &str) -> Result<Fps, PlanError> {
         let object = self.object(key)?;
         object.only(&["numerator", "denominator"])?;
         let term = |name: &str| -> Result<u32, PlanError> {
@@ -431,7 +435,7 @@ impl<'a> Obj<'a> {
         })
     }
 
-    fn alpha(&self, key: &str) -> Result<AssetAlpha, PlanError> {
+    pub(super) fn alpha(&self, key: &str) -> Result<AssetAlpha, PlanError> {
         match self.text_ref(key)? {
             "straight" => Ok(AssetAlpha::Straight),
             "opaque" => Ok(AssetAlpha::Opaque),
@@ -439,7 +443,7 @@ impl<'a> Obj<'a> {
         }
     }
 
-    fn color_space(&self, key: &str) -> Result<AssetColorSpace, PlanError> {
+    pub(super) fn color_space(&self, key: &str) -> Result<AssetColorSpace, PlanError> {
         match self.text_ref(key)? {
             "srgb" => Ok(AssetColorSpace::Srgb),
             "linear-srgb" => Ok(AssetColorSpace::LinearSrgb),
@@ -447,7 +451,7 @@ impl<'a> Obj<'a> {
         }
     }
 
-    fn format(&self, key: &str) -> Result<AssetFormat, PlanError> {
+    pub(super) fn format(&self, key: &str) -> Result<AssetFormat, PlanError> {
         match self.text_ref(key)? {
             "png" => Ok(AssetFormat::Png),
             "spz" => Ok(AssetFormat::Spz),
@@ -456,7 +460,7 @@ impl<'a> Obj<'a> {
         }
     }
 
-    fn node_kind(&self, key: &str) -> Result<NodeKind, PlanError> {
+    pub(super) fn node_kind(&self, key: &str) -> Result<NodeKind, PlanError> {
         match self.text_ref(key)? {
             "group" => Ok(NodeKind::Group),
             "imagePlane" => Ok(NodeKind::ImagePlane),
@@ -684,14 +688,24 @@ impl ScenePlan {
     /// Reads a plan from JSON text and validates it. `Err` for text that is not JSON, a plan of
     /// another `kind` or version, a missing or unknown field, or a plan that breaks `validate`.
     pub fn from_json_str(text: &str) -> Result<Self, PlanError> {
+        super::transition_json::precheck_text(text)?;
         let value: Value = serde_json::from_str(text)
             .map_err(|error| PlanError::invalid("", format!("not JSON: {error}")))?;
+        super::transition_json::check_text(text, &value)?;
         Self::from_json(&value)
     }
 
     /// `from_json_str` for a tree the caller already has.
     pub fn from_json(value: &Value) -> Result<Self, PlanError> {
-        let root = as_obj(value, String::new())?;
+        super::transition_json::precheck_items(value)?;
+        Self::read_deck(value, "", false)
+    }
+
+    /// Reads one deck. `neighbour` is the `other` of a transition: a plan like any other, except
+    /// that it has no `transition` (depth 1: refused before it is read, so nothing recurses) and
+    /// that it is validated by the plan that holds it, which also relates it to its own deck.
+    pub(super) fn read_deck(value: &Value, at: &str, neighbour: bool) -> Result<Self, PlanError> {
+        let root = as_obj(value, at.to_string())?;
         // The kind and the version come first: a plan of a later version may have other fields,
         // and must be refused as such, not as a malformed one.
         if root.text_ref("kind")? != PLAN_KIND {
@@ -699,10 +713,20 @@ impl ScenePlan {
         }
         let found = root.unsigned("planVersion")?;
         if found != u64::from(PLAN_VERSION) {
-            return Err(PlanError::UnsupportedVersion {
-                found,
-                supported: PLAN_VERSION,
+            return Err(if neighbour {
+                root.fail("planVersion", "must be the version of the primary deck")
+            } else {
+                PlanError::UnsupportedVersion {
+                    found,
+                    supported: PLAN_VERSION,
+                }
             });
+        }
+        if neighbour && root.map.contains_key("transition") {
+            return Err(root.fail(
+                "transition",
+                "a transition does not nest: the neighbour deck has none (depth 1)",
+            ));
         }
         root.only(&[
             "kind",
@@ -722,6 +746,7 @@ impl ScenePlan {
             "resources",
             "unsupported",
             "uninterpreted",
+            "transition",
         ])?;
 
         let source = root.object("source")?;
@@ -867,6 +892,14 @@ impl ScenePlan {
             } else {
                 Vec::new()
             },
+            // Optional (additive): absent outside a transition window.
+            transition: if root.map.contains_key("transition") {
+                Some(Box::new(super::transition_json::read(
+                    &root.object("transition")?,
+                )?))
+            } else {
+                None
+            },
             resources: root
                 .items("resources")?
                 .iter()
@@ -882,7 +915,9 @@ impl ScenePlan {
                 "must be true exactly when `unsupported` is empty",
             ));
         }
-        plan.validate()?;
+        if !neighbour {
+            plan.validate()?;
+        }
         Ok(plan)
     }
 }

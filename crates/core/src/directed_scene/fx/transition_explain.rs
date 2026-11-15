@@ -18,15 +18,15 @@ use std::collections::HashMap;
 use serde_json::{Value, json};
 
 use crate::directed_scene::issue::Issue;
-use crate::directed_scene::{Bundle, NodeKind, Shot, Transition};
+use crate::directed_scene::{Bundle, NodeKind, Shot, ShotReach, Transition};
 
 use super::transition_read::TransitionDraft;
 use super::window::check_duration;
 use super::{
     FxTransition, Handles, TRANSITION_DUPLICATE, TRANSITION_NO_HANDLES, TRANSITION_NOT_AT_CUT,
     TRANSITION_ON_CONTINUOUS, TRANSITION_OUT_OF_RANGE, TRANSITION_OVERLAP, TRANSITION_SPLAT_COST,
-    TRANSITION_TOO_LONG, TransitionWindow, UNKNOWN_SHOT, WindowError, available_frames,
-    max_transition_frames, transition_window,
+    TRANSITION_TOO_LONG, TransitionWindow, UNKNOWN_SHOT, WindowError, max_transition_frames,
+    transition_window,
 };
 use crate::directed_scene::read::{at, child};
 
@@ -47,27 +47,12 @@ fn frames(value: u64) -> i64 {
     i64::try_from(value).unwrap_or(i64::MAX)
 }
 
-/// Frames a shot's instance and camera still have behind (`tail`) or before (`head`) the shot.
-struct Reach {
-    head_instance: i64,
-    tail_instance: i64,
-    head_camera: i64,
-    tail_camera: i64,
-}
+/// Frames a shot's instance and camera still have behind (`tail`) or before (`head`) the shot:
+/// the one rule is `Bundle::shot_reach`, shared with the evaluator of the neighbour deck.
+type Reach = ShotReach;
 
 fn reach(bundle: &Bundle, shot: &Shot) -> Option<Reach> {
-    let instance = bundle.instance(&shot.scene_instance_id)?;
-    let length = frames(shot.duration_frames());
-    let start = frames(shot.instance_start_frame);
-    let camera_in = frames(shot.camera_in_frame);
-    // A camera that cannot be measured is taken as having every frame (the oracle's infinity).
-    let camera = bundle.camera_clip_frames(&shot.camera_clip_id).map(frames);
-    Some(Reach {
-        head_instance: start,
-        tail_instance: available_frames(frames(instance.duration_frames), start, length),
-        head_camera: camera.map_or(i64::MAX, |_| camera_in),
-        tail_camera: camera.map_or(i64::MAX, |total| available_frames(total, camera_in, length)),
-    })
+    bundle.shot_reach(shot)
 }
 
 struct Lack<'a> {
