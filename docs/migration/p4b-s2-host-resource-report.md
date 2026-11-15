@@ -3,7 +3,7 @@
 Backlog **BL082.4.4**, fatia H (T10/T18 do plano canônico). Branch `feat/p4b-s2h-host-resources`, base `main`
 `17d03933c3092acfac99850f88aa81e8f07288b3` (PR71/C0b integrada). Plano e contrato fixados **antes** do código:
 [p4b-s2-host-resource-plan.md](p4b-s2-host-resource-plan.md). Status: **implementado, a validar** (revisão independente,
-Windows independente pendente; Mac e regressão `scene_export` com runtime concluídos em19c5ea1; ver §12).
+Windows independente pendente; Mac e regressão `scene_export` com runtime concluídos em8a489bf; ver §14).
 
 ## 1. Contrato final
 
@@ -287,3 +287,22 @@ Mac local no conteúdo05f37da: lib19, mapas10, slots16, scene_seam29 e scene_flo
 total78, todos passam. Os 77 e o export12 do §12 pertencem a19c5ea1; gates nativos completos
 para a nova fonte e a revisão Windows ainda precisam fechar. O total H agora é26 testes
 (10 mapas +16 slots). Core/fixtures/deps/runtime/media/desktop continuam intactos.
+
+## 14. Fechamento Mac em8a489bf (código05f37da)
+
+Após a correção de atribuição, todos os gates foram repetidos no head
+`8a489bfd03309ca193858212b8b329b52018dd81`, com árvore limpa antes/depois e core/fixtures/deps/
+runtime/media/desktop idênticos à main c5400bb. A fonte do host é05f37da.
+
+- fmt/check workspace/clippy workspace all-targets -D warnings: exit0.
+- Render: lib19, scene_flow_resources4, mapas10, slots16, scene_seam29 =78, 0 falhas/ignorados.
+- Core focado: corpus10/Ximport5/Xestado8/transições216/baseline1, isolado EXPECT0 e preserve_order EXPECT1.
+- scene_export real, TESSEL_REQUIRE_RUNTIME=1, serial:12/12, 0 ignorados, exit0.
+- Workspace --no-run e build desktop: exit0. Tree core: sem gpui/wry.
+
+Logs `final-*.log` e `final-summary.json` no diretório do §12. O export foi repetido por mudança
+no helper de erros que seus negativos atravessam. Os 12 cobrem o caminho antigo sem transição,
+incluindo processos reais e MP4; não provam parser/blend/runtime de crossDissolve. Workspace
+global e core completo não foram executados nesta rodada; nada de GPU real, desempenho,
+UI física, áudio ouvido ou origem. A revisão Windows começou na fonte19c5ea1 e não é herdada
+pela05f37da sem rechecagem. H interna continua em validação, com produto F064 P e Refuse fechado.
