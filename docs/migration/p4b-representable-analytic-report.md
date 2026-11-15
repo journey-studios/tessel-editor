@@ -325,3 +325,21 @@ A asserção dos bytes do corpus voltou ao teste de determinismo ao qual pertenc
 A R3 continua válida para `06c8ea9`; não é atribuída ao novo caminho de escrita.
 A mudança pequena de I/O aguarda rechecagem Windows, sem repetir a matemática ou
 o domínio Rust já revisados. Os limites de produto, origem e pixels permanecem.
+
+## 16. Aceite Windows do caminho de escrita
+
+A validação independente aceitou `9bafc43d5e25626d84e6207254e758c4ed00fe23`
+(código `1de7bb4`) no Windows com Python 3.13.17: 39 specs normais e com `-O`,
+check dos 14 arquivos e verify offline passaram. A geração CLI por blobs Git da
+origem retornou 0 na saída limpa e 1 com PNG extra preservado; check/verify dessa
+mesma pasta também retornaram 1. O mutante `compare = []`, só em memória, fez a
+regressão nova falhar por asserção. A pasta temporária própria foi removida.
+
+Foram conferidos os hashes de 377 arquivos de fixtures/testes antes/depois, sem
+diferença. O checkout terminou limpo. Origem não executada, pin ausente não
+verificado; nenhum teste Rust, build ou GPU foi reexecutado nesta rodada.
+Os cinco testes Rust e os gates de core continuam atribuídos à R3 em `06c8ea9`.
+O fechamento posterior registra apenas docs; o código de escrita é o aceito.
+
+BL082.4.17: referência e importabilidade validadas por host, consumidor de dois
+decks e pixels ainda pendentes. F064 produto P e admissão pública Refuse fechada.

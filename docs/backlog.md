@@ -2195,7 +2195,7 @@ contra referência Mac; é pré-condição ausente. Coordenador capturae3separad
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
 | BL082.4.16 | PR63 / baseline Mac | Fixture de compatibilidade não inclui perfis debug/release Mac | Correção de dados validada no Mac | BL082.4.3 | Coordenador | Captura sobre e3c20cb sem mudar core/src/Cargo.lock, probe removido/status limpo; Windowsentries canônicas inalteradas. Candidato737+fixture:106transições/10corpus e baseline debug/release passam. Head limpo93fb635 passou debug e gates; Linux não executado. |
-| BL082.4.17 | PR63 / referência X | Três lit-held não importam por instância menor que shot, comparações só parcialmente preservadas | A validar — referência aprovada R3 Windows06c8ea9; consumidor S1b/S2 pendente | BL082.4.1/.4.3 | Coordenador / Cursor Sonnet5.5 | JulgarT06/T10/T16 e necessidade de fixtures representáveis sem enfraquecerimportador ouregravarorigem; não promover todosos estados/sondasporassociação. Autor declara reconstrução e limites. |
+| BL082.4.17 | PR63 / referência X | Três lit-held não importam por instância menor que shot, comparações só parcialmente preservadas | A validar — referência aceita Windows9bafc43/Mac; consumidor S1b/S2 pendente | BL082.4.1/.4.3 | Coordenador / Cursor Sonnet5.5 | JulgarT06/T10/T16 e necessidade de fixtures representáveis sem enfraquecerimportador ouregravarorigem; não promover todosos estados/sondasporassociação. Autor declara reconstrução e limites. |
 
 ### Baseline Mac capturado na base original, não no candidato
 
@@ -2288,7 +2288,7 @@ primário/.24quantidade da dica emS3a antesdeS2A. Não é produto/render/aceiteh
 
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
-| BL082.4.17 | P4b/S0-X representável | Casos válidos de hold do vizinho e luz no quadro real, com bundles importáveis | A validar — referência aprovada R3 Windows06c8ea9; consumidor S1b/S2 pendente | BL082.4.1/.4.2 | Coordenador / Cursor Sonnet5.5 | 7cenários/98quadros/390sondas,37specs normal/-O e5Rust no Windows/Mac da entrega inicial. Nits: papéis só por quadro, Python3.9 sem metadata3.10, janela Rust e mapa de assets; relatório próprio. Consumidor S1b/S2 ainda pendente, hold da câmera só por estado, viés agregado por cenário vs texto canônico por quadro a decidir antes do engine. Origem não executada/golden não comparável. |
+| BL082.4.17 | P4b/S0-X representável | Casos válidos de hold do vizinho e luz no quadro real, com bundles importáveis | A validar — referência aceita Windows9bafc43/Mac; consumidor S1b/S2 pendente | BL082.4.1/.4.2 | Coordenador / Cursor Sonnet5.5 | 7cenários/98quadros/390sondas,37specs normal/-O e5Rust no Windows/Mac da entrega inicial. Nits: papéis só por quadro, Python3.9 sem metadata3.10, janela Rust e mapa de assets; relatório próprio. Consumidor S1b/S2 ainda pendente, hold da câmera só por estado, viés agregado por cenário vs texto canônico por quadro a decidir antes do engine. Origem não executada/golden não comparável. |
 | BL082.4.23 | S1b / relógio de câmera | Plano primário conserva contador bruto além da câmera curta; offset/oráculo usa contador preso | Pendente — divergência de metadado, sem paridade de estado completo | BL082.4.17/.4.3 | Coordenador / dono de S2 | Julgar contrato preservando bytes sem transição; comparar contador legado e offset separadamente. Exemplo lit-center-held f23: primário23, offset/oráculo11. Pose é hold no kit; isto não é prova de pixels reais. |
 
 BL082.4.17: reforço026b72a noMac passou37normal/-O/metadata3.10ausente,
@@ -2325,3 +2325,12 @@ generate verifica depois da escrita e recusa PNG extra sem apagar. Mac39 specs
 normal/-O, controle real por blobs e mutante discriminante passam; dados/Rust
 intactos. Esta mudança de I/O ainda precisa de rechecagem Windows antes do merge;
 a R3 aprovada permanece atribuída a06c8ea9, sem novo ciclo de revisão de domínio.
+
+BL082.4.17: caminho de geração aceito no Windows em `9bafc43` (código1de7bb4):
+39specs normal/-O,check14,verifyoffline; CLI real por blobs retorna0 limpa e1 com
+PNGextra preservado, e --check/verify também1. Mutante compare=[] morto. Hashes
+de377 arquivos fixtures/testes idênticos; checkout limpo e pasta própria removida.
+Sem nova execução Rust/GPU/build: os5Rust são da R3 em06c8ea9; Mac39 separado.
+Referência/importabilidade validadas; .17 permanece parcial no consumidorS1b/S2,
+pixels/origem/golden. Fechamento seguinte sódocs, F064P/Refuse, sem ativação pública.
+[Validação Windows de geração](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:eebbb4b56edb287fcdf87bbcbdd0f301a3f77acde8e17e7077a2a2ef0c49c072).

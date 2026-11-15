@@ -551,4 +551,9 @@ executada. Mac e Windows são provas separadas; não há consumidor S1b/S2 nem p
 Consistência posterior (`1de7bb4`): `generate` também verifica a saída após gravar
 e retorna 1 se houver arquivo extra, sem apagá-lo. Mac39 specs normal/-O e controle
 de escrita por blobs reais passaram; dados/limiares/Rust intactos. A rechecagem
-Windows dessa pequena mudança de I/O é separada da R3 de `06c8ea9`.
+Windows dessa pequena mudança de I/O é separada da R3 de `06c8ea9` e foi aceita
+em `9bafc43`: 39 specs normal/-O, check14 e verify passam; geração real por blobs
+retorna 0 limpa e 1 com extra preservado, assim como check/verify dessa saída.
+O mutante da comparação falha por asserção. Nenhum Rust/build/GPU reexecutado
+nessa rodada; os cinco Rust continuam sendo prova da R3. Origem não executada,
+pin ausente no Windows não verificado; consumidor S1b/S2 e pixels pendentes.
