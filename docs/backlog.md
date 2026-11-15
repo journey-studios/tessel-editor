@@ -2402,3 +2402,9 @@ que exige a frase antiga. Fixtures/oráculo intactos. .26–.28 têm cobertura r
 Contratos e evidências no relatório S2-C0a; Refuse fechado/F064produtoP, sem runtime.
 Coordenador inicia revisão Windows e gates Mac com ownership separado; C0b/H/R/S2A
 continuam não iniciadas. Não herdar a R2 da S3a.
+
+PR69 Mac9f7cc83 terminou0: core1699/0/7(65resultados,lib616 inclusa), transições192,
+preserve192/10/5/1 e desktopFX80. Fmt/check/clippy-all-targets/no-run/build/tree0,
+clone limpo e logs comHEAD emcache/tessel-pr69-mac-20261115. Workspace compilado,
+nãoexecutado; semengine/GPU/origem/UI física. Não torna Windows/gizmos verdes.
+Revisão independente Windows ainda pendente; sourcecore igual ao autor37fdeaf.

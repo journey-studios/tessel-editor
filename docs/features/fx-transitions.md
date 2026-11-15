@@ -774,3 +774,12 @@ Provas permanentes novas (sem mudar produção): a guarda de `effect`/`fromShotI
 (caso real num lote + teste defensivo do helper), `cameraEnd` e toda contagem inválida (texto, negativo, fracionário,
 nulo, `3.0`) e o orçamento de 9 passes dentro da janela e 8 fora, em `scene.fx.frame`, nas respostas de orçamento e
 num gesto sobre um look. As ressalvas da S3a sobre esses pontos ficam fechadas pela suíte, não por inspeção.
+
+### Validação Mac da S2-C0a
+
+Em9f7cc83 limpo, código igual ao autor37fdeaf: core1699/0/7 em65 resultados,
+lib616/transições192 inclusos; preserve192/10/5/1 e desktopFX80/80 passaram.
+Fmt/check/clippy-all-targets/no-run/build0, árvore sem GPUI/wry. Workspace global
+não executado, sem engine/GPU/desempenho/origem/UI física. Windows independente
+pendente e dois gizmos da base Windows continuam registrados como vermelhos.
+Prova por head no relatório S2-C0a§11; produto P e Refuse fechado.

@@ -184,3 +184,27 @@ responsável ficam como estão:
 `- [P4b S2-C0a — pré-requisitos do core](migration/p4b-s2-c0a-report.md): proveniência de edição, erros do vizinho por deck e reparo exato da cauda; admissão pública fechada.`
 
 Plano e notas: `docs/migration/p4b-s2-core-prerequisites-plan.md` e `p4b-s2-implementation-notes.md` (entregues no primeiro commit).
+
+## 11. Validação Mac nativa do coordenador
+
+Head limpo `9f7cc83793231ce52781ddee2cbd9455021aeca8`, código igual ao do autor
+`37fdeaf`/`16fa526`; esse fechamento acrescentou apenas os documentos comuns.
+Clone SSD do coordenador, wrapper `./scripts/cargo`, target padrão gerenciado:
+
+| Gate | Resultado |
+|---|---|
+| fmt, check workspace, clippy workspace/all-targets `-D warnings` | exit 0 |
+| core completo `--no-fail-fast` | 65 resultados:1699 passaram,0 falharam,7 ignorados; lib616 e transições192 inclusos |
+| transições/corpus/X/baseline com preserve_order | 192/10/5/1,0 falhas |
+| desktop, filtro scene_fx | 80/80 |
+| workspace `--no-run`, build desktop | exit 0 |
+| tree do core | nenhuma ocorrência de GPUI ou wry |
+
+O workspace inteiro foi compilado, não executado. Os dois gizmos Windows da base
+continuam sendo resultado daquele host; o Mac não os torna verdes. Não houve
+execução de engine, GPU, desempenho, UI física ou origem. Nenhum novo controle.
+
+Logs pequenos e summary.json em `~/.cache/tessel-pr69-mac-20261115/`, com HEAD,
+exit e contagens por comando. Clone terminou limpo em9f7cc83. A revisão Windows
+independente segue pendente; não é substituída por estes gates ou pelos do autor.
+F064 produto P/Refuse fechado; C0b/H/R/S2A continuam fora desta entrega.
