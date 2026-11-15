@@ -46,6 +46,7 @@ use crate::directed_scene::{
 };
 
 use super::build::Prepared;
+use super::temporal::TransitionTiming;
 use super::transition_validate::within_other;
 use super::{PlanError, PlanOptions, ScenePlan};
 
@@ -184,11 +185,11 @@ impl<'a> PlanTimeline<'a> {
         let other = self
             .plan_of(&neighbour.evaluation, options, window.other_passes.clone())
             .map_err(within_other)?;
-        plan.with_transition(
-            window,
-            (neighbour.held_instance, neighbour.held_camera),
-            other,
-        )
+        let timing = TransitionTiming::derive(bundle, window.transition, edit_frame, |clip_id| {
+            self.camera_timeline(clip_id)
+                .map(|timeline| timeline.frames())
+        })?;
+        plan.with_transition(window, timing, other)
     }
 
     /// The plan of one evaluated frame (the primary's or the neighbour's) with the passes the

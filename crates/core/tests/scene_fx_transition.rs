@@ -20,6 +20,13 @@
 //! * `limits`: bytes, items and depth ceilings of a plan with a transition.
 //! * `compat`: the Rust capability list against the runtime's.
 //!
+//! P4b S2-C0b (BL082.4.4, BL082.4.20, BL082.4.21, BL082.4.23), still internal:
+//!
+//! * `timing`: the `alignment` and `timing` a window plan declares, the one clock rule, the
+//!   borders of the cut and every incoherent plan refused on the three doors.
+//! * `ceiling`: a valid external plan of exactly 20,000 items and 4,194,304 bytes, and the first
+//!   byte or item above them.
+//!
 //! P4b S3a (BL082.4.5, BL082.4.15, BL082.4.24), editing through the core; the gate stays closed:
 //!
 //! * `edit`: the five transition ops, atomic batches, ids, quotas and the importer's rules in
@@ -31,6 +38,8 @@
 mod attribution;
 #[path = "scene_fx_transition/boundary.rs"]
 mod boundary;
+#[path = "scene_fx_transition/ceiling.rs"]
+mod ceiling;
 #[path = "scene_fx_transition/clocks.rs"]
 mod clocks;
 #[path = "scene_fx_transition/compat.rs"]
@@ -69,5 +78,9 @@ mod stages;
 mod support;
 #[path = "scene_fx_transition/tail_repair.rs"]
 mod tail_repair;
+#[path = "scene_fx_transition/timing.rs"]
+mod timing;
+#[path = "scene_fx_transition/timing_refusals.rs"]
+mod timing_refusals;
 #[path = "scene_fx_transition/window_guard.rs"]
 mod window_guard;

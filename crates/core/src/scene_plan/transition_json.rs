@@ -21,6 +21,7 @@ use crate::directed_scene::fx::{DeckSide, FxEasing, FxValue, ParamKind, transiti
 use super::PlanError;
 use super::json::Obj;
 use super::model::ScenePlan;
+use super::temporal::{read_alignment, read_timing, timing_json};
 use super::transition::{MAX_TRANSITION_PLAN_BYTES, MAX_TRANSITION_PLAN_ITEMS, PlanTransition};
 
 /// The arrays of a deck whose lengths make its items.
@@ -35,6 +36,8 @@ pub(super) fn to_json(transition: &PlanTransition) -> Value {
         "primary": transition.primary.name(),
         "startFrame": transition.start_frame,
         "durationFrames": transition.duration_frames,
+        "alignment": transition.alignment.name(),
+        "timing": timing_json(&transition.timing),
         "frameInWindow": transition.frame_in_window,
         "easing": transition.easing.name(),
         "progress": transition.progress,
@@ -112,6 +115,8 @@ pub(super) fn read(transition: &Obj<'_>) -> Result<PlanTransition, PlanError> {
         "primary",
         "startFrame",
         "durationFrames",
+        "alignment",
+        "timing",
         "frameInWindow",
         "easing",
         "progress",
@@ -121,6 +126,9 @@ pub(super) fn read(transition: &Obj<'_>) -> Result<PlanTransition, PlanError> {
         "heldCamera",
         "other",
     ])?;
+    // The old experimental wire has neither: refused at the first, with no default.
+    let alignment = read_alignment(transition)?;
+    let timing = read_timing(&transition.object("timing")?)?;
     let effect = transition.text("effect")?;
     let spec = transition_effect(&effect)
         .ok_or_else(|| transition.fail("effect", "not a transition effect"))?;
@@ -135,6 +143,8 @@ pub(super) fn read(transition: &Obj<'_>) -> Result<PlanTransition, PlanError> {
         primary,
         start_frame: transition.integer("startFrame")?,
         duration_frames: transition.integer("durationFrames")?,
+        alignment,
+        timing,
         frame_in_window: transition.integer("frameInWindow")?,
         easing,
         progress: transition.number("progress")?,

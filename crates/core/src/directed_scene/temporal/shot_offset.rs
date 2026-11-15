@@ -58,15 +58,78 @@ fn signed(value: u64) -> Result<i64, TemporalError> {
     i64::try_from(value).map_err(|_| TemporalError::FrameOverflow)
 }
 
-/// `raw` held to `[0, length − 1]`, and whether holding changed it. Never negative, so the `u64`
-/// it returns cannot wrap; a zero-length clip holds frame 0.
-fn hold_to(raw: i64, length: u64) -> Result<(u64, bool), TemporalError> {
-    let last = signed(length.saturating_sub(1))?;
-    let held = raw.clamp(0, last);
-    let frame = u64::try_from(held).map_err(|_| TemporalError::FrameOverflow)?;
-    // A clip with no frames holds frame 0 always, even when 0 was the frame wanted (the oracle's
-    // `empty_clips` rows): there is no real frame to be on.
-    Ok((frame, length == 0 || held != raw))
+/// Where a shot enters one clip (its instance, or its camera clip) and how long the clip is: the
+/// two numbers a clock needs besides the edit frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ClockSource {
+    /// The clip frame the shot starts on (`instanceStartFrame`, `cameraInFrame`).
+    pub start_frame: u64,
+    /// Frames of the clip: the instance's duration, or the camera clip's own length.
+    pub length: u64,
+}
+
+/// One clock of a deck at an edit frame: what the shot asks for, what exists, and whether the two
+/// differ. The single rule of the neighbour deck, the plan's assembly and its validator.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ClockSample {
+    /// `start_frame + (edit_frame − shot_start)`, unclamped: may be negative or past the clip.
+    pub raw: i64,
+    /// `raw` held to `[0, length − 1]`; `0` for a clip with no frames.
+    pub sampled: u64,
+    /// The clock was held: the clamp changed the frame, or the clip has no frames at all (a
+    /// clamp that changed nothing, as on the clip's last real frame, is `false`).
+    pub held: bool,
+}
+
+impl ClockSample {
+    /// `raw` held to `[0, length − 1]`, and whether holding changed it. Never negative, so the
+    /// `u64` it returns cannot wrap; a zero-length clip holds frame 0.
+    pub fn of(raw: i64, length: u64) -> Result<Self, TemporalError> {
+        let last = signed(length.saturating_sub(1))?;
+        let held = raw.clamp(0, last);
+        let sampled = u64::try_from(held).map_err(|_| TemporalError::FrameOverflow)?;
+        Ok(Self {
+            raw,
+            sampled,
+            // A clip with no frames holds frame 0 always, even when 0 was the frame wanted (the
+            // oracle's `empty_clips` rows): there is no real frame to be on.
+            held: length == 0 || held != raw,
+        })
+    }
+}
+
+/// The two clocks of a deck at an edit frame, each held on its own length (D14, D17).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DeckClocks {
+    pub instance: ClockSample,
+    pub camera: ClockSample,
+}
+
+impl DeckClocks {
+    /// The clocks of a shot that starts at `shot_start_frame` at `edit_frame`, which may be
+    /// outside the shot. Checked: an unrepresentable frame is `FrameOverflow`, never wrapped.
+    pub fn at(
+        edit_frame: i64,
+        shot_start_frame: u64,
+        instance: ClockSource,
+        camera: ClockSource,
+    ) -> Result<Self, TemporalError> {
+        // Negative before the shot's start, `>= length` after its end.
+        let delta = edit_frame
+            .checked_sub(signed(shot_start_frame)?)
+            .ok_or(TemporalError::FrameOverflow)?;
+        let raw = |source: ClockSource| {
+            signed(source.start_frame)?
+                .checked_add(delta)
+                .ok_or(TemporalError::FrameOverflow)
+        };
+        let raw_instance = raw(instance)?;
+        let raw_camera = raw(camera)?;
+        Ok(Self {
+            instance: ClockSample::of(raw_instance, instance.length)?,
+            camera: ClockSample::of(raw_camera, camera.length)?,
+        })
+    }
 }
 
 impl Bundle {
@@ -146,18 +209,21 @@ impl Bundle {
                 })?;
         let camera_layout = camera_timeline(&shot.camera_clip_id)?;
 
-        // Negative before the shot's start, `>= length` after its end; checked, never wrapped.
-        let offset = edit_frame
-            .checked_sub(signed(shot.start_frame)?)
-            .ok_or(TemporalError::FrameOverflow)?;
-        let raw_instance = signed(shot.instance_start_frame)?
-            .checked_add(offset)
-            .ok_or(TemporalError::FrameOverflow)?;
-        let raw_camera = signed(shot.camera_in_frame)?
-            .checked_add(offset)
-            .ok_or(TemporalError::FrameOverflow)?;
-        let (instance_frame, held_instance) = hold_to(raw_instance, instance.duration_frames)?;
-        let (camera_clip_frame, held_camera) = hold_to(raw_camera, camera_layout.frames())?;
+        // The one clock rule (also the plan's): each clock held on its own length.
+        let clocks = DeckClocks::at(
+            edit_frame,
+            shot.start_frame,
+            ClockSource {
+                start_frame: shot.instance_start_frame,
+                length: instance.duration_frames,
+            },
+            ClockSource {
+                start_frame: shot.camera_in_frame,
+                length: camera_layout.frames(),
+            },
+        )?;
+        let (instance_frame, held_instance) = (clocks.instance.sampled, clocks.instance.held);
+        let (camera_clip_frame, held_camera) = (clocks.camera.sampled, clocks.camera.held);
 
         let mapping = FrameMapping {
             // The scene clock: the needle's frame and time, never the held ones.
@@ -184,30 +250,106 @@ impl Bundle {
 mod tests {
     use core::prelude::v1::test;
 
-    use super::hold_to;
+    use super::{ClockSample, ClockSource, DeckClocks, TemporalError};
+
+    /// `(raw, sampled, held)` of the rule, or its error.
+    fn of(raw: i64, length: u64) -> Result<(i64, u64, bool), TemporalError> {
+        ClockSample::of(raw, length).map(|clock| (clock.raw, clock.sampled, clock.held))
+    }
 
     /// The oracle's `deck_frames.empty_clips` rows: a clip with no frames is frame 0, held.
     #[test]
     fn a_clip_without_frames_holds_frame_zero_even_when_zero_was_wanted() {
         for raw in [-3, 0, 5] {
-            assert_eq!(hold_to(raw, 0), Ok((0, true)), "raw {raw}");
+            assert_eq!(of(raw, 0), Ok((raw, 0, true)), "raw {raw}");
         }
         // The other clock of the same row has frames and is clamped on its own length.
-        assert_eq!(hold_to(4, 10), Ok((4, false)));
+        assert_eq!(of(4, 10), Ok((4, 4, false)));
     }
 
     #[test]
     fn holding_is_to_the_first_and_last_frame_and_never_wraps() {
-        assert_eq!(hold_to(-1, 5), Ok((0, true)));
-        assert_eq!(hold_to(0, 5), Ok((0, false)));
-        assert_eq!(hold_to(4, 5), Ok((4, false)));
-        assert_eq!(hold_to(5, 5), Ok((4, true)));
-        assert_eq!(hold_to(i64::MIN, 5), Ok((0, true)));
-        assert_eq!(hold_to(i64::MAX, 5), Ok((4, true)));
-        assert_eq!(hold_to(0, 1), Ok((0, false)));
+        assert_eq!(of(-1, 5), Ok((-1, 0, true)));
+        assert_eq!(of(0, 5), Ok((0, 0, false)));
+        assert_eq!(of(4, 5), Ok((4, 4, false)));
+        assert_eq!(of(5, 5), Ok((5, 4, true)));
+        assert_eq!(of(i64::MIN, 5), Ok((i64::MIN, 0, true)));
+        assert_eq!(of(i64::MAX, 5), Ok((i64::MAX, 4, true)));
+        assert_eq!(of(0, 1), Ok((0, 0, false)));
         assert!(
-            hold_to(0, u64::MAX).is_err(),
+            of(0, u64::MAX).is_err(),
             "a length that does not fit i64 is an overflow"
+        );
+    }
+
+    fn clocks(frame: i64, start: u64, instance: (u64, u64), camera: (u64, u64)) -> DeckClocks {
+        let source = |(start_frame, length)| ClockSource {
+            start_frame,
+            length,
+        };
+        DeckClocks::at(frame, start, source(instance), source(camera)).unwrap()
+    }
+
+    /// Hand numbers: a shot at 48 reading an instance from 20 (200 frames) and a camera from 0
+    /// (48 frames). One frame before it, then its first frame, then the camera's last real frame
+    /// and the one past it.
+    #[test]
+    fn the_two_clocks_are_offset_by_the_same_delta_and_held_on_their_own_length() {
+        let at = |frame| clocks(frame, 48, (20, 200), (0, 48));
+        let before = at(47);
+        assert_eq!((before.instance.raw, before.instance.sampled), (19, 19));
+        assert_eq!(
+            (before.camera.raw, before.camera.sampled, before.camera.held),
+            (-1, 0, true)
+        );
+        assert!(!before.instance.held);
+        let first = at(48);
+        assert_eq!((first.instance.raw, first.camera.raw), (20, 0));
+        assert!(!first.instance.held && !first.camera.held);
+        let last = at(95);
+        assert_eq!((last.camera.raw, last.camera.sampled), (47, 47));
+        assert!(
+            !last.camera.held,
+            "reaching the last frame is not holding it"
+        );
+        let past = at(96);
+        assert_eq!(
+            (past.camera.raw, past.camera.sampled, past.camera.held),
+            (48, 47, true)
+        );
+        assert_eq!((past.instance.raw, past.instance.sampled), (68, 68));
+    }
+
+    #[test]
+    fn a_clock_start_past_the_clip_end_is_held_before_the_cut_and_overflow_is_an_error() {
+        // cameraIn 60 of a 48-frame clip: held on the tail even three frames before the shot.
+        let early = clocks(45, 48, (0, 200), (60, 48));
+        assert_eq!(
+            (early.camera.raw, early.camera.sampled, early.camera.held),
+            (57, 47, true)
+        );
+        let huge = ClockSource {
+            start_frame: u64::MAX,
+            length: 4,
+        };
+        let small = ClockSource {
+            start_frame: 0,
+            length: 4,
+        };
+        assert!(DeckClocks::at(0, 0, huge, small).is_err());
+        assert!(DeckClocks::at(i64::MIN, 1, small, small).is_err());
+        assert!(DeckClocks::at(i64::MAX, 0, small, small).is_ok());
+        assert!(
+            DeckClocks::at(
+                i64::MAX,
+                0,
+                ClockSource {
+                    start_frame: 1,
+                    length: 4
+                },
+                small
+            )
+            .is_err()
         );
     }
 }
