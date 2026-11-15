@@ -27,6 +27,8 @@
 //! * `edit_problems`: localized problems and sufficient camera-head repairs (E12/E15).
 //! * `window_guard`: the shared pure overlay refusal predicate (E14).
 
+#[path = "scene_fx_transition/attribution.rs"]
+mod attribution;
 #[path = "scene_fx_transition/boundary.rs"]
 mod boundary;
 #[path = "scene_fx_transition/clocks.rs"]
