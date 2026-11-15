@@ -339,3 +339,18 @@ trazem `details.resource`; os tetos globais não inventam atribuição.
 O host interno aceitar um plano tipado nos testes não habilita `crossDissolve` no runtime ou
 nas entradas públicas. Refuse permanece fechado; evidências por head e limites no
 [relatório H](../migration/p4b-s2-host-resource-report.md). Não é prova de render de transição.
+
+## Desenho dirigido em módulo próprio (BL082.4.4, S2-R1a)
+
+`prepareDirectedScene` e `sceneMaterial` saíram de `runtime/src/compositor.js` para
+`runtime/src/directed-deck-draw.js` (funções que recebem o compositor dono como `host`); a classe
+`Compositor` mantém os dois métodos, com as mesmas assinaturas, como wrappers finos (`compositor.js`
+de 1166 para 1054 linhas). É uma extração mecânica: corpos idênticos depois de tirar a indentação e
+trocar `this.` por `host.` (SHA-256 normalizado igual), mesma ordem de preflight, mesmas chaves
+`ds:<order>`, `ds:<order>:<alpha>:<index>` e `dsfx:<order>:<slot>`, mesma telemetria e o mesmo dono
+para o que o quadro constrói (`frame.keep` até o fim, leases incluídos). Planos simples desenham a
+mesma imagem; planos com transição seguem recusados. Cinco controles de borda
+(`runtime/test/directed-scene-draw-seam.test.mjs`) passam na base `7d88545` e depois da extração.
+Sem mudança de produto, de capacidades (JS13/Rust14) ou de pixels; limites, observação preexistente
+de `scene_frames` e evidências por head no
+[relatório R1a](../migration/p4b-s2-r1a-draw-extraction-report.md).
