@@ -333,3 +333,132 @@ fn audio_on_a_fractional_grid_is_offered_cut_and_keeps_the_sound(cx: &mut TestAp
         "the click did not change one sample"
     );
 }
+
+#[gpui_kit::test]
+fn a_cut_inside_a_fade_is_offered_and_keeps_the_envelope_sample_for_sample(
+    cx: &mut TestAppContext,
+) {
+    // BL081.2: a cut inside a ramp used to be disabled (`fade_in_crosses_cut`). The button, the
+    // node and `ui invoke` ask the core, which now keeps the ramp in a window on both halves.
+    use tessel_editor_core::audio::{AudioBackend, OfflineMixer};
+    let (view, cx) = fixture(cx);
+    let dir = std::env::temp_dir().join(format!("tessel-split-ui-fade-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let wav = dir.join("tone.wav");
+    std::fs::write(
+        &wav,
+        tessel_editor_core::fixtures::tone_wav(44_100, 2.0, 440.0, 0.5, 2),
+    )
+    .unwrap();
+    view.update(cx, |view, _| {
+        for request in [
+            json!({"op":"project.create","name":"Ntsc","sequence":"main",
+                "rate":{"num":30000,"den":1001},"width":64,"height":36,"length":96}),
+            json!({"op":"asset.add","kind":"audio","id":"tone","name":"Tone","path":wav}),
+            json!({"op":"track.add","id":"a1","name":"A1","kind":"audio"}),
+            json!({"op":"clip.add","id":"snd","track":"a1","asset":"tone","start":1,"duration":47}),
+            json!({"op":"clip.property","clip":"snd","property":"fade_in","value":20}),
+            json!({"op":"clip.property","clip":"snd","property":"fade_out","value":20}),
+        ] {
+            tessel_editor_core::headless::execute(&mut view.state, &request).unwrap();
+        }
+    });
+    settle(cx);
+    let mix = |view: &Entity<Workstation>, cx: &mut VisualTestContext| {
+        view.read_with(cx, |view, _| {
+            let plan = view.state.plan_audio(0, 96).unwrap();
+            OfflineMixer::default().mix(&plan).unwrap().samples
+        })
+    };
+    let same = |a: &[f32], b: &[f32]| {
+        a.len() == b.len() && a.iter().zip(b).all(|(a, b)| a.to_bits() == b.to_bits())
+    };
+    let before = mix(&view, cx);
+    assert!(before.iter().any(|sample| sample.abs() > 0.01));
+    run(
+        &view,
+        cx,
+        Command::SelectClip {
+            clip: "snd".to_string(),
+        },
+    )
+    .unwrap();
+
+    // Inside the fade-in: enabled, one click, one undoable edit, the same samples.
+    playhead(&view, cx, 10);
+    assert_eq!(node(&view, cx, "timeline.split")["enabled"], true);
+    let depth = undo_depth(&view, cx);
+    let at = button_center(&view, cx);
+    cx.simulate_click(at, Default::default());
+    settle(cx);
+    assert_eq!(span(&view, cx, "snd"), (1, 10));
+    assert_eq!(span(&view, cx, "snd-split-1"), (10, 48));
+    assert_eq!(undo_depth(&view, cx), depth + 1);
+    assert!(same(&before, &mix(&view, cx)), "the click changed samples");
+
+    // Inside the fade-out of the right half, by `ui invoke`.
+    run(
+        &view,
+        cx,
+        Command::SelectClip {
+            clip: "snd-split-1".to_string(),
+        },
+    )
+    .unwrap();
+    playhead(&view, cx, 40);
+    assert_eq!(node(&view, cx, "timeline.split")["enabled"], true);
+    invoke(&view, cx, "timeline.split").unwrap();
+    assert_eq!(span(&view, cx, "snd-split-1"), (10, 40));
+    assert!(
+        same(&before, &mix(&view, cx)),
+        "the second cut changed samples"
+    );
+
+    // Undo twice and redo twice restore the very same sound.
+    run(&view, cx, Command::Undo).unwrap();
+    assert!(same(&before, &mix(&view, cx)));
+    run(&view, cx, Command::Undo).unwrap();
+    assert_eq!(span(&view, cx, "snd"), (1, 48));
+    assert!(same(&before, &mix(&view, cx)));
+    run(&view, cx, Command::Redo).unwrap();
+    run(&view, cx, Command::Redo).unwrap();
+    assert!(same(&before, &mix(&view, cx)));
+
+    // Editing the middle half's fade-in must leave its inherited fade-out alone.
+    run(
+        &view,
+        cx,
+        Command::SelectClip {
+            clip: "snd-split-1".into(),
+        },
+    )
+    .unwrap();
+    let inherited = node(&view, cx, "clip:snd-split-1")["state"]["fade_window"].clone();
+    assert!(inherited["tail"]["norm"].is_object());
+    run(
+        &view,
+        cx,
+        Command::SetProperty {
+            property: "fade_in".into(),
+            value: Raw::Number(5.0),
+        },
+    )
+    .unwrap();
+    let edited = mix(&view, cx);
+    let at = |frame| {
+        tessel_editor_core::audio_clock::sample_at(
+            tessel_editor_core::time::Rate::new(30_000, 1001).unwrap(),
+            frame,
+        )
+        .unwrap() as usize
+            * 2
+    };
+    assert!(same(&before[at(35)..at(48)], &edited[at(35)..at(48)]));
+    assert!(!same(&before[at(10)..at(15)], &edited[at(10)..at(15)]));
+    let after = node(&view, cx, "clip:snd-split-1")["state"]["fade_window"].clone();
+    assert_eq!(after["tail"], inherited["tail"]);
+    run(&view, cx, Command::Undo).unwrap();
+    assert!(same(&before, &mix(&view, cx)));
+    run(&view, cx, Command::Redo).unwrap();
+    assert!(same(&edited, &mix(&view, cx)));
+}

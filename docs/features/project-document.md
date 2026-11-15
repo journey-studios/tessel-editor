@@ -12,7 +12,7 @@ Salvar, estado "salvo/não salvo" na barra; `scripts/live-flow-proof.py`).
 inalterado produz os mesmos bytes. Limite de leitura: 256 MiB (`document_too_large`).
 
 ```text
-format "tessel-project", schema_version 1 (sem cenas) ou 2 (com bloco scenes)
+format "tessel-project", schema_version 1 (base), 2 (cenas/captura/chaves) ou 3 (janela de fade)
 project      { id, name, revision, requires { spark "2.4.0", three "0.187.0" } }
 library      { folders[], assets[] }       identidade (id) e conteúdo (hash) separados
 sequences[]  { id, name, rate {num,den}, length, width, height, tracks[], clips[] }
@@ -60,3 +60,15 @@ F036 adiciona o bloco `scenes` e escreve schema 2 somente quando esse bloco é n
 Projetos comuns permanecem em schema 1. Leitores antigos recusam schema 2, protegendo as
 cenas contra perda silenciosa. Save/autosave e pacote conferem os bytes serializados reais
 contra o limite do loader (256 MiB), antes de escrever ou substituir o arquivo.
+
+
+## Janela de fade (BL081.2, em revisão)
+
+O campo opcional fade_window em clips[] exige schema3. lead/tail contêm frames
+(âncora) e fade (guarda); em áudio também norm{far,peer}, obrigatório, descrevendo
+a normalização congelada. Não se aceita norm para clipes visuais. Frames são
+não negativos em áudio e positivos em imagem/vídeo; spans e duração obedecem ao
+limite de1000000quadros. Versões1/2 com janela são invalid_document; leitores
+anteriores limitados à versão2 recusam schema3, protegendo o envelope contra
+perda silenciosa. Sem janela, a menor versão necessária continua1 ou2.
+Janelas intermediárias de áudio sem norm não foram publicadas e são recusadas.

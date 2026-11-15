@@ -1604,7 +1604,7 @@ correções de revisão, não gate do código corrigido.
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
 | BL081.1 | Corte / expansão futura | Corte em lote e atalho de teclado | Pendente — fora da fatia atual | BL081 | — | Definir seleção/múltiplos e um undo; não inferir autorização para implementar só por estar no backlog |
-| BL081.2 | Corte / envelope | Fades atravessando o ponto do corte não são representáveis em duas rampas atuais | Pendente — recusa explícita implementada | BL081, BL142 | — | Preservar envelope/amostras e quadro sem aproximar; enquanto isso split_unsupported com motivo |
+| BL081.2 | Corte / envelope | Preservar o envelope ao cortar dentro de fades visuais e de áudio | Implementado, em revisão — provas Mac reportadas; Windows pendente | BL081, BL142, BL081.5 | Coordenação; implementação Cursor Sonnet 5.5 em worktree isolado | Preservar quadro e PCM antes/depois do corte, inclusive grades fracionárias, fades sobrepostos, múltiplos cortes e salvar/reabrir/undo/redo; documentar mover/trim/edição de fades sem âncoras obsoletas; não reintroduzir aproximação; overflow/dado inválido continuam com recusa tipada. Lib, processo headless e UI compartilham a regra. Sem transições/crossfade de P4b, desempenho, batch ou atalhos |
 | BL081.3 | Documentação | Incluir clip.split no vocabulário F015 | Corrigido pela coordenação | BL081 | Coordenador | Linha no contrato project-creation aponta F017 e argumentos absolutos; sem mudar outras operações |
 | BL081.4 | Windows / cache | Artefato debug GPUI reaproveita CARGO_MANIFEST_DIR de W: após mudança para E:; shader não abre | Pendente | BL167.4 | — | Invalidar por caminho ou incorporar HLSL sem tocar cache global; provar janela de debug em outro checkout. Executor atualizou mtime do build.rs, sem diff, apenas como contorno |
 | BL081.5 | Áudio / continuidade do corte | Preservar fase em grades fracionárias e faixas de mix arbitrárias | Validado Windows/Mac — integração na [PR #57](https://github.com/journey-studios/tessel-editor/pull/57) | BL081, BL016 | Cursor Sonnet5.5 Windows; revisão e integração coordenador | Código46506ac. Mac core1455/7 ignorados existentes/0 falhas, desktop4+2, export13 e provas headless/janela. Windows77 testes dirigidos,0falhas/0skips e fmt/check/clippy/no-run/build exit0. WAVs de mix/corte/blocos/export idênticos; PCM fracionário legado corrigido intencionalmente. Desempenho BL081.7 e fades atravessados BL081.2 continuam pendentes. [Relatório](migration/clip-split-audio-continuity-report.md) |
@@ -2026,3 +2026,105 @@ atributo no próprio módulo em linha, não a declaração externa dentro dele.
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
 | BL082.4.15 | PR62 R2 / S3 | IDs automáticos de looks e trilhas ignoram IDs de transições | Pendente — incorporar à S3 | BL082.4.5 | Não atribuído | Incluir transitions no namespace de every_id; provar transições fx-1/fx-track-1, IDs automáticos distintos, recusa explícita atômica, undo/redo. Hoje apenas Accept: recusa segura, não corrupção, sem acesso público. Não bloqueia S1a. |
+
+
+### BL081.2 — próxima entrega autorizada (2026-11-14)
+
+Implementação delegada a Cursor Sonnet 5.5, em worktree isolado da main atual
+(base e3c20cb), sem mudanças no Computador ou nas frentes de transições P4b.
+Ownership: core (timeline/inspector/documento/split/plan/audio e testes do envelope),
+adapters mínimos de split/export se necessários, docs de split/audio-fades e
+relatório próprio. Backlog, matriz e arquitetura comuns ficam com o coordenador;
+o executor entrega propostas de linhas. Nenhum commit, push, PR ou merge pelo
+executor. Validação Mac primeiro; prova nativa Windows será registrada à parte.
+Sem aceitar visualização/socket como headless, nem PCM como som ouvido.
+
+
+### BL081.2 — entrega recebida e revisão iniciada (2026-11-14)
+
+[Implementação Cursor Sonnet 5.5](t3-thread://v2/8ac99a47-6712-4c08-aa4a-d8e73a792f19/thread:delegated-task:command%3Amcp%3A7cf41667-db4f-4a97-b58c-91dff3fdad39%3Adelegate-task%3Abl0812-fade-split-20261114)
+recebida na base e3c20cb. Diff completo preservado fora da árvore:129566bytes,
+SHA256 ef1278943a1eec284b872d2acf2f0884f1ddf05fcd9178b18c8700af813b95bf;
+16arquivos. Hash do diff rastreado d1806e58 confere antes de aplicar; índice real
+do executor preservado. Integrado ao checkout coordenador sem commit; backlog
+anterior e registros paralelos preservados. Sem push/PR/merge desta entrega.
+
+Executor reporta core1559/7ignorados, workspace2748/17ignorados (antes do último
+teste desktop), desktop516final, headless8/8 e janela12/12. Logs inspecionados,
+sem aceitar esses resultados como revisão independente. Sem Windows, desempenho,
+pixels, ponteiro físico ou áudio ouvido. Arquivos adicionais state/mod.rs e
+state/property_gesture.rs recebidos para revisão da varredura de janela; não se
+infere aprovação apenas do relato de necessidade do executor.
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL081.2.1 | Revisão / compatibilidade | Schema2 já era aceito por leitores anteriores que ignoram fade_window; risco de perda silenciosa do envelope | Corrigido no código, regressão Mac24/24; leitor antigo conferido por fonte | BL081.2 | Coordenador / revisão independente | Leitor anterior com schema2 recusa documento com novo envelope; documentos sem envelope não mudam de schema sem necessidade; prova contra leitor anterior, não somente rejeição de v1 |
+| BL081.2.2 | Revisão / contrato | Confirmar trim, edição de um lado, reset e fim/cancelamento de gesto sem alterar indevidamente a outra rampa | Corrigido e validado Mac pelo executor; nova revisão independente pendente | BL081.2 | Coordenador / revisão independente | Invariantes do contrato executadas com dois fades sobrepostos, seis taxas e várias sequências; janela obsoleta não ressuscita, undo/redo restaura estado |
+| BL081.2.3 | Revisão / manutenção | Teste novo clip_split_envelope.rs tem1168linhas apesar da separação pedida | Corrigido —22casos preservados em cinco módulos, mais2regressões | BL081.2 | Coordenador | Separar cenários em módulos focados, mantendo os22casos e controles sem duplicar fixtures ou relaxar asserts |
+
+
+### BL081.2 — retorno da revisão independente e correções (2026-11-14)
+
+Revisão Cursor confirmou schema sem proteção, acoplamento entre rampas de áudio
+após editar só uma e trim que criava documento impossível de reabrir. Schema3 e
+limite comum de janela corrigidos pelo coordenador; corpus reorganizado com
+24/24casos passando. Nenhum gate antigo é reatribuído ao diff corrigido.
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL081.2.4 | Revisão / trim | Janela resultante excedia MAX_LENGTH após estender a borda e podia salvar sem reabrir | Corrigido, regressão Mac24/24 | BL081.2 | Coordenador | checked_frames compartilhado entre carga/trim; caso999000quadros com dois cortes/mover/estender recusa invalid_time atomicamente e documento restante reabre |
+
+BL081.2.2 exige mudança do modelo de áudio, separando âncoras por rampa e vão
+de normalização. Atribuída nova implementação restrita Cursor Sonnet5.5 no
+checkout compartilhado coordenador; schema/timeline e registros comuns ficam
+com o coordenador. Sem staging/commit/push/PR/merge pelo executor.
+
+
+### BL081.2.2 — modelo corrigido e provas atuais (2026-11-14)
+
+Âncora e norm{far,peer} por rampa, não mais só um vão compartilhado: editar um
+fade não renormaliza o outro. Executor: core1585/0/7ignorados, envelope42/42,
+unitários15, desktop split5/fades2, exportFFmpeg11; fmt/check/clippy/no-run exit0.
+Sem herdar workspace2748 ou janela da primeira entrega para o modelo novo.
+Coordenação reconstruiu desktop/headless, exit0, e provou12/12checks em cada
+superfície com os casos simétricos, WAV preservado, novo fade efetivo, undo/redo
+e save/reopen schema3. Script/logs no SSD de coordenação, proof-latest/.
+Revisão independente do modelo corrigido é o próximo gate. Sem commit/push/PR.
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL081.2.5 | Portabilidade / prova | Executar o modelo corrigido de envelope e regressões no Windows | Em andamento — thread Windows isolada na baseE3 | BL081.2.2 e revisão do novo modelo | Coordenação / Cursor Sonnet5.5 | Fontes conferidas por hash, build/testes dirigidos e provas semânticas em checkout isolado; preservar a árvore Windows paralela e seus backups; não herdar gates do BL081.5 |
+
+
+### BL081.2 — revisão do modelo corrigido, ajustes finais
+
+Revisor conferiu32fontes por hash e não encontrou bug bloqueante após os três
+consertos. Core42/42 executado por ele e amostragem de planos/edições/mix em
+blocos não substituem PCM float da lib. Não executou leitor antigo nem Windows.
+Coordenação corrigiu trim de âncora0 para seguir a borda, removeu ramo morto,
+alinhou plan_trim à execução e expôs janela no tree. Modelo conservador pode
+exigir schema3 em corte fora de rampa de metade curta (fade5, clip60, corte30),
+para preservar independência após editar o outro fade. Limite documentado;
+sem alegar decisão explícita ou aceite humano. Corpus atual44/44passa; gates
+e prova nativa final em execução, sem herdar binários apagados pelo mbx.
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL081.2.6 | Revisão F1 | Âncora de áudio na borda seguia regra de trim diferente da nativa | Corrigido, envelope44/44 | BL081.2.2 | Coordenador | Rampa frames0 segue borda aparada, seis taxas e undo/redo/reabrir; âncora externa continua fixada |
+| BL081.2.7 | Revisão F2 | Fixação preventiva pode elevar cortes fora de rampa a schema3 | Limitação documentada e testada | BL081.2.2 | Coordenador | Manter independência após editar outro fade até48quadros; explicitar exemplo60/fade5/corte30 e que leitores antigos recusam novo documento |
+| BL081.2.8 | Revisão F4 | Prova externa, ausência de edição de fade no teste GPUI, janela não inspecionável e prévia de trim divergente | Corrigido no código, gates finais em execução | BL081.2 | Coordenador | Script versionado, teste GPUI com região de rampa não editada/undo/redo, fade_window no nó do clipe e recusa igual em plan_trim/trim_clip |
+
+
+### BL081.2 — gates Mac finais e thread Windows
+
+Mac final: core1587/0/7ignorados, desktop516/0, exportFFmpeg11/0; fmt/check/
+clippy/no-run/build/higiene exit0. Script versionado com headless12/12 e
+janela12/12,0skips. Sem workspace inteiro executado ou áudio ouvido. Logs no
+SSD de coordenação, final-mac/. Nenhum resultado Windows foi herdado.
+
+A tentativa de subagente remoto com worktree foi recusada pelo T3; usando a
+autorização de threads para o Computador, iniciou-se a [validação Windows](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:e963aec64addab81b44ee91455f0554a397a7f04faea764577e76c517101d3bc)
+em worktree próprio. Base exataE3, patch/manifesto do ZIP75357bytes SHA256
+cf9d4b358591ec3dc6cb7042a80f833aebc8dda7dc0c2b2cb4b4b47cef765f9f.
+RaizWindows e worktrees paralelos preservados. Fonte de produto congelada
+coincide com os gates Mac; mudanças posteriores são documentais.

@@ -2,7 +2,8 @@
 
 ## Status
 
-**BL081 e continuidade fracionária BL081.5 validados Windows/Mac, dentro dos limites abaixo.** Entregue em biblioteca, CLI headless (processo JSONL) e janela. Evidência e limites em
+**BL081.2 (cortar dentro de fades) implementado, a validar pelo coordenador** — ver [clip-split-fades-report.md](../migration/clip-split-fades-report.md);
+não há mais recusa por fade. **BL081 e continuidade fracionária BL081.5 validados Windows/Mac, dentro dos limites abaixo.** Entregue em biblioteca, CLI headless (processo JSONL) e janela. Evidência e limites em
 [clip-split-report.md](../migration/clip-split-report.md). Sem ponteiro físico, sem áudio ouvido e sem pixels: a prova da
 janela é semântica (`ui get/set/invoke/op`).
 
@@ -50,8 +51,9 @@ Cada frame da sequência lê, depois do corte, o mesmo tempo de fonte, câmera, 
 | Câmera orbital (sem chaves) | a direita começa onde a órbita já estava: `camera.at(shift)` |
 | Câmera com chaves | ancorada no tempo absoluto da cena: nada a mudar |
 | Ken Burns (só imagem estática, `ken_burns` ligado, `end_zoom ≠ zoom`) | esquerda termina em `z0 + (z1−z0)(k−1)/(D−1)`; direita começa em `z0 + (z1−z0)k/(D−1)` e mantém `end_zoom`. Valores gravados **sem arredondar** |
-| Fade-in | a esquerda mantém o fade; a direita fica com 0 |
-| Fade-out | a direita mantém o fade; a esquerda fica com 0 |
+| Fade-in | rampa que não alcança a direita: a esquerda mantém o fade e a direita fica com 0. Rampa que **atravessa** o corte (BL081.2): as duas metades leem a mesma janela de fade (`fade_window`), e cada quadro mantém a mesma opacidade |
+| Fade-out | simétrico: a direita mantém e a esquerda fica com 0 quando a rampa não a alcança; se atravessa, a janela é conservada nas duas |
+| Fades sobrepostos / maiores que a metade (áudio) | cada rampa que a metade herda é fixada com a âncora e o vão em que o mixer a encurtou no clipe inteiro; editar o outro fade não a encurta |
 | Áudio (BL081.5) | Mesmas amostras antes/depois do corte sob o relógio absoluto e fase racional, inclusive nas grades fracionárias; validado Windows/Mac, ver relatório |
 
 ### Erros tipados (atômicos)
@@ -66,14 +68,23 @@ Nenhum erro altera clipe, propriedade, seleção, revisão, histórico ou consum
 | `invalid_id` / `duplicate_id` | `new_id` inválido/duplicado, ou nome padrão que não cabe |
 | `invalid_time` | estouro de aritmética checada (frames ou tempo de fonte) |
 | `invalid_request` | parser: `frame` fracionário/não inteiro, tipos errados |
-| `split_unsupported` | `details.reason`: `fade_in_crosses_cut`, `fade_out_crosses_cut`, `fades_longer_than_clip` |
 | `disabled_element` | `invoke timeline.split` com o controle desabilitado |
 
-Fade que cruza o corte não é aproximado: uma rampa não pode ser dividida em duas sem mudar o ganho. Imagem recusa fade-in se
-`frames_antes < fade_in` e fade-out se `frames_depois + 1 < fade_out`; áudio, fade-out se `frames_depois < fade_out`.
-Fades visuais carregados do documento conservam o valor fracionário nessas comparações,
-como no renderer; só os fades de áudio são arredondados a frames, como no mixer (BL081.13).
-Dois fades de áudio cuja soma excede o clipe (o mixer os encurta) são recusados.
+### Fades que atravessam o corte (BL081.2, BL081.2.2)
+
+`Clip.fade_window` (`crates/core/src/state/envelope.rs`) guarda, por rampa (`lead` = fade-in, `tail` = fade-out), em quadros **relativos às
+bordas do clipe**: a **âncora** (`frames`: onde começou a rampa de entrada / onde termina a de saída), a guarda do valor do fade para o
+qual foi cortada (`fade`) e, para áudio, a **normalização** (`norm.far`, `norm.peer`: o vão em que o mixer encurtou a rampa e o pedido
+da outra rampa nesse vão). Opacidade (`plan.rs`) mede cada fade a partir da sua âncora; o mix (`plan_audio`) ancora cada rampa e roda o
+`resolve_fades` de uma rampa fixada no vão congelado dela, nunca no vão de uma janela comum. Sem fixação a conta é a de antes, bit a bit.
+
+Uma rampa que não alcança a metade continua sendo zerada (sem dado novo). Estouro aritmético recusa o corte com `invalid_time`,
+atomicamente. **Editar `fade_in`/`fade_out` numa metade redefine só aquela rampa** (medida da borda da metade); a outra rampa herdada
+conserva forma, posição e normalização, também quando o clipe inteiro a encurtava por sobreposição. Aparar a borda além da origem da
+rampa descarta a âncora daquele lado; aparar menos a mantém no lugar da sequência, e o vão de normalização também não muda. O campo é
+salvo em `fade_window` do clipe e exige schema 3 (um clipe de áudio com rampa fixada sem `norm`, ou de imagem com `norm`, é
+`invalid_document`); o resultado do split traz `fade_window.left/right`. Regras completas, operações e evidências:
+[clip-split-fades-report.md](../migration/clip-split-fades-report.md).
 
 ### Áudio em grade fracionária (BL081.5 — validado Windows/Mac)
 
@@ -82,11 +93,10 @@ implementação. O relógio do core usa `S(f)=round(f·den·48000/num)` como fro
 absoluta do quadro; cada amostra de saída lê posição racional da fonte a partir de
 `source_start`, início do clipe, velocidade e offset do stream. O cursor mantém a
 fase fracionária por somas inteiras, sem reiniciá-la quando um trecho é dividido.
-Não há campo persistido novo no clipe nem mudança no tempo visual/câmera.
+BL081.5 não persiste a fase da fonte nem muda tempo visual/câmera; a expansão BL081.2 acrescenta o campo opcional fade_window para o envelope.
 
 Mix em blocos e faixas parciais deve coincidir bit a bit com a mesma faixa do
-inteiro. Fades externos usam diferenças no mesmo relógio; cortar dentro de rampa
-continua recusado (BL081.2). Mute não é um bypass: o modelo também deve manter o
+inteiro. Fades externos usam diferenças no mesmo relógio; cortar dentro de rampa é aceito (BL081.2, `fade_window`). Mute não é um bypass: o modelo também deve manter o
 som quando reativado. Em grades fracionárias o PCM anterior era arredondado por
 segmento e pode mudar com a correção; preservar esse erro antigo não é o contrato.
 Grades inteiras legadas têm controles bit a bit. `AudioSegment` ganha fase racional
@@ -105,7 +115,7 @@ Contrato detalhado, controles e limites na [entrega BL081.5](../migration/clip-s
 ## Limites conhecidos
 
 - Só a sequência ativa; clipes de outras sequências não são cortados por esta op.
-- Cortes dentro de um fade são recusados (nunca aproximados).
+- Cortes dentro de um fade conservam o envelope por `fade_window` (BL081.2); mais de um corte seguido conserva a âncora e a normalização do clipe original, e editar um fade da metade não move a outra rampa (BL081.2.2). Sem motor de envelopes, keyframes ou crossfade.
 - O Ken Burns e a órbita são recalculados em `f64` (propriedades do inspetor são `f64`); o tempo de fonte e a divisão do tempo
   são exatos.
 - A direita herda o nome do clipe (não é renomeada).
@@ -114,9 +124,9 @@ Contrato detalhado, controles e limites na [entrega BL081.5](../migration/clip-s
 
 ## Evidências
 
-Ver [clip-split-report.md](../migration/clip-split-report.md): `crates/core/tests/clip_split.rs` (22 testes: lib e processo
-`tessel-headless`), testes de unidade (`id`, `inspector`, `tree`), `crates/desktop/src/workstation/split_tests.rs` (3 testes
-GPUI com clique simulado) e a prova na janela própria por `tessel-editor ui …`.
+Ver [clip-split-report.md](../migration/clip-split-report.md): `crates/core/tests/clip_split.rs` (23 testes: lib e processo
+`tessel-headless`), `crates/core/tests/clip_split_envelope.rs` e `clip_split_envelope/` (BL081.2 + BL081.2.2, 42 testes: planos e PCM bit a bit, controles, rampas herdadas por fade editado), testes de unidade (`id`, `inspector`, `tree`), `crates/desktop/src/workstation/split_tests.rs` (5 testes
+GPUI com clique simulado, incluindo o corte dentro de um fade) e a prova na janela própria por `tessel-editor ui …`.
 
 Revisão Mac: uma recusa preserva também o gesto de slider aberto e seu histórico;
 a validação ocorre antes de liquidar o gesto. Evidências finais no relatório.
@@ -143,3 +153,26 @@ JSON fracionário. Regressões distinguem `as_i64` e `as_f64` na resposta.
 
 BL081.15 validado Mac: split23/23 e fmt/check/clippy/no-run/build exit0; sem
 nova janela ou execução Windows. O teste compara o tipo JSON além do valor.
+
+BL081.2 (implementado, a validar): `split_unsupported`, `SplitBlock::FadeCrossesCut` e `FadesLongerThanClip` foram removidos;
+o JSON inteiro de BL081.15 não tem mais onde aparecer porque não há recusa por fade. Evidências no relatório do BL081.2.
+
+
+## Ajustes finais da revisão BL081.2
+
+Rampa herdada ancorada na própria borda (frames=0) acompanha essa borda ao aparar,
+como uma rampa nativa; só âncoras que já ficam fora da metade permanecem no lugar
+da sequência. A outra rampa herdada permanece independente. A prévia do trim e
+a execução conferem o mesmo limite de janela. O nó clip:<id> expõe fade_window
+(nulo sem janela), incluindo a normalização das rampas de áudio.
+
+Fixação conservadora: um corte de áudio fora da rampa também pode criar janela
+e elevar o documento a schema3 em metades curtas (ex.: clipe60, fade-in5, corte30).
+Isso preserva a rampa se o outro fade for editado até48quadros, sem renormalizá-la;
+metades suficientemente longas dispensam janela e mantêm schema1/2. É uma
+limitação intencional da representação, não uma afirmação de compatibilidade
+com leitores anteriores. A revisão da implementação e o aceite Windows são distintos.
+
+Prova funcional reproduzível: [scripts/split-fades-proof.py](../../scripts/split-fades-proof.py),
+com argumentos REPO e OUT, após build de tessel-headless e tessel-editor. Sem
+coordenadas, desempenho, pixels ou áudio ouvido.
