@@ -108,6 +108,24 @@ fn the_field_exists_only_where_the_repair_is_not_the_camera_the_lack_always_had(
 }
 
 #[test]
+fn a_window_that_asks_nothing_after_the_cut_needs_no_tail_even_from_a_short_camera() {
+    // `alignment: end` puts the whole 12-frame window before the cut: `after` is 0, the outgoing
+    // shot is read for nothing past its end, and a camera that ends 28 frames before its shot is
+    // no fault. The exact repair is not an excuse to ask for frames nobody reads.
+    let edit = Edit::spec()
+        .camera("cam1", 60)
+        .shot("s1", |shot| shot.camera_in = 40)
+        .shot("s2", |shot| {
+            shot.instance_start = 12;
+            shot.camera_in = 12;
+        });
+    let ends_at_the_cut = tr(json!({"handles": "use", "alignment": "end"}));
+    assert!(admit(with_transitions(edit.bundle(), vec![ends_at_the_cut])).is_ok());
+    // The same camera with a window that does reach past the cut is the refusal above.
+    assert!(!accepted(&tail(60)));
+}
+
+#[test]
 fn the_projection_gives_the_exact_repair_in_the_three_languages() {
     let issue = refused(&tail(60), "use");
     assert_eq!(details(&issue)["args"]["lacks"][0]["cameraExtend"], 34);
