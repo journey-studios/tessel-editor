@@ -425,6 +425,30 @@ fn two_decks_whose_sizes_overflow_are_refused_as_a_budget_instead_of_wrapping() 
     assert_eq!((slots.occupied(), slots.generation()), (0, 0));
 }
 
+#[test]
+fn a_huge_incoming_picture_cannot_wrap_the_eviction_arithmetic() {
+    let fixture = Fixture::new("slots-incoming", &Content::sky());
+    let session = fixture.approve();
+    let plain = fixture.plan(PLAIN);
+    let plain_map = approved_map(&plain, PROJECT_SCENE, &session).unwrap();
+    // A book whose byte ceiling is the largest number: it already holds two pictures (13312
+    // bytes) when the neighbour's picture, which saturates to u64::MAX, arrives. `held + incoming`
+    // overflowed there; now it saturates and the frame is judged by the ceiling like any other.
+    let mut slots = SceneSlots::new(32, u64::MAX);
+    slots.prepare(&plain, &plain_map).unwrap();
+    let mut plan = fixture.plan(BEFORE_CUT);
+    plan.transition.as_mut().unwrap().other.resources[2].width_px = u64::MAX;
+    plan.transition.as_mut().unwrap().other.resources[2].height_px = 1.0e300;
+    let map = approved_map(&plan, PROJECT_SCENE, &session).unwrap();
+    let prepared = slots.prepare(&plan, &map).unwrap();
+    assert_eq!(
+        prepared.loads.len(),
+        1,
+        "only the neighbour's picture is new"
+    );
+    assert_eq!(slots.occupied(), 3);
+}
+
 fn cloud_fixture(name: &str, scenes: &[&'static str]) -> (Fixture, SceneResourceMap, ScenePlan) {
     let fixture = Fixture::new(name, &Content::sky().with_cloud(100, scenes));
     // The oracle of the splat count is the core's own header reader, not the code under test.
