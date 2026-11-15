@@ -1869,6 +1869,25 @@ O core completo1457/0falhas/7ignorados foi executado em e69e66f; o último ajust
 modifica somente o formato do erro e tem a regressão23/23 própria, sem reatribuir
 o core completo ao commit posterior. Sem nova execução Windows ou janela.
 
+## P5 — duração e cortes dos planos (BL082.5, 2026-11-15)
+
+Plano e contrato: [plano P5](migration/p5-shot-duration-plan.md) (v2, revisão independente R1 aplicada). O dono escolheu começar a P5 em 2026-11-15 com a S2 da P4b
+em andamento; a ordem entre as duas e o ownership de arquivos estão na §8 do plano. F065 reservada: a linha da matriz entra
+como pendente com o documento próprio da S0. Nenhuma linha de código de produção nesta entrega. Decisões do dono em
+2026-11-15 (plano §10): silêncio no fim do export (Q1), seção "Planos" com campos, sem trilha até a P6 (Q3), e campos adiados
+em quadros da edição remapeados como dado simples (Q4).
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL082.5.1 | P5/S0 | Contrato F065, auditoria de relógio e de forma dos campos adiados, conferência da instância que cresce, referência Python e corpus | A validar — entregue e revisada (R1, aprovar com correções, aplicadas): `docs/features/shot-duration.md` (F065), `scripts/shot-trim-reference.py` com `--check` e `--verify-origin`, spec 40 testes normal e `-O`, corpus 167 casos, auditoria dos 17 campos adiados, D07 conferida (quadros reais; Q2 não disparada), `AUTO_RESERVE` decidido; `ORIGIN_NOT_EXECUTED`; [relatório](migration/p5-s0-report.md) | BL082.5 (plano) | Cursor Sonnet 5.5 / coordenador | `docs/features/shot-duration.md`; lista da D12 fixada pela auditoria no schema `d6adac15`; `scripts/shot-trim-reference.py` com `--check` e spec normal e `-O`; corpus em `docs/migration/fixtures/shot-trim/`; `ORIGIN_NOT_EXECUTED` declarado |
+| BL082.5.2 | P5/S1 | `candidate_gate` extraído; planejador e aplicação das quatro ops em planos, edição e instâncias; `content`, junções contínuas, `LOCKED`, limites; recusa D13 (`SHOTS_OPTION_NOT_YET`; `SHOTS_LAYER_NOT_YET` fica só como código, sem caso na lista de hoje) | Pendente | BL082.5.1 | — | Corpus da S0 passa na lib; propriedade T21; T01–T10, T16, T17, T22 em L; extração sem mudança de comportamento (testes existentes de `scene.edit` e `scene.fx.edit` iguais) |
+| BL082.5.3 | P5/S2 | Camadas: clipes `fx` (`shot`, `output`, keys, fades), transições (L com `Accept`), keys de luz com o portão de luz, remapeamento de `weatherKeys` (o único campo adiado com tempo na edição, pela auditoria da S0; regra da #15) | Pendente | BL082.5.2 | — | T11–T15 em L; nenhum `KEY_OUT_OF_CLIP` nem `FX_SCOPE_MISMATCH` produzido pela P5; resolve BL082.44 |
+| BL082.5.4 | P5/S3 | `SceneCommand` e JSONL (`scene.shots.edit`, `scene.shots.explain`), desfazer, `dry_run`, `base_revision`, textos pt-br/en/es, `capabilities`, playhead | Pendente | BL082.5.3 | — | T01–T19 em H (processo real); T18–T20 em L |
+| BL082.5.5 | P5/S4 | Seção "Planos", nós em `tree.rs` e parser em `commands.rs`, testes GPUI e prova na janela | Pendente | BL082.5.4, S3b da P4b (BL082.4.5) integrada | — | T01, T02, T04, T10, T18, T19, T20, T23 em G; T01, T02, T11, T18, T19 em W |
+| BL082.5.6 | P5/S5 | Pixels e export de planos alongados e encurtados, a decisão de BL082.5.7 aplicada, mutantes, relatório e linha F065 | Pendente | BL082.5.5, BL082.5.7 | — | T08, T15, T23, T24 em P/E; matriz com cada célula executada ou N/A justificado |
+| BL082.5.7 | P5/Q1 | Export de uma edição mais longa que o áudio: completar com silêncio (origem #3) ou manter a recusa `audio_window_short` | Decidido (dono, 2026-11-15): completar com silêncio | BL082.5 | Dono do projeto | A S5 troca a recusa por silêncio depois do fim do áudio e prova (T24) |
+| BL082.5.8 | P5/T14b | Transições com a admissão aberta: linhas H e G e `TRANSITION_NO_HANDLES` da cauda | Pendente | BL082.5.3, S2A da P4b (BL082.4.4) | — | T14b executada depois que a S2A abrir o portão |
+
 ## P4b — atribuição e controle da rodada Windows (14/11/2026)
 
 IDs reservados pelo coordenador; futuro não é atribuído nem iniciado por estar descrito no plano. F064
@@ -2481,22 +2500,3 @@ Mac: 216 transições, corpus 10, importação X 5, estado X 8 e baseline 1 nos 
 preserve; core completo 1733/0/7; fmt/check/clippy/no-run/build exit 0 e tree sem gpui/wry.
 Workspace global apenas compilado; Windows, release, runtime, GPU, desempenho e UI não
 reexecutados para este reforço. Contrato e detalhes no relatório C0b §12. Refuse/F064 P.
-
-## P5 — duração e cortes dos planos (BL082.5, 2026-11-15)
-
-Plano e contrato: [plano P5](migration/p5-shot-duration-plan.md) (v2, revisão independente R1 aplicada). O dono escolheu começar a P5 em 2026-11-15 com a S2 da P4b
-em andamento; a ordem entre as duas e o ownership de arquivos estão na §8 do plano. F065 reservada: a linha da matriz entra
-como pendente com o documento próprio da S0. Nenhuma linha de código de produção nesta entrega. Decisões do dono em
-2026-11-15 (plano §10): silêncio no fim do export (Q1), seção "Planos" com campos, sem trilha até a P6 (Q3), e campos adiados
-em quadros da edição remapeados como dado simples (Q4).
-
-| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
-|---|---|---|---|---|---|---|
-| BL082.5.1 | P5/S0 | Contrato F065, auditoria de relógio e de forma dos campos adiados, conferência da instância que cresce, referência Python e corpus | A validar — entregue e revisada (R1, aprovar com correções, aplicadas): `docs/features/shot-duration.md` (F065), `scripts/shot-trim-reference.py` com `--check` e `--verify-origin`, spec 40 testes normal e `-O`, corpus 167 casos, auditoria dos 17 campos adiados, D07 conferida (quadros reais; Q2 não disparada), `AUTO_RESERVE` decidido; `ORIGIN_NOT_EXECUTED`; [relatório](migration/p5-s0-report.md) | BL082.5 (plano) | Cursor Sonnet 5.5 / coordenador | `docs/features/shot-duration.md`; lista da D12 fixada pela auditoria no schema `d6adac15`; `scripts/shot-trim-reference.py` com `--check` e spec normal e `-O`; corpus em `docs/migration/fixtures/shot-trim/`; `ORIGIN_NOT_EXECUTED` declarado |
-| BL082.5.2 | P5/S1 | `candidate_gate` extraído; planejador e aplicação das quatro ops em planos, edição e instâncias; `content`, junções contínuas, `LOCKED`, limites; recusa D13 (`SHOTS_OPTION_NOT_YET`; `SHOTS_LAYER_NOT_YET` fica só como código, sem caso na lista de hoje) | Pendente | BL082.5.1 | — | Corpus da S0 passa na lib; propriedade T21; T01–T10, T16, T17, T22 em L; extração sem mudança de comportamento (testes existentes de `scene.edit` e `scene.fx.edit` iguais) |
-| BL082.5.3 | P5/S2 | Camadas: clipes `fx` (`shot`, `output`, keys, fades), transições (L com `Accept`), keys de luz com o portão de luz, remapeamento de `weatherKeys` (o único campo adiado com tempo na edição, pela auditoria da S0; regra da #15) | Pendente | BL082.5.2 | — | T11–T15 em L; nenhum `KEY_OUT_OF_CLIP` nem `FX_SCOPE_MISMATCH` produzido pela P5; resolve BL082.44 |
-| BL082.5.4 | P5/S3 | `SceneCommand` e JSONL (`scene.shots.edit`, `scene.shots.explain`), desfazer, `dry_run`, `base_revision`, textos pt-br/en/es, `capabilities`, playhead | Pendente | BL082.5.3 | — | T01–T19 em H (processo real); T18–T20 em L |
-| BL082.5.5 | P5/S4 | Seção "Planos", nós em `tree.rs` e parser em `commands.rs`, testes GPUI e prova na janela | Pendente | BL082.5.4, S3b da P4b (BL082.4.5) integrada | — | T01, T02, T04, T10, T18, T19, T20, T23 em G; T01, T02, T11, T18, T19 em W |
-| BL082.5.6 | P5/S5 | Pixels e export de planos alongados e encurtados, a decisão de BL082.5.7 aplicada, mutantes, relatório e linha F065 | Pendente | BL082.5.5, BL082.5.7 | — | T08, T15, T23, T24 em P/E; matriz com cada célula executada ou N/A justificado |
-| BL082.5.7 | P5/Q1 | Export de uma edição mais longa que o áudio: completar com silêncio (origem #3) ou manter a recusa `audio_window_short` | Decidido (dono, 2026-11-15): completar com silêncio | BL082.5 | Dono do projeto | A S5 troca a recusa por silêncio depois do fim do áudio e prova (T24) |
-| BL082.5.8 | P5/T14b | Transições com a admissão aberta: linhas H e G e `TRANSITION_NO_HANDLES` da cauda | Pendente | BL082.5.3, S2A da P4b (BL082.4.4) | — | T14b executada depois que a S2A abrir o portão |
