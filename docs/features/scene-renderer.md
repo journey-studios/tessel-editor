@@ -345,12 +345,18 @@ nas entradas públicas. Refuse permanece fechado; evidências por head e limites
 `prepareDirectedScene` e `sceneMaterial` saíram de `runtime/src/compositor.js` para
 `runtime/src/directed-deck-draw.js` (funções que recebem o compositor dono como `host`); a classe
 `Compositor` mantém os dois métodos, com as mesmas assinaturas, como wrappers finos (`compositor.js`
-de 1166 para 1054 linhas). É uma extração mecânica: corpos idênticos depois de tirar a indentação e
+de 1166 para 1054 linhas na entrega original; na integração com a main `805a0c6`, de 1192 para 1080). É uma extração mecânica: corpos idênticos depois de tirar a indentação e
 trocar `this.` por `host.` (SHA-256 normalizado igual), mesma ordem de preflight, mesmas chaves
 `ds:<order>`, `ds:<order>:<alpha>:<index>` e `dsfx:<order>:<slot>`, mesma telemetria e o mesmo dono
 para o que o quadro constrói (`frame.keep` até o fim, leases incluídos). Planos simples desenham a
 mesma imagem; planos com transição seguem recusados. Cinco controles de borda
 (`runtime/test/directed-scene-draw-seam.test.mjs`) passam na base `7d88545` e depois da extração.
 Sem mudança de produto, de capacidades (JS13/Rust14) ou de pixels; limites, observação preexistente
-de `scene_frames` e evidências por head no
+de `scene_frames` (BL168.11 corrigido só no teste, mantendo `FxTransition` reservada) e evidências por head no
 [relatório R1a](../migration/p4b-s2-r1a-draw-extraction-report.md).
+
+Integração R1a com main `805a0c6`, head `e14dc51`: Mac nativo validou Node195/browser74
+(inclui grading/títulos), render44 com runtime real, core216/10/5/8/1 nos dois perfis,
+fmt/check/clippy/no-run/build. BL168.11 mantém a lista anunciada JS13 e exige igualdade exata
+com o conjunto do core menos FxTransition reservada; scene_frames8/8. Revisão Windows
+independente pendente; sem workspace global, pixels de transição, GPU física ou desempenho.

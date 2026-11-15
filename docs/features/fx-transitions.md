@@ -922,3 +922,10 @@ telemetria e posse de `frame.keep` preservados. A produção ainda recusa toda t
 admissão pública `Refuse`, produto P. Não há desenho de transição, cache, orçamento, router,
 liberação de lease entre decks nem pixel de transição: isso é R1b/c. Evidências por head, mutantes e
 patches em [relatório R1a](../migration/p4b-s2-r1a-draw-extraction-report.md).
+
+
+R1a integrada à main `805a0c6` no head `e14dc51`: grading e layout preservados, compositor
+1192→1080, corpos extraídos idênticos por SHA normalizado. Mac: Node195/browser74 sem skips,
+render44 (scene_frames8/interop5), core216/10/5/8/1 EXPECT0/1 e estáticos/no-run/build0.
+BL168.11 corrigido só no teste de capacidades, mantendo JS13/Rust14. Revisão independente
+Windows pendente; produto P/Refuse, sem desenho ou pixels de transição, GPU física ou desempenho.

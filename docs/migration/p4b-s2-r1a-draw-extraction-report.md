@@ -1,5 +1,9 @@
 # P4b S2-R1a — relatório: extração mecânica do desenho dirigido
 
+**Estado da integração:** produção e teste de capacidades em `e14dc514b8685bca12c52dc08f3cb72e0a0b1440`
+validados no Mac nativo; revisão Windows independente em andamento. O relato do autor abaixo pertence
+à base `7d88545`; os gates do merge com `805a0c6` estão na seção final. Produto P, Refuse fechado.
+
 Fatia **R1a** de BL082.4.4 / F041 / F064. Contrato fixado antes do código em
 [p4b-s2-r1a-draw-extraction-plan.md](p4b-s2-r1a-draw-extraction-plan.md) (commit `1bcb09c`). Windows nativo 10.0.26200,
 checkout preparado `E:\www\tessel-p4b-s2r1-20261115` (sem clone/worktree novo), `origin` `journey-studios/tessel-editor`,
@@ -110,7 +114,7 @@ real, os métodos do próprio compositor embrulhados; **não** conhecem o helper
 `7d88545`** (checkout temporário de `compositor.js` da base, build, 5/5; depois restaurado) e na extração (5/5):
 
 1. alvos `ds:0` (tamanho, sem argumento de MSAA/depth ⇒ MSAA final com depth), `dsfx:0:0`/`dsfx:0:1` com `0`/`false`, ordem
-   alvo → material → pipeline → alvos de passe; dois decks no quadro = `ds:0`, `ds:1`, ordem dos materiais e
+   alvo → material → pipeline → alvos de passe; duas camadas dirigidas independentes no quadro = `ds:0`, `ds:1`, ordem dos materiais e
    `directed_scene_layers` = 2; tamanho = ajuste `contain` da saída do plano (160×45 para 32:9);
 2. campos de telemetria ausentes sem splat/FX/shot e `directed_scene_fx` = 1 só com FX;
 3. com retenção: material guardado sob `ds:0:opaque:0`, reusado e contado (`material_reused` +2 = plano + composição) e não
@@ -224,15 +228,55 @@ antecipa R1b/c: nada de dois decks, `from/to` em chaves de material, liberação
 1 GiB, nove alvos, capacidade 14 ou router. A tolerância dos controles de pixel existentes não mudou e nenhum golden, fixture ou
 baseline foi regenerado.
 
-## Integração do coordenador com main805a0c6 — gates pendentes
+## Integração do coordenador com main805a0c6
 
-PR77 merge7086105 tem pais791b368 e805a0c6. O único conflito era de imports em compositor.js:
+PR77: merge `7086105` tem pais `791b368` e `805a0c6`. O único conflito era de imports em compositor.js:
 foram preservados directed-deck-draw, LINE_PITCH_ROWS e grading. Os corpos de prepareDirectedScene
 e sceneMaterial na main805a0c6 são idênticos aos do helper após a normalização acima, com os
-mesmos hashes0fb5936f…/c143d7c9…. O compositor da main tem1192 linhas e o integrado1080 (−112).
+mesmos hashes `0fb5936f…` / `c143d7c9…`. O compositor da main tem 1192 linhas e o integrado 1080 (−112).
 As mudanças da main em títulos/grading e core são integração, não produção nova da extração.
 
 BL168.11, já no backlog, corrige o contrato do teste scene_frames: exige o conjunto exato de
 Capability::ALL menos FxTransition reservada. Não altera runtime, anúncio, guardas nem a lista
-do core. A falha histórica7/8 da entrega original permanece registrada acima; os gates deste
-ajuste e do merge serão registrados separadamente. Revisão independente Windows e Mac pendentes.
+do core. A falha histórica 7/8 da entrega original permanece registrada acima; os gates deste
+ajuste e do merge são registrados separadamente abaixo. Revisão independente Windows pendente.
+
+
+## Mac nativo do coordenador — head integrado e14dc51
+
+macOS 26.6.2 arm64, Node 22.23.3, Rust 1.99.1, clone de validação limpo em
+`/Volumes/Extreme Pro/www/tessel-pr63-mac-20261114`, origin `journey-studios/tessel-editor`.
+Fetch normal e HEAD destacado em `e14dc514b8685bca12c52dc08f3cb72e0a0b1440` antes dos gates.
+Disco inspecionado: externo ~1 TiB livre, interno ~74 GiB. Logs/manifesto de SHA-256 em
+`~/.cache/tessel-pr77-mac-20261115` (poucos centenas de KB). Nenhuma mutação nesta rodada.
+
+| Gate executado neste head | Resultado |
+| --- | --- |
+| Setup oficial e build do runtime antes de browser | exit 0 |
+| Nove arquivos Node da entrega (grupo misto, inclui browser) | 195/195, falhas/cancelados/skips 0 |
+| Browser: dirigido/fade/FX/grain, retenção, seam, splat-lineages, warm, preview-sort, grading e títulos acentuados | 74/74, falhas/cancelados/skips 0 |
+| `fmt --all -- --check` | exit 0 |
+| `check --workspace --all-targets --locked` | exit 0 |
+| `clippy --workspace --all-targets --locked -- -D warnings` | exit 0 |
+| Core isolado EXPECT=0: transições/corpus/X import/X estado/baseline | 216/10/5/8/1, todos passam |
+| Mesmo conjunto com preserve_order EXPECT=1 | 216/10/5/8/1, todos passam |
+| Render com TESSEL_REQUIRE_RUNTIME=1, serial | 44/44: scene_frames8, FX8, gesto1, handles2, shot_scope8, luz3, splat9, interop5 |
+| `test --workspace --locked --no-run` | exit 0, só compilou |
+| `build -p tessel-editor --locked` | exit 0 |
+| `cargo tree -p tessel-editor-core` | 0 ocorrências de gpui/wry |
+
+`scene_frames` inclui a igualdade exata das capacidades com a exceção reservada de BL168.11:
+8/8 neste head. Não se transfere o 7/8 histórico do autor nem se altera o runtime para passar.
+O merge preserva grading/layout da main; seus testes de browser foram executados junto da seam.
+As contagens dos grupos Node são separadas e podem se sobrepor; não são soma de testes únicos.
+Check/clippy/no-run/build usam o cache compartilhado mbx e não alegam recompilação integral.
+Nenhum CARGO_TARGET_DIR, lane, clean ou gc manual. O wrapper pode coletar seu cache automaticamente.
+
+Não executados: workspace global, core completo/gizmos da base Windows, release, áudio, UI física,
+GPU física, benchmark/FPS, origem ou pixels de transição. Chrome/SwiftShader e os oráculos antigos
+provam o caminho simples existente. M08/M09/M19 da bateria do autor continuam com o alcance declarado;
+não houve repetição dos 19 mutantes no Mac. Revisão Windows independente do head e14dc51 pendente:
+[PR77 R1 Windows: extração integrada, grading e capacidades reservadas](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:08c519672eae1c909da50fe56f00002ad1bc3f9513c540288d167e7266aaed01).
+
+A consolidação posterior deste resultado toca só docs; produção, testes, locks e dados permanecem
+idênticos a e14dc51. Não há merge da PR nem implementação de R1b/c antes da revisão.
