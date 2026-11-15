@@ -9,7 +9,7 @@ A suposição **A1** do oráculo (`oracle.py` em `0d95be1`: "`mix[0]` ↔ `editS
 `editStartSeconds` da linha do tempo e antes disso há silêncio) contradiz a origem. A decisão do coordenador foi **manter a
 origem**; o oráculo e o gerador do corpus foram corrigidos, o contrato do editor (S9) **não** foi alterado.
 
-Origem fixada `d6adac15c61f4ef582a7ec259397b2e025d1f059` (`/Users/wallyssonnunes/www/journeystudios/tesselapp`, `git show`, só leitura):
+Origem fixada `d6adac15c61f4ef582a7ec259397b2e025d1f059` (`~/www/journeystudios/tesselapp`, `git show`, só leitura):
 
 | Arquivo | Blob | Linhas | Regra |
 |---|---|---|---|

@@ -31,7 +31,7 @@ import tempfile
 import wave
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from proof_surface import MIN_FREE_GIB, Headless, Native, ProofFailure, Recorder, free_gib, run_surface  # noqa: E402
+from proof_surface import MIN_FREE_GIB, Headless, Native, ProofFailure, Recorder, free_gib, run_surface, script_command  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 PER_FRAME = 2000  # 48 kHz at 24 fps
@@ -225,7 +225,7 @@ def main():
     try:
         out.mkdir(parents=True, exist_ok=True)
         shutil.rmtree(fixtures, ignore_errors=True)
-        subprocess.run([str(ROOT / 'scripts/fixtures'), str(fixtures)], check=True, capture_output=True,
+        subprocess.run(script_command(ROOT / 'scripts/fixtures', fixtures), check=True, capture_output=True,
                        timeout=600)
     except (OSError, subprocess.SubprocessError) as error:
         report['error'] = f'fixtures: {type(error).__name__}: {error}'

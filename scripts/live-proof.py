@@ -14,12 +14,12 @@ It asserts the same pixels `crates/render/tests/frames.rs` asserts for the headl
 """
 import json
 import os
-import socket
 import subprocess
 import sys
 import time
+import portable  # BL168.8: Windows socket, UTF-8, tools
 
-SOCKET = os.path.expanduser("~/.cache/tessel-editor/ui.sock")
+SOCKET = portable.ui_socket_path()
 QUADRANTS = [(220, 40, 40), (40, 200, 60), (40, 80, 220), (230, 210, 40)]
 QUADRANT_PROBES = [(120, 67), (200, 67), (120, 112), (200, 112)]
 
@@ -31,9 +31,7 @@ def video_color(index):
 
 def send(request, timeout=60):
     started = time.perf_counter()
-    with socket.socket(socket.AF_UNIX) as conn:
-        conn.settimeout(timeout)
-        conn.connect(SOCKET)
+    with portable.connect_ui(SOCKET, timeout) as conn:
         conn.sendall((json.dumps(request) + "\n").encode())
         data = b""
         while not data.endswith(b"\n"):
@@ -77,15 +75,16 @@ def memory_mb():
     """RSS of the editor and of every WebKit helper process on the machine (the WebView's
     content and GPU processes are not children of the editor, so this over-counts if another
     app is also using WebKit; it is a ceiling, not an exact figure)."""
-    listing = subprocess.run(["ps", "-axo", "pid=,rss=,comm="], capture_output=True, text=True).stdout
+    # On Windows the WebView's helpers are `msedgewebview2.exe` (the same ceiling caveat applies).
     editor = 0
     webkit = 0
-    for line in listing.splitlines():
-        pid, rss, command = line.strip().split(None, 2)
-        if command.endswith("/tessel-editor"):
-            editor += int(rss)
-        elif "com.apple.WebKit" in command:
-            webkit += int(rss)
+    for row in portable.processes():
+        command = row["command"]
+        name = row["name"].lower()
+        if command.endswith("/tessel-editor") or name == "tessel-editor.exe":
+            editor += row["rss_kib"]
+        elif "com.apple.WebKit" in command or name == "msedgewebview2.exe":
+            webkit += row["rss_kib"]
     return {"editor_mb": round(editor / 1024, 1), "webkit_helpers_mb": round(webkit / 1024, 1)}
 
 
@@ -107,6 +106,11 @@ class Shots:
         if not self.directory:
             return None
         time.sleep(0.15)  # let the last frame reach the window before it is captured
+        if portable.WINDOWS:
+            editors = [row["pid"] for row in portable.processes() if row["name"].lower() == "tessel-editor.exe"]
+            captured, _reason = portable.capture_window(editors[0], os.path.join(self.directory, f"{name}.png")) \
+                if editors else (None, "no editor process")
+            return captured
         window = self.window_id()
         if not window:
             return None

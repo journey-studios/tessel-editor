@@ -23,8 +23,18 @@ import export_corpus as corpus  # noqa: E402
 import tonecheck  # noqa: E402  (scripts/tonecheck.py: Goertzel tone level, read-only reuse)
 
 REF_W, REF_H = corpus.REF_W, corpus.REF_H
-FFMPEG = shutil.which("ffmpeg") or "/opt/homebrew/bin/ffmpeg"
-FFPROBE = shutil.which("ffprobe") or "/opt/homebrew/bin/ffprobe"
+import portable  # noqa: E402  (BL168.8: FFmpeg found the way the editor finds it, Windows included)
+
+
+def _tool(name):
+    try:
+        return portable.ffmpeg() if name == "ffmpeg" else portable.ffprobe()
+    except FileNotFoundError:
+        return f"/opt/homebrew/bin/{name}"
+
+
+FFMPEG = _tool("ffmpeg")
+FFPROBE = _tool("ffprobe")
 TOL = corpus.TOLERANCES
 
 

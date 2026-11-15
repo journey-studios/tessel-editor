@@ -1,8 +1,9 @@
 """Shared pieces of the gizmo performance runners (no suite logic): the performance lock, the
 resource guards, the environment record and the manifest writer.
 
-The lock is the repository's performance lock (`/tmp/tessel-scene-gpu.lock`, AGENTS.md). It is taken ONCE,
-without waiting (`LOCK_NB`): if somebody holds it the runner records BLOCKED and stops. No loop, no sleep, no new
+The lock is the repository's performance lock (`/tmp/tessel-scene-gpu.lock`, AGENTS.md; `portable.temp_path` puts it in
+the system's temporary folder on Windows). It is taken ONCE, without waiting (`LOCK_NB`): if somebody holds it the runner
+records BLOCKED and stops. No loop, no sleep, no new
 wait, no kill, no bypass. Builds and functional tests never take it.
 
 Every child process runs through `run_bounded`: a FINITE timeout, its own process group, and on expiry the whole
@@ -23,8 +24,8 @@ Four more rules live here so that every runner has them (BL015.23 items 23 and f
     ONE lock of `--out` that every runner shares (`OUT_LOCK`). Neither waits; a refusal writes nothing.
 """
 import contextlib
-import fcntl
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -35,10 +36,14 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 
+sys.path.append(str(Path(__file__).resolve().parent.parent))  # `scripts`, after the runners' own folder
+import portable  # noqa: E402  (BL168.8: `flock`, `killpg`, `/tmp` and the load average on Windows)
+
 ROOT = Path(__file__).resolve().parent.parent.parent
-LOCK = '/tmp/tessel-scene-gpu.lock'
+LOCK = portable.temp_path('tessel-scene-gpu.lock')
 MIN_FREE_GIB_FOR_HEAVY = 16
 FLOOR_FREE_GIB = 12
 BLOCKED_EXIT = 3
@@ -98,6 +103,8 @@ def run_bounded(command, cwd=ROOT, env=None, timeout=BUILD_TIMEOUT_S, grace=10):
     started = time.monotonic()
     if env is None:
         env = child_env()  # never a bare inheritance: no `TESSEL_GIZMO_PERF_*` of the caller reaches a child
+    if portable.WINDOWS:
+        return _run_bounded_windows(command, cwd, env, timeout, grace, started)
     try:
         process = subprocess.Popen(command, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                    text=True, start_new_session=True)
@@ -114,15 +121,32 @@ def run_bounded(command, cwd=ROOT, env=None, timeout=BUILD_TIMEOUT_S, grace=10):
         # SIGTERM/Ctrl-C of the runner itself: never leave the child group behind.
         _kill_group(process, grace)
         raise
-    returncode = process.returncode if process.returncode is not None else -signal.SIGKILL
+    returncode = process.returncode if process.returncode is not None else KILLED
     return Done(command, returncode, stdout or '', stderr or '', timed_out, time.monotonic() - started)
+
+
+# The exit code of a child that was killed and has not been reaped: `-SIGKILL` on Unix. Windows has no signals, and a
+# process ended by `taskkill /F` reports its own code once reaped; one that was not is unknown (`None`), never a number.
+KILLED = -signal.SIGKILL if hasattr(signal, 'SIGKILL') else None
 
 
 def _kill_group(process, grace):
     """SIGTERM to the whole group, up to `grace` seconds for its leader, then SIGKILL to the group REGARDLESS. The
     leader exiting does not mean the group is gone: a descendant that ignores SIGTERM keeps the output pipes open (so
     the read below would never end) and the performance lock held. The group id outlives its leader as long as one
-    member lives; with none left `killpg` finds nothing."""
+    member lives; with none left `killpg` finds nothing.
+
+    Windows has no process groups and no SIGTERM for a console child: the TREE is ended at once (`portable.kill_group`:
+    `taskkill /T /F`, and by PID what is left of the tree when the leader already ended), then up to `grace` seconds for
+    the leader. A descendant whose own parent already ended is out of the tree's reach, like one in its own session on
+    Unix: `_run_bounded_windows` bounds the read for that case."""
+    if portable.WINDOWS:
+        portable.kill_group(process.pid)
+        try:
+            process.wait(grace)
+        except subprocess.TimeoutExpired:
+            pass
+        return
     for sig in (signal.SIGTERM, signal.SIGKILL):
         try:
             os.killpg(process.pid, sig)
@@ -146,6 +170,67 @@ def _drain(process, grace):
                 pipe.close()
         return tuple(part.decode(errors='replace') if isinstance(part, bytes) else (part or '')
                      for part in (expired.stdout, expired.stderr))
+
+
+def _run_bounded_windows(command, cwd, env, timeout, grace, started):
+    """`run_bounded` on Windows (BL168.8), with the same contract. `communicate` cannot keep it there: on a timeout it
+    keeps NO partial output (its reader threads read to the end of the pipe), and closing a pipe that one of them is
+    blocked on waits for that read. So each pipe is read here in chunks by a daemon thread: what arrived is kept, and a
+    descendant out of the tree's reach that holds the pipes only keeps its own thread (it ends with that descendant),
+    never the runner. The text is decoded as `text=True` would (UTF-8 mode, universal newlines), a bad byte replaced."""
+    try:
+        # `portable.program`: a repository `sh` script (`./scripts/cargo`) runs under Git's `sh`, a path finds its `.exe`.
+        first = str(command[0])
+        if os.path.dirname(first):  # a path is relative to the child's `cwd`, not to the runner's own directory
+            started_as = portable.program(os.path.join(str(cwd or '.'), first), *command[1:])
+        else:
+            started_as = list(command)
+        process = subprocess.Popen(started_as, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except OSError as error:
+        return Done(command, 127, '', '', error=f'cannot start {command[0]}: {error}')
+    chunks = ([], [])
+    readers = [threading.Thread(target=_pump, args=(pipe, into), daemon=True)
+               for pipe, into in zip((process.stdout, process.stderr), chunks)]
+    for reader in readers:
+        reader.start()
+    timed_out = False
+    try:
+        if not _finished(process, readers, timeout):
+            timed_out = True
+            _kill_group(process, grace)
+            _finished(process, readers, grace)
+    except BaseException:
+        # Ctrl-C (or SIGTERM raised in-process) of the runner itself: never leave the child tree behind.
+        _kill_group(process, grace)
+        raise
+    stdout, stderr = (_decoded(b''.join(list(into))) for into in chunks)
+    returncode = process.returncode if process.poll() is not None else KILLED
+    return Done(command, returncode, stdout, stderr, timed_out, time.monotonic() - started)
+
+
+def _pump(pipe, into):
+    """Appends what `pipe` delivers to `into`, chunk by chunk, until the end of the pipe."""
+    try:
+        for chunk in iter(lambda: pipe.read1(65536), b''):
+            into.append(chunk)
+    except (OSError, ValueError):
+        pass
+
+
+def _finished(process, readers, seconds):
+    """True when both pipes ended and the process exited within `seconds` (what `communicate` waits for)."""
+    deadline = time.monotonic() + seconds
+    for reader in readers:
+        reader.join(max(0.0, deadline - time.monotonic()))
+    try:
+        process.wait(max(0.0, deadline - time.monotonic()))
+    except subprocess.TimeoutExpired:
+        return False
+    return not any(reader.is_alive() for reader in readers)
+
+
+def _decoded(data):
+    return io.TextIOWrapper(io.BytesIO(data), encoding='utf-8', errors='replace').read()
 
 
 def run(command, cwd=ROOT, env=None, timeout=BUILD_TIMEOUT_S):
@@ -253,7 +338,13 @@ def claims(state):
     if not state.get('thermal_state', {}).get('verified'):
         out.append('thermal throttling was NOT verified: ' + state.get('thermal_state', {}).get(
             'detail', 'pmset gave no numeric limit'))
+    if 'loadavg' in state and state['loadavg'] is None:
+        out.append(NO_LOADAVG)
     return out
+
+
+# Windows has no load average (`portable.loadavg()` is `None`): the load guard cannot judge, and says so in every manifest.
+NO_LOADAVG = 'the load average was NOT verified: this OS has none (recorded as unknown)'
 
 
 def machine():
@@ -270,7 +361,7 @@ def machine():
         'cpu': out(['sysctl', '-n', 'machdep.cpu.brand_string']),
         'cpus': cpus,
         'memory_bytes': out(['sysctl', '-n', 'hw.memsize']),
-        'loadavg': os.getloadavg(),
+        'loadavg': portable.loadavg(),
         'thermal': therm,
         'thermal_state': thermal_state(therm),
         'power': out(['pmset', '-g', 'batt']).splitlines()[:2],
@@ -287,7 +378,7 @@ def guards(max_load_per_cpu=0.5):
     state = machine()
     cpus = state['cpus']
     limit = max_load_per_cpu * cpus
-    for label, value in zip(('1 min', '5 min'), state['loadavg'][:2]):
+    for label, value in zip(('1 min', '5 min'), (state['loadavg'] or ())[:2]):
         if value > limit:
             return state, f"load average ({label}) {value:.2f} over {limit:.1f} ({cpus} cpus)"
     thermal = state.get('thermal_state') or thermal_state(state.get('thermal', ''))
@@ -314,14 +405,14 @@ class Lock:
         self.handle = open(LOCK, 'a')
         self.held = False
         try:
-            fcntl.flock(self.handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            portable.lock_file(self.handle, blocking=False)
             self.held = True
         except OSError:
             self.handle.close()
 
     def release(self):
         if self.held:
-            fcntl.flock(self.handle, fcntl.LOCK_UN)
+            portable.unlock_file(self.handle)
             self.handle.close()
             self.held = False
 
@@ -344,7 +435,7 @@ def exclusive(path):
     performance lock and is not this."""
     with open(path, 'a') as handle:
         try:
-            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            portable.lock_file(handle, blocking=False)
         except BlockingIOError:
             yield False
         else:
@@ -460,7 +551,7 @@ def scoped_environ(env):
         os.environ.update(saved)
 
 
-CHECKOUT_LOCK_DIR = '/tmp'
+CHECKOUT_LOCK_DIR = portable.TEMP
 
 
 def checkout_lock_path(root=ROOT):
@@ -534,6 +625,15 @@ _SEGMENT = r"[\w.@+~%=#$-]+"
 ABSOLUTE_PATH = re.compile(rf"(?<![\w./~<>-])/(?:{_SEGMENT}(?: {_SEGMENT})*/)*{_SEGMENT}")
 _BOUNDARY = r"(?![\w.@+~%=#$-])"
 
+# Windows (BL168.8): an absolute path starts with a drive (`C:\`, or `C:/` as `Path.as_posix` spells it) and separates its
+# names with `\` or `/` (a run of `\\` in JSON-escaped text). Redacted, it reads as a Unix run writes it, `/` between the
+# names, so a record says the same whatever machine wrote it. Used only on Windows: a Unix run redacts what it always did.
+_WINDOWS_SEPARATOR = r"[\\/]+"
+WINDOWS_ABSOLUTE_PATH = re.compile(
+    rf"(?<![\w./~<>-])[A-Za-z]:{_WINDOWS_SEPARATOR}(?:{_SEGMENT}(?: {_SEGMENT})*{_WINDOWS_SEPARATOR})*{_SEGMENT}")
+_WINDOWS_TAIL = rf"((?:{_WINDOWS_SEPARATOR}(?:{_SEGMENT}(?: {_SEGMENT})*{_WINDOWS_SEPARATOR})*{_SEGMENT})?)"
+_WINDOWS_PREFIX = re.compile(r"[A-Za-z]:[\\/]+[^\\/]")
+
 
 def _known_prefixes(root, environ):
     """`{absolute prefix: token}` for what is named, not hidden: this checkout, the home directory, the temporary ones."""
@@ -543,12 +643,20 @@ def _known_prefixes(root, environ):
         path = str(path).rstrip('/')
         if path.startswith('/') and len(path) > 1:
             prefixes.setdefault(path, token)
+        elif portable.WINDOWS and _WINDOWS_PREFIX.match(path):
+            path = path.rstrip('\\/')
+            prefixes.setdefault(path, token)
+            prefixes.setdefault(path.replace('\\', '/'), token)  # `Path.as_posix()`, a path a tool printed with `/`
 
     for path in (root, os.path.realpath(root)):
         add(path, '<checkout>')
     home = os.path.expanduser('~')
     if home != '~':
         for path in (home, os.path.realpath(home)):
+            add(path, '~')
+    if portable.WINDOWS and os.environ.get('HOME'):
+        # `expanduser` reads `USERPROFILE` on Windows; Git Bash and the tools it starts name the home through `HOME`.
+        for path in (os.environ['HOME'], os.path.realpath(os.environ['HOME'])):
             add(path, '~')
     for path in (environ.get('TMPDIR'), tempfile.gettempdir(), '/tmp', '/private/tmp'):
         if path:
@@ -567,10 +675,18 @@ def redact(value, root=ROOT, environ=None):
     inside a nested JSON string is covered; a path cut in the middle by a `[:300]` is an absolute path all the same."""
     prefixes = _known_prefixes(root, os.environ if environ is None else environ)
     known = re.compile(r"(?<![\w./~<>-])(" + '|'.join(re.escape(p) for p in sorted(prefixes, key=len, reverse=True)) +
-                       r")" + _BOUNDARY)
+                       r")" + _BOUNDARY + (_WINDOWS_TAIL if portable.WINDOWS else ''))
+
+    def windows(string):
+        """The Windows spellings: a known prefix with the rest of its path (its `\\` made `/`), then any other drive path."""
+        string = known.sub(lambda match: prefixes[match.group(1)] + re.sub(_WINDOWS_SEPARATOR, '/', match.group(2)), string)
+        return WINDOWS_ABSOLUTE_PATH.sub(lambda match: '<abs>/' + re.split(_WINDOWS_SEPARATOR, match.group(0))[-1], string)
 
     def text(string):
-        string = known.sub(lambda match: prefixes[match.group(1)], string)
+        if portable.WINDOWS:
+            string = windows(string)
+        else:
+            string = known.sub(lambda match: prefixes[match.group(1)], string)
         return ABSOLUTE_PATH.sub(lambda match: '<abs>/' + match.group(0).rsplit('/', 1)[-1], string)
 
     def walk(item):

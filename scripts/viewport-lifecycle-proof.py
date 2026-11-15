@@ -45,12 +45,12 @@ import argparse
 import json
 import os
 import shutil
-import socket
 import subprocess
 import sys
 import tempfile
 import threading
 import time
+import portable  # BL168.8: Windows socket, UTF-8, tools
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WIDTH, HEIGHT, FRAMES = 640, 360, 48
@@ -91,7 +91,7 @@ def barcode_filter(offset):
 
 def make_clip(path, offset):
     command = [
-        "ffmpeg", "-nostdin", "-v", "error", "-y", "-f", "lavfi", "-i", f"testsrc2=size={WIDTH}x{HEIGHT}:rate=24:duration=100",
+        portable.ffmpeg(), "-nostdin", "-v", "error", "-y", "-f", "lavfi", "-i", f"testsrc2=size={WIDTH}x{HEIGHT}:rate=24:duration=100",
         "-frames:v", str(FRAMES), "-vf", barcode_filter(offset), "-c:v", "libx264", "-crf", "18", "-preset", "veryfast",
         "-pix_fmt", "yuv420p", "-g", "24", "-movflags", "+faststart", path,
     ]
@@ -153,7 +153,7 @@ def chaos_runtime(work, triggers):
     # `check()` pass while the worker, resolved to its real path, serves the REAL dist: the export
     # never runs the chaos page, so it is the reference the incidents must not disturb.
     for name in ("worker", "node_modules", "package.json"):
-        os.symlink(os.path.join(ROOT, "runtime", name), os.path.join(work, "runtime", name))
+        portable.link(os.path.join(ROOT, "runtime", name), os.path.join(work, "runtime", name))
     return os.path.join(work, "runtime")
 
 
@@ -166,18 +166,16 @@ class Lab:
     def __init__(self, binary, work, env):
         self.home = os.path.join(work, "home")
         os.makedirs(self.home)
-        self.socket_path = os.path.join(self.home, ".cache/tessel-editor/ui.sock")
+        self.socket_path = portable.window_socket(self.home)
         self.log_path = os.path.join(self.home, "editor.log")
         self.log = open(self.log_path, "w")
         self.process = subprocess.Popen(
-            [binary], env={**os.environ, "HOME": self.home, **env}, stdout=self.log, stderr=self.log, start_new_session=True
+            [binary], env={**os.environ, "HOME": self.home, **portable.window_env(self.socket_path), **env}, stdout=self.log, stderr=self.log, start_new_session=True
         )
         self.shots = None
 
     def send(self, request, timeout=60):
-        with socket.socket(socket.AF_UNIX) as conn:
-            conn.settimeout(timeout)
-            conn.connect(self.socket_path)
+        with portable.connect_ui(self.socket_path, timeout) as conn:
             conn.sendall((json.dumps(request) + "\n").encode())
             data = b""
             while not data.endswith(b"\n"):
@@ -218,11 +216,13 @@ class Lab:
         raise RuntimeError("the viewport never became ready")
 
     def rss_mb(self):
-        out = subprocess.run(["ps", "-o", "rss=", "-p", str(self.process.pid)], capture_output=True, text=True).stdout.strip()
-        return round(int(out) / 1024, 1) if out else None
+        kib = portable.rss_kib(self.process.pid)
+        return round(kib / 1024, 1) if kib else None
 
     def stop(self):
-        if self.process.poll() is None:
+        if portable.WINDOWS:
+            portable.kill_tree(self.process)  # terminate() is a kill there: the WebView2 helpers go with it
+        elif self.process.poll() is None:
             self.process.terminate()
             try:
                 self.process.wait(10)
@@ -616,7 +616,7 @@ def scenario_project_switch(lab, a, b, shots):
 
 
 def framemd5(path):
-    out = subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-i", path, "-map", "0:v:0", "-f", "framemd5", "-"], capture_output=True, text=True)
+    out = subprocess.run([portable.ffmpeg(), "-nostdin", "-v", "error", "-i", path, "-map", "0:v:0", "-f", "framemd5", "-"], capture_output=True, text=True)
     return [line.split(",")[-1].strip() for line in out.stdout.splitlines() if line and not line.startswith("#")]
 
 
@@ -776,6 +776,10 @@ class Shots:
         if not self.directory or not self.pid:
             return None
         time.sleep(0.4)
+        if portable.WINDOWS:
+            captured, _reason = portable.capture_window(self.pid, os.path.join(self.directory, f"{name}.png"))
+            report.setdefault("shots" if captured else "shots_skipped", []).append(captured or name)
+            return captured
         window = self.window_id(self.pid)
         if not window:
             report.setdefault("shots_skipped", []).append(name)
@@ -808,6 +812,7 @@ def main():
     parser.add_argument("--keep", action="store_true")
     parser.add_argument("--only", help="comma separated: export,losses,hidden_loss,cycles,hide_show,dialog,window,loss_switch,switch,never_restored,loss_reload,reload (baseline always runs)")
     args = parser.parse_args()
+    args.binary = portable.executable(args.binary)
     if not os.path.exists(args.binary):
         print(f"missing {args.binary}; run ./scripts/cargo build --release --locked")
         return 2
@@ -815,16 +820,21 @@ def main():
         if not os.path.exists(os.path.join(ROOT, "runtime", "dist", needed)):
             print("runtime/dist is not built; run ./scripts/runtime setup")
             return 2
-    if shutil.which("ffmpeg") is None:
+    try:
+        portable.ffmpeg()
+        missing_ffmpeg = False
+    except FileNotFoundError:
+        missing_ffmpeg = True
+    if missing_ffmpeg:
         print("ffmpeg is needed for the fixtures")
         return 2
-    if free_gib("/tmp") < MIN_FREE_GIB:
-        print(f"only {free_gib('/tmp'):.1f} GiB free; this proof needs {MIN_FREE_GIB}")
+    if free_gib(portable.TEMP) < MIN_FREE_GIB:
+        print(f"only {free_gib(portable.TEMP):.1f} GiB free; this proof needs {MIN_FREE_GIB}")
         return 2
     wanted = set(args.only.split(",")) if args.only else None
     run = lambda name: wanted is None or name in wanted
 
-    work = tempfile.mkdtemp(prefix="tvl-", dir="/tmp")
+    work = tempfile.mkdtemp(prefix="tvl-", dir=portable.TEMP)
     report["binary"] = args.binary
     lab = None
     shots = Shots(args.shots)

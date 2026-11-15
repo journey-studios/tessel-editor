@@ -34,6 +34,38 @@ timeline, seleção, abas) não o encerra. A confirmação respeita `transaction
 Sliders cobertos: todos os `PropertyKind::Slider` de `PROPERTIES` (persistidos, entram no histórico). O zoom
 da **timeline** é apresentação: nunca entra no histórico.
 
+## Correção de cor: brilho, contraste e saturação (BL168.1, 2026-11-14)
+
+A aba **Correção de cor** (`grading`: `brightness`, `contrast`, `saturation`, cada um `-100..100`, `0` = intacto) era só estado:
+os valores eram guardados e nada os desenhava (pixels idênticos com Brilho 100). Agora o plano leva
+`layers[].grading = {brightness, contrast, saturation}` (`plan::Grading`) e o runtime a aplica no texel da própria camada,
+antes de opacidade, tinta e blend, nos valores codificados com que o compositor desenha:
+
+1. brilho soma `brilho / 200` a cada canal (±100 desloca meia faixa);
+2. contraste multiplica a distância ao cinza médio por `1 + contraste / 100` (−100 = cinza chapado);
+3. saturação multiplica a distância à luma Rec. 709 por `1 + saturação / 100` (−100 = tons de cinza, +100 dobra);
+
+cada passo limitado a `0..1`; o alfa nunca muda (uma camada opaca corrigida continua cobrindo o que cobria). Vale para vídeo,
+imagem, título e cena 3D de um clipe (seção `Applies::Visual`). O campo só existe no plano quando algum valor é diferente de
+`0`, e o runtime usa o material comum sem correção: uma camada sem correção é a mesma, byte a byte, de antes (testado).
+A fórmula existe duas vezes, GLSL e CPU, em `runtime/src/grading.js` (a de CPU é o oráculo dos testes).
+
+```sh
+./scripts/render <<'JSONL'
+{"op":"clip.property","clip":"c-title","property":"brightness","value":40}
+{"op":"render.frame","frame":0,"out":"graded.png"}
+JSONL
+```
+
+Evidência (executada no Windows 11, Chrome headless/SwiftShader): `crates/core/src/plan/tests.rs` (o valor chega à camada, outro
+clipe fica intacto, plano sem correção não tem o campo, corrigido continua cobrindo); `runtime/test/grading-browser.test.mjs`
+(Chrome real: 7 combinações batem com o oráculo de CPU ±1, zero = mesmo hash, material comum intacto depois de um corrigido,
+alfa preservado sobre outra camada, título também); `crates/render/tests/grading.rs` (CLI/lib com o runtime real: quadro do
+monitor ±1 do oráculo e de volta a 0 = mesmos bytes; export H.264 com a correção ±6). Janela: `scripts/grading-proof.py` (headless 4/4, janela real isolada 20/20, Windows 11): o comando do slider
+(`set property:<nome> value <n>` no clipe selecionado) põe os valores no plano só daquele clipe, o runtime do monitor desenha
+cada quadrante da imagem de teste dentro de ±2 da fórmula em 6 combinações, o preto em volta não muda, a volta a 0 dá os mesmos
+bytes, e a captura nativa da janela mostra a imagem corrigida. Sem ponteiro físico no slider.
+
 ## CLI headless
 
 ```sh

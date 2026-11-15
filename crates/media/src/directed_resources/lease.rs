@@ -14,6 +14,13 @@
 //! caller and certainly not shared with another root) and is removed on release so a root that
 //! an operation refused or rolled back is byte-for-byte as it was. The name uses the reserved
 //! `.tessel-staging-` prefix, which `ResourcePath` rejects, so no resource can collide with it.
+//!
+//! On Windows the lock is mandatory: while a lease is held no other handle can read the lock
+//! file, so the holder's process ID (informational, for the `root_busy` message, never a sign of
+//! life) is also written to an NTFS stream of the lock file, `<lock>:holder`, which the byte-range
+//! lock does not cover. The stream goes away with the file and a directory listing does not show
+//! it; a volume without streams (FAT, exFAT) only loses the name of the holder (`holder: null`),
+//! never the lease (BL167.6.3).
 
 use std::fs::{self, File, OpenOptions, TryLockError};
 use std::io::{Read, Write};
@@ -55,7 +62,9 @@ impl RootLease {
                 .map_err(|error| io_error(&lock_path, &error))?;
             match file.try_lock() {
                 Ok(()) => {}
-                Err(TryLockError::WouldBlock) => return Err(busy(&canonical, &mut file)),
+                Err(TryLockError::WouldBlock) => {
+                    return Err(busy(&canonical, holder(&lock_path, &mut file)));
+                }
                 Err(TryLockError::Error(error)) => return Err(io_error(&lock_path, &error)),
             }
             // A holder that released just before our lock removed the file we hold now: the
@@ -65,6 +74,8 @@ impl RootLease {
             }
             let _ = file.set_len(0);
             let _ = write!(file, "{}", std::process::id());
+            #[cfg(windows)]
+            write_holder(&lock_path);
             return Ok(Self {
                 root: canonical,
                 lock_path,
@@ -95,10 +106,47 @@ impl Drop for RootLease {
     }
 }
 
-fn busy(root: &Path, file: &mut File) -> JobError {
+/// The process ID the holder wrote into the lock file, if it can be read.
+#[cfg(not(windows))]
+fn holder(_lock_path: &Path, file: &mut File) -> Option<u32> {
     let mut holder = String::new();
     let _ = file.read_to_string(&mut holder);
-    let holder = holder.trim().parse::<u32>().ok();
+    holder.trim().parse::<u32>().ok()
+}
+
+/// Windows: the locked file cannot be read from this handle (`os error 33`), so the holder is read
+/// from the stream it wrote for that.
+#[cfg(windows)]
+fn holder(lock_path: &Path, _file: &mut File) -> Option<u32> {
+    let mut text = String::new();
+    File::open(holder_stream(lock_path))
+        .and_then(|mut stream| stream.read_to_string(&mut text))
+        .ok()?;
+    text.trim().parse().ok()
+}
+
+/// Records this process as the holder of `lock_path` (best effort: it only names the holder).
+#[cfg(windows)]
+fn write_holder(lock_path: &Path) {
+    if let Ok(mut stream) = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(holder_stream(lock_path))
+    {
+        let _ = write!(stream, "{}", std::process::id());
+    }
+}
+
+/// `<lock>:holder`, the NTFS stream next to the data the lock covers.
+#[cfg(windows)]
+fn holder_stream(lock_path: &Path) -> PathBuf {
+    let mut name = lock_path.as_os_str().to_owned();
+    name.push(":holder");
+    PathBuf::from(name)
+}
+
+fn busy(root: &Path, holder: Option<u32>) -> JobError {
     JobError::new(
         "root_busy",
         format!(
@@ -119,9 +167,24 @@ fn is_still_the_lock_file(path: &Path, file: &File) -> bool {
     }
 }
 
-/// Without device and inode numbers the check cannot be made; the lease then protects only
-/// against operations that never unlink (limit documented for non-Unix platforms).
-#[cfg(not(unix))]
+/// Windows: the volume serial and file index of the open handle against those of whatever the
+/// path names now, as the claims ledger does (`claims::ledger::same_file`). `path.exists()` is no
+/// answer: a releasing holder unlinks the file while it still holds it, a new lease creates a
+/// **new** file under the same name, and a waiter that then locks the old file would publish into
+/// the root next to the new holder (BL167.6.3). A file that cannot be identified counts as
+/// different, so the caller opens the path again. The index cannot be reused while a handle to the
+/// old file is open, so it cannot collide with its successor.
+#[cfg(windows)]
+fn is_still_the_lock_file(path: &Path, file: &File) -> bool {
+    let Ok(open) = file.try_clone().and_then(same_file::Handle::from_file) else {
+        return false;
+    };
+    same_file::Handle::from_path(path).is_ok_and(|named| named == open)
+}
+
+/// Without a file identity the check cannot be made; the lease then protects only against
+/// operations that never unlink (limit documented for platforms other than Unix and Windows).
+#[cfg(not(any(unix, windows)))]
 fn is_still_the_lock_file(path: &Path, _file: &File) -> bool {
     path.exists()
 }
@@ -148,6 +211,38 @@ mod tests {
         );
         drop(first);
         drop(RootLease::acquire(dir.path()).unwrap());
+    }
+
+    /// BL167.6.3: a waiter opened the lock file before its holder released it and locks it after.
+    /// That lock is real, but on a file nobody can find any more: the name now belongs to the file
+    /// of the next lease. Only the live holder's file is the lease.
+    #[test]
+    fn a_lock_on_a_lock_file_that_was_unlinked_and_recreated_is_not_the_lease() {
+        let dir = sandbox("lease-recreated");
+        let first = RootLease::acquire(dir.path()).unwrap();
+        let lock_path = first.root().join(LEASE_FILE);
+        let waiter = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&lock_path)
+            .unwrap();
+        drop(first);
+        let second = RootLease::acquire(dir.path()).unwrap();
+        waiter.try_lock().expect("nobody locks the unlinked file");
+        assert!(
+            !is_still_the_lock_file(&lock_path, &waiter),
+            "the unlinked file is taken for the lease"
+        );
+        assert!(
+            is_still_the_lock_file(&lock_path, second.file.as_ref().unwrap()),
+            "the live holder's file is not recognised"
+        );
+        let error = RootLease::acquire(dir.path()).unwrap_err();
+        assert_eq!(error.code, "root_busy");
+        assert_eq!(
+            error.details.as_ref().unwrap()["holder"],
+            std::process::id()
+        );
     }
 
     #[test]

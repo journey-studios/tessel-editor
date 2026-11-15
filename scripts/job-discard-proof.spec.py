@@ -157,11 +157,8 @@ open(eof_file, 'w').write('eof')  # reached only when stdin ended: the cleanup o
 
 
 def alive(pid):
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    return True
+    # `os.kill(pid, 0)` on Unix; on Windows that call is no probe (it sends CTRL+C to the console).
+    return proof.portable.alive(pid)
 
 
 class JsonlSessionCleanupTests(unittest.TestCase):
@@ -177,8 +174,10 @@ class JsonlSessionCleanupTests(unittest.TestCase):
         self.work.mkdir()
 
     def tearDown(self):
+        # Windows reuses a PID at once: only a process this test started (a child of this one) is ended.
+        ours = set(proof.portable.process_tree(os.getpid())) if proof.portable.WINDOWS else None
         for pid in self.pids.read_text().split() if self.pids.exists() else []:
-            if alive(int(pid)):
+            if alive(int(pid)) and (ours is None or int(pid) in ours):
                 os.kill(int(pid), 9)
         shutil.rmtree(self.directory, ignore_errors=True)
 

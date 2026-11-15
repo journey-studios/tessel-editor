@@ -2,7 +2,6 @@
 saving and analysing a batch. No editor, GPU, runtime page or private media is started; the lab (`scene-warm-proof.py`) is a fake."""
 import argparse
 import contextlib
-import fcntl
 import io
 import json
 import re
@@ -17,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from ab import batch as B  # noqa: E402
 from ab import warm_proof  # noqa: E402
 from ab.project import sha256_file  # noqa: E402
+import portable  # noqa: E402  (BL168.8: `flock` on Unix, `msvcrt.locking` on Windows)
 
 PROJECT = {"length": 600, "fps": 24.0, "cuts": [186], "video_starts": [], "sources": [{"path": "/private/not-published.mov", "kind": "video"}]}
 ORDER = ["first", "second", "second", "first"]
@@ -452,7 +452,7 @@ class LockFileTests(unittest.TestCase):
             again = proof.acquire_locks(0, paths)
             self.assertEqual(len(again), 2, "closed handles leave the locks free")
             for handle in again:
-                fcntl.flock(handle, fcntl.LOCK_UN)
+                portable.unlock_file(handle)
                 handle.close()
             self.assertEqual(manifest["locks"], paths)
 

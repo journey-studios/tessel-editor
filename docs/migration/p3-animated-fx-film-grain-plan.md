@@ -40,7 +40,7 @@ Data: 2026-11-10. Autorizado pelo usuário após P2: mergear a PR39, preparar um
 
 ## 3. Referência primária e levantamento obrigatório
 
-Origem somente leitura: snapshot `d40ac3f7c0` no repo JS, inicialmente em `/Users/wallyssonnunes/.t3/worktrees/tesselapp/t3-5de3852f`. Usar `git show`/`cat-file`, sem alterar, instalar, executar o piloto ou copiar mídia privada.
+Origem somente leitura: snapshot `d40ac3f7c0` no repo JS, inicialmente em `~/.t3/worktrees/tesselapp/t3-5de3852f`. Usar `git show`/`cat-file`, sem alterar, instalar, executar o piloto ou copiar mídia privada.
 
 | Fonte no snapshot JS | O que conferir e fixar no manifesto |
 |---|---|

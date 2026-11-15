@@ -1,5 +1,4 @@
 """Pure-logic tests of the scene warm A/B harness; no editor, GPU or runtime page is started."""
-import fcntl
 import importlib.util
 import os
 from pathlib import Path
@@ -224,7 +223,7 @@ class LockTests(unittest.TestCase):
             self.assertIsNone(blocked, "the same file locked twice from another handle is busy")
             self.assertEqual(sum(ticks), 3.0)
             for handle in held:
-                fcntl.flock(handle, fcntl.LOCK_UN)
+                proof.portable.unlock_file(handle)  # flock on Unix, msvcrt on Windows (BL168.8)
                 handle.close()
             again = proof.acquire_locks(0, paths)
             self.assertEqual(len(again), 2, "a failed attempt leaves nothing held")

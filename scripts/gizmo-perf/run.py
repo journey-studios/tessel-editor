@@ -176,7 +176,7 @@ def main(argv=None):
     harness.install_termination_handlers()
     parser = argparse.ArgumentParser()
     parser.add_argument('--phase', choices=['build', 'measure'], required=True)
-    parser.add_argument('--out', default='/tmp/gizmo-perf-run')
+    parser.add_argument('--out', default=harness.portable.temp_path('gizmo-perf-run'))
     parser.add_argument('--calibrate', action='store_true')
     parser.add_argument('--exe', help='measure an already built executable (the baseline of an A/B)')
     parser.add_argument('--label', default='candidate')

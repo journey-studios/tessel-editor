@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Spec of the gizmo performance runners, without a benchmark, a window or the real lock (F055 / BL015.21)."""
+import _thread
 import atexit
 import collections
 import contextlib
-import fcntl
 import gzip
 import hashlib
 import importlib.util
@@ -22,6 +22,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+import threading
 import time
 import types
 import unittest
@@ -29,6 +30,8 @@ from unittest.mock import MagicMock, patch
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+sys.path.append(str(HERE.parent))  # after this folder: `scripts/ab` must not stand for `ab.py`
+import portable  # noqa: E402  (BL168.8: the file lock, the temporary folder and a tree kill on Windows)
 
 
 def load(name):
@@ -103,10 +106,71 @@ def run_main(module, argv, output=None):
 
 
 def stub_git(directory, body):
-    """A `git` that is the only command on PATH: what a runner sees when git answers badly or is not there."""
+    """A `git` that is the only command on PATH: what a runner sees when git answers badly or is not there.
+
+    Windows starts no `#!` script, and `CreateProcess` looks only for `git.exe` (BL168.8): there the stub is a `git.exe`
+    (`windows_stub`) that runs the same `sh` body, kept beside it as `git.sh`, under Git's `sh`, with the call's arguments,
+    environment, output and exit code."""
+    if portable.WINDOWS:
+        (Path(directory) / 'git.sh').write_bytes(('#!/bin/sh\n' + body + '\n').encode())
+        shutil.copyfile(windows_stub(), Path(directory) / 'git.exe')
+        return
     path = Path(directory) / 'git'
     path.write_text('#!/bin/sh\n' + body + '\n')
     path.chmod(0o755)
+
+
+# A launcher that runs `<its own name>.sh` under Git's `sh` (`@SH@`), forwarding the arguments (quoted the way
+# `subprocess.list2cmdline` does) and returning the script's exit code. The standard handles are inherited.
+WINDOWS_STUB_SOURCE = r'''
+using System;
+using System.Diagnostics;
+using System.IO;
+using System.Text;
+
+static class Stub {
+    static int Main(string[] args) {
+        string script = Path.ChangeExtension(Process.GetCurrentProcess().MainModule.FileName, ".sh").Replace('\\', '/');
+        StringBuilder line = new StringBuilder(Quote(script));
+        foreach (string arg in args) { line.Append(' ').Append(Quote(arg)); }
+        ProcessStartInfo start = new ProcessStartInfo(@"@SH@", line.ToString());
+        start.UseShellExecute = false;
+        using (Process child = Process.Start(start)) {
+            child.WaitForExit();
+            return child.ExitCode;
+        }
+    }
+
+    static string Quote(string arg) {
+        if (arg.Length > 0 && arg.IndexOfAny(new char[] { ' ', '\t', '"' }) < 0) { return arg; }
+        StringBuilder quoted = new StringBuilder("\"");
+        int slashes = 0;
+        foreach (char c in arg) {
+            if (c == '\\') { slashes++; continue; }
+            quoted.Append('\\', c == '"' ? slashes * 2 + 1 : slashes).Append(c);
+            slashes = 0;
+        }
+        return quoted.Append('\\', slashes * 2).Append('"').ToString();
+    }
+}
+'''
+_WINDOWS_STUB = []
+
+
+def windows_stub():
+    """The launcher of `stub_git` on Windows, compiled once per spec run by the C# compiler every Windows has (.NET
+    Framework 4, `csc.exe`), in a temporary folder removed at exit."""
+    if not _WINDOWS_STUB:
+        folder = Path(tempfile.mkdtemp(prefix='gizmo-perf-spec-git-stub-'))
+        atexit.register(shutil.rmtree, folder, ignore_errors=True)
+        (folder / 'stub.cs').write_text(WINDOWS_STUB_SOURCE.replace('@SH@', portable.git_sh().replace('"', '""')))
+        framework = Path(os.environ.get('WINDIR', r'C:\Windows')) / 'Microsoft.NET'
+        csc = next(path for path in (framework / 'Framework64' / 'v4.0.30319' / 'csc.exe',
+                                     framework / 'Framework' / 'v4.0.30319' / 'csc.exe') if path.is_file())
+        subprocess.run([str(csc), '/nologo', '/target:exe', f'/out:{folder / "stub.exe"}', str(folder / 'stub.cs')],
+                       check=True, capture_output=True)
+        _WINDOWS_STUB.append(folder / 'stub.exe')
+    return _WINDOWS_STUB[0]
 
 
 MAIN_TEST, PLAN_CONTROL, DELAY_CONTROL = runner.EXPECTED_TESTS
@@ -132,10 +196,29 @@ def libtest(failed, passed=()):
     return done('\n'.join(stdout) + '\n', 101, stderr)
 
 
+# Windows (BL168.8) has no `sh`/`sleep` to count on, no process group, no SIGTERM and no session: the three tests below run
+# their Windows twin there, the same shape with Python processes. A descendant gets the output pipes explicitly
+# (`stdout=sys.stdout`), as a background `sleep` inherits them on Unix.
+SLEEPER = 'import time; time.sleep(30)'
+KEEPS_THE_PIPES = f'subprocess.Popen([sys.executable, "-c", {SLEEPER!r}], stdout=sys.stdout, stderr=sys.stderr)'
+
+
+def end_own_process(pid):
+    """Ends `pid`, a process this test started that the runner was meant to leave behind (no error if it is gone)."""
+    if portable.WINDOWS:
+        portable.kill_group(pid)
+        return
+    with contextlib.suppress(OSError):
+        os.kill(pid, signal.SIGKILL)
+
+
 class Harness(unittest.TestCase):
     def test_a_child_that_hangs_is_ended_with_its_group_and_marked_timed_out(self):
+        command = ['sh', '-c', 'sleep 30 & sleep 30']
+        if portable.WINDOWS:  # a leader and a descendant that both sleep, the descendant holding the pipes
+            command = [sys.executable, '-c', f'import subprocess, sys, time\n{KEEPS_THE_PIPES}\ntime.sleep(30)\n']
         started = time.monotonic()
-        result = harness.run_bounded(['sh', '-c', 'sleep 30 & sleep 30'], timeout=1, grace=1)
+        result = harness.run_bounded(command, timeout=1, grace=1)
         self.assertTrue(result.timed_out)
         self.assertNotEqual(result.returncode, 0)
         self.assertLess(time.monotonic() - started, 10)
@@ -143,13 +226,26 @@ class Harness(unittest.TestCase):
     def test_a_descendant_that_ignores_sigterm_cannot_hold_the_run_after_its_leader_has_gone(self):
         # The leader obeys SIGTERM; a descendant ignores it and keeps the output pipes open. The group kill used to stop
         # at the leader and `communicate()` then waited for the descendant (here 30 s) with the lock still held.
-        script = "sh -c \"trap '' TERM; sleep 30\" & echo up; sleep 30"
+        # Windows twin: no SIGTERM there, every kill is final; the descendant must be ended with the TREE, not just the leader.
+        if portable.WINDOWS:
+            code = f'import subprocess, sys, time\nchild = {KEEPS_THE_PIPES}\nprint("up", child.pid, flush=True)\ntime.sleep(30)\n'
+            command = [sys.executable, '-c', code]
+        else:
+            command = ['sh', '-c', "sh -c \"trap '' TERM; sleep 30\" & echo up; sleep 30"]
         started = time.monotonic()
-        result = harness.run_bounded(['sh', '-c', script], timeout=1, grace=1)
+        result = harness.run_bounded(command, timeout=1, grace=1)
         elapsed = time.monotonic() - started
-        self.assertTrue(result.timed_out)
-        self.assertIn('up', result.stdout)  # what it printed before the timeout is kept
-        self.assertLess(elapsed, 10)
+        try:
+            self.assertTrue(result.timed_out)
+            self.assertIn('up', result.stdout)  # what it printed before the timeout is kept
+            self.assertLess(elapsed, 10)
+            if portable.WINDOWS:
+                self.assertFalse(portable.alive(int(result.stdout.split()[1])), 'the descendant outlived the tree kill')
+        finally:
+            if portable.WINDOWS:
+                for word in result.stdout.split():
+                    if word.isdigit():
+                        end_own_process(int(word))
 
     def test_a_descendant_in_its_own_session_cannot_hold_the_read_and_the_partial_output_is_kept(self):
         # `start_new_session` takes the descendant out of the group: no group kill reaches it and it keeps the pipes.
@@ -157,6 +253,12 @@ class Harness(unittest.TestCase):
                 "child = subprocess.Popen(['sleep', '30'], start_new_session=True)\n"
                 "print('partial output', child.pid, flush=True)\n"
                 "time.sleep(30)\n")
+        if portable.WINDOWS:
+            # Windows twin: the tree kill finds descendants through their parents, so one whose parent already ended (a
+            # middle process that started it and left) is out of its reach, and it keeps the pipes.
+            middle = f'import subprocess, sys\nchild = {KEEPS_THE_PIPES}\nprint("partial output", child.pid, flush=True)\n'
+            code = (f'import subprocess, sys, time\nsubprocess.run([sys.executable, "-c", {middle!r}], stdout=sys.stdout, '
+                    'stderr=sys.stderr)\ntime.sleep(30)\n')
         started = time.monotonic()
         result = harness.run_bounded([sys.executable, '-c', code], timeout=1, grace=1)
         elapsed = time.monotonic() - started
@@ -167,8 +269,7 @@ class Harness(unittest.TestCase):
         finally:
             for word in result.stdout.split():  # the escaped `sleep` is this test's own child: it does not outlive it
                 if word.isdigit():
-                    with contextlib.suppress(OSError):
-                        os.kill(int(word), signal.SIGKILL)
+                    end_own_process(int(word))
 
     def test_a_command_that_cannot_start_is_exit_127_with_its_error_never_an_exception(self):
         result = harness.run_bounded(['/definitely/not/a/binary'], timeout=5)
@@ -436,8 +537,14 @@ class Judge(unittest.TestCase):
 
 
 def git(root, *args):
-    return subprocess.run(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', *args], cwd=root, check=True,
-                          stdout=subprocess.PIPE, text=True).stdout
+    out = subprocess.run(['git', '-c', 'user.name=t', '-c', 'user.email=t@t', *args], cwd=root, check=True,
+                         stdout=subprocess.PIPE, text=True).stdout
+    if args[:1] == ('init',):
+        # A throwaway repository keeps the bytes it is given whatever the user's global configuration says: with
+        # `core.autocrlf=true` (Git for Windows' default) `git archive` writes CRLF and the archive of a commit is no longer
+        # its blobs, which `ab.make_baseline` rightly refuses. This checkout pins LF in `.gitattributes`.
+        subprocess.run(['git', 'config', 'core.autocrlf', 'false'], cwd=root, check=True)
+    return out
 
 
 def write(root, relative, text):
@@ -1138,7 +1245,10 @@ class Verdicts(unittest.TestCase):
                     with self.assertRaises(SystemExit) as stopped:
                         with mutate.Mutated(mutant, log):
                             self.assertIn('loop', path.read_text())
-                            os.kill(os.getpid(), signal.SIGTERM)
+                            if portable.WINDOWS:  # `os.kill` is `TerminateProcess` there: no handler would run
+                                signal.raise_signal(signal.SIGTERM)
+                            else:
+                                os.kill(os.getpid(), signal.SIGTERM)
                             time.sleep(1)
             finally:
                 for sig, handler in previous.items():
@@ -2125,9 +2235,7 @@ class MutantExecutables(unittest.TestCase):
                 stack.enter_context(fake)
             # Everything slow is faked, so a run still going after this long is waiting, and the only thing it could wait
             # for is a lock it must not wait for: a hang becomes a failure.
-            stack.callback(signal.signal, signal.SIGALRM, signal.signal(signal.SIGALRM, waited))
-            stack.callback(signal.alarm, 0)
-            signal.alarm(20)
+            stack.enter_context(alarm(20, waited))
             code = run_main(mutate, ['--phase', phase, '--out', str(out), *(['--only', *only] if only else [])],
                             self.printed)
         written = out / ('manifest.json' if phase == 'prepare' else 'manifest.final.json')
@@ -2158,14 +2266,14 @@ class MutantExecutables(unittest.TestCase):
         block releases it; `BlockingIOError` here means a run that had finished still held the lock."""
         Path(out).mkdir(parents=True, exist_ok=True)
         with open(Path(out) / SHARED_LOCK, 'a') as handle:
-            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            portable.lock_file(handle, blocking=False)
             yield
 
     @staticmethod
     def contents(out):
         """Every file and directory under `out`, with the bytes of the files (`None` for a directory): what a run that
         was refused must leave exactly as it found it."""
-        return {p.relative_to(out).as_posix(): p.read_bytes() if p.is_file() else None
+        return {p.relative_to(out).as_posix(): bytes_of(p) if p.is_file() else None
                 for p in sorted(Path(out).rglob('*'))}
 
     def test_a_stale_executable_with_no_hash_recorded_for_it_is_never_measured(self):
@@ -2406,7 +2514,7 @@ class MutantExecutables(unittest.TestCase):
             def while_building():
                 with open(out / SHARED_LOCK, 'a') as other:  # somebody else's open() of the lock file
                     try:
-                        fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        portable.lock_file(other, blocking=False)
                         held_while_building.append(False)
                     except BlockingIOError:
                         held_while_building.append(True)
@@ -2549,18 +2657,39 @@ class Native(unittest.TestCase):
 
 
 @contextlib.contextmanager
+def alarm(seconds, waited):
+    """`waited(signum, frame)` runs in the main thread, and what it raises is raised there, when the block is still running
+    after `seconds`: `SIGALRM`. Windows has no `SIGALRM` (BL168.8): there a timer thread interrupts the main thread
+    (`_thread.interrupt_main`, a simulated SIGINT), with `waited` as the SIGINT handler meanwhile; a runner that installs its
+    own handler turns it into its `SystemExit(130)`, an error of the test all the same. Either way a hang is a failure."""
+    if hasattr(signal, 'SIGALRM'):
+        previous = signal.signal(signal.SIGALRM, waited)
+        signal.alarm(seconds)
+        try:
+            yield
+        finally:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, previous)
+        return
+    previous = signal.signal(signal.SIGINT, waited)
+    timer = threading.Timer(seconds, _thread.interrupt_main)
+    timer.daemon = True
+    timer.start()
+    try:
+        yield
+    finally:
+        timer.cancel()
+        signal.signal(signal.SIGINT, previous)
+
+
+@contextlib.contextmanager
 def bounded(seconds=20):
     """Whatever is still running after `seconds` inside this block is a run that WAITS: it fails instead of hanging."""
     def waited(signum, frame):
         raise AssertionError(f'still running after {seconds}s: a run that must refuse or finish is waiting')
 
-    previous = signal.signal(signal.SIGALRM, waited)
-    signal.alarm(seconds)
-    try:
+    with alarm(seconds, waited):
         yield
-    finally:
-        signal.alarm(0)
-        signal.signal(signal.SIGALRM, previous)
 
 
 @contextlib.contextmanager
@@ -2579,14 +2708,20 @@ def held(path):
     across open file descriptions, also inside one process). Leaving the block releases it."""
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     with open(path, 'a') as handle:
-        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        portable.lock_file(handle, blocking=False)
         yield
+
+
+def bytes_of(path):
+    """The bytes of the file `path`. An empty one is `b''` without being opened: a lock is mandatory on Windows, so the
+    lock file another run holds (empty: a lock file is never written) cannot be read there while it is held."""
+    return path.read_bytes() if path.stat().st_size else b''
 
 
 def tree_of(directory):
     """Every file and directory under `directory`, with the bytes of the files (`None` for a directory): what a run that
     was refused must leave exactly as it found it."""
-    return {p.relative_to(directory).as_posix(): p.read_bytes() if p.is_file() else None
+    return {p.relative_to(directory).as_posix(): bytes_of(p) if p.is_file() else None
             for p in sorted(Path(directory).rglob('*'))}
 
 
@@ -2876,7 +3011,8 @@ class ChildEnvironment(unittest.TestCase):
                 self.assertNotIn('Path(args.out)', source, f'{name}.py takes --out as typed')
                 self.assertEqual(source.count('harness.absolute(args.out)'), 1, f'{name}.py must resolve --out once')
         self.assertEqual(harness.absolute('relative/dir'), Path(os.getcwd()) / 'relative' / 'dir')
-        self.assertEqual(harness.absolute('/already/absolute/../there'), Path('/already/there'))
+        drive = os.path.splitdrive(os.getcwd())[0]  # '' on Unix; on Windows `/x` is not absolute until it names a drive
+        self.assertEqual(harness.absolute(drive + '/already/absolute/../there'), Path(drive + '/already/there'))
 
     def test_an_exported_calibrate_never_reaches_a_measured_run_nor_its_record(self):
         code, manifest, seen, out = self.measure(self.PASSING, env=self.INHERITED)
@@ -3055,7 +3191,7 @@ class Guarded(unittest.TestCase):
                 self.assertIsNone(refusal)
                 with open(out / SHARED_LOCK, 'a') as another:  # a second open() of the file is somebody else
                     with self.assertRaises(BlockingIOError):
-                        fcntl.flock(another, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        portable.lock_file(another, blocking=False)
             with held(out / SHARED_LOCK):  # released: it can be taken again
                 pass
             self.assertTrue((out / SHARED_LOCK).is_file())  # a lock file is never removed (two inodes, two owners)

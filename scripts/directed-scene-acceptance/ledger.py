@@ -58,7 +58,7 @@ def _git(*args):
 
 
 def _relative(name):
-    return str((HERE / name).resolve().relative_to(ROOT))
+    return (HERE / name).resolve().relative_to(ROOT).as_posix()  # Git names paths with `/`, on every OS
 
 
 def git_blob_hashes(commit, names=None):

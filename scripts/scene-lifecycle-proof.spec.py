@@ -60,7 +60,8 @@ class ChaosPageTests(unittest.TestCase):
             copy = proof.slow_corpus(directory, "slow-a")
             self.assertEqual((copy / "assets" / "hero.png").read_bytes(), (proof.CORPUS / "assets" / "hero.png").read_bytes())
             self.assertFalse((copy / "expected.json").exists())
-            self.assertTrue(any(rule["match"] in f"{copy}/" for rule in proof.SLOW))
+            # The page compares with `/` whatever the OS wrote (backslashes on Windows), as here.
+            self.assertTrue(any(rule["match"] in f"{copy}/".replace("\\", "/") for rule in proof.SLOW))
 
 
 class OutcomeTests(unittest.TestCase):

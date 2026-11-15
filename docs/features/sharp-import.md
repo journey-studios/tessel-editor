@@ -178,7 +178,7 @@ e da janela) e a máquina com carga ~40, `render.frame` a 1280×720 respondeu em
 `t4-batalha`, e a miniatura de 240×136 falhou (`render_failed`, `timeout`) nos quatro: o custo é por gaussiana (1 179 648 em cada arquivo), não por pixel, de um
 rasterizador por CPU. Na GPU real um quadro leva 0,6–2 s. O prazo de 60 s do host não foi mudado. Consequência de produto, registrada em BL159: os jobs de miniatura e exportação pelo renderer Chrome/SwiftShader falharam nas condições medidas (o export falhou com `Frame 0: No frame within 120s`); `TESSEL_GL=gpu` contornou essas falhas. O preview nativo em WKWebView não foi validado para esses quadros e permanece não comprovado. O resultado de `render.frame` para `t3` em 33,5 s continua válido.
 
-**Filme de 60 s a partir dos quatro arquivos crus (2026-11-08).** Em uma cópia derivada (`/Users/wallyssonnunes/www/tessel-video-splat-derived-20261108`, fora do
+**Filme de 60 s a partir dos quatro arquivos crus (2026-11-08).** Em uma cópia derivada (`~/www/tessel-video-splat-derived-20261108`, fora do
 Git; a origem `~/www/tessel-video-splat` só foi lida) os quatro PLYs crus foram importados sem conversão (`asset.add … capture: auto`), a cena de cada take segura a
 nuvem com `rotation [180,0,0]` e a câmera orbita (16:9) ou varre por chaves de câmera (9:16) em torno do ponto de interesse, com títulos acentuados, fades,
 efeitos de runas e o áudio já existente. O projeto foi montado e exportado **pela janela nativa** (`tessel-editor ui op`, `HOME` próprio, sem coordenadas) com

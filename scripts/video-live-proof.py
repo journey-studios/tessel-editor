@@ -21,11 +21,11 @@ removed unless --keep.
 import json
 import os
 import shutil
-import socket
 import subprocess
 import sys
 import tempfile
 import time
+import portable  # BL168.8: Windows socket, UTF-8, tools
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WIDTH, HEIGHT, FRAMES = 640, 360, 48
@@ -50,7 +50,7 @@ def barcode_filter(width):
 
 
 def ffmpeg(*args):
-    return subprocess.run(["ffmpeg", "-nostdin", "-v", "error", "-y", *args], capture_output=True, text=True).returncode == 0
+    return subprocess.run([portable.ffmpeg(), "-nostdin", "-v", "error", "-y", *args], capture_output=True, text=True).returncode == 0
 
 
 def clip(path, width, height, frames, codec):
@@ -63,8 +63,8 @@ H264 = ["-c:v", "libx264", "-crf", "18", "-preset", "veryfast", "-pix_fmt", "yuv
 
 class Editor:
     def __init__(self, binary, home):
-        self.socket_path = os.path.join(home, ".cache/tessel-editor/ui.sock")
-        env = {**os.environ, "HOME": home}
+        self.socket_path = portable.window_socket(home)
+        env = {**os.environ, "HOME": home, **portable.window_env(self.socket_path)}
         # The log stays next to the isolated HOME: it is the only place a failed start explains itself.
         self.log_path = os.path.join(home, "editor.log")
         self.log = open(self.log_path, "w")
@@ -87,9 +87,7 @@ class Editor:
 
     def send(self, request, timeout=60):
         started = time.perf_counter()
-        with socket.socket(socket.AF_UNIX) as conn:
-            conn.settimeout(timeout)
-            conn.connect(self.socket_path)
+        with portable.connect_ui(self.socket_path, timeout) as conn:
             conn.sendall((json.dumps(request) + "\n").encode())
             data = b""
             while not data.endswith(b"\n"):
@@ -108,6 +106,10 @@ class Editor:
         return self.send({"version": 1, "command": "get", "target": "monitor.viewport"})["data"]["state"]
 
     def stop(self):
+        if portable.WINDOWS:
+            # terminate() is TerminateProcess there: end the WebView2 helpers with it.
+            portable.kill_tree(self.process)
+            return
         self.process.terminate()
         try:
             self.process.wait(10)
@@ -139,11 +141,12 @@ def main():
     binary = os.path.join(ROOT, "target/release/tessel-editor")
     if "--binary" in sys.argv:
         binary = os.path.abspath(sys.argv[sys.argv.index("--binary") + 1])
+    binary = portable.executable(binary)
     if not os.path.exists(binary):
         print(f"missing {binary}; run ./scripts/cargo build --release --locked")
         return 2
     # A short path: the socket lives under HOME and a Unix socket path is limited (SUN_LEN).
-    work = tempfile.mkdtemp(prefix="tvl-", dir="/tmp")
+    work = tempfile.mkdtemp(prefix="tvl-", dir=portable.TEMP)
     home = os.path.join(work, "home")
     os.makedirs(home)
     editor = Editor(binary, home)
