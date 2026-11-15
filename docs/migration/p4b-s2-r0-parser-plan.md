@@ -237,7 +237,7 @@ prefixado. O erro do deck de cima não ganha prefixo, nem `deck`.
   sampledInstanceFrame sampledCameraClipFrame`, ponteiro `/transition/timing/{from|to}/<campo>`. Presença sempre por
   `Object.hasOwn`: `constructor`, `toString` e `__proto__` não existem como campo.
 - Inteiros: `Number.isSafeInteger`, não negativos nos campos de quadro e de contador; `startFrame` ≥ 0; `durationFrames` ≥ 1;
-  float, bool, string, `null`, `NaN`, `Infinity` e negativos recusam no próprio ponteiro. Toda conta entre eles é BigInt.
+  números fracionários, bool, string, `null`, `NaN`, `Infinity` e negativos recusam no próprio ponteiro. Toda conta entre eles é BigInt.
 - `effect === 'crossDissolve'`; `primary ∈ {from, to}`; `alignment ∈ {center, start, end}`; `easing ∈ {linear,
   easeInOutCubic, easeOutCubic}`; `params` = `[["curve", "linear"|"smooth"], ["intensity", n]]`, `n` finito em `[0, 1]`
   (`/transition/params`, `/transition/params/<i>`); `heldInstance` e `heldCamera` booleanos; `id`, `fromShotId` e `toShotId`
@@ -304,3 +304,22 @@ directed-transition-decks,directed-transition-limits}.js` (novos) e `runtime/src
 `runtime/test/directed-scene.test.mjs`, `crates/render/tests/scene_transition_parser.rs`. Docs: este plano, relatório novo,
 `fx-transitions.md`, `scene-plan.md`. Fora de ownership: tudo o que a seção «Ownership» já exclui, `docs/backlog.md`,
 `docs/features/README.md` e `docs/README.md`.
+
+
+## Refinamento do coordenador — arrays herdados (antes do merge)
+
+A API de objeto recusa qualquer um dos seis campos de array herdado pelo protótipo,
+mesmo se vazio: invalid_plan no próprio campo (`/resources` ou
+`/transition/other/resources`, por exemplo). Sem isso, o contador pula o campo que
+o leitor compartilhado ainda consome. Uma sonda em9c3a643 aceitou20.003 recursos
+herdados no primário; o JSON textual não contém herança de protótipo. A guarda fica
+no pré-check da transição, preservando a extração e o parser de produção sem transição.
+Campos ausentes e não arrays continuam a ter a recusa de forma do leitor posterior.
+
+A frase final sobre inteiros significa valores numéricos fracionários, não lexemas:
+JSON.parse transforma12.0 e12e0 em Number12. A leitura JS aceita essas grafias quando
+o valor é inteiro seguro; o leitor Rust textual pode recusá-las. Essa diferença já
+estava declarada nas decisões iniciais e não é paridade lexical nem arredondamento.
+
+Razões reduzidas são verificadas na leitura do próprio campo por MDC=1, antes da
+comparação dos decks;0/1 é canônico e6/4 é recusado no campo que o declara.

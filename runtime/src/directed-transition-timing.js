@@ -12,6 +12,7 @@
 
 import { invalid } from './directed-deck.js';
 import { OTHER } from './directed-transition-decks.js';
+import { gcd } from './directed-transition-fields.js';
 
 const SIDES = ['from', 'to'];
 const MAX_SAFE = BigInt(Number.MAX_SAFE_INTEGER);
@@ -43,12 +44,6 @@ const deckClocks = (editFrame, deck, side) => {
     instance: clockSample(BigInt(deck.instanceStartFrame) + delta, BigInt(deck.instanceDurationFrames), at(side, 'instanceStartFrame')),
     camera: clockSample(BigInt(deck.cameraInFrame) + delta, BigInt(deck.cameraClipDurationFrames), at(side, 'cameraInFrame')),
   };
-};
-
-const gcd = (a, b) => {
-  let [x, y] = [a < 0n ? -a : a, b < 0n ? -b : b];
-  while (y !== 0n) [x, y] = [y, x % y];
-  return x;
 };
 
 /**

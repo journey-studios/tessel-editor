@@ -9,8 +9,8 @@
 // (no `alignment`, no `timing`) is refused at `/transition/alignment`.
 //
 // Numbers: every integer is a JS safe integer (`Number.isSafeInteger`), the subset of the Rust i64/u64
-// this reader can represent. A float, a bool, a string, `null`, `NaN`, an infinity and a number beyond
-// 2^53 - 1 are refused in place, never rounded. The checks are pure (no GL, no DOM).
+// this reader can represent. A fractional number, a bool, a string, `null`, `NaN`, an infinity and a number beyond
+// 2^53 - 1 are refused in place, never rounded. JSON.parse erases integer token spellings (12/12.0/12e0). The checks are pure (no GL, no DOM).
 
 import { finiteAt, invalid, objectAt, stringAt } from './directed-deck.js';
 
@@ -60,6 +60,13 @@ export const uintAt = (value, pointer) => {
 export const intAt = (value, pointer) => {
   if (!Number.isSafeInteger(value)) throw invalid(pointer, 'expected an integer (a safe integer)');
   return value;
+};
+
+/** Exact greatest common divisor, shared by ratio reading and frame-time checks. */
+export const gcd = (a, b) => {
+  let [x, y] = [a < 0n ? -a : a, b < 0n ? -b : b];
+  while (y !== 0n) [x, y] = [y, x % y];
+  return x;
 };
 
 const boolAt = (value, pointer) => {

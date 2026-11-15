@@ -4,7 +4,7 @@ Fatia **R0** de BL082.4.4 / F064 (`docs/features/fx-transitions.md`): um leitor 
 (`ScenePlan.transition`), mais a recusa que faltava na entrada de produção. Contrato fixado antes do código em
 [p4b-s2-r0-parser-plan.md](p4b-s2-r0-parser-plan.md). Windows nativo (Git Bash real, Node v26.12.1, rustc 1.99.1), base
 `a61b7a9`, origem `journey-studios/tessel-editor`. **Isto não é aceite de produto nem fecha R/S2:** não há renderização, GL,
-pixel, bridge, compositor, mudança de `hello`, flag nem ativação.
+pixel de transição, bridge, compositor, mudança de `hello`, flag nem ativação.
 
 ## O que ficou como estava (afirmado por teste, não por intenção)
 
@@ -30,7 +30,7 @@ pixel, bridge, compositor, mudança de `hello`, flag nem ativação.
 | `ca234c1` | Dois mutantes sobreviventes da primeira bateria (M03, M34) ganham teste; M15b é equivalente. |
 | (este) | Docs: este relatório, `fx-transitions.md`, `scene-plan.md`. Só docs; árvore de código idêntica a `ca234c1`. |
 
-Todos os gates abaixo rodaram em `ca234c1` (a árvore de código do head é a dele).
+Todos os gates abaixo rodaram em `ca234c1` (a árvore de código da entrega9c3a643 é a dele; reforços posteriores separados abaixo).
 
 ## API
 
@@ -135,7 +135,7 @@ recusa) e morreram; M15b é equivalente porque a cobertura do shot pela instânc
 Executados:
 
 - `./scripts/runtime setup` (pnpm frozen) — ok; `./scripts/runtime build` — ok (`dist/runtime.js` 4199 KiB, sem o leitor).
-- Node puro: `directed-scene`, `directed-scene-light`, `directed-scene-splats`, `output-fx`, `fx-handles-overlay` e os três arquivos novos: **182 passam, 0 falham**.
+- Grupo Node (contém testes puros e browser existentes, não é só puro): `directed-scene`, `directed-scene-light`, `directed-scene-splats`, `output-fx`, `fx-handles-overlay` e os três arquivos novos: **182 passam, 0 falham**.
 - `cargo fmt --all -- --check` 0; `./scripts/cargo check --workspace --all-targets --locked` 0; `clippy --workspace --all-targets --locked -- -D warnings` 0;
   `test --workspace --no-run --locked` 0 (só compila); `build -p tessel-editor --locked` 0. Alvo mbx padrão, `--locked`, sem
   clean/gc/lanes/target-dir.
@@ -144,8 +144,7 @@ Executados:
   ceiling, corpus), `scene_plan_transition_baseline` 1, `pilot_dissolve_corpus` 10, `pilot_dissolve_representable_import` 5,
   `pilot_dissolve_representable_state` (X) 8: todos verdes nos dois perfis.
 
-Lidos / não executados: `pnpm test` global (tem testes de browser que exigem Chrome/GL; nenhum teste de browser ou de pixel
-foi rodado), `cargo test --workspace` completo (**não** declaro workspace verde: os dois gizmos Windows da base seguem sem
+Lidos / não executados: `pnpm test` global (tem testes de browser que exigem Chrome/GL; os arquivos listados acima também contêm testes de browser/pixel antigos; nenhum teste de transição desenha pixels), `cargo test --workspace` completo (**não** declaro workspace verde: os dois gizmos Windows da base seguem sem
 verde e não foram tocados nem executados aqui), o ramo "Node ausente" do teste de interop (só lido: `locate(...).expect(...)`
 panica; não consegui tirar o Node da máquina sem alterar o ambiente — Program Files é um fallback), Mac, origem
 (`ORIGIN_NOT_EXECUTED`), GPU/desempenho/lock, UI física, aceite humano. N/A: pixels, shader, bridge/worker, CLI/UI (nenhuma
@@ -171,3 +170,63 @@ este relatório, `docs/features/fx-transitions.md`, `docs/features/scene-plan.md
 
 3. `docs/README.md`, após o item `P4b S2-H`:
    `- [P4b S2-R0 — leitor interno do plano de dois decks](migration/p4b-s2-r0-parser-report.md): leitor JS puro do wire C0b com tetos, relógios e interop com o core; sem renderização, produção ainda recusa transições.`
+
+
+## Coordenação Mac e reforço antes do merge
+
+Prova nativa do coordenador em9c3a643 (códigoca234c1), checkout limpo: runtime setup/build,
+grupo Node182/0/0skips (puro e browser legado), fmt, check workspace-all-targets, clippy workspace-all-targets-Dwarnings,
+core216/10/5/8/1 isolado EXPECT0 e preserve_order EXPECT1, interop4, workspace-no-run,
+build desktop e tree sem gpui/wry passaram. No-run só compila; workspace global, core
+completo, pixel de transição, GPU real/desempenho, UI física e origem não foram executados nessa rodada.
+O grupo Node inclui browser Chrome/SwiftShader de luz, splat e overlays antigos; chamá-lo de só puro seria incorreto.
+Logs: ~/.cache/tessel-pr75-mac-20261115/summary.json e arquivos por gate.
+
+Uma sonda independente comparou utf8Length com Buffer.byteLength para todas as65.536
+unidades UTF-16 isoladas: zero divergências. Outra confirmou a limitação lexical já
+pré-registrada: durationFrames:12.0 vira Number12 e é aceito no JS; o leitor Rust textual
+pode recusar essa grafia. O leitor JS recusa valores fracionários, não a grafia original.
+
+A sonda de arrays herdados revelou um defeito da API de objeto em9c3a643: mover resources
+para o protótipo permitia aceitar20.003 recursos no primário, pois o pré-check contava
+só campos próprios e o leitor de deck ainda os consumia. O reforço recusa os seis campos
+herdados em ambos os decks no próprio ponteiro, antes de ler elementos; preserva o
+leitor compartilhado e o caminho dos planos JSON/sem transição. A regressão nova falhou
+por asserção no código anterior (0/1), depois passou (1/1), incluindo arrays válidos
+pequenos e recursos acima do teto. Logs inherited-red/green. Não é uma prova de desenho.
+
+O teste JS de20.000 recursos sintéticos prova o contador do leitor, mas não que aquele
+plano seria válido no core. Foi acrescentado um teste Rust→Node que constrói20.000 itens
+com passes válidos, exige aceitação/validate no core, confere o texto abaixo de4MiB e
+aceitação no JS;20.001 é recusado pelos dois em /transition. Não muda quotas do documento
+nem grava fixture gigante. Uma primeira execução do teste novo falhou por unwrap em
+fx omitido (array vazio não serializado); a construção foi corrigida para contar arrays
+ausentes como0 e conferir fx vazio no plano tipado, antes de gerar os passes.
+
+Revisão independente R1 Windows está em execução sobre9c3a643. O reforço acima exige
+rechecagem própria; nenhum resultado de R1 ou Mac anterior é herdado como prova dele.
+Backlog/matriz/índice atualizados pelo coordenador, sem promover F064 nem anunciar capacidade.
+
+
+O OpenCodeReview apontou outro defeito confirmado em9c3a643: primary.editTime=6/4
+no frame36/24fps passava pela leitura da razão e a comparação com o vizinho3/2 culpava
+/transition/other/frame/editTime. ratioAt agora exige MDC=1 no próprio campo, inclusive
+0/1, antes de comparar decks. MDC exato é compartilhado com o cálculo dos tempos.
+A regressão nova falhou por ponteiro incorreto no código anterior; cobre os três tempos
+em ambos os decks. Interop inclui esse vetor também, aumentando adulterações de28 para29.
+
+Uma execução do grupo misto na worktree do coordenador deu170/13falhas porque usou
+dist antigo (capabilities de pointLights/overlays ausentes). O build oficial local
+foi executado antes da repetição; não atribuir essa execução inválida à guarda nova
+nem omitir as13falhas históricas. O checkout de validação nativo já tinha build correto
+e passou182/0 em9c3a643. Resultados finais do reforço são registrados separadamente.
+
+
+Reforço final do coordenador (Mac): grupo Node184/0/0skips, interop5/0 (29
+adulterações, teto válido20000/+1), clippy do alvo interop-Dwarnings, fmt e build
+oficial do runtime passaram. Fontes/testes conferidos por SHA-256 antes/depois dos
+gates; summary final-reinforcement-summary.json. As duas regressões novas falham
+no código anterior e passam no corrigido. Gates completos de workspace/core
+pertencem a9c3a643; não foram rebatizados como execução do reforço. Só módulos
+internos do parser e testes mudaram depois: leitor produtivo/extração permanecem
+iguais. Revisão independente do reforço ainda pendente, F064 P/Refuse/JS13.

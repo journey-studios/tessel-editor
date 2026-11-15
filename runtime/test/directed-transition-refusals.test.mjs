@@ -315,6 +315,18 @@ test('an instance or a camera clip shared by both decks has one length, and each
   refusedAt('/transition/timing/to/instanceDurationFrames', { '/transition/timing/to/instanceStartFrame': 141 });
 });
 
+test('a non-reduced ratio is refused at its own field before comparing the decks', () => {
+  for (const prefix of ['', '/transition/other']) {
+    for (const field of ['editTime', 'instanceTime', 'cameraClipTime']) {
+      const plan = basePlan();
+      const frame = prefix ? plan.transition.other.frame : plan.frame;
+      const { numerator, denominator } = frame[field];
+      const at = `${prefix}/frame/${field}`;
+      refusedAt(at, { [at]: ratio(numerator * 2, denominator * 2) });
+    }
+  }
+});
+
 test('every time is the exact reduced ratio counter x den / num, in both decks', () => {
   for (const field of ['instanceTime', 'cameraClipTime']) {
     refusedAt(`/frame/${field}`, { [`/frame/${field}`]: ratio(1, 2) });

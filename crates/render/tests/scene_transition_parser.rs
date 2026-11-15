@@ -23,7 +23,7 @@ use scene_host_union_common::{AFTER_CUT, BEFORE_CUT, Content, Fixture, PLAIN, Sc
 use serde_json::{Value, json};
 use tessel_editor_core::directed_scene::fx::DeckSide;
 use tessel_editor_core::scene_plan::{
-    MAX_TRANSITION_PLAN_BYTES, MAX_TRANSITION_PLAN_ITEMS, PlanError, ScenePlan,
+    Capability, MAX_TRANSITION_PLAN_BYTES, MAX_TRANSITION_PLAN_ITEMS, PlanError, ScenePlan,
 };
 use tessel_editor_media::tools::locate::{System, Tool, locate};
 
@@ -468,6 +468,11 @@ fn the_core_and_the_reader_refuse_the_same_broken_plan_at_the_same_pointer() {
         ),
         ("params", &before, tamper("/transition/params", json!([]))),
         (
+            "primary non-reduced edit time",
+            &before,
+            tamper("/frame/editTime", json!({"numerator": 6, "denominator": 4})),
+        ),
+        (
             "cut moved",
             &before,
             tamper("/transition/timing/to/shotStartFrame", json!(41)),
@@ -536,4 +541,68 @@ fn the_text_door_measures_bytes_and_the_core_has_the_same_ceiling() {
     assert_eq!(results[0]["bytes"], json!(MAX_TRANSITION_PLAN_BYTES));
     assert_eq!(results[1]["ok"], json!(false), "{}", results[1]);
     assert_eq!(results[1]["pointer"], json!("/transition"));
+}
+
+#[test]
+fn the_item_ceiling_accepts_a_core_valid_plan_and_refuses_one_more_pass() {
+    let fixture = Fixture::new("items", &Content::default());
+    let scratch = Scratch::new("items");
+    let original = fixture.plan(BEFORE_CUT);
+    assert!(original.fx.is_empty());
+    assert!(original.transition.as_ref().unwrap().other.fx.is_empty());
+    let mut value = original.to_json();
+    let arrays = ["nodes", "layers", "splats", "fx", "resources", "lights"];
+    let count = |deck: &Value| -> usize {
+        arrays
+            .iter()
+            .map(|key| deck[key].as_array().map_or(0, Vec::len))
+            .sum()
+    };
+    let base_items = count(&value) + count(&value["transition"]["other"]);
+    let pass = |index: usize| {
+        json!({
+            "trackId": "t", "clipId": format!("c-{index}"), "effect": "fade",
+            "frameInClip": 0, "weight": 1, "amount": 1,
+            "params": {"color": {"r": 0, "g": 0, "b": 0}, "amount": 1, "intensity": 1},
+            "scope": {"kind": "output"}
+        })
+    };
+    let passes: Vec<Value> = (0..MAX_TRANSITION_PLAN_ITEMS - base_items)
+        .map(pass)
+        .collect();
+    value["fx"] = json!(passes);
+    let requires: Vec<&str> = Capability::ALL
+        .iter()
+        .map(|cap| cap.as_str())
+        .filter(|name| {
+            *name == "outputFx"
+                || value["requires"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|v| v == name)
+        })
+        .collect();
+    value["requires"] = json!(requires);
+    assert_eq!(count(&value) + count(&value["transition"]["other"]), 20_000);
+    let plan = ScenePlan::from_json(&value).expect("the whole plan is valid in the core");
+    plan.validate().unwrap();
+    let exact = plan.to_json_string();
+    let mut over = value;
+    over["fx"]
+        .as_array_mut()
+        .unwrap()
+        .push(pass(MAX_TRANSITION_PLAN_ITEMS));
+    assert_eq!(count(&over) + count(&over["transition"]["other"]), 20_001);
+    let over = over.to_string();
+    assert!(exact.len() < MAX_TRANSITION_PLAN_BYTES);
+    assert!(over.len() < MAX_TRANSITION_PLAN_BYTES);
+    assert_eq!(
+        core_says(&over),
+        ("invalid_plan".into(), Some("/transition".into()))
+    );
+    let answer = read(&scratch, &[exact, over]);
+    assert_eq!(answer["results"][0]["ok"], json!(true));
+    assert_eq!(answer["results"][1]["code"], json!("invalid_plan"));
+    assert_eq!(answer["results"][1]["pointer"], json!("/transition"));
 }

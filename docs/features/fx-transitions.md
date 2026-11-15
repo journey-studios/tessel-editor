@@ -864,3 +864,17 @@ teste `crates/render/tests/scene_transition_parser.rs` entrega ao leitor, via No
 planos que o core constrói em cada quadro da janela do bundle público e confere o resultado contra o plano tipado; 28
 planos adulterados são recusados pelo core e pelo leitor no mesmo ponteiro. Continuam pendentes (BL082.4.4/F064): carregar
 os dois decks, desenhar a mistura, bridge/worker, gestos, UI e qualquer pixel (S2 restante).
+
+R0, reforço do coordenador antes do merge: os seis campos de array de cada deck devem
+ser próprios; herança de protótipo recusa no campo antes da leitura/contagem, fechando
+a fuga do teto da API de objeto. Planos JSON e planos sem transição conservam o contrato.
+Inteiros JS são valores seguros, não fidelidade lexical:12.0/12e0 viram Number12 no
+JSON.parse, enquanto o leitor textual Rust pode recusar essas grafias. Um teste Rust→Node
+adicional verifica um plano completo aceito pelo core com20.000 itens e recusa20.001;
+o vetor JS de recursos sintéticos sozinho não demonstra validade do plano no core.
+A revisão independente deve conferir este reforço, sem herdar o aceite de9c3a643.
+
+R0, reforço de diagnóstico: uma razão não reduzida (por exemplo editTime6/4 em36/24fps)
+recusa no próprio campo antes da comparação entre decks; não culpa o vizinho3/2. A
+prova Node inclui também testes antigos de browser/luz/splat/overlays; isso não é
+renderização de transição nem aceite de GPU/desempenho ou UI física.

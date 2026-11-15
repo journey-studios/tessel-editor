@@ -20,13 +20,17 @@ export const MAX_TRANSITION_PLAN_BYTES = 4_194_304;
 const ITEM_ARRAYS = ['nodes', 'layers', 'splats', 'fx', 'resources', 'lights'];
 
 /**
- * The items one deck counts: the lengths of its own arrays. An absent key, a key that is not an array
- * and a deck that is not an object count 0 (reading it later is refused with its own pointer).
+ * The items one deck counts: the lengths of its own arrays. Inherited fields are refused: the shared
+ * deck reader would otherwise read an inherited array that this counter skipped. Absent keys,
+ * non-arrays and a deck that is not an object count 0 (the body reader checks their shape later).
  */
-export const deckItems = (deck) => {
+export const deckItems = (deck, pointer = '') => {
   if (!isObject(deck)) return 0;
   let items = 0;
   for (const key of ITEM_ARRAYS) {
+    if (!Object.hasOwn(deck, key) && key in deck) {
+      throw invalid(`${pointer}/${key}`, 'a deck array must be an own field');
+    }
     if (Object.hasOwn(deck, key) && Array.isArray(deck[key])) items += deck[key].length;
   }
   return items;
@@ -35,7 +39,7 @@ export const deckItems = (deck) => {
 /** The item ceiling over both decks, from the array lengths alone. `transition` is the plan's own. */
 export const checkItemCeiling = (plan, transition) => {
   const other = isObject(transition) && Object.hasOwn(transition, 'other') ? transition.other : undefined;
-  const items = deckItems(plan) + deckItems(other);
+  const items = deckItems(plan) + deckItems(other, '/transition/other');
   if (items > MAX_TRANSITION_PLAN_ITEMS) {
     throw invalid(
       '/transition',

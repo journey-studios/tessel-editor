@@ -19,7 +19,7 @@ import {
   readRequires,
   stringAt,
 } from './directed-deck.js';
-import { intAt, need, uintAt } from './directed-transition-fields.js';
+import { gcd, intAt, need, uintAt } from './directed-transition-fields.js';
 import { RuntimeError } from './protocol.js';
 
 /** Where the neighbour sits in the plan. */
@@ -62,7 +62,9 @@ const ratioAt = (value, pointer) => {
   const ratio = objectAt(value, pointer);
   const numerator = intAt(need(ratio, pointer, 'numerator'), `${pointer}/numerator`);
   const denominator = intAt(need(ratio, pointer, 'denominator'), `${pointer}/denominator`);
-  if (denominator <= 0) throw invalid(pointer, 'expected a reduced ratio with a positive denominator');
+  if (denominator <= 0 || gcd(BigInt(numerator), BigInt(denominator)) !== 1n) {
+    throw invalid(pointer, 'expected a reduced ratio with a positive denominator');
+  }
   return { numerator, denominator };
 };
 

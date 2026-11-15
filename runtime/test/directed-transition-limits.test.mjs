@@ -95,6 +95,29 @@ test('an array that is not an array counts nothing, and is refused where it is w
   assert.equal(error.details.pointer, '/lights');
 });
 
+test('arrays inherited by either deck cannot escape the item ceiling', () => {
+  for (const side of ['primary', 'other']) {
+    const prefix = side === 'primary' ? '' : '/transition/other';
+    for (const field of ['nodes', 'layers', 'splats', 'fx', 'resources', 'lights']) {
+      const plan = basePlan();
+      const deck = side === 'primary' ? plan : plan.transition.other;
+      const values = deck[field] ?? [];
+      delete deck[field];
+      Object.setPrototypeOf(deck, { [field]: values });
+      const error = refusal(() => parseTransitionPlan(plan, []));
+      assert.equal(error.details.pointer, `${prefix}/${field}`, `${side} ${field}`);
+    }
+    const plan = basePlan();
+    const deck = side === 'primary' ? plan : plan.transition.other;
+    const resources = [...deck.resources, ...extraResources('inherited', MAX_TRANSITION_PLAN_ITEMS + 1)];
+    delete deck.resources;
+    Object.setPrototypeOf(deck, { resources });
+    const error = refusal(() => parseTransitionPlan(plan, []));
+    assert.equal(error.code, 'invalid_plan');
+    assert.equal(error.details.pointer, `${prefix}/resources`);
+  }
+});
+
 // ---- depth and cycles ----------------------------------------------------------------------------------------------
 
 test('depth is one: the neighbour never has a transition of its own, however deep the chain behind it', () => {
