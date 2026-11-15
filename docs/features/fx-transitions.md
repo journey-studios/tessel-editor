@@ -841,3 +841,26 @@ H foi aprovada internamente pela R2 Windows emd7c52b7 (código05f37da, testesfe1
 render76, core216/10/5/8/1 isolado/preserve e gates de compilação0. Export Windows10/12
 só por shasum de BL167.3; Mac8a489bf12/12 é prova separada do caminho antigo. R/S2A,
 pixels de transição e todas as superfícies de produto de F064 continuam pendentes.
+
+### BL082.4.4: leitor interno do plano de dois decks no runtime (S2-R0)
+
+O runtime ganha um leitor **puro e interno** do wire C0b (`runtime/src/directed-transition*.js`; contrato em
+[p4b-s2-r0-parser-plan.md](../migration/p4b-s2-r0-parser-plan.md), evidências em
+[p4b-s2-r0-parser-report.md](../migration/p4b-s2-r0-parser-report.md)). Ele lê o deck de cima e o vizinho
+(`transition.other`) **pelo mesmo leitor de deck** (`directed-deck.js`, extraído mecanicamente de `parseDirectedLayer`),
+confere a mistura (`progress` = `ease((frameInWindow + 0,5)/D)`, `amount` = `clamp01(intensity)`, nunca `intensity × progress`),
+a janela, as identidades, os dois relógios independentes de cada deck e os tempos exatos reduzidos, e devolve os dois decks,
+a mistura e `clocks` (`{raw, sampled, held}` por relógio). Uma recusa é um `RuntimeError` tipado com o ponteiro do campo; o
+erro do vizinho vem prefixado **uma vez** com `/transition/other`; o do topo não muda. Portas: `parseTransitionPlan(objeto)` e
+`parseTransitionPlanText(texto)`; só a segunda mede bytes (teto de 4 194 304 bytes UTF-8 do texto recebido, antes do
+`JSON.parse`); o teto de 20 000 itens (seis arrays dos dois decks, por comprimento, antes de ler qualquer elemento) e a
+profundidade 1 valem nas duas, sem recursão.
+
+**Nada disto é produto.** O leitor não está ligado a compositor, bridge, worker nem `hello`: `SCENE_CAPABILITIES` continua
+com 13 capacidades (sem `fxTransition`), o core continua com 14, a admissão pública continua `Refuse` e
+`parseDirectedLayer` continua recusando todo plano com `transition` (agora também com `invalid_plan` em `/requires` quando
+o plano tem a chave sem exigir `fxTransition`). Não há renderização, GL, pixel, flag nem ativação. Interoperabilidade: o
+teste `crates/render/tests/scene_transition_parser.rs` entrega ao leitor, via Node (obrigatório; ausente é falha), os
+planos que o core constrói em cada quadro da janela do bundle público e confere o resultado contra o plano tipado; 28
+planos adulterados são recusados pelo core e pelo leitor no mesmo ponteiro. Continuam pendentes (BL082.4.4/F064): carregar
+os dois decks, desenhar a mistura, bridge/worker, gestos, UI e qualquer pixel (S2 restante).

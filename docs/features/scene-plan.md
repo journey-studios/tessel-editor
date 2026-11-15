@@ -152,6 +152,15 @@ as amostras; os quadros legados; os `held*`; e os tempos `Ratio` exatos de cada 
 recusa é `invalid` com o ponteiro do campo errado (`/transition/timing/<deck>/<campo>` ou o campo legado). Mede coerência,
 não procedência. Um plano externo válido pode ter até os tetos acima; isso não significa que um bundle o produza.
 
+#### Leitura no runtime (S2-R0, BL082.4.4 — interna, sem produto)
+
+O runtime lê este wire com `parseTransitionPlan`/`parseTransitionPlanText` (`runtime/src/directed-transition*.js`), um
+leitor puro que **não** está ligado a compositor, bridge nem `hello`: `SCENE_CAPABILITIES` segue com 13 nomes, sem
+`fxTransition`, e `parseDirectedLayer` recusa todo plano com `transition` (`unsupported` com `missing: ["fxTransition"]`, ou
+`invalid_plan` em `/requires` se o plano não o exigir). Tetos no JS, os mesmos do core: 20 000 itens (os dois decks, por
+comprimento) e profundidade 1 nas duas portas; 4 194 304 bytes só na porta de texto, medidos em UTF-8 sobre o texto
+recebido. `raw 41 / sample 39` (câmera de 40 quadros) continua sendo `{raw: 41, sampled: 39, held: true}` no primário. Ver
+[fx-transitions.md](fx-transitions.md) e o [relatório](../migration/p4b-s2-r0-parser-report.md).
 ### Políticas
 
 | Tema | Política |
