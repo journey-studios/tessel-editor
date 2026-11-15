@@ -229,7 +229,10 @@ fn a_link_that_takes_the_neighbours_asset_out_of_the_root_is_refused_and_names_i
     // The two decks' shared files stayed inside: a frame without `sky` still resolves.
     assert!(SceneResourceMap::from_root(1, &fixture.plan(PLAIN), &fixture.root).is_ok());
     // Unlink before the scratch is removed (a junction is removed like an empty directory).
+    #[cfg(windows)]
     fs::remove_dir(fixture.path("neighbour")).unwrap();
+    #[cfg(unix)]
+    fs::remove_file(fixture.path("neighbour")).unwrap();
     let _ = fs::remove_dir_all(&outside);
 }
 #[test]

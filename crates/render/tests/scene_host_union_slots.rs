@@ -418,35 +418,97 @@ fn two_decks_whose_sizes_overflow_are_refused_as_a_budget_instead_of_wrapping() 
         sky.width_px = u64::MAX;
         sky.height_px = 1.0e300;
     }
-    let mut slots = SceneSlots::default();
-    let error = slots.prepare(&plan, &map).unwrap_err();
-    assert_eq!(error.code, "resource_budget");
-    assert_eq!(error.details.unwrap()["bytes"], json!(u64::MAX));
-    assert_eq!((slots.occupied(), slots.generation()), (0, 0));
+    for budget in [512 * 1024 * 1024, u64::MAX] {
+        let mut slots = SceneSlots::new(32, budget);
+        let error = slots.prepare(&plan, &map).unwrap_err();
+        assert_eq!(error.code, "resource_budget");
+        assert_eq!(error.details.unwrap()["bytes"], json!(u64::MAX));
+        assert_eq!((slots.occupied(), slots.generation()), (0, 0));
+    }
 }
 
 #[test]
-fn a_huge_incoming_picture_cannot_wrap_the_eviction_arithmetic() {
+fn an_unrepresentable_picture_is_refused_without_changing_the_retained_book() {
     let fixture = Fixture::new("slots-incoming", &Content::sky());
     let session = fixture.approve();
     let plain = fixture.plan(PLAIN);
     let plain_map = approved_map(&plain, PROJECT_SCENE, &session).unwrap();
-    // A book whose byte ceiling is the largest number: it already holds two pictures (13312
-    // bytes) when the neighbour's picture, which saturates to u64::MAX, arrives. `held + incoming`
-    // overflowed there; now it saturates and the frame is judged by the ceiling like any other.
+    // A byte ceiling of MAX still cannot admit an unrepresentable cost or mutate existing slots.
     let mut slots = SceneSlots::new(32, u64::MAX);
     slots.prepare(&plain, &plain_map).unwrap();
+    let truth = Truth::of(&fixture);
+    let before = truth.book(&slots, plain_map.generation());
     let mut plan = fixture.plan(BEFORE_CUT);
     plan.transition.as_mut().unwrap().other.resources[2].width_px = u64::MAX;
     plan.transition.as_mut().unwrap().other.resources[2].height_px = 1.0e300;
     let map = approved_map(&plan, PROJECT_SCENE, &session).unwrap();
-    let prepared = slots.prepare(&plan, &map).unwrap();
+    let error = slots.prepare(&plan, &map).unwrap_err();
+    assert_eq!(error.code, "resource_budget");
+    assert_eq!(truth.book(&slots, plain_map.generation()), before);
+}
+
+#[test]
+fn representable_resource_costs_cannot_overflow_the_total_even_with_a_maximum_budget() {
+    let fixture = Fixture::new("slots-total-overflow", &Content::sky());
+    let session = fixture.approve();
+    for frame in [PLAIN, BEFORE_CUT, AFTER_CUT] {
+        let mut plan = fixture.plan(frame);
+        let map = approved_map(&plan, PROJECT_SCENE, &session).unwrap();
+        for resource in plan
+            .resources
+            .iter_mut()
+            .chain(
+                plan.transition
+                    .iter_mut()
+                    .flat_map(|t| t.other.resources.iter_mut()),
+            )
+            .filter(|r| r.asset_id != "sky")
+        {
+            // Each of the two resources costs exactly 2^63 bytes, by hand.
+            resource.width_px = 1_u64 << 61;
+            resource.height_px = 1.0;
+        }
+        plan.validate().unwrap();
+        let mut slots = SceneSlots::new(32, u64::MAX);
+        let error = slots.prepare(&plan, &map).unwrap_err();
+        assert_eq!(error.code, "resource_budget");
+        assert_eq!((slots.occupied(), slots.generation()), (0, 0));
+    }
+}
+
+#[test]
+fn representable_incoming_costs_evict_before_held_plus_incoming_overflows() {
+    let fixture = Fixture::new("slots-eviction-overflow", &Content::sky());
+    let session = fixture.approve();
+    let mut plan = fixture.plan(PLAIN);
+    let map = approved_map(&plan, PROJECT_SCENE, &session).unwrap();
+    plan.resources[0].width_px = 1_u64 << 61;
+    plan.resources[0].height_px = 1.0; // backdrop: exactly 2^63; figure: 4096.
+    let mut slots = SceneSlots::new(32, u64::MAX);
+    let first = slots.prepare(&plan, &map).unwrap();
+    for load in &first.loads {
+        slots.mark_ready(&load.slot);
+    }
+    let old_backdrop = first.loads[0].slot.clone();
+    // Inject new identities for the same paths: this tests bookkeeping, not media reapproval.
+    let mut next_map = SceneResourceMap::new(map.generation());
+    for resource in &mut plan.resources {
+        resource.content_hash.push_str("-next");
+        let mut resolved = map.get(&resource.asset_id).unwrap().clone();
+        resolved.content_hash.clone_from(&resource.content_hash);
+        next_map
+            .insert(resource.asset_id.clone(), resolved)
+            .unwrap();
+    }
+    let next = slots.prepare(&plan, &next_map).unwrap();
+    assert_eq!(next.loads.len(), 2);
+    assert_eq!(next.releases.len(), 1);
+    assert_eq!(next.releases[0]["id"], old_backdrop);
     assert_eq!(
-        prepared.loads.len(),
-        1,
-        "only the neighbour's picture is new"
+        slots.occupied(),
+        3,
+        "old figure may stay, old backdrop must leave"
     );
-    assert_eq!(slots.occupied(), 3);
 }
 
 fn cloud_fixture(name: &str, scenes: &[&'static str]) -> (Fixture, SceneResourceMap, ScenePlan) {

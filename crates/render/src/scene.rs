@@ -332,8 +332,18 @@ impl Default for SceneSlots {
 
 /// What the runtime holds for a picture: its decoded RGBA. The plan stores the height as a float;
 /// for a picture it is a whole number of pixels.
-fn picture_bytes(resource: &UnionResource) -> u64 {
-    (resource.width_px as f64 * resource.height_px * 4.0) as u64
+fn picture_bytes(resource: &UnionResource) -> Option<u64> {
+    let bytes = resource.width_px as f64 * resource.height_px * 4.0;
+    // u64::MAX rounds to 2^64 as f64. A cost at that boundary is not representable.
+    (bytes.is_finite() && bytes < u64::MAX as f64).then_some(bytes as u64)
+}
+
+fn byte_overflow(budget: u64) -> BackendError {
+    error(
+        "resource_budget",
+        "The decoded resource byte cost exceeds u64",
+    )
+    .with_details(json!({ "bytes": u64::MAX, "max_bytes": budget, "overflow": true }))
 }
 
 /// What the runtime holds for a splat file: the kept bytes plus 16 packed bytes per splat (the
@@ -439,11 +449,11 @@ impl SceneSlots {
         }
 
         let wanted = self.resolve(plan, resources)?;
-        // Saturating: a picture whose declared size overflows is `u64::MAX`, and two of them (one
-        // per deck) must be refused as a budget, not wrap or panic.
+        // Overflow is a refusal even when the caller's byte budget is u64::MAX.
         let needed_bytes: u64 = wanted
             .iter()
-            .fold(0, |total: u64, item| total.saturating_add(item.bytes));
+            .try_fold(0_u64, |total, item| total.checked_add(item.bytes))
+            .ok_or_else(|| byte_overflow(self.byte_budget))?;
         if needed_bytes > self.byte_budget || wanted.len() > self.slots.len() {
             return Err(error(
                 "resource_budget",
@@ -567,12 +577,15 @@ impl SceneSlots {
     fn evict_to_fit(&mut self, needed: &[&Identity], incoming: u64) -> Vec<Value> {
         let mut releases = Vec::new();
         loop {
-            let held: u64 = self
+            let held = self
                 .slots
                 .iter()
                 .filter_map(|slot| slot.held.as_ref().map(|(_, _, bytes)| *bytes))
-                .fold(0, |total: u64, bytes| total.saturating_add(bytes));
-            if held.saturating_add(incoming) <= self.byte_budget {
+                .try_fold(0_u64, |total, bytes| total.checked_add(bytes));
+            if held
+                .and_then(|held| held.checked_add(incoming))
+                .is_some_and(|total| total <= self.byte_budget)
+            {
                 return releases;
             }
             let victim = self
@@ -677,6 +690,7 @@ impl SceneSlots {
                 }
             } else {
                 picture_bytes(&resource)
+                    .ok_or_else(|| attribute_backend(byte_overflow(self.byte_budget), &resource))?
             };
             let identity = Identity {
                 generation: resources.generation,
