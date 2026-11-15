@@ -141,3 +141,32 @@ Cada mutante altera uma linha de produção, roda `lib` + `scene_fx_transition` 
 **`docs/features/README.md`**, linha F064: acrescentar ao fim da coluna de estado: `S3a (core): 5 ops de transição no scene.fx.edit com Refuse público fechado, errors[] e projeção pt-br/en/es, predicado de janela e .24 corrigida; a validar (relatório p4b-s3a-editing-report.md). Sem S3b/gestos/UI de transição.`
 
 **`docs/README.md`**, abaixo da linha do P4b: `- [P4b S3a — edição de transições no core](migration/p4b-s3a-editing-report.md): ops, erros localizados, predicado de janela e a correção da dica .24; admissão pública ainda recusada.`
+
+## 10. Integração e gates Mac do coordenador
+
+`6cbd2c0` incorporou a main `79ed312` (referência X da PR65). O único conflito
+foi de apêndices em F064; ambos foram preservados. `33323a2` acrescenta backlog,
+matriz e índice. O código de produção do core é idêntico ao head do autor `934bab3`;
+o teste de importabilidade X da main passa a fazer parte desta integração.
+
+Mac nativo, head limpo `33323a2aa402796ad54610856e90ebd3a41e8dcf`, wrapper
+`./scripts/cargo`, target padrão no clone SSD do coordenador:
+
+| Gate | Resultado |
+|---|---|
+| fmt, check workspace, clippy workspace/all-targets `-D warnings` | exit 0 |
+| core completo `--no-fail-fast` | 65 resultados, 1666 passaram, 0 falharam, 7 ignorados; inclui lib605, transições170, corpus10, X5 e baseline1 |
+| alvos transição/corpus/X/baseline com `serde_json/preserve_order` | 170/10/5/1, 0 falhas |
+| desktop, filtro `scene_fx` | 80/80 |
+| `test --workspace --no-run` e build desktop | exit 0 |
+| árvore do core | nenhuma linha com GPUI ou wry |
+
+O workspace inteiro foi compilado, não executado. Os dois gizmos vermelhos do
+Windows continuam atribuídos àquele host; os resultados Mac não os tornam verdes.
+Não houve runtime, GPU, desempenho, UI física ou execução da origem. A revisão
+independente Windows do head integrado segue pendente. Nenhuma alegação de produto
+é promovida: Refuse permanece fechado e o predicado de janela sem consumidor.
+
+Logs pequenos e summary.json em `~/.cache/tessel-pr66-mac-20261114/`, com HEAD e
+exit por comando. O clone terminou limpo em `33323a2`. Nenhum target-dir, lane,
+clean/gc ou limpeza de arquivos alheios foi usado.

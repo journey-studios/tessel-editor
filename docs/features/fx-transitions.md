@@ -672,3 +672,13 @@ produtor); nunca se grava uma chave fora do `editRange` do plano dono.
 Não existe comando de editar `shots[]`. A S3a prova só pelo importador do candidato: substituir ou anexar um documento
 sem o shot citado, com o shot encurtado ou não vizinho é recusado com o código da regra e **nada** é cortado nem
 consertado. **N/A:** edição de shots e reavaliação de transições pela P5 (BL082.5).
+
+### Prova Mac da integração S3a
+
+No head limpo `33323a2` (main79ed312 incorporada sem conflito de código), core
+completo:1666/0/7 em65 resultados, com lib605/transições170/corpus10/X5/baseline1.
+Com preserve_order:170/10/5/1; desktopFX80/80; fmt/check/clippy-all-targets/no-run/
+build passaram e tree sem GPUI/wry. Windows continua como prova separada: autor934
+relatou dois gizmos da base vermelhos; revisão independente integrada pendente.
+Sem workspace global executado, runtime, GPU, origem ou UI física. F064 produto P,
+Refuse fechado; .25 (dica da cauda) e consumidor do predicado continuam pendentes.

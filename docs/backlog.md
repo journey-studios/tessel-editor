@@ -1881,7 +1881,7 @@ concreto da S0, sem link para arquivo inexistente nem validação de lib/CLI/UI 
 | BL082.4.2 | P4b/S1a | Documento/janela/validação tipada e política de admissão fechada | Concluído no escopo interno; R2 aprova a752f0a | BL082.4.1/.11 concluídos | Coordenador / revisão Windows | R2:61transition/25scene_fx/80GPUI, processo headless real, perfis serde e mutantes dinâmicos/scanner/domínio. fmt/check/clippy/no-run/build passam. Core1525ok/2gizmosbase, workspaceexecutado/Mac pendentes. Produto P; IDgerado fica BL082.4.15/S3. |
 | BL082.4.3 | P4b/S1b | Avaliação dos dois decks e plano, recursos por assetId/used_by sem ambiguidade | Concluída no escopo interno — R3 Windows4199af0 | BL082.4.2 integrada | Coordenador / Cursor Sonnet5.5 | Head73775c3:106transições/10corpus/594lib/80GPUI e gates Windows relatados; produtoP. Mac106+10+baseline debug/release passam após correção de dados(.16), três kitsXparciais(.17) em revisão. SemS2/S3a iniciadas. |
 | BL082.4.4 | P4b/S2 | Runtime/renderer/mistura e lifecycle/cache | Pendente | BL082.4.3; S2A também BL082.4.5/S3a | Não atribuído | Cor8bits/alpha declarados, capability, dois splats/leases/contextloss/dispose e pixelsindependentes |
-| BL082.4.5 | P4b/S3 | Ops/gestos/inspector/persistência ecoreparser/nós | A validar — S3a PR66 entregue; revisão e Mac pendentes; S3b pendente | BL082.4.3 | Cursor Sonnet5.5 / coordenador | Atomicidade/revisão/undo, módulossemcrescerarquivosproibidos; dividirS3aseS3bseútil |
+| BL082.4.5 | P4b/S3 | Ops/gestos/inspector/persistência ecoreparser/nós | A validar — S3a PR66, Mac33323a2 passou; revisão Windows pendente; S3b pendente | BL082.4.3 | Cursor Sonnet5.5 / coordenador | Atomicidade/revisão/undo, módulossemcrescerarquivosproibidos; dividirS3aseS3bseútil |
 | BL082.4.6 | P4b/S4 | UIKit/provaautomação/guardasoverlaycore | Pendente | BL082.4.4/.5; W1integrada | Não atribuído | Controlesreais, predicadocoreúnico, gestoqueentranajanela/hitpress, célulastestadasporfase |
 | BL082.4.7 | P4b/S6 | Dissolve legado com faixaoráculonova e divergênciasdeveredito declaradas | Pendente | BL082.4.10 | Não atribuído | NÃO alterar invalid-dissolve-transition.expected/hashantigo; fixturesnovas/pinpiloto e contraexemploalphaStraightUNSUPPORTED_ALPHA; registrarexpansãodecontrato |
 | BL082.4.8 | P4b/perf | Custo dos dois decks/splats | Pendente | BL082.4.4 | Não atribuído | Medição própriacomlockperformance, não inferirbenefíciodeteste funcional |
@@ -2349,3 +2349,10 @@ independente da integração serão registrados por head. Refuse fechado/F064 pr
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
 | BL082.4.25 | S3a / handles cauda | Dica da câmera de saída subestima o reparo quando seu fim já está fora do clipe | Pendente — diagnosticado na PR66, não corrigido | BL082.4.24 | Coordenador / dono de S2 | cameraIn40,câmera60,shot48,after6: +6 não resolve, +34 resolve. Validar reparo suficiente e registrar divergência sem regravar corpus da origem. Admissão permanece segura; erro é na dica. Relatório S3a §3. |
+
+PR66, integração33323a2: Mac nativo core1666/0/7(65resultados), lib605 inclusa,
+transições170/corpus10/X5/baseline1; preserve170/10/5/1 e desktopFX80. Fmt/check/
+clippy-all-targets/no-run/build exit0, tree semGPUI/wry e status limpo. Não é
+workspace executado/Windows verde ou prova de runtime/GPU/origem/UI física.
+Revisão independente Windows integrada permanece pendente; código core igual a934.
+Coordenador iniciou só pesquisa de arquivos da S2; implementação S2 não foi iniciada.
