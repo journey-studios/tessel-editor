@@ -836,3 +836,8 @@ compartilhado contam uma vez. Custo de imagem ou soma total não representável 
 inclusive com orçamento `u64::MAX`, antes de mudar slots; a conta de eviction também é verificada. Continua **sem** admissão pública (`Refuse`): os
 testes usam a admissão oculta `Accept` somente em `crates/render/tests`. Plano, mutantes, limites e os patches do
 coordenador: [p4b-s2-host-resource-report.md](../migration/p4b-s2-host-resource-report.md).
+
+H foi aprovada internamente pela R2 Windows emd7c52b7 (código05f37da, testesfe14cfc):
+render76, core216/10/5/8/1 isolado/preserve e gates de compilação0. Export Windows10/12
+só por shasum de BL167.3; Mac8a489bf12/12 é prova separada do caminho antigo. R/S2A,
+pixels de transição e todas as superfícies de produto de F064 continuam pendentes.

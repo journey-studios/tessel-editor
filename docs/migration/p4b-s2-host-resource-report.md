@@ -2,8 +2,7 @@
 
 Backlog **BL082.4.4**, fatia H (T10/T18 do plano canônico). Branch `feat/p4b-s2h-host-resources`, base `main`
 `17d03933c3092acfac99850f88aa81e8f07288b3` (PR71/C0b integrada). Plano e contrato fixados **antes** do código:
-[p4b-s2-host-resource-plan.md](p4b-s2-host-resource-plan.md). Status: **implementado, a validar** (revisão independente,
-rechecagem Windows final pendente após R1 condicional em19c5ea1; Mac e regressão `scene_export` com runtime concluídos em8a489bf; ver §14).
+[p4b-s2-host-resource-plan.md](p4b-s2-host-resource-plan.md). Status: **H interna aprovada, com limites por plataforma** (R2 Windows emd7c52b7, Mac por head; ver §17).
 
 ## 1. Contrato final
 
@@ -299,8 +298,8 @@ continuam separados por plataforma e satisfazem a regressão com ferramentas rea
 Não instalar shim nem excluir essas falhas para declarar Windows verde.
 
 R1 relatou20/23 mutantes mortos, com O3/O4 (custo individual) e A3 (validate do prepare)
-sobreviventes. A lista de IDs narrada aparenta outra contagem: conferir logs na R2, sem
-normalizar números por suposição. Não herdou os30 do autor. O achado de contexto de campos
+sobreviventes. Auditoria de logs na R2:24 IDs,21 mortos e3 sobreviventes (O3/O4/A3), não20/23;
+os3 estão fechados em R2. Não herdou os30 do autor. O achado de contexto de campos
 corresponde ao reforço05f37da, que a R1 não revisou; não promover seu aceite para essa fonte.
 
 ## 16. Fechamento dos controles de custo e guarda de validação
@@ -322,3 +321,54 @@ passaram; fmt/diff-check0. H agora tem28 testes (10 mapas+18 slots). Os gates Ma
 scene_export12 de8a489bf pertencem à mesma produção05f37da; não foram repetidos após uma
 mudança só de teste/docs. Rechecagem Windows do contexto05f37da, O3/O4/A3 e dos docs ainda
 pendente. Produto P e Refuse fechado; runtime de transição/R/S2A não habilitados.
+
+## 17. Aceite independente Windows R2 emd7c52b7
+
+**H interna aprovada**, código05f37da e testesfe14cfc. Condições1–3 da R1 cumpridas.
+R2 leu AGENTS, skill, plano e docs; não mudou arquivos permanentes. Core/media/desktop/
+fixtures/runtime/Cargo/scripts byte-idênticos à main c5400bb; árvore limpa após restaurações.
+
+| Gate Windows | R2 emd7c52b7 |
+|---|---|
+| fmt/diff-check, check workspace, clippy all-targets -Dwarnings, --no-run e build | exit0 |
+| Render: lib/flow/mapas/slots/seam | 16/4/10/18/28 =76; 0 falhas |
+| Core isolado EXPECT0 e preserve EXPECT1 | 10/5/8/216/1 nos dois perfis |
+| Tree core | sem gpui/wry |
+| scene_export real com REQUIRE_RUNTIME=1, serial | 10/12; duas falhas shasum de BL167.3 |
+
+As duas falhas de áudio Windows são Command::new("shasum") NotFound em scene_export.rs:605
+/:835, após criar WAV com FFmpeg e antes de qualquer export/loader. Arquivo igual à main.
+A condição4 de prova em ambiente completo é satisfeita no Mac pelos12/12 em8a489bf,
+**não** por uma execução Windows dessas variantes. Sem shim, exclusão ou alvo10/12 verde.
+
+Mutantes R2 executados, todos compilados e restaurados por bytes/SHA/mtime, com controles
+mapas10/slots18 verdes após cada um:
+
+| ID | Alteração | Resultado |
+|---|---|---|
+| O3 | custo individual sempre Some | slots16 passam/2 falham |
+| O4 | <= no limite2^64 | slots17/1 |
+| O5 | só tirar is_finite | sobrevive equivalente: comparação < já recusa inf/NaN |
+| A3 | sem validate em prepare | slots17/1 |
+| X1 | toda estrutura culpa ambos | slots17/1 |
+| X2 | nunca ambos | mapas9/1 e slots17/1 |
+| X3 | sem field pointer | slots17/1 |
+| X4 | sem contexto primary | slots17/1 |
+| X5 | estrutura other culpa primary | slots17/1 |
+| X6 | papel other tratado como Primary | slots17/1 |
+| X7 | volta ao comportamento anterior a05f37da | slots17/1 |
+
+Auditoria **de logs** R1 (%TEMP%/rev73/mut/summary.txt), não execução R2:24 IDs,21 mortos,
+3 sobreviventes (O3/O4/A3), agora fechados. R2 não herdou os30 do autor. Logs R2 em
+%TEMP%/rev73b,287KB. Fontes e hashes restaurados, sem processos próprios ou resíduos.
+
+Ressalva cosmética vinculada a BL082.4.4: used_by vazio numa entrada inválida produz
+mensagem `used by: ` e contexto com lista vazia, sem inventar nó. Não bloqueia; não foi
+alterado para evitar mudar código aprovado. Falhas de tabela sem índice e de camada ficam
+sem atribuição, conforme contrato. Atribuição estrutural é de prepare; os três mappers
+só consultam union_of, sem validação estrutural geral, e isso continua explícito.
+
+Aceite é do host interno. Refuse/F064 P, R e S2A não habilitados; sem workspace global,
+core completo novo, GPU, desempenho, UI física, áudio ouvido, origem ou pixel de transição.
+Os resultados Mac continuam do coordenador, não execução da R2. O fechamento seguinte
+muda somente docs e não herda uma alegação de runtime Windows12/12.
