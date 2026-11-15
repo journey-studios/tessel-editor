@@ -45,22 +45,22 @@ recusado e só 94 (`+34`) aceita. Fica fora porque muda o campo `camera` da caud
 | E02 upsert | `…upsert_keeps_the_id…`, `…changes_only_the_fields_it_names`, `…explicit_id_that_is_not_the_one_on_the_cut…`, `…look_where_a_transition_is_expected…` |
 | E03 resize/params/easing | `resize_changes_the_window…`, `…resize_that_does_not_fit…`, `…parameters_are_typed…`, `…linear_curve_keeps_the_intensity…`, `…easing_that_is_not_known…`, `…parameter_the_catalog_does_not_have…` |
 | E04 hidden/remove | `hidden_true_is_written_and_hidden_false…`, `removing_the_last_transition…`, `…only_transition_of_a_bare_layer…`, `removing_one_transition_keeps_the_order…`, `…transition_that_is_not_there…` |
-| E05 no-op/vazio/ida e volta | `edit::…no_op_is_judged_on_typed_values…`, `…empty_batch_and_a_batch_that_undoes_itself…`, `adding_a_transition_and_removing_it_again…`; executor `a_no_op_batch_changes_no_revision…` |
-| E06 atomicidade, lote único, undo | `edit::a_batch_of_looks_and_transitions_lands_whole…`, `…candidate_the_importer_refuses_leaves…`; executor `a_batch_of_looks_and_transitions_is_one_revision_and_one_undo_entry`, `undo_and_redo_walk_a_sequence…` |
-| E07 dry-run | `edit::a_dry_run_gives_the_summary…`, executor `a_dry_run_reports_the_change_and_writes_nothing` |
+| E05 no-op/vazio/ida e volta | `edit::…no_op_is_judged_on_typed_values…`, `…empty_batch_and_a_batch_that_undoes_itself…`, `adding_a_transition_and_removing_it_again…`; executor `a_no_op_batch_changes_no_revision…`; regressões de grafia numérica na lib e no executor (.26) |
+| E06 dry-run | `edit::a_dry_run_gives_the_summary…`, executor `a_dry_run_reports_the_change_and_writes_nothing` |
+| E07 atomicidade, lote único, undo | `edit::a_batch_of_looks_and_transitions_lands_whole…`, `…candidate_the_importer_refuses_leaves…`; executor `a_batch_of_looks_and_transitions_is_one_revision_and_one_undo_entry`, `undo_and_redo_walk_a_sequence…` |
 | E08 `base_revision` | executor `an_edit_built_on_an_old_revision_is_refused_whole` |
 | E09 ids (.15) | `…generated_id_never_collides…`, `…explicit_id_cannot_reuse…`, `…id_differing_only_by_case…`, `two_new_transitions_in_one_batch…` |
 | E10 quotas | `…batch_past_the_ceiling…` (lib e executor), `…count_limit_is_the_importers…` |
 | E11 regras do importador | `every_rule_of_the_window_is_the_importers…`, `…ops_are_strict_about_what_they_read`, `…typed_ops_round_trip…` |
-| E12 .24 | `edit_problems::a_camera_entered_past_its_end…`, `one_frame_past_the_end…`, `…entered_too_early…`, `both_faults_are_reported…`, `refuse_reads_the_same_frames…`, `…window_with_no_frames_before_the_cut…` |
-| E13 localização | `every_sentence_of_the_table_is_reached_by_a_rule`, `a_problem_reads_in_three_languages…`, `the_three_templates…`, `…defensive_sentences…`, `a_code_outside_the_table…`, `…projection_of_a_whole_refusal…` |
+| E12 .24 | `edit_problems::a_camera_entered_past_its_end…`, `one_frame_past_the_end…`, `…entered_too_early…`, `both_faults_are_reported…`, `refuse_reads_the_same_frames…`, `…window_with_no_frames_before_the_cut…`; projeção nas três línguas em `a_problem_reads_in_three_languages_without_a_hole_and_english_is_the_importers_text` |
+| E13 orçamento | `transition_edits_report_the_candidate_budget_and_undo_restores_it`: oito looks + mistura, dry-run/remove/undo e respostas list/inspect |
 | E14 predicado | `window_guard::*` (5) |
-| E15 `errors[]` | `…edit_error_carries_the_problems…`, executor `a_refusal_names_every_problem_in_english…` |
+| E15 gesto | executor `a_gesture_cannot_carry_a_transition_op`; op recusada preserva último legal |
 | E16 política preservada | executor `the_policy_survives_every_transition_edit…`; `admission_tests` (existentes); `edit_budget` inalterado |
 | E17 processo real | `public::a_real_headless_process_refuses_the_transition_ops_and_keeps_its_session` |
 | E18 catálogo/plano públicos | `public::the_transition_ops_through_the_executor_are_refused…` (catálogo = 3 looks, `scene.fx.frame` sem `transition`) |
 | E19 shot removido/encurtado | `edit::a_shot_that_goes_away_or_shrinks_is_refused_by_the_importer…` |
-| E20 gesto | executor `a_gesture_cannot_carry_a_transition_op` |
+| E20 contrato e dependências | F064/relatório por superfície e `cargo tree` sem GPUI/wry; errors[] coberto em edit_problems e executor |
 
 ## 5. Gates (Windows nativo, Git Bash + `./scripts/cargo`, sem `CARGO_TARGET_DIR`/lane/clean/gc)
 
@@ -170,3 +170,62 @@ independente Windows do head integrado segue pendente. Nenhuma alegação de pro
 Logs pequenos e summary.json em `~/.cache/tessel-pr66-mac-20261114/`, com HEAD e
 exit por comando. O clone terminou limpo em `33323a2`. Nenhum target-dir, lane,
 clean/gc ou limpeza de arquivos alheios foi usado.
+
+## 11. Revisão independente Windows R1
+
+R1 não encontrou bloqueante no escopo interno em `33323a2`: fmt/check/clippy/
+no-run/build passaram, transições170 debug/preserve/release, lib604, desktop508;
+core1663/2 (os dois gizmos da base). Reproduziu processo real, política, gesto,
+limites e reparos de cabeça; 5/7 mutantes próprios mortos. Os dois sobreviventes
+revelaram lacunas de teste de hint es e erro de look em lote misto.
+
+Antes de integrar, o coordenador trata BL082.4.26 (ida e volta numérica altera
+1 para1.0), BL082.4.27 (hints/erro misto/orçamento e precisão do contrato de parse).
+Uma regressão reproduziu .26 por asserção antes do fix. Nenhum dado/corpus é
+alterado; .25 continua só dica conhecida, segura e pendente. A matriz E acima
+foi reconciliada com os números do plano, incluindo E13 orçamento.
+
+Os resultados iniciais e da R1 não são herdados pelo código corretivo. Commits
+publicados com linhas longas não serão reescritos: o squash terá mensagem limpa.
+
+## 12. Correções do coordenador após R1
+
+- .26: regressão reproduzida antes do fix (`p2-red.log`, falha por asserção).
+  Ao terminar o lote, parâmetros presentes que voltam ao valor tipado original
+  conservam sua grafia autorada. Omisso/default escrito continuam distintos;
+  nenhum campo desconhecido é normalizado. Testes incluem outra mudança no mesmo
+  lote e executor dry-run/commit sem revisão ou undo extra.
+- .27: teste de look inválido em lote misto, hint espanhol de ID_MISMATCH e
+  orçamento do candidato ao criar/remover transição e desfazer. E-IDs conciliados
+  com o plano; parser `invalid_op` documentado como anterior à projeção.
+- .28: contagens faltantes/inválidas não viram zero na tradução, que preserva
+  o diagnóstico e sinaliza `untranslated`. Atribuição de erros usa o tipo do alvo,
+  sem atribuir falha de transição nova à remoção de um clip com o mesmo ID.
+  A dica de corte duplicado cita a op real `set_transition`, nas três línguas.
+
+O teste de idiomas inicialmente exigia textos diferentes até para o imperativo
+legítimo "Use linear", comum às três línguas. A asserção foi corrigida para exigir
+distinção na frase de ID_MISMATCH que o mutante da R1 adulterava; as outras dicas
+continuam verificadas quanto a presença e marcadores. Esse primeiro gate falhou
+somente nessa asserção (`p2-core.log`). O ajuste .26/.27 então passou Mac1670/0/7,
+transições172 com preserve_order, clippy workspace e build (`p2-fixed-*.log`).
+
+Depois entraram as regressões de .28: exigem gates próprios, ainda sem herdar a
+R1 nem o primeiro gate corretivo. Nenhum fixture/oráculo foi modificado: só o
+consumidor Rust adapta a dica fixa de TRANSITION_DUPLICATE, exigindo primeiro a
+frase original exata e alterando apenas o nome do comando. Todo outro campo e
+texto continua sendo comparado; não há nova alegação de paridade ou golden.
+
+### Gates das correções b097979
+
+Mac: core completo1673/0/7, transições175 com preserve_order, clippy workspace
+all-targets `-D warnings` e build desktop passaram. Os nove arquivos Rust foram
+conferidos byte a byte entre o checkout do coordenador e a cópia que executou os
+gates; manifesto SHA-256 em `review-fixed-source.json`, junto de
+`review-fixed-{core,preserve,clippy,build}.log`. Os testes correram sobre a base5273
+com o patch próprio; o commit de código `b097979` contém exatamente esses bytes.
+Não se usa o head antigo como prova do patch: os logs e hashes são próprios.
+
+Nenhum fixture foi alterado. Os três comentários automáticos de .28 foram lidos
+e confirmados no código, com regressões específicas. A revisão Windows da R1
+continua atribuída a33323a2; .26–.28 aguardam rechecagem independente do novo código.

@@ -2356,3 +2356,22 @@ clippy-all-targets/no-run/build exit0, tree semGPUI/wry e status limpo. Não é
 workspace executado/Windows verde ou prova de runtime/GPU/origem/UI física.
 Revisão independente Windows integrada permanece pendente; código core igual a934.
 Coordenador iniciou só pesquisa de arquivos da S2; implementação S2 não foi iniciada.
+
+Revisão independente Windows PR66/33323a2: sem bloqueio ao escopo interno,170
+transições debug/preserve/release,lib604,desktop508,gates0;core1663/2gizmosbase.
+Antes do merge, o coordenador corrige os achados pequenos abaixo. Os resultados
+da R1 não serão herdados pelo código corrigido. .25 reproduzido, só dica e não bloqueante.
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL082.4.26 | PR66 R1 / no-op | Ida e volta de intensity inteiro grava float equivalente e gera revisão/undo | A validar — b097979 passou no Mac; rechecagem Windows pendente | BL082.4.5 | Coordenador | 1→0.5→1 preserva grafia/documento/revisão/histórico; float e parâmetro omitido continuam distintos; lote com outra mudança preserva autoria do parâmetro revertido. |
+| BL082.4.27 | PR66 R1 / provas | Lacunas de hint localizado, erro de look em lote misto e orçamento S3a; envelope de parse pouco explícito | A validar — b097979 passou no Mac; rechecagem Windows pendente | BL082.4.5 | Coordenador | Matar mutantes hint espanhol inglês e errors[] anexado à falha de look; provar orçamento com edição de transição; documentar parser invalid_op fora da projeção e reconciliar E-IDs com o plano. |
+| BL082.4.28 | PR66 / bots reproduzíveis | Metadado incompleto apaga diagnóstico; ID reutilizado cruza atribuição clip/transição; hint usa comando camelCase inexistente | A validar — b097979 passou no Mac; rechecagem Windows pendente | BL082.4.5 | Coordenador | Preservar diagnóstico original/untranslated se falta contagem; atribuir erro só à entidade correta após reutilizar ID; hint set_transition nas três línguas e importador, com divergência de vocabulário explícita no consumidor, sem regravar fixture. |
+
+PR66 correções de .26–.28 implementadas em b097979: Mac core1673/0/7,175transições
+preserve,clippy workspace/build0; nove fontes Rust idênticos porSHA aos que rodaram,
+logs próprios review-fixed-*. A R1 de333 não é herdada. Regressão de no-op foi
+reproduzida antes dofix; hints/erro misto/orçamento agora têm asserções próprias.
+Corpus fixado intacto; uma adaptação explícita de vocabulário muda somente o nome
+do comando na dica TRANSITION_DUPLICATE esperada pelo consumidor Rust. Rechecagem
+Windows independente do patch pendente antes do merge; .25 continua não bloqueante.

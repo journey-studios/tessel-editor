@@ -621,6 +621,8 @@ O portão público continua `Refuse`: nenhuma operação abaixo é alcançável 
 - Um erro **da op** (antes do candidato: `UNKNOWN_TRANSITION`, `TRANSITION_ID_MISMATCH`, `UNKNOWN_SHOT`, `TOO_LONG` sem
   espaço…) traz o código do envelope em minúsculas e `details.errors[]` com **um** item cujo `code` é o do nível de
   regra. Sucesso e no-op não ganham `errors` vazio. Erros de **look** não ganham `errors[]` nesta fase (formato igual).
+  Essa projeção começa após o parsing das ops tipadas. Erros de sintaxe/forma no parser,
+  como alias `from_shot_id` ou duração fracionária, continuam `invalid_op` sem `errors[]`.
 - Projeção pura, uma só função do core para biblioteca, dry-run e futuro inspector:
   `directed_scene::fx::project_problem(problem: &RawProblem<'_>, locale: Locale) -> TransitionProblem` e
   `project_issues(issues: &[Issue], locale: Locale) -> Vec<TransitionProblem>`. `Locale` é o do Kit/core (`pt-br`,
@@ -631,7 +633,9 @@ O portão público continua `Refuse`: nenhuma operação abaixo é alcançável 
   ausente, valor inválido de campo livre) usam um texto localizado com `{path}` e levam a razão original, em inglês,
   em `details.reason`.
 - `details.args` (aditivo, **não** substitui `hint`) leva os números e ids de que o texto precisa; é a entrada da projeção.
-  O oráculo do corpus compara só `code`, `message`, `transitionId`, `hint` e `lacks`: nada disso muda.
+  O corpus mantém code/message/transitionId/lacks. Uma adaptação explícita de vocabulário
+  troca apenas `setTransition` por `set_transition` na dica de TRANSITION_DUPLICATE, pois
+  o comando camelCase do piloto não existe neste editor. O fixture fixado não é regravado.
 - Código de recusa de janela de overlay: `transition_window` (nível de **gesto**, ver predicado abaixo), com texto nas
   três línguas na mesma tabela.
 
@@ -682,3 +686,21 @@ build passaram e tree sem GPUI/wry. Windows continua como prova separada: autor9
 relatou dois gizmos da base vermelhos; revisão independente integrada pendente.
 Sem workspace global executado, runtime, GPU, origem ou UI física. F064 produto P,
 Refuse fechado; .25 (dica da cauda) e consumidor do predicado continuam pendentes.
+
+### Correções após a revisão Windows R1
+
+R1 validou o escopo interno em33323a2, com dois gizmos da base vermelhos e sem
+workspace global verde. Achado BL082.4.26: ida e volta numérica no mesmo lote
+(`intensity` autorado1 →0.5→1) escrevia1.0 e gerava revisão/undo. O fechamento
+restaura a grafia anterior de parâmetros presentes cujo valor tipado voltou ao
+original, preservando a distinção entre parâmetro omitido e default escrito.
+Vale também se outra propriedade do mesmo lote mudou; defaults não são apagados.
+As provas novas incluem documento/revisão/histórico em dry-run e commit, hints
+traduzidos, erro de look em lote misto e orçamento candidato ao adicionar/remover
+transição. Esses ajustes ainda precisam de gates próprios; não herdam a R1.
+
+BL082.4.28: contagens obrigatórias ausentes/inválidas na projeção preservam
+mensagem/hint originais e marcam `untranslated`; zero válido não é ausência.
+A atribuição de erro retém o tipo clip/transição ao reutilizar um ID num lote.
+A dica TRANSITION_DUPLICATE usa `set_transition` nas três línguas e no importador,
+com a adaptação de vocabulário do corpus registrada acima.
