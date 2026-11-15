@@ -3,7 +3,7 @@
 Backlog **BL082.4.4**, fatia H (T10/T18 do plano canônico). Branch `feat/p4b-s2h-host-resources`, base `main`
 `17d03933c3092acfac99850f88aa81e8f07288b3` (PR71/C0b integrada). Plano e contrato fixados **antes** do código:
 [p4b-s2-host-resource-plan.md](p4b-s2-host-resource-plan.md). Status: **implementado, a validar** (revisão independente,
-Windows independente pendente; Mac e regressão `scene_export` com runtime concluídos em8a489bf; ver §14).
+rechecagem Windows final pendente após R1 condicional em19c5ea1; Mac e regressão `scene_export` com runtime concluídos em8a489bf; ver §14).
 
 ## 1. Contrato final
 
@@ -29,7 +29,7 @@ Windows independente pendente; Mac e regressão `scene_export` com runtime concl
 - A admissão pública de transições continua `Refuse` (`invalid_bundle`, issue `FX_TRANSITION_NOT_YET`). A admissão
   oculta `Accept` só aparece em `crates/render/tests`.
 
-## 2. Diff e ownership
+## 2. Diff e ownership originais (7e7c83f; reforços em §§11–16)
 
 `git diff --stat 17d03933..7e7c83f` (somente ownership da fatia; arquivos comuns **não** foram editados):
 
@@ -73,16 +73,16 @@ Plano do fixture (bundle público `valid-cut-instance-offsets`, mais uma `crossD
 - Imagem compartilhada conta **uma vez** nos bytes e nos slots (mutante M12).
 - Splat compartilhado sob o mesmo id de nó nos dois decks: 2 usos × 100 = 200 aceito, 199 recusado; bytes do arquivo uma
   vez. Splat só no vizinho e só no primário: 100 aceito / 99 recusado (mutantes M09–M11).
-- Overflow: dois recursos que saturam dão `resource_budget` com `bytes == u64::MAX`; uma imagem enorme não dá a volta na
-  aritmética de eviction (M23, M24).
+- Overflow inicial em7e7c83f: os testes só fechavam o orçamento padrão por saturação. A correção
+  posterior e os controles de orçamento máximo/custo individual estão em §§11–16; M23/M24 são históricos.
 
-## 5. Mutantes (30, um de cada vez)
+## 5. Mutantes do autor em7e7c83f (30 relatados, um de cada vez)
 
 Cada mutante é aplicado por substituição exata de texto na árvore de trabalho, roda os dois alvos novos
 (`scene_host_union_maps` + `scene_host_union_slots`, `--no-fail-fast`), é revertido por `git checkout --` e a restauração é
 conferida pelo **SHA-256** do arquivo, com `mtime` tocado. Nenhum `RESTORE-HASH-MISMATCH`; a árvore terminou limpa.
 
-**Resultado: 30/30 mortos, 0 sobreviventes.** Uma primeira rodada deu `BUILD-ERROR` em M01–M11 por um `LNK1104`
+**Resultado relatado pelo autor em7e7c83f: 30/30 mortos, 0 sobreviventes; não é prova dos reforços posteriores.** Uma primeira rodada deu `BUILD-ERROR` em M01–M11 por um `LNK1104`
 (exe aberto durante o link, no Windows) e foi **descartada** como "não é morte": a rodada foi interrompida, a árvore
 restaurada (`scene.rs` voltou por `git checkout`), o script ganhou repetição para `LNK1104` e classificação separada
 (`LINK-LOCKED`, `BUILD-ERROR`, `NO-RESULT` nunca contam como morte) e **todos** os 30 foram reexecutados. M29 não se aplicou
@@ -153,11 +153,12 @@ Nenhum dado, fixture, `Cargo.*` ou arquivo comum mudou. Os testes constroem os r
 
 ## 8. Bloqueios e limites honestos na entrega do autor (histórico de 7e7c83f)
 
-- **`scene_export` com runtime bloqueado**: `TESSEL_REQUIRE_RUNTIME=1` faz o alvo falhar (12/12) porque faltam, **nesta
-  máquina**, o FFmpeg/ffprobe no `PATH`, `runtime/dist` e `runtime/node_modules` (o Chrome existe em
-  `C:\Program Files\Google\Chrome`). O guarda funciona como desenhado; **não** contei isso como verde nem como pulo.
-  Instalar FFmpeg está fora da fatia; `./scripts/runtime setup` sozinho não resolve o FFmpeg. Esta evidência fica
-  **pendente** para o coordenador ou para uma máquina com as ferramentas.
+- **Relato de bloqueio do autor, corrigido pela R1:** o alvo com TESSEL_REQUIRE_RUNTIME=1
+  falhou12/12 pelo guarda no ambiente que o autor preparou. Ele atribuiu isso a runtime e
+  FFmpeg ausentes. A R1 encontrou FFmpeg9.0.2 no layout WinGet documentado, executou setup
+  oficial e obteve10/12 com ferramentas reais. A ausência de FFmpeg nesta máquina **não se
+  confirmou**; as duas falhas restantes são NotFound de shasum nos testes de áudio, BL167.3,
+  anteriores aos loaders e com arquivo de teste idêntico à main. Não chamar10/12 de verde.
 - Sem pixel, sem runtime, sem GPU, sem desempenho (nenhum lock de GPU tomado). Sem Windows/Mac independentes: a
   validação aqui é do próprio autor.
 - Admissão pública segue fechada; a S2A e o preflight de intervalo seguem pendentes (R/S2A).
@@ -175,34 +176,12 @@ Nenhum dado, fixture, `Cargo.*` ou arquivo comum mudou. Os testes constroem os r
   sugerir a nota "(a união dos dois decks, S2-H)". Não editei: fora dos docs desta fatia.
 - BL082.4.4: H passa a "implementada, a validar"; R e S2A seguem pendentes.
 
-## 10. Patches literais originais (histórico; integração atual em §11)
+## 10. Arquivos comuns reconciliados pelo coordenador
 
-Aplicáveis com `git apply --unidiff-zero` sobre `17d03933` (verificado com `git apply --check`): `docs/backlog.md`
-(BL082.4.4) e `docs/features/README.md` (F064, F040, F041, F042). `docs/README.md` não precisa de mudança.
-
-```diff
-diff --git a/docs/backlog.md b/docs/backlog.md
-index 9cf806e..dc95e3b 100644
---- a/docs/backlog.md
-+++ b/docs/backlog.md
-@@ -1883 +1883 @@ concreto da S0, sem link para arquivo inexistente nem validação de lib/CLI/UI
--| BL082.4.4 | P4b/S2 | Runtime/renderer/mistura e lifecycle/cache | Em andamento — C0a aceita PR69; C0b validada na PR #71 (R1 4ee9370/f3f1c8c; fechamento Windows/Mac ff39b2e); H/R pendentes | BL082.4.3; S2A também BL082.4.5/S3a | Não atribuído | Cor8bits/alpha declarados, capability, dois splats/leases/contextloss/dispose e pixelsindependentes. C0b: `p4b-s2-c0b-report.md`; nenhum pixel/runtime/renderer. |
-+| BL082.4.4 | P4b/S2 | Runtime/renderer/mistura e lifecycle/cache | Em andamento — C0a aceita PR69; C0b validada na PR #71 (R1 4ee9370/f3f1c8c; fechamento Windows/Mac ff39b2e); H implementada no PR de `feat/p4b-s2h-host-resources` (código `7e7c83f`; a validar por revisão independente, sem Windows/Mac independentes e sem `scene_export` com runtime); R pendente | BL082.4.3; S2A também BL082.4.5/S3a | Não atribuído | Cor8bits/alpha declarados, capability, dois splats/leases/contextloss/dispose e pixelsindependentes. C0b: `p4b-s2-c0b-report.md`; nenhum pixel/runtime/renderer. S2-H: os quatro carregadores do host leem `ScenePlan::resource_union()`; erros com `details.resource`; custo de splat por uso qualificado; somas saturadas; 23 testes novos e 30/30 mutantes mortos; `Refuse` público intacto. Relatório: `p4b-s2-host-resource-report.md`. Bloqueado: `scene_export` com `TESSEL_REQUIRE_RUNTIME=1` (sem FFmpeg/runtime nesta máquina). |
-diff --git a/docs/features/README.md b/docs/features/README.md
-index db30ce4..ade3dc5 100644
---- a/docs/features/README.md
-+++ b/docs/features/README.md
-@@ -59,3 +59,3 @@ Lib V significa testes do modelo demo, não um motor real de edição.
--| F040 | [Recursos da cena no editor](scene-resource-integration.md) | Parcial | V no corpus | V no corpus | Parcial | `scene.resources.*`, `project.import_scenes`, pacote/restauração; integração F041 com mapas verificados; PendingAdoption e claims/cleanup testados no host; claims persistentes sob lease e `recover` provados com dois processos reais na lib (BL111, a validar no head da PR); `scene.resources.claims`/`recover` como jobs em JSONL (`tessel-media` real) e na janela via `op` (BL111.1, a validar; sem botão); falha de gravação após a cópia, aceitar (`Provisional::accept` fallível, último passo transacional), fundir (`transfer` gravado antes) e `claims.json` sem lock fecham-se com falha fechada, e o hash do `recover` é cancelável entre blocos (BL111.2, a validar; dois processos reais e janela própria); descarte fora da UI (`job.discard`, BL094/BL112, a validar; prova nativa e JSONL em [F025](jobs.md)); junção S1+S2 (BL094.3, a validar): o resultado recusado continua dono dos arquivos e das claims até o job `discard` terminar, o aceite do tick é fallível e uma recusa do ledger vai ao job sem aplicar (`job_discard_claims.rs`, dois processos reais, `SIGKILL`); formatos BL077 pendentes  Regressões S2: relatório parcial em cancelamento/falha tardia e cleanup de múltiplas cenas.  Falha de forget propaga relatório parcial; prova nativa repetida23/23.  Contratos de ownership documentados (BL111.5; medição do serviço pendente). Aceite do tick por diário de aceites (BL112.7, a validar): `O(chaves do resultado)`, 0,27–0,33 ms com 10 mil entradas no ledger (debug; era 304–310 ms), `recover` confere `fault` ao esquecer órfãos (BL112.8); provas do diário com dois titulares, `transfer`/`absorb`, import recusado e queda entre rename e remoção; ver "Diário de aceites" Gate final da PR 6 (BL112.10, BL112.11, a validar): qualquer falha de lease da raiz, não só `root_busy`, mantém arquivo e claim e diz o motivo (descarte e `recover`); um cancelamento de `recover` mantém `cancelled` e `undecidedFiles` mesmo com o ledger indisponível, com a falha em `details.claimsFault`. Os 304–310 ms do aceite com 10 mil entradas são do código anterior ao diário (atual: 0,27–0,33 ms). Limite: falha de lease provada de forma dirigida, sem adotante concorrente real.  Portabilidade Windows (BL167.6, PR60): P1 fechado R2/R3; P2 create_dir tratado em2522290, aprovado R3 e integrado89a8401. Windows54claims, Mac51claims+journal13 e demais integrações, check/clippy/build passam; Unix write+seek conferido. Stress/mutantes são da R3f054; sem prova causal NTFS, workspace completo ou nova janela. Espera quente: código0f9d1ab validado no Windows emc66887e (58claims,320/40,gates) e no Mac (55claims,65integrações,gates); cobertura de InvalidInput/identidade e higiene ficam emBL167.6.9. Watchdog do teste de tick/descarte: encerramento por Child próprio após prazo, SIGCONT Unix preservado, BL167.6.10 Mac/Windows15/15 e2mutantes detectados; panic pode levaraté20s para ser relançado após limpar peer; sem mudança de produto. |
--| F041 | [Renderer da cena dirigida](scene-renderer.md) | Parcial | V no corpus | V no corpus | V no subconjunto | `scene.render`, SceneHost, SceneRenderer e SceneSlots; pixels Chrome/WKWebView; R8: host 13/13 e harness 7/7 reconferidos, agente reporta 218 checks nativos em duas execuções com perda forçada; gate global pendente ([relatório](../migration/next-r8-report.md)); S4/BL102: identidade aditiva `asset.identity` em `asset.load`/`asset.state` (runtime, core puro, host dirigido) a validar até a revisão; headless (`SceneRenderer`, BL102b) carimba e confere o eco, a validar; export dirigido F042 em validação  BL102c: teste de substituição21/22 estabilizado por fetch retido; suíte runtime completa 108/108 no head `2c7cf7c` (coordenador, atribuída) e, no head `586a671`, 108/108 numa execução e 107/108 noutra (corrida do teste de vídeo B2, BL128; ver [scene-splat.md](scene-splat.md#revalidação-no-head-586a671-executado-com-proveniência)); Opus final pendente |
--| F042 | [Exportação de cena dirigida](scene-export.md) | V no corpus | V no corpus | V no corpus | V no corpus | `scene.export`/preflight; PlanTimeline, snapshot e FFmpeg; core15/media7/desktop190 reconferidos; R1 reporta render10 com 1080p/4K; CLI/socket/diálogo finais: 23 fases/570 checks; gate global passou; áudio dirigido: F042A; S3 reporta media11/render11; BL109 (a validar no gate): bytes copiados e verificados por hash no job, troca de mesmo tamanho → `resource_changed`, original reescrito durante o job isolado |
-+| F040 | [Recursos da cena no editor](scene-resource-integration.md) | Parcial | V no corpus | V no corpus | Parcial | `scene.resources.*`, `project.import_scenes`, pacote/restauração; integração F041 com mapas verificados; PendingAdoption e claims/cleanup testados no host; claims persistentes sob lease e `recover` provados com dois processos reais na lib (BL111, a validar no head da PR); `scene.resources.claims`/`recover` como jobs em JSONL (`tessel-media` real) e na janela via `op` (BL111.1, a validar; sem botão); falha de gravação após a cópia, aceitar (`Provisional::accept` fallível, último passo transacional), fundir (`transfer` gravado antes) e `claims.json` sem lock fecham-se com falha fechada, e o hash do `recover` é cancelável entre blocos (BL111.2, a validar; dois processos reais e janela própria); descarte fora da UI (`job.discard`, BL094/BL112, a validar; prova nativa e JSONL em [F025](jobs.md)); junção S1+S2 (BL094.3, a validar): o resultado recusado continua dono dos arquivos e das claims até o job `discard` terminar, o aceite do tick é fallível e uma recusa do ledger vai ao job sem aplicar (`job_discard_claims.rs`, dois processos reais, `SIGKILL`); formatos BL077 pendentes  Regressões S2: relatório parcial em cancelamento/falha tardia e cleanup de múltiplas cenas.  Falha de forget propaga relatório parcial; prova nativa repetida23/23.  Contratos de ownership documentados (BL111.5; medição do serviço pendente). Aceite do tick por diário de aceites (BL112.7, a validar): `O(chaves do resultado)`, 0,27–0,33 ms com 10 mil entradas no ledger (debug; era 304–310 ms), `recover` confere `fault` ao esquecer órfãos (BL112.8); provas do diário com dois titulares, `transfer`/`absorb`, import recusado e queda entre rename e remoção; ver "Diário de aceites" Gate final da PR 6 (BL112.10, BL112.11, a validar): qualquer falha de lease da raiz, não só `root_busy`, mantém arquivo e claim e diz o motivo (descarte e `recover`); um cancelamento de `recover` mantém `cancelled` e `undecidedFiles` mesmo com o ledger indisponível, com a falha em `details.claimsFault`. Os 304–310 ms do aceite com 10 mil entradas são do código anterior ao diário (atual: 0,27–0,33 ms). Limite: falha de lease provada de forma dirigida, sem adotante concorrente real. Plano com transição (BL082.4.4, S2-H, a validar): aprovação e mapa cobrem os recursos dos dois decks pela mesma chave (cena do projeto, `assetId`).  Portabilidade Windows (BL167.6, PR60): P1 fechado R2/R3; P2 create_dir tratado em2522290, aprovado R3 e integrado89a8401. Windows54claims, Mac51claims+journal13 e demais integrações, check/clippy/build passam; Unix write+seek conferido. Stress/mutantes são da R3f054; sem prova causal NTFS, workspace completo ou nova janela. Espera quente: código0f9d1ab validado no Windows emc66887e (58claims,320/40,gates) e no Mac (55claims,65integrações,gates); cobertura de InvalidInput/identidade e higiene ficam emBL167.6.9. Watchdog do teste de tick/descarte: encerramento por Child próprio após prazo, SIGCONT Unix preservado, BL167.6.10 Mac/Windows15/15 e2mutantes detectados; panic pode levaraté20s para ser relançado após limpar peer; sem mudança de produto. |
-+| F041 | [Renderer da cena dirigida](scene-renderer.md) | Parcial | V no corpus | V no corpus | V no subconjunto | `scene.render`, SceneHost, SceneRenderer e SceneSlots; pixels Chrome/WKWebView; R8: host 13/13 e harness 7/7 reconferidos, agente reporta 218 checks nativos em duas execuções com perda forçada; gate global pendente ([relatório](../migration/next-r8-report.md)); S4/BL102: identidade aditiva `asset.identity` em `asset.load`/`asset.state` (runtime, core puro, host dirigido) a validar até a revisão; headless (`SceneRenderer`, BL102b) carimba e confere o eco, a validar; export dirigido F042 em validação  BL102c: teste de substituição21/22 estabilizado por fetch retido; suíte runtime completa 108/108 no head `2c7cf7c` (coordenador, atribuída) e, no head `586a671`, 108/108 numa execução e 107/108 noutra (corrida do teste de vídeo B2, BL128; ver [scene-splat.md](scene-splat.md#revalidação-no-head-586a671-executado-com-proveniência)); Opus final pendente. S2-H (BL082.4.4, a validar): `from_root`, `SceneSlots` e `approved_map` percorrem `resource_union()`; um recurso só do deck vizinho deixa de se perder, com `details.resource` nos erros e splat contado por uso qualificado |
-+| F042 | [Exportação de cena dirigida](scene-export.md) | V no corpus | V no corpus | V no corpus | V no corpus | `scene.export`/preflight; PlanTimeline, snapshot e FFmpeg; core15/media7/desktop190 reconferidos; R1 reporta render10 com 1080p/4K; CLI/socket/diálogo finais: 23 fases/570 checks; gate global passou; áudio dirigido: F042A; S3 reporta media11/render11; BL109 (a validar no gate): bytes copiados e verificados por hash no job, troca de mesmo tamanho → `resource_changed`, original reescrito durante o job isolado; S2-H (BL082.4.4, a validar): `resource_map` do export lê a união dos dois decks e o `JobError` carrega `details.resource`, sem prova com runtime nesta máquina |
-@@ -81 +81 @@ Lib V significa testes do modelo demo, não um motor real de edição.
--| F064 | [Transições crossDissolve — contrato e corpus (BL082.4)](fx-transitions.md) | P | P | P | P | Fundações S0/S1a/S1b/S3a internas integradas. C0a aceita PR69; C0b PR71 validada internamente: R1 Windows 4ee9370/f3f1c8c, fechamento Windows/Mac ff39b2e (215 transições, 8 Xestado isolado/preserve, fmt/clippy0). Timing/alignment, raw/amostrado/held, teto20000 e texto4MiB, Xestado com alvo/FOV; 19 classes de falsificação. R1 e Mac completos por head no relatório. Refuse fechado, Rust14/JS13; dois gizmos Windows da base continuam vermelhos, workspace global não executado. Pixels e host/runtime/render/S2A/UI pendentes, sem origem executada/GPU/aceite humano. |
-+| F064 | [Transições crossDissolve — contrato e corpus (BL082.4)](fx-transitions.md) | P | P | P | P | Fundações S0/S1a/S1b/S3a internas integradas. C0a aceita PR69; C0b PR71 validada internamente: R1 Windows 4ee9370/f3f1c8c, fechamento Windows/Mac ff39b2e (215 transições, 8 Xestado isolado/preserve, fmt/clippy0). Timing/alignment, raw/amostrado/held, teto20000 e texto4MiB, Xestado com alvo/FOV; 19 classes de falsificação. R1 e Mac completos por head no relatório. Refuse fechado, Rust14/JS13; dois gizmos Windows da base continuam vermelhos, workspace global não executado. S2-H (BL082.4.4, a validar): os quatro carregadores de recursos do host leem a união dos dois decks, com `details.resource` e custo de splat por uso qualificado ([relatório](../migration/p4b-s2-host-resource-report.md)); admissão pública segue `Refuse`. Pixels e runtime/render/S2A/UI pendentes, sem origem executada/GPU/aceite humano. |
-```
+Os patches originais de7e7c83f foram substituídos pela integração nos próprios arquivos
+comuns: BL082.4.4 e BL167.3 no backlog, F040–F042 e F064 na matriz, e índice dos docs.
+As versões antigas ficam no histórico Git; não aplicar um patch antigo de23 testes/saturação
+ou a alegação de FFmpeg ausente. Estado, atribuição e aceite continuam centralizados no backlog.
 
 ## 11. Integração do coordenador — código 267c659
 
@@ -306,3 +285,40 @@ incluindo processos reais e MP4; não provam parser/blend/runtime de crossDissol
 global e core completo não foram executados nesta rodada; nada de GPU real, desempenho,
 UI física, áudio ouvido ou origem. A revisão Windows começou na fonte19c5ea1 e não é herdada
 pela05f37da sem rechecagem. H interna continua em validação, com produto F064 P e Refuse fechado.
+
+## 15. Revisão independente Windows R1 em19c5ea1
+
+Aprovada com condições apenas para H interna. Gates fmt/check/clippy/no-run/build passaram;
+render73 (lib16/seam28/flow4/mapas10/slots15) e core216/10/5/8/1 em isolado/preserve passaram.
+Core, media, desktop, Cargo, runtime, scripts e fixtures iguais à main c5400bb. Workspace global
+não executado. R1 declarou não ter lido AGENTS/skill; a rechecagem deve cumprir essas leituras.
+
+A R1 encontrou FFmpeg9.0.2 no layout WinGet e preparou o runtime oficial: scene_export real
+10/12, com as duas falhas por shasum de BL167.3, antes dos loaders. Os12/12 Mac em8a489bf
+continuam separados por plataforma e satisfazem a regressão com ferramentas reais no Mac.
+Não instalar shim nem excluir essas falhas para declarar Windows verde.
+
+R1 relatou20/23 mutantes mortos, com O3/O4 (custo individual) e A3 (validate do prepare)
+sobreviventes. A lista de IDs narrada aparenta outra contagem: conferir logs na R2, sem
+normalizar números por suposição. Não herdou os30 do autor. O achado de contexto de campos
+corresponde ao reforço05f37da, que a R1 não revisou; não promover seu aceite para essa fonte.
+
+## 16. Fechamento dos controles de custo e guarda de validação
+
+Commit de testes `fe14cfc14282415de2a7312044c8012612950f8e`, produção idêntica a05f37da.
+Novo módulo individual_cost isola o custo do backdrop: a figura de altura1e-10 custa0 no
+modelo existente. Sem mudar produção, cobre custo infinito com dimensões finitas, custo
+exato2^64 recusado e o maior f64 abaixo dele (2^64−2048) aceito. São sondas de contabilidade
+com metadados tipados, não imagens enormes aprovadas ou alocadas pelo media.
+
+Mac do coordenador: O3 (Some sem guardas) falhou0/2; O4 (<= no limite) falhou1/1;
+A3 (sem validate no prepare) falhou0/1 pela regressão estrutural de05f37da. Todos compilaram,
+fontes voltaram por bytes/SHA e mtime atualizado, e cada controle limpo voltou a passar.
+A nova regressão de contexto também fecha a lacuna A3; não foi necessário mudar produção.
+Logs r1-close-*.log e r1-close-mutants.json no diretório dos gates Mac.
+
+Emfe14cfc: render80 (lib19/flow4/mapas10/slots18/seam29) e clippy render all-targets -Dwarnings
+passaram; fmt/diff-check0. H agora tem28 testes (10 mapas+18 slots). Os gates Mac completos e
+scene_export12 de8a489bf pertencem à mesma produção05f37da; não foram repetidos após uma
+mudança só de teste/docs. Rechecagem Windows do contexto05f37da, O3/O4/A3 e dos docs ainda
+pendente. Produto P e Refuse fechado; runtime de transição/R/S2A não habilitados.

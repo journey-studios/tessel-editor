@@ -48,7 +48,9 @@ A pesquisa de H foi só leitura sobre d5d5dd3: nenhuma prova de loader novo foi 
    { "asset_id": id, "used_by": [{ "deck": "primary|other", "node_id": id }, ...] }.
    Preservar detalhes existentes, sem apagar pointer, expected/got, geração ou backend_code.
    Mensagem também identifica o(s) deck(s), porque o caminho JobError não preservava detalhes.
-   Para recurso compartilhado informar ambos os usos. O contexto acompanha o papel atual
+   Falha de um recurso compartilhado resolvido informa ambos os usos; uma falha estrutural
+   na entrada ou em seu campo informa só o deck daquela tabela. Apenas conflito real da
+   união do core é atribuído aos dois decks por metadados. O contexto acompanha o papel atual
    antes/depois do corte, sem codificar A/B ou from/to como se fossem Primary/Other fixos.
 7. Preservar taxonomia de erro: approved_map mantém ResolveError.code(), não encaminhar
    tudo por core::headless::backend_error, que converteria resource_unknown em render_failed.
