@@ -20,19 +20,20 @@ import * as THREE from 'three';
 
 import {
   MAX_POINT_LIGHTS,
-  arrayAt,
+  SCENE_PLAN_KIND,
+  SCENE_PLAN_VERSION,
+  assertComplete,
+  assertPlanKind,
   integerAt,
   invalid,
   isObject,
   objectAt,
   parseResourceReferences,
   readDeckBody,
+  readRequires,
   stringAt,
 } from './directed-deck.js';
 import { RuntimeError } from './protocol.js';
-
-export const SCENE_PLAN_KIND = 'tessel-scene-plan';
-export const SCENE_PLAN_VERSION = 1;
 
 /**
  * What this runtime executes, spelled as the core's `Capability::as_str`. A plan that requires
@@ -66,7 +67,7 @@ export const DIRECTED_SCENE_CAPABILITIES = {
 };
 
 // The deck reader moved to directed-deck.js (P4b S2-R0) and these names are still read from here.
-export { MAX_POINT_LIGHTS, SPLAT_SIMILARITY_TOLERANCE, splatMatrixFault } from './directed-deck.js';
+export { MAX_POINT_LIGHTS, SCENE_PLAN_KIND, SCENE_PLAN_VERSION, SPLAT_SIMILARITY_TOLERANCE, splatMatrixFault } from './directed-deck.js';
 
 // The camera planes of the origin's runtime (ThreeSceneRuntime: PerspectiveCamera(50, aspect, 0.1, 1000)).
 const NEAR = 0.1;
@@ -95,39 +96,16 @@ export const parseSceneIdentity = (raw, pointer = '/scene') => {
  */
 export const parseDirectedLayer = (layer) => {
   const plan = objectAt(layer?.scene_plan, '/scene_plan');
-  if (plan.kind !== SCENE_PLAN_KIND) {
-    throw invalid('/kind', `expected \`${SCENE_PLAN_KIND}\``);
-  }
-  if (plan.planVersion !== SCENE_PLAN_VERSION) {
-    throw new RuntimeError(
-      'unsupported_plan_version',
-      `Scene plan version ${JSON.stringify(plan.planVersion)} is not supported (this runtime draws ${SCENE_PLAN_VERSION})`,
-      { found: plan.planVersion, supported: SCENE_PLAN_VERSION },
-    );
-  }
+  assertPlanKind(plan);
+  assertComplete(plan);
+  const requires = readRequires(plan, SCENE_CAPABILITIES);
 
-  const unsupported = arrayAt(plan.unsupported, '/unsupported');
-  if (plan.complete !== true || unsupported.length > 0) {
-    // A partial plan is the scene without its light, weather or effects: not the picture.
-    throw new RuntimeError(
-      'unsupported',
-      `The plan declares ${unsupported.length} domain(s) it does not carry; this runtime draws complete plans only`,
-      {
-        domains: unsupported.map((entry) => {
-          const domain = { domain: entry?.domain ?? null, subject: entry?.subject ?? null };
-          // Additive (F060): why a partly supported domain is refused, when the plan says.
-          if (typeof entry?.reason === 'string') domain.reason = entry.reason;
-          return domain;
-        }),
-      },
-    );
-  }
-  const requires = arrayAt(plan.requires, '/requires').map((item, index) => stringAt(item, `/requires/${index}`));
-  const missing = requires.filter((capability) => !SCENE_CAPABILITIES.includes(capability));
-  if (missing.length > 0) {
-    throw new RuntimeError('unsupported', `The plan requires capabilities this runtime does not have: ${missing.join(', ')}`, {
-      missing,
-    });
+  // F064 (P4b S2-R0): a plan with a transition of its own is not one deck. Without `fxTransition` in its
+  // `requires` it would be drawn as its primary deck alone, so it is refused, not ignored. One that does
+  // require it never gets here: this runtime does not have `fxTransition` (SCENE_CAPABILITIES), and the
+  // negotiation above already refused it as `unsupported` with `details.missing: ["fxTransition"]`.
+  if (Object.hasOwn(plan, 'transition')) {
+    throw invalid('/requires', 'a plan with a transition must require `fxTransition`');
   }
 
   // The shape of the deck, from the output to the lights: the reader shared with the neighbour deck of a
@@ -136,7 +114,6 @@ export const parseDirectedLayer = (layer) => {
 
   return { ...deck, references: parseResourceReferences(layer.resources ?? []) };
 };
-
 /**
  * Binds each resource the plan requires to the loaded entry that has exactly its identity.
  * Returns `assetId -> { slot, entry }`. Refusals:

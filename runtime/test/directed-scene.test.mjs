@@ -85,6 +85,32 @@ test('a capability the runtime does not have is named; the ones it has are the c
   assert.deepEqual(DIRECTED_SCENE_CAPABILITIES.resource_identity, ['generation', 'asset_id', 'revision_id', 'content_hash']);
 });
 
+test('a plan with a transition of its own is never drawn as one deck (F064, S2-R0)', () => {
+  // With `fxTransition` in `requires`: this runtime does not have it, so it is `unsupported` and names it.
+  const requiring = twoPlanes({
+    requires: ['camera', 'nodeTransforms', 'imagePlanes', 'straightAlpha', 'opaqueAlpha', 'fxTransition'],
+    extra: { transition: {} },
+  });
+  const missing = refusal(() => parseDirectedLayer(directedLayer(requiring, references())));
+  assert.equal(missing.code, 'unsupported');
+  assert.deepEqual(missing.details.missing, ['fxTransition']);
+
+  // Without it: not ignored and not drawn as its primary alone, but a plan that contradicts itself.
+  for (const transition of [{}, null, 'x', [], { other: {} }]) {
+    const lying = twoPlanes({ extra: { transition } });
+    const error = refusal(() => parseDirectedLayer(directedLayer(lying, references())));
+    assert.equal(error.code, 'invalid_plan');
+    assert.equal(error.details.pointer, '/requires');
+    assert.match(error.message, /must require `fxTransition`/);
+  }
+  // The key is the plan's own: one that is only inherited is no transition (no prototype lookup).
+  const inherited = Object.create({ transition: {} }, Object.getOwnPropertyDescriptors(twoPlanes()));
+  assert.ok(parseDirectedLayer(directedLayer(inherited, references())).planes.length > 0);
+  // An absent key changes nothing (the other tests of this file are the control), and the catalog is untouched.
+  assert.equal(SCENE_CAPABILITIES.includes('fxTransition'), false);
+  assert.equal(SCENE_CAPABILITIES.length, 13);
+});
+
 test('malformed plans name the pointer instead of drawing something', () => {
   const cases = [
     ['/camera/fovDeg', (plan) => { plan.camera.fovDeg = 0; }],

@@ -11,6 +11,9 @@
 import { parseOutputFx } from './output-fx.js';
 import { RuntimeError } from './protocol.js';
 
+export const SCENE_PLAN_KIND = 'tessel-scene-plan';
+export const SCENE_PLAN_VERSION = 1;
+
 /** At most this many lights, the origin's `MAX_SCENE_LIGHTS` (the core refuses more). */
 export const MAX_POINT_LIGHTS = 4;
 
@@ -97,6 +100,58 @@ const matrixAt = (value, pointer) => {
 export const integerAt = (value, pointer) => {
   if (!Number.isSafeInteger(value) || value < 0) throw invalid(pointer, 'expected a non-negative integer');
   return value;
+};
+
+/**
+ * The kind and the version of a plan, before any other field: a plan of a later version may have other
+ * fields, and must be refused as such, not as a malformed one (`ScenePlan::from_json`).
+ */
+export const assertPlanKind = (plan) => {
+  if (plan.kind !== SCENE_PLAN_KIND) {
+    throw invalid('/kind', `expected \`${SCENE_PLAN_KIND}\``);
+  }
+  if (plan.planVersion !== SCENE_PLAN_VERSION) {
+    throw new RuntimeError(
+      'unsupported_plan_version',
+      `Scene plan version ${JSON.stringify(plan.planVersion)} is not supported (this runtime draws ${SCENE_PLAN_VERSION})`,
+      { found: plan.planVersion, supported: SCENE_PLAN_VERSION },
+    );
+  }
+};
+
+/** A partial plan is the scene without its light, weather or effects: not the picture. */
+export const assertComplete = (plan) => {
+  const unsupported = arrayAt(plan.unsupported, '/unsupported');
+  if (plan.complete !== true || unsupported.length > 0) {
+    throw new RuntimeError(
+      'unsupported',
+      `The plan declares ${unsupported.length} domain(s) it does not carry; this runtime draws complete plans only`,
+      {
+        domains: unsupported.map((entry) => {
+          const domain = { domain: entry?.domain ?? null, subject: entry?.subject ?? null };
+          // Additive (F060): why a partly supported domain is refused, when the plan says.
+          if (typeof entry?.reason === 'string') domain.reason = entry.reason;
+          return domain;
+        }),
+      },
+    );
+  }
+};
+
+/**
+ * The plan's `requires`, each one a non-empty string, and refused (`unsupported` + `details.missing`)
+ * when it names a capability that is not in `capabilities`. The caller chooses the list: the
+ * negotiation is not the deck reader's business.
+ */
+export const readRequires = (plan, capabilities) => {
+  const requires = arrayAt(plan.requires, '/requires').map((item, index) => stringAt(item, `/requires/${index}`));
+  const missing = requires.filter((capability) => !capabilities.includes(capability));
+  if (missing.length > 0) {
+    throw new RuntimeError('unsupported', `The plan requires capabilities this runtime does not have: ${missing.join(', ')}`, {
+      missing,
+    });
+  }
+  return requires;
 };
 
 /**
