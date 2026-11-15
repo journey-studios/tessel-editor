@@ -73,3 +73,20 @@ Mac: envelope44/44, prova headless14/14 e janela14/14, fmt e higiene13/13.
 As contagens12/12 acima são da prova anterior; as duas verificações extras
 por superfície são comparações diretas inteiro/metades, sem remover checks.
 Os eventos de tecla, Windows, pixels e áudio ouvido não foram revalidados.
+
+
+## Atualização da base para c9c5fa0
+
+Avanço da main para c9c5fa081a4b09193885b0c4afa91a1fdcc8ecb0 causou novo
+conflito documental. Merge local2455d46 preserva histórico PR69 e BL081;
+BL082.4.29 usa o estado C0a mais recente. Nenhum conflito textual de Rust.
+
+Novo snapshot Mac: fmt/checkalltargets/clippy/no-run/builddesktop+corebins0,
+core1758/0falhas/7ignorados existentes; desktopFX80, atalho16, split5, fades2
+passam. Scene_frames8/8 com TESSEL_REQUIRE_RUNTIME=1; prova semântica
+headless14/14 e janela14/14, higiene13/13. Sem nova execução do workspace
+inteiro, Windows, demais532testesdesktop ou desempenho nesta atualização;
+as contagens anteriores continuam ligadas aos seus snapshots.
+
+Logs: tessel-pr68-main-c9c5fa0 no SSD de coordenação, summary.json e logs de
+cada comando. Atualização sujeita ao OpenQodex pré-push; nenhum merge remoto.

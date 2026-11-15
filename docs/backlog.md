@@ -2754,3 +2754,12 @@ históricos PR69 e BL081 preservados. Código mesclado sem conflito textual.
 Validação proporcional do novo snapshot em execução: core completo, desktop
 scene_fx e split/atalho/fades, scene_frames com runtime obrigatório, build
 desktop/corebins e prova semântica14+14. Sem merge remoto autorizado.
+
+
+PR68, basec9c5fa0 integrada em2455d46: todos os13gates da rodada Mac passaram.
+Core1758/0/7ignorados; desktopFX80, atalho16, split5, fades2 e scene_frames8
+com TESSEL_REQUIRE_RUNTIME=1; builddesktop/corebins0; prova14/14headless e
+14/14janela; higiene13/13. Evidências duráveis em tessel-pr68-main-c9c5fa0
+no SSD de coordenação, summary.json e logs por comando. Windows, workspace
+executado inteiro e desempenho não foram repetidos. Recibo OpenQodex do
+atualizado antes do push; merge na main continua sem autorização.
