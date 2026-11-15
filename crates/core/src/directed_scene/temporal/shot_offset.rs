@@ -37,7 +37,8 @@ pub struct ShotReach {
     pub head_instance: i64,
     /// Frames of the instance after the shot's last one.
     pub tail_instance: i64,
-    /// Frames of the camera clip before the shot's first one (`cameraInFrame`).
+    /// Contiguous real frames before the shot: `cameraInFrame` up to the clip's exclusive end,
+    /// zero beyond it, or `i64::MAX` when its length is unknown.
     pub head_camera: i64,
     /// Frames of the camera clip after the shot's last one.
     pub tail_camera: i64,

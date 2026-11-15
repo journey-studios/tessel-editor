@@ -1879,7 +1879,7 @@ concreto da S0, sem link para arquivo inexistente nem validação de lib/CLI/UI 
 |---|---|---|---|---|---|---|
 | BL082.4.1 | P4b/S0 | Contrato F064 e corpus independente dissolve, fonte e X analítico | Concluído — somente S0 oráculo/contrato | BL082.4; setupPythonBL167.5 parcial | Coordenador / Cursor Sonnet5.5 | R3 independente aprova e4078ff no Windows; corpus167/analítico39 normal e-O, reprodução byte a byte e Mac equivalente. Produto lib/JSONL/UI permanece P; detalhes no relatório S0 §12. |
 | BL082.4.2 | P4b/S1a | Documento/janela/validação tipada e política de admissão fechada | Concluído no escopo interno; R2 aprova a752f0a | BL082.4.1/.11 concluídos | Coordenador / revisão Windows | R2:61transition/25scene_fx/80GPUI, processo headless real, perfis serde e mutantes dinâmicos/scanner/domínio. fmt/check/clippy/no-run/build passam. Core1525ok/2gizmosbase, workspaceexecutado/Mac pendentes. Produto P; IDgerado fica BL082.4.15/S3. |
-| BL082.4.3 | P4b/S1b | Avaliação dos dois decks e plano, recursos por assetId/used_by sem ambiguidade | A validar — PR63 em revisão independente | BL082.4.2 integrada | Coordenador / Cursor Sonnet5.5 | Head73775c3:106transições/10corpus/594lib/80GPUI e gates Windows relatados; produtoP. Mac106+10+baseline debug/release passam após correção de dados(.16), três kitsXparciais(.17) em revisão. SemS2/S3a iniciadas. |
+| BL082.4.3 | P4b/S1b | Avaliação dos dois decks e plano, recursos por assetId/used_by sem ambiguidade | Concluída no escopo interno — R3 Windows4199af0 | BL082.4.2 integrada | Coordenador / Cursor Sonnet5.5 | Head73775c3:106transições/10corpus/594lib/80GPUI e gates Windows relatados; produtoP. Mac106+10+baseline debug/release passam após correção de dados(.16), três kitsXparciais(.17) em revisão. SemS2/S3a iniciadas. |
 | BL082.4.4 | P4b/S2 | Runtime/renderer/mistura e lifecycle/cache | Pendente | BL082.4.3; S2A também BL082.4.5/S3a | Não atribuído | Cor8bits/alpha declarados, capability, dois splats/leases/contextloss/dispose e pixelsindependentes |
 | BL082.4.5 | P4b/S3 | Ops/gestos/inspector/persistência ecoreparser/nós | Pendente | BL082.4.3 | Não atribuído | Atomicidade/revisão/undo, módulossemcrescerarquivosproibidos; dividirS3aseS3bseútil |
 | BL082.4.6 | P4b/S4 | UIKit/provaautomação/guardasoverlaycore | Pendente | BL082.4.4/.5; W1integrada | Não atribuído | Controlesreais, predicadocoreúnico, gestoqueentranajanela/hitpress, célulastestadasporfase |
@@ -2273,10 +2273,15 @@ quadros anteriores reais. Ausência de comprimento conhecido conserva comportame
 
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
-| BL082.4.24 | PR63 / handles | cameraIn além do fim conta cabeça inexistente e use/refuse aceita frames presos | A validar — Mac passou; rechecagem Windows pendente | BL082.4.3 | Coordenador | Regressões49/60 com câmera48 recusam TRANSITION_NO_HANDLES, hold admite e prende47; 47/48 conservam cabeça real e não prendem o vizinho. Testar/core/Mac e rechecagem Windows nova antes do merge; acervoS0 intocado. |
+| BL082.4.24 | PR63 / handles | cameraIn além do fim conta cabeça inexistente e use/refuse aceita frames presos | Admissão validada R3 Windows4199af0; dica pendente S3a | BL082.4.3 | Coordenador | Regressões49/60 com câmera48 recusam TRANSITION_NO_HANDLES, hold admite e prende47; 47/48 conservam cabeça real e não prendem o vizinho. Testar/core/Mac e rechecagem Windows nova antes do merge; acervoS0 intocado. R3:114/10/1 EXPECT0/1,admission4,clippy/tree/check,4mutantes. Dica60/48sugere6masfaltam12; corrigir antes deS2A. |
 
 BL082.4.24: produção69c5143; Mac896 core1596/0/7,114/10/1 preserve,GPUI80,
 check passam. Clippy apontou err-expect só no teste; forma da asserção ajustada
 emffa1f9c, produção idêntica,114/10/1+clippyworkspace/build passam. Windows do
 limite ainda pendente; não herdarR2d2. Mainf00c4ed/PR64 incorporada, conflito
 somente histórico do backlog, preservado. F064P/Refuse, semS2/S3a iniciadas.
+
+S1b aprovada R3 em4199af0: domínio interno/gates/mutantes, Refusefechado/F064P.
+Fechamento só documentação e comentário normativo, sem tokens executáveis alterados.
+Pendências preservadas:.17consumidorX/.19errosbuilder/.20C/.21plano20000/.23contador
+primário/.24quantidade da dica emS3a antesdeS2A. Não é produto/render/aceitehumano.

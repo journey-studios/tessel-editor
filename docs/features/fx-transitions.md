@@ -100,7 +100,7 @@ shader e **nunca** é guardado. Saída = `mix(mix(a,b,progress), mix(a,b,shaped)
 O deck vizinho tem **três relógios** (D17): instância e câmera **presas** de forma **independente**
 (`clamp(inicioInst + Δ, 0, durInst − 1)`, `clamp(camIn + Δ, 0, quadrosCam − 1)`, mais `heldInstance`/`heldCamera`) e o
 **relógio de cena** (luz com cintilação) no **quadro real da edição** `f`, também em `hold`. Disponibilidade: cabeça
-de instância = `instanceStart`; de câmera = `cameraIn`; caudas = `max(0, total − (início + comprimento))`. Um clipe `shot`
+de instância = `instanceStart`; de câmera = `cameraIn` se `cameraIn <= quadrosCam`, senão0 (ou `MAX` sem comprimento conhecido); caudas = `max(0, total − (início + comprimento))`. Um clipe `shot`
 que **encosta** na borda do plano segura o quadro mais próximo; um clipe no meio não entra (`shotClipFrame`).
 `handles`: `use` e `refuse` exigem quadros **reais** de instância **e** de câmera, contados à parte (e `refuse` lê
 exatamente como `use`); só `hold` aceita congelados.
@@ -498,3 +498,12 @@ O acervo S0 não foi alterado; gates/review do novo código são separados da ap
 Limite .24: Mac896 passou core1596/0/7,114transições/10corpus/1baseline,GPUI80,check.
 Após ajustar só a forma da asserção do teste, ffa1f9c passou114+10+1,clippy/build.
 A rechecagem Windows do limite é separada da R2 de d2c1861 e continua pendente.
+
+R3 Windows aprovou4199af0 no escopo interno:114/10/1 emEXPECT0/1,admission4,
+clippycore/tree/check, mais temporal20/handles21/plan27/splat15/oracle3 e4mutantes.
+A cabeça contígua corrigida é contrato Tessel mais estrito que a fórmula inicial do plano.
+Limite conhecido antes deS3a: em cameraIn além do fim, details.lacks.camera/dica ainda usa
+before-head_real e pode subestimar a extensão necessária (60/48/before6 sugere6, faltam12)
+ou ser conservadora (49/48 sugere6,1basta). A admissão recusa corretamente; corrigir diagnóstico
+emBL082.4.24/S3a antes da ativação pública. Não se abriu o portão nem se mudou esse diagnóstico
+neste fechamento documental. Build/GPUI/release não foram reexecutados pelaR3.

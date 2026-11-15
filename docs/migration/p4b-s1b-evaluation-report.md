@@ -236,3 +236,17 @@ A falha pré-correção na admissão está preservada. A cabeça no end exclusiv
 dele, use/refuse recusa, enquantohold prende câmera e deixa instância rodando. Fontes/fixtureS0
 intactas, versões/capacidades/portão não mudaram. R2 aprova d2, não este patch: rechecagem
 Windows específica de .24 ainda pendente. Não há workspace global, runtime/pixel/GPU novo.
+
+## 10. Fechamento da R3 Windows
+
+R3 independente aprovou4199af0, sem bloqueio interno. Executou114transições/10corpus/1baseline
+emEXPECT0/1,2testesdiretos,admission4,fmt/clippycore/tree/checkworkspace, temporal20/handles21/
+plan27/splat15/oracle3. Quatro mutantes head_camera morreram: original semlimite, <emvezde<=,
+<=total+1 e else retornandototal. Fontes restauradas porSHA, árvore limpa.
+Não repetiu build/no-run/GPUI80/release/workspaceglobal, nem GPU/origem/performance.
+
+O fechamento atual corrige o texto normativo no plano/F064 e o comentário do campo, sem
+mudar código executável/testes. Dica de NO_HANDLES tem quantidade inadequada paraoffset além
+do fim: permanece emBL082.4.24 paraS3a, antes da ativação pública. A recusa/admissão está
+validada; não se encerra a dívida de diagnóstico. Contexto do construtor ficaem.19/S2.
+F064 produtoP, Refuse fechado, semS2/S3a executadas nestaPR.

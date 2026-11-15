@@ -417,7 +417,7 @@ da edição**; só instância e câmera são presas. Com `hold`, a luz do vizinh
 
 **Disponibilidade de quadros reais** (em `i64`, `max(0, …)` semântico, 6.1), por plano:
 
-- cabeça de instância = `instanceStart`; cabeça de câmera = `cameraIn`;
+- cabeça de instância = `instanceStart`; cabeça de câmera = `cameraIn` se `cameraIn <= camFrames`, senão0; `MAX` quando o comprimento não é conhecido (contrato Tessel corrigido na S1b, mais estrito que a fórmula inicial);
 - cauda de instância = `max(0, instDur − (instanceStart + len))`;
 - cauda de câmera = `max(0, camFrames − (cameraIn + len))`.
 
