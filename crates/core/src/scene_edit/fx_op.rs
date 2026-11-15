@@ -8,6 +8,7 @@ use crate::directed_scene::fx::{self, FxScope};
 use crate::time::Ratio;
 
 use super::error::{EditError, INVALID_OP};
+use super::fx_transition::{self, TransitionOp};
 
 /// The most ops one `scene.fx.edit` batch (or one gesture update) may hold. WHY a budget: each op
 /// locates its clip and copies at most one curve, so the work of a batch is bounded only when its
@@ -191,6 +192,10 @@ pub enum FxOp {
         clip: String,
         seed: Option<u32>,
     },
+    /// One of the five transition ops (`set_transition`, `resize_transition`,
+    /// `set_transition_param`, `set_transition_hidden`, `remove_transition`; F064, S3a). Same
+    /// batch, same candidate, same undo entry as the looks.
+    Transition(TransitionOp),
 }
 
 const SHAPES: &str = r#"{ "op": "add_clip", "effect": "vignette", "start_frame": 0 | "start_time": seconds, "duration_frames"?, "track"?, "id"?, "params"?, "scope"?: "output|shot:<id>" }, { "op": "remove_clip", "clip" }, { "op": "set_param", "clip", "param", "value" }, { "op": "set_field", "clip", "field": "start_frame|duration_frames|fade_in_frames|fade_out_frames", "value" }, { "op": "set_hidden", "clip", "hidden" }, { "op": "set_scope", "clip", "scope": "output|shot:<id>" }, { "op": "key_param", "clip", "param", "frame", "value"?, "easing"? }, { "op": "set_key_easing", "clip", "param", "frame", "easing" }, { "op": "remove_key", "clip", "param", "frame" }, { "op": "move_key", "clip", "param", "from", "to" }, { "op": "shift_keys", "clip", "param"?, "delta" }, { "op": "scale_keys", "clip", "param"?, "anchor", "num", "den" }, { "op": "clear_keys", "clip", "param"? } or { "op": "set_seed", "clip", "seed": uint32|null }"#;
@@ -427,13 +432,21 @@ impl FxOp {
                     seed,
                 })
             }
-            other => Err(invalid(format!("`{other}` is not an fx op"))),
+            other => match TransitionOp::from_json(other, map) {
+                Some(parsed) => parsed.map(Self::Transition),
+                None => Err(invalid(format!(
+                    "`{other}` is not an fx op; the transition ops are {}",
+                    fx_transition::SHAPES
+                ))),
+            },
         }
     }
 
-    /// The clip an op targets (for an add, the explicit ID if there is one).
+    /// The clip an op targets (for an add, the explicit ID if there is one). A transition op
+    /// targets no clip (see `TransitionOp::transition_id`).
     pub fn clip_id(&self) -> Option<&str> {
         match self {
+            Self::Transition(_) => None,
             Self::AddClip(add) => add.clip.as_deref(),
             Self::RemoveClip { clip }
             | Self::SetParam { clip, .. }

@@ -23,6 +23,7 @@ use super::error::{DOCUMENT_MISMATCH, EditError};
 use super::fx_keys::{self, Batch, FxWork, clip_key_total};
 use super::fx_op::{AddClip, ClipField, FxOp, check_fx_batch_len};
 use super::fx_scope::{scope_refusal, set_scope};
+use super::fx_transition::{attach_problems, pointer_of};
 
 /// What one op did.
 #[derive(Debug, Clone, PartialEq)]
@@ -31,8 +32,12 @@ pub struct FxChange {
     /// `add_clip`, `remove_clip`, `set_param`, `set_field`, `set_hidden` or `set_scope` (the key
     /// ops have their own names, see `fx_keys`).
     pub action: &'static str,
+    /// Empty for a transition op.
     pub track: String,
+    /// The clip, or the transition (`transition` says which), the op touched.
     pub clip: String,
+    /// The id of the transition a transition op touched; `None` for every look op.
+    pub transition: Option<String>,
     /// What was set (a parameter or field name), when the op sets something.
     pub target: Option<String>,
     pub before: Option<Value>,
@@ -46,6 +51,13 @@ pub struct FxChange {
 
 impl FxChange {
     pub fn to_json(&self) -> Value {
+        if let Some(transition) = &self.transition {
+            return json!({
+                "index": self.index, "action": self.action, "transition": transition,
+                "target": self.target, "before": self.before, "after": self.after,
+                "noop": self.noop, "warnings": self.warnings,
+            });
+        }
         json!({
             "index": self.index, "action": self.action, "track": self.track, "clip": self.clip,
             "target": self.target, "before": self.before, "after": self.after, "noop": self.noop,
@@ -110,6 +122,10 @@ pub(super) fn command_code(code: &str) -> Option<&'static str> {
         fx::UNKNOWN_KEYFRAME => "unknown_keyframe",
         fx::FX_TRANSITION_NOT_YET => "fx_transition_not_yet",
         fx::FX_LIMIT => "fx_limit",
+        fx::UNKNOWN_TRANSITION => "unknown_transition",
+        fx::TRANSITION_ID_MISMATCH => "transition_id_mismatch",
+        fx::TRANSITION_TOO_LONG => "transition_too_long",
+        fx::WRONG_FAMILY => "wrong_family",
         _ => return None,
     })
 }
@@ -164,7 +180,7 @@ fn find_clip(work: &Value, id: &str) -> Option<(usize, usize)> {
     })
 }
 
-fn every_id(work: &Value) -> Vec<String> {
+pub(super) fn every_id(work: &Value) -> Vec<String> {
     let mut ids = Vec::new();
     for track in tracks(work) {
         ids.push(text_of(track, "id").to_string());
@@ -174,10 +190,19 @@ fn every_id(work: &Value) -> Vec<String> {
                 .map(|clip| text_of(clip, "id").to_string()),
         );
     }
+    // Transitions share the namespace of tracks and clips (BL082.4.15): a generated or explicit id
+    // must not collide with one, whichever the op that asks.
+    ids.extend(
+        work.pointer("/fx/transitions")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .map(|transition| text_of(transition, "id").to_string()),
+    );
     ids
 }
 
-fn fresh_id(taken: &[String], prefix: &str) -> String {
+pub(super) fn fresh_id(taken: &[String], prefix: &str) -> String {
     (1..)
         .map(|n| format!("{prefix}-{n}"))
         .find(|candidate| !taken.contains(candidate))
@@ -207,7 +232,7 @@ pub(super) fn clip_ref(work: &Value, id: &str) -> Result<(usize, usize), EditErr
         .ok_or_else(|| EditError::new(UNKNOWN_CLIP, format!("no fx clip `{id}`")).with_id(id))
 }
 
-fn bad_id(id: &str) -> Option<EditError> {
+pub(super) fn bad_id(id: &str) -> Option<EditError> {
     id_problem(id).map(|(code, message)| EditError::new(code, message).with_id(id))
 }
 
@@ -238,7 +263,8 @@ pub fn apply_fx_measured(
         return (Err(error), FxWork::default());
     }
     let mut batch = Batch::default();
-    let outcome = run_batch(scene, ops, limits, &mut batch);
+    let outcome =
+        run_batch(scene, ops, limits, &mut batch).map_err(|error| attach_problems(error, ops));
     (outcome, batch.work)
 }
 
@@ -305,6 +331,7 @@ fn run_batch(
         .filter_map(|(index, clip)| {
             find_clip(&work, clip)
                 .map(|(track, slot)| (*index, format!("/fx/tracks/{track}/clips/{slot}")))
+                .or_else(|| pointer_of(&work, clip).map(|pointer| (*index, pointer)))
         })
         .collect();
     let reread = scene.reimport(work, limits);
@@ -370,6 +397,7 @@ fn run_op(
     span: EditSpan<'_>,
 ) -> Result<FxChange, EditError> {
     match op {
+        FxOp::Transition(transition) => transition.apply(work, index, span),
         FxOp::AddClip(add) => add_clip(work, add, index, span),
         FxOp::SetScope { clip, scope } => set_scope(work, clip, scope, index, span),
         FxOp::RemoveClip { clip } => {
@@ -384,6 +412,7 @@ fn run_op(
                 tracks.remove(track_slot);
             }
             Ok(FxChange {
+                transition: None,
                 index,
                 warnings: Vec::new(),
                 action: "remove_clip",
@@ -464,6 +493,7 @@ fn run_op(
                 }
             }
             Ok(FxChange {
+                transition: None,
                 index,
                 warnings: Vec::new(),
                 action: "set_hidden",
@@ -625,6 +655,7 @@ fn add_clip(
     let written = Value::Object(clip);
     clips.push(written.clone());
     Ok(FxChange {
+        transition: None,
         index,
         warnings: Vec::new(),
         action: "add_clip",
@@ -705,6 +736,7 @@ fn set_param(
             .collect()
     };
     Ok(FxChange {
+        transition: None,
         index,
         warnings,
         action: "set_param",
@@ -755,6 +787,7 @@ fn set_field(
         }
     }
     Ok(FxChange {
+        transition: None,
         index,
         warnings: Vec::new(),
         action: "set_field",

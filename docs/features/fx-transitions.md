@@ -527,9 +527,11 @@ O portão público continua `Refuse`: nenhuma operação abaixo é alcançável 
 
 - **Sem aliases.** Os nomes são os do documento (`fromShotId`…); `from_shot_id` é recusado como campo desconhecido.
   Inteiros são estritos (`12.0`, `12.5`, texto e booleano são recusados na leitura da op como `invalid_op`).
-- **Upsert existente** conserva `id` e todo campo omitido, inclusive membros desconhecidos de `params`. `params` faz
+- **Upsert existente** conserva `id` e todo campo omitido, inclusive os membros desconhecidos da transição (os de
+  `params` são recusados pelo importador, `UNKNOWN_PARAM`, então não existem num documento válido). `params` faz
   *merge* só das chaves enviadas. Um valor **igual** ao do documento (comparado já tipado: `1` e `1.0`) não reescreve a
-  grafia autorada. Um `id` explícito diferente do existente é recusado (`TRANSITION_ID_MISMATCH`): o Tessel **não**
+  grafia autorada; um parâmetro que o documento **não** grava (lê-se como o padrão) e que a op envia com o valor padrão é
+  uma mudança: o padrão passa a estar escrito. Um `id` explícito diferente do existente é recusado (`TRANSITION_ID_MISMATCH`): o Tessel **não**
   segue a spec de origem aqui (ela ignora o `id` do comando com uma nota).
 - **Upsert novo** grava `id`, `effect`, `fromShotId`, `toShotId`, `durationFrames`, `alignment`, `handles`, `easing` e
   `params` completos (`curve`, `intensity`) com os padrões `center`, `hold`, `easeInOutCubic`, `smooth`, `1`; a duração
@@ -548,7 +550,11 @@ O portão público continua `Refuse`: nenhuma operação abaixo é alcançável 
   troca `track`/`clip` por `transition` e mantém `index`, `action`, `target`, `before`, `after`, `noop`.
   O ponteiro usado para atribuir problemas a ops é `/fx/transitions/<i>`.
 - **Gesto de look.** `scene.fx.gesture.*` recusa uma op de transição com `gesture_op_not_allowed` e mensagem própria,
-  sem mudar candidato, intenção nem revisão. Não existe gesto de transição (S3b/S4b).
+  sem mudar candidato, intenção nem revisão (a recusa fica registrada como a mais recente, como a de qualquer op de
+  gesto recusada). Não existe gesto de transição (S3b/S4b).
+- **`UNKNOWN_SHOT` de op.** Um shot que a edição não tem recusa o `set_transition` com a lista dos shots; a frase nomeia
+  a transição pelo `id` pedido ou, na falta dele, pelo que seria gerado (`tr-<n>`), pois num corte com shot ausente não
+  existe transição.
 - **N/A:** troca de efeito (só existe `crossDissolve`); `keys`/escopo de nó de transição (`FX_TRANSITION_KEYS_NOT_YET`);
   comando de editar shots (P5/BL082.5, ver abaixo).
 
@@ -585,10 +591,17 @@ A cabeça real contígua exige `cameraIn >= before` **e** `cameraIn <= total` (c
 são **independentes** e o reparo de cada uma é diferente. `details.lacks[]` ganha, só quando a falta de fim existe,
 `cameraEnd = cameraIn − total` (junto de `cameraIn` e `cameraFrames`); `camera` passa a ser **só** a falta de início,
 `max(0, before − cameraIn)`, e `instance` não muda. Sem `cameraEnd` o formato e os valores continuam byte a byte os do
-corpus. A dica oferece o reparo de cada falta: (início) acrescentar quadros antes de `cameraIn` e subir `cameraIn`;
-(fim) estender o clipe de câmera em `cameraEnd` quadros no fim. Exemplos: `cameraIn 60`, câmera 48, `before 6` →
+corpus. A dica oferece o reparo de cada falta: (início) estender o clipe de câmera em `camera` quadros antes do início
+(`extend its camera clip … by N frames before its start`); (fim) estender o clipe de câmera em `cameraEnd` quadros no fim. Exemplos: `cameraIn 60`, câmera 48, `before 6` →
 `cameraEnd 12` (acrescentar 6 **não** basta); `49/48` → `cameraEnd 1`; `48/48` válido; `cameraIn < before` → só a falta
-de início (estender o fim não resolve); `before 0` não exige cabeça. A admissão **não** é enfraquecida.
+de início (estender o fim não resolve); as duas faltas juntas (`cameraIn 4`, câmera 3, `before 6`: `camera 2`,
+`cameraEnd 1`) pedem os dois reparos, nenhum basta sozinho; `before 0` não exige cabeça, **nem** a falta de fim (uma
+janela alinhada ao início não lê nada antes do corte). A admissão **não** é enfraquecida.
+
+**Análogo conhecido, não corrigido aqui (BL082.4.25, proposto):** a cauda do plano que sai tem a mesma subestimativa.
+Com `cameraIn 40` e câmera de 60 quadros num plano de 48, a janela pede 6 quadros após o fim e a dica manda estender o
+clipe em 6, mas é preciso `cameraIn + duração + after − total = 34`; estender 6 continua recusado. É outra dívida (o
+campo `camera` da cauda e a linha do oráculo que o compara) e fica fora desta entrega.
 
 ### Predicado de janela (§9.6, sem consumidor ainda)
 

@@ -44,6 +44,7 @@ mod fx_intent;
 mod fx_keys;
 mod fx_op;
 mod fx_scope;
+mod fx_transition;
 mod op;
 mod reference;
 mod value;
@@ -82,6 +83,7 @@ pub use fx_intent::{FxIntent, GESTURE_INTENT_MISMATCH, GESTURE_TARGET_MISMATCH, 
 pub use fx_keys::FxWork;
 pub use fx_keys::STATIC_UNDER_KEYS;
 pub use fx_op::{AddClip, ClipField, FxOp, MAX_FX_BATCH_OPS, check_fx_batch_len, parse_fx_batch};
+pub use fx_transition::{SetTransition, TransitionOp};
 pub use op::{EditOp, parse_batch};
 pub use reference::PropertyRef;
 pub use value::{PropertyValue, ValueKind};
