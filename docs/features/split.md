@@ -111,6 +111,9 @@ Contrato detalhado, controles e limites na [entrega BL081.5](../migration/clip-s
   Habilitado só quando `split_availability()` é `Ready`; desabilitado traz `disabled_reason` coerente.
 - **CLI da janela:** nó `timeline.split` (`icon_button`, ação `invoke`), `state.playhead/clip/target/frame`; `enabled` e
   `disabled_reason` vêm da mesma regra que o botão e o `invoke`.
+- **Teclado (BL081.1.1, a validar):** **Cmd+B** no macOS, **Ctrl+B** nas demais plataformas, no foco do editor. Contrato abaixo;
+  relatório em [clip-split-shortcut-report.md](../migration/clip-split-shortcut-report.md). Headless: **N/A** (entrada de
+  apresentação; a edição pela lib/processo continua `clip.split`).
 
 ## Limites conhecidos
 
@@ -119,7 +122,9 @@ Contrato detalhado, controles e limites na [entrega BL081.5](../migration/clip-s
 - O Ken Burns e a órbita são recalculados em `f64` (propriedades do inspetor são `f64`); o tempo de fonte e a divisão do tempo
   são exatos.
 - A direita herda o nome do clipe (não é renomeada).
-- Sem atalho de teclado, sem corte por clique na timeline e sem corte em lote (a op é por clipe).
+- Sem corte por clique na timeline e sem corte em lote (a op é por clipe; o atalho corta só o **único** clipe selecionado).
+- O atalho vale só com o foco dentro do `Workstation` (ver abaixo). Não cobre o cabeçalho, a WebView nativa (BL044) nem teclas
+  fora da janela do editor; a tecla física sobre a imagem não tem prova.
 - Selecionar de volta o clipe original depois de undo/redo não é automático (seleção é de sessão).
 
 ## Evidências
@@ -158,6 +163,51 @@ BL081.2 (validado Mac/Windows): `split_unsupported`, `SplitBlock::FadeCrossesCut
 o JSON inteiro de BL081.15 não tem mais onde aparecer porque não há recusa por fade. Evidências no relatório do BL081.2.
 
 
+## Atalho de teclado (BL081.1.1 — validado no dispatcher Mac/Windows)
+
+Implementação em `crates/desktop/src/workstation/split_shortcut.rs`; testes em `split_shortcut_tests.rs`. **Sem regra de edição nova:**
+a tecla lê `split_availability()` **no instante da tecla** e, se `Ready`, executa o mesmo `Command::SplitClip` que o botão
+(`split_shortcut::split_command`), `ui invoke timeline.split` e a op `clip.split` usam, por `Workstation::dispatch` →
+`execute`. Um corte = uma entrada de histórico ("Split clip"); undo/redo, envelope (`fade_window`) e PCM são os do fluxo atual.
+
+| Plataforma | Tecla (`Keystroke::parse`) | Rótulo (tooltip e nó) |
+|---|---|---|
+| macOS | `cmd-b` | ⌘B |
+| demais (Windows, Linux) | `ctrl-b` | Ctrl+B |
+
+Uma única linha por plataforma (`shortcut(Platform)`) define o que o listener casa e o texto exibido: o tooltip do botão
+(`Cortar … (Ctrl+B)`), habilitado ou desabilitado, e o campo `shortcut` do nó `timeline.split` (`keystroke`, `label`, `scope`,
+`repeat`, `blocked_in`) vêm dela, sem árvore paralela. A casa é **exata**: tecla `b` e exatamente o modificador da plataforma
+(Shift/Alt/AltGr, a tecla do outro sistema ou `b` sozinho não cortam).
+
+**Mecanismo.** Listener `on_key_down` do elemento raiz `Workstation` (contexto de teclas `Workstation`), sem `KeyBinding` global:
+o GPUI entrega a *action* antes dos listeners e ela não carrega `KeyDownEvent::is_held`, então não distinguiria a tecla mantida.
+Sem registro global não há o que duplicar com duas janelas e o `main.rs` não muda. Keymap inspecionado: não existe `cmd-b`/`ctrl-b`
+no Kit (Input: a/c/x/v/z/y/f/h e setas; Root: c/tab) nem no app (`ctrl-shift-d`, `ctrl-shift-i`); um teste fixa a ausência.
+
+**Escopo de foco** (definido, não ampliado): vale com o foco do teclado **dentro do `Workstation`** (biblioteca, timeline,
+inspetor, cromo do monitor). Fora do escopo, por desenho:
+
+- cabeçalho e janela sem o `Workstation` focado (outra janela do editor não recebe a tecla);
+- a **WebView nativa**, que pinta acima do GPUI e pode não encaminhar teclas (BL044) — sem suporte global nem captura fora do editor;
+- campos do Kit: com o foco em `Input`, `NumberInput`, `TimeField`, `Select`, `Combobox`, popover, diálogo ou sheet a tecla não é
+  tratada (digitar nunca vira corte e o campo mantém seus atalhos de edição). `Workflow::has_dialog` (arquivo/importar/pacote/
+  exportar, tarefas, histórico de desempenho) também bloqueia.
+
+**Quando não corta** (e nada muda: documento, revisão, histórico, seleção, playhead): sem seleção; playhead na borda ou fora do
+clipe (`Blocked`); foco em campo; diálogo; outra tecla ou modificador; caractere digitado (`prefer_character_input`).
+
+**Repetição.** Uma tecla mantida (`is_held`) é consumida e não corta, mesmo que o playhead entre no clipe durante a espera
+(playback) ou que o foco chegue ao editor com a tecla já pressionada. Um novo toque é um novo corte. `is_held` vem do sistema
+(Windows: bit de repetição do `lparam`); o comportamento no macOS não foi observado aqui.
+
+Evidência atual: 16 testes em `split_shortcut_tests.rs` (dispatcher real do GPUI com `simulate_keystrokes`/`simulate_event`, política
+parametrizada para Mac/outras, duas janelas, Input do Kit com foco, diálogo, repetição, equivalência botão/invoke/tecla/lib com fade
+atravessado em grade 30000/1001, planos e PCM bit a bit). O dispatcher do GPUI não é teclado físico; a linha Cmd+B foi executada no Mac
+e Ctrl+B no Windows inicial. Os dois testes novos (Select e Root/EditorShell com
+painel descendente) passaram no Mac e Windows. Gates finais fmt/check/clippy/
+no-run/build e os testes16+5+2 passaram nas duas plataformas.
+
 ## Ajustes finais da revisão BL081.2
 
 Rampa herdada ancorada na própria borda (frames=0) acompanha essa borda ao aparar,
@@ -185,3 +235,20 @@ real recusa schema3 (unsupported_schema found3/supported2). No Windows, o
 harness foi o equivalente PowerShell preservado nos logs, sem executar o
 Python versionado. Sem pixels, ponteiro, áudio ouvido ou desempenho. Ver
 [fechamento técnico](../migration/clip-split-fades-report.md#10-fechamento-técnico-macwindows).
+
+
+Revisão do atalho: nenhuma objeção bloqueante. Além de Input, há teste do Select
+focado e da estrutura Root/EditorShell/header com foco num painel descendente.
+A checagem de colisões inclui atalhos que começam com Cmd+B/Ctrl+B (chords).
+Teclas irrelevantes retornam antes da consulta de foco e do plano do core.
+No backend macOS, o keydown normal usa NSEvent.isARepeat; é leitura de código,
+não observação de tecla física. Um corte bloqueado deixa a tecla propagar;
+um eventual beep do sistema não foi observado nem é declarado resolvido.
+
+
+Fechamento BL081.1.1: revisão independente sem bloqueios, achados pequenos
+corrigidos e snapshot final validado no Mac/Windows pelo dispatcher GPUI.
+Sem tecla física, pixels, áudio ouvido, desempenho ou foco dentro da WebView.
+O atalho de apresentação é N/A na lib e no headless; a edição continua sendo
+o mesmo clip.split. Lote/seleção múltipla continuam pendentes em BL081.1.2.
+[Relatório e hashes finais](../migration/clip-split-shortcut-report.md#fechamento-técnico-macwindows).
