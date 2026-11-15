@@ -1,5 +1,8 @@
 # BL081.2 — cortar dentro de fades preservando o envelope
 
+> Estado atual: validado tecnicamente Mac/Windows, commit local8901553.
+> A seção10 consolida a entrega final; os estados das seções1–9 são históricos.
+
 Base: `main` e3c20cb7c8d3e32692719a9c71adb1b65eb3c392 (PR #57 + P4b de outra frente). Executor único,
 worktree T3 limpo na base. Este relatório começa pelo **contrato** (escrito antes do código) e termina
 com as evidências; o backlog e a matriz comuns são atualizados só pelo coordenador (ver "Propostas").
@@ -351,3 +354,69 @@ A delegação remota não suporta worktree; a validação Windows foi iniciada
 em thread com worktree próprio, baseE3, sem usar a raiz paralela. Gates
 Windows ainda pendentes; nenhuma prova Mac os substitui. As atualizações
 documentais desta seção são posteriores ao pacote Windows, sem mudar código.
+
+
+## 10. Fechamento técnico Mac/Windows
+
+A coordenação conferiu a entrega da [thread Windows](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:e963aec64addab81b44ee91455f0554a397a7f04faea764577e76c517101d3bc)
+e encerra BL081.2 como **validado tecnicamente no Mac e Windows**, dentro das
+superfícies abaixo. Código no commit local89015537be6630e1bcc2f98aa76c66778e70b068;
+sem push, PR ou merge desta entrega. As seções anteriores descrevem snapshots
+históricos; as pendências de revisão/Windows nelas foram superadas por esta seção.
+
+### Identidade e compatibilidade
+
+Worktree Windows isolado na basee3c20cb7c8d3e32692719a9c71adb1b65eb3c392;
+HEAD inalterado, limpo antes de aplicar o pacote. ZIP75357bytes, SHA256
+cf9d4b358591ec3dc6cb7042a80f833aebc8dda7dc0c2b2cb4b4b47cef765f9f;
+patch SHA2563d10d987889c59d0336e31169754c678a9f03ae94a1d2da1dd7df1dea324c9c0.
+Apply/check/reverse-check exit0; 36/36 arquivos iguais ao manifesto, sem CR,
+reconferidos depois dos gates. Fontes de crates/ e scripts/ locais continuam
+iguais ao pacote por SHA256; só os registros documentais evoluíram.
+
+O tessel-headless da base E3 foi compilado **antes** do apply. Ao abrir o
+documento schema3, saiu com1 e unsupported_schema, found3/supported2. Esta é
+execução do leitor antigo, fechando a lacuna antes verificada apenas por fonte.
+Não ocorreu o erro de shader BL081.4 nesta rodada; isso não fecha esse item geral.
+
+### Gates e superfícies finais
+
+| Evidência | Mac | Windows |
+|---|---|---|
+| fmt/check workspace alltargets/clippy-Dwarnings/no-run/build desktop e headless | exit0 | exit0 |
+| Core completo | 1587 passam, 7 ignorados existentes | não executado |
+| Desktop completo | 516 passam | não executado |
+| Envelope / split / audio_phase / audio_fades / envelope unit | core completo inclui os alvos | 44 / 23 / 15 / 8 / 15 passam |
+| GPUI split / audio_fades | 5 / 2 passam | 5 / 2 passam |
+| Media export, FFmpeg real | 11 passam | 11 passam |
+| Processo headless real | 12/12, script Python versionado | 16/16, equivalente PowerShell |
+| Janela própria, comandos semânticos | 12/12, script Python versionado | 27/27, equivalente PowerShell |
+
+Windows: os dois casos simétricos (fade-in/corte32 e fade-out/corte16) mantêm
+inteiro==metades por bytes WAV; editar um lado conserva a região herdada do
+outro e muda a borda editada. Undo/redo, salvar schema3 com fade_window e
+reabrir mantêm ambos os resultados. Os14WAVs são idênticos entre headless e
+janela. Na janela, select/playhead/timeline.split habilitado/invoke executam;
+a janela fechou com window.close e não deixou processos próprios.
+
+### Evidências e limites
+
+Mac: logs final-mac/ no SSD de coordenação. Windows: conjunto
+bl0812-windows-validation-20261114 no backup externo do Computador, com
+SUMMARY.md, logs/summary.txt, logs/NN-*.log e proof/split-fades-proof.ps1.
+Sem Python instalado, o script .py versionado **não rodou no Windows**;
+o equivalente PS5.1 está nos artefatos, ainda fora do repo (BL081.2.9).
+Os contornos de BOM no stdin e ConvertFrom-Json foram do harness.
+
+O primeiro apply foi interrompido pelo shell, mas completou; reverse-check
+e hashes posteriores confirmam os bytes. Um git status final na raiz Windows
+pode ter atualizado o stat do índice; não se alega preservação byte a byte
+desse índice. Nenhuma fonte da raiz foi editada. Worktree de validação sem
+staging/commit/push/PR; backups anteriores preservados.
+
+Não houve pixels, ponteiro, áudio ouvido ou desempenho. O WAV é mix offline;
+GPUI não substitui a janela. Workspace completo não foi executado no snapshot
+final, apenas compilado por no-run; claims e runtime JS não foram repetidos.
+Promoção conservadora a schema3 em metades curtas continua documentada em
+BL081.2.7, sem alegar decisão humana de produto. A implementação do atalho
+BL081.1.1 é outra entrega; nenhum gate acima valida teclado.

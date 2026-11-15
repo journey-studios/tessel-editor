@@ -1603,11 +1603,11 @@ correções de revisão, não gate do código corrigido.
 
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
-| BL081.1 | Corte / expansão futura | Corte em lote e atalho de teclado | Pendente — fora da fatia atual | BL081 | — | Definir seleção/múltiplos e um undo; não inferir autorização para implementar só por estar no backlog |
-| BL081.2 | Corte / envelope | Preservar o envelope ao cortar dentro de fades visuais e de áudio | Implementado, em revisão — provas Mac reportadas; Windows pendente | BL081, BL142, BL081.5 | Coordenação; implementação Cursor Sonnet 5.5 em worktree isolado | Preservar quadro e PCM antes/depois do corte, inclusive grades fracionárias, fades sobrepostos, múltiplos cortes e salvar/reabrir/undo/redo; documentar mover/trim/edição de fades sem âncoras obsoletas; não reintroduzir aproximação; overflow/dado inválido continuam com recusa tipada. Lib, processo headless e UI compartilham a regra. Sem transições/crossfade de P4b, desempenho, batch ou atalhos |
+| BL081.1 | Corte / expansão | Corte em lote e atalho de teclado | Parcial — atalho iniciado em BL081.1.1; lote pendente | BL081 | Coordenação | Atalho usa o comando atual e disponibilidade do core, sem interceptar edição de texto; lote exige definir seleção/múltiplos e um undo, continua sem implementação |
+| BL081.2 | Corte / envelope | Preservar o envelope ao cortar dentro de fades visuais e de áudio | Validado tecnicamente Mac/Windows — commit local8901553; sem publicação | BL081, BL142, BL081.5 | Coordenação; implementação Cursor Sonnet 5.5 em worktree isolado | Preservar quadro e PCM antes/depois do corte, inclusive grades fracionárias, fades sobrepostos, múltiplos cortes e salvar/reabrir/undo/redo; documentar mover/trim/edição de fades sem âncoras obsoletas; não reintroduzir aproximação; overflow/dado inválido continuam com recusa tipada. Lib, processo headless e UI compartilham a regra. Sem transições/crossfade de P4b, desempenho, batch ou atalhos |
 | BL081.3 | Documentação | Incluir clip.split no vocabulário F015 | Corrigido pela coordenação | BL081 | Coordenador | Linha no contrato project-creation aponta F017 e argumentos absolutos; sem mudar outras operações |
 | BL081.4 | Windows / cache | Artefato debug GPUI reaproveita CARGO_MANIFEST_DIR de W: após mudança para E:; shader não abre | Pendente | BL167.4 | — | Invalidar por caminho ou incorporar HLSL sem tocar cache global; provar janela de debug em outro checkout. Executor atualizou mtime do build.rs, sem diff, apenas como contorno |
-| BL081.5 | Áudio / continuidade do corte | Preservar fase em grades fracionárias e faixas de mix arbitrárias | Validado Windows/Mac — integração na [PR #57](https://github.com/journey-studios/tessel-editor/pull/57) | BL081, BL016 | Cursor Sonnet5.5 Windows; revisão e integração coordenador | Código46506ac. Mac core1455/7 ignorados existentes/0 falhas, desktop4+2, export13 e provas headless/janela. Windows77 testes dirigidos,0falhas/0skips e fmt/check/clippy/no-run/build exit0. WAVs de mix/corte/blocos/export idênticos; PCM fracionário legado corrigido intencionalmente. Desempenho BL081.7 e fades atravessados BL081.2 continuam pendentes. [Relatório](migration/clip-split-audio-continuity-report.md) |
+| BL081.5 | Áudio / continuidade do corte | Preservar fase em grades fracionárias e faixas de mix arbitrárias | Validado Windows/Mac — integração na [PR #57](https://github.com/journey-studios/tessel-editor/pull/57) | BL081, BL016 | Cursor Sonnet5.5 Windows; revisão e integração coordenador | Código46506ac. Mac core1455/7 ignorados existentes/0 falhas, desktop4+2, export13 e provas headless/janela. Windows77 testes dirigidos,0falhas/0skips e fmt/check/clippy/no-run/build exit0. WAVs de mix/corte/blocos/export idênticos; PCM fracionário legado corrigido intencionalmente. Desempenho BL081.7 continua pendente; fades atravessados BL081.2 validados tecnicamente Mac/Windows no commit8901553. [Relatório](migration/clip-split-audio-continuity-report.md) |
 | BL081.6 | Revisão / atomicidade | Split inválido liquidava gesto de slider aberto antes de recusar | Corrigido e validado Windows/Mac | BL081 | Coordenador | Preflight antes de liquidar gesto; recusa mantém gesture/history/revision/documento. Regressão falha no código entregue e passa corrigida; split válido mantém política de liquidação existente |
 
 Controles de revisão:22 testes no alvo clip_split —20 antigos passam e2 novos
@@ -2058,8 +2058,8 @@ infere aprovação apenas do relato de necessidade do executor.
 
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
-| BL081.2.1 | Revisão / compatibilidade | Schema2 já era aceito por leitores anteriores que ignoram fade_window; risco de perda silenciosa do envelope | Corrigido no código, regressão Mac24/24; leitor antigo conferido por fonte | BL081.2 | Coordenador / revisão independente | Leitor anterior com schema2 recusa documento com novo envelope; documentos sem envelope não mudam de schema sem necessidade; prova contra leitor anterior, não somente rejeição de v1 |
-| BL081.2.2 | Revisão / contrato | Confirmar trim, edição de um lado, reset e fim/cancelamento de gesto sem alterar indevidamente a outra rampa | Corrigido e validado Mac pelo executor; nova revisão independente pendente | BL081.2 | Coordenador / revisão independente | Invariantes do contrato executadas com dois fades sobrepostos, seis taxas e várias sequências; janela obsoleta não ressuscita, undo/redo restaura estado |
+| BL081.2.1 | Revisão / compatibilidade | Schema2 já era aceito por leitores anteriores que ignoram fade_window; risco de perda silenciosa do envelope | Corrigido e validado Mac/Windows; leitor antigo executado recusa schema3 | BL081.2 | Coordenador / revisão independente | Leitor anterior com schema2 recusa documento com novo envelope; documentos sem envelope não mudam de schema sem necessidade; prova contra leitor anterior, não somente rejeição de v1 |
+| BL081.2.2 | Revisão / contrato | Confirmar trim, edição de um lado, reset e fim/cancelamento de gesto sem alterar indevidamente a outra rampa | Corrigido, revisado e validado Mac/Windows | BL081.2 | Coordenador / revisão independente | Invariantes do contrato executadas com dois fades sobrepostos, seis taxas e várias sequências; janela obsoleta não ressuscita, undo/redo restaura estado |
 | BL081.2.3 | Revisão / manutenção | Teste novo clip_split_envelope.rs tem1168linhas apesar da separação pedida | Corrigido —22casos preservados em cinco módulos, mais2regressões | BL081.2 | Coordenador | Separar cenários em módulos focados, mantendo os22casos e controles sem duplicar fixtures ou relaxar asserts |
 
 
@@ -2093,7 +2093,7 @@ Revisão independente do modelo corrigido é o próximo gate. Sem commit/push/PR
 
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
-| BL081.2.5 | Portabilidade / prova | Executar o modelo corrigido de envelope e regressões no Windows | Em andamento — thread Windows isolada na baseE3 | BL081.2.2 e revisão do novo modelo | Coordenação / Cursor Sonnet5.5 | Fontes conferidas por hash, build/testes dirigidos e provas semânticas em checkout isolado; preservar a árvore Windows paralela e seus backups; não herdar gates do BL081.5 |
+| BL081.2.5 | Portabilidade / prova | Executar o modelo corrigido de envelope e regressões no Windows | Validado Windows — baseE3 + patch3d10d987; coordenação conferiu entrega | BL081.2.2 e revisão do novo modelo | Coordenação / Cursor Sonnet5.5 | Fontes conferidas por hash, build/testes dirigidos e provas semânticas em checkout isolado; preservar a árvore Windows paralela e seus backups; não herdar gates do BL081.5 |
 
 
 ### BL081.2 — revisão do modelo corrigido, ajustes finais
@@ -2112,7 +2112,7 @@ e prova nativa final em execução, sem herdar binários apagados pelo mbx.
 |---|---|---|---|---|---|---|
 | BL081.2.6 | Revisão F1 | Âncora de áudio na borda seguia regra de trim diferente da nativa | Corrigido, envelope44/44 | BL081.2.2 | Coordenador | Rampa frames0 segue borda aparada, seis taxas e undo/redo/reabrir; âncora externa continua fixada |
 | BL081.2.7 | Revisão F2 | Fixação preventiva pode elevar cortes fora de rampa a schema3 | Limitação documentada e testada | BL081.2.2 | Coordenador | Manter independência após editar outro fade até48quadros; explicitar exemplo60/fade5/corte30 e que leitores antigos recusam novo documento |
-| BL081.2.8 | Revisão F4 | Prova externa, ausência de edição de fade no teste GPUI, janela não inspecionável e prévia de trim divergente | Corrigido no código, gates finais em execução | BL081.2 | Coordenador | Script versionado, teste GPUI com região de rampa não editada/undo/redo, fade_window no nó do clipe e recusa igual em plan_trim/trim_clip |
+| BL081.2.8 | Revisão F4 | Prova externa, ausência de edição de fade no teste GPUI, janela não inspecionável e prévia de trim divergente | Corrigido e validado Mac/Windows — gates finais e provas semânticas | BL081.2 | Coordenador | Script versionado, teste GPUI com região de rampa não editada/undo/redo, fade_window no nó do clipe e recusa igual em plan_trim/trim_clip |
 
 
 ### BL081.2 — gates Mac finais e thread Windows
@@ -2128,3 +2128,67 @@ em worktree próprio. Base exataE3, patch/manifesto do ZIP75357bytes SHA256
 cf9d4b358591ec3dc6cb7042a80f833aebc8dda7dc0c2b2cb4b4b47cef765f9f.
 RaizWindows e worktrees paralelos preservados. Fonte de produto congelada
 coincide com os gates Mac; mudanças posteriores são documentais.
+
+
+### Próxima entrega autorizada — BL081.1.1 (2026-11-14)
+
+Usuário pediu a próxima entrega após o commit local8901553. Fatia: atalho
+Cmd+B no Mac/Ctrl+B no Windows para cortar o único clipe selecionado no playhead;
+sem lote/seleção múltipla. A validação Windows do envelope continua na thread
+BL081.2.5, sem reatribuir seus resultados à nova implementação.
+
+A base funcional necessária é o envelope do8901553 (não publicado). No Windows,
+novo worktree E3 recebe o mesmo pacote de fontes conferido por hash; a entrega
+do atalho será diff incremental dessa base, não o overlay inteiro do envelope.
+Mac tem apenas2,8GiB livres no volume interno; nenhum build Mac novo será
+iniciado nessa condição. Usar Computador em workspace próprio via thread T3,
+porque subagente remoto não suporta isolation worktree.
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL081.1.1 | Próxima entrega / F017 | Atalho Cmd+B/Ctrl+B para cortar o clipe selecionado no playhead | Em andamento — implementação Windows isolada | BL081, base funcional8901553 | Implementação Cursor Sonnet5.5; revisão coordenador | Mesmo Command/handler do botão e CLI; um undo por corte; key repeat não repete; nenhuma edição em borda/sem seleção/diálogo/texto; GPUI despacha tecla real do framework; documentar limite de foco da WebView e separar ponteiro físico de simulação |
+| BL081.1.2 | Corte / expansão | Corte em lote e seleção múltipla | Pendente — sem implementação autorizada nesta fatia | BL081.1.1 e contrato de seleção | — | Definir alvos/múltiplos, atomicidade e único undo antes de implementar |
+
+
+Execução BL081.1.1 iniciada com Cursor Sonnet5.5 no Computador,
+[thread própria isolada](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:dc909464acf87e8b1167f80f96d98e6e16337491fdeae173ff2436e18629247e),
+branch feat/bl0811-split-shortcut. Backend T3 não suporta worktree de subagente
+remoto; usada a autorização de threads Windows para preparar checkout próprio
+E3 e receber o snapshot do8901553 por ZIP/hash. Não mexer na validação paralela
+BL081.2.5 nem herdar seus gates como prova de atalho. Ownership: adapter desktop
+(mod/timeline/shortcut/testes e init se necessário), docs split e relatório
+próprio; core/envelope/mídia e arquivos comuns fora do executor. Só coordenador
+integra; sem commit/push/PR pelo executor, entrega incremental ao snapshot.
+
+
+### BL081.2 — fechamento técnico Mac/Windows (2026-11-14)
+
+Implementação local89015537be6630e1bcc2f98aa76c66778e70b068, ainda sem push,
+PR ou merge desta entrega. Revisão independente do modelo corrigido e ajustes
+finais fechados; BL081.2 e BL081.2.5 validados tecnicamente pela coordenação.
+[Entrega Windows](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:e963aec64addab81b44ee91455f0554a397a7f04faea764577e76c517101d3bc):
+baseE3 + patch SHA256
+3d10d987889c59d0336e31169754c678a9f03ae94a1d2da1dd7df1dea324c9c0,
+36/36 arquivos iguais ao manifesto antes/depois, sem divergência CRLF.
+Fontes executáveis locais iguais ao pacote; alterações posteriores só em docs.
+
+Windows fmt/checkalltargets/clippy-Dwarnings/no-run/builds exit0. Core:
+envelope44, split23, audio_phase15, audio_fades8, envelopeunit15; desktop
+split5/fades2; export11 com FFmpeg real, sem falhas ou skips nesses alvos.
+Leitor E3 compilado antes do apply recusa schema3 com unsupported_schema
+(found3/supported2), fechando BL081.2.1 por execução. Headless16/16,
+janela própria27/27, 14/14 WAVs iguais entre superfícies; editar um fade
+conserva a região do outro, undo/redo e save/reopen mantêm schema3 e PCM.
+Prova Windows usa PowerShell equivalente, não o Python versionado. Logs:
+bl0812-windows-validation-20261114, SUMMARY.md, logs/ e proof/ no Computador.
+
+Sem pixels, ponteiro, áudio ouvido ou desempenho; workspace completo não
+executado no snapshot final (no-run é compilação). BL081.2.7 continua limite
+documentado, sem alegar aprovação humana de produto. O git status final na
+raiz Windows pode ter atualizado o stat do índice; não se alega índice da
+raiz byte a byte preservado nesta rodada. Fontes da raiz não foram editadas.
+BL081.1.1 continua em execução independente; gates acima não provam atalho.
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL081.2.9 | Prova / portabilidade | Tornar reproduzível no repo o harness PowerShell sem Python | Pendente — prova atual preservada fora do repo | BL081.2.5 | Coordenação | Versionar o equivalente PS ou executar o Python versionado no Windows, mantendo os casos simétricos, diferenças de rampa editada e identidade dos WAVs; não invalida a execução Windows já conferida |

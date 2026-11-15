@@ -137,3 +137,12 @@ podem elevar cortes comuns de clipes curtos a schema3, antecipando edição do
 outro fade até48quadros; sem isso a edição renormalizaria a rampa não editada.
 Exemplo:60quadros, fade-in5, corte30. Sem necessidade de fixação, schema1/2
 permanece. O estado de cada janela é inspecionável no nó do clipe.
+
+
+BL081.2 validado tecnicamente no Mac e Windows (commit local8901553): corpus
+envelope44/44 e GPUI split5/fades2 nas duas plataformas; Mac headless12/12 e
+janela12/12, Windows headless16/16 e janela27/27 com 14 WAVs iguais entre
+superfícies. A região da rampa não editada permanece idêntica; salvar/reabrir,
+undo/redo preservam o resultado. Sem áudio ouvido, pixels, ponteiro ou
+medição de desempenho. Harness Windows equivalente em PowerShell, fora do
+repo; [evidência final e limites](../migration/clip-split-fades-report.md#10-fechamento-técnico-macwindows).

@@ -2,7 +2,7 @@
 
 ## Status
 
-**BL081.2 (cortar dentro de fades) implementado, a validar pelo coordenador** — ver [clip-split-fades-report.md](../migration/clip-split-fades-report.md);
+**BL081.2 (cortar dentro de fades) validado tecnicamente no Mac e Windows** — ver [clip-split-fades-report.md](../migration/clip-split-fades-report.md);
 não há mais recusa por fade. **BL081 e continuidade fracionária BL081.5 validados Windows/Mac, dentro dos limites abaixo.** Entregue em biblioteca, CLI headless (processo JSONL) e janela. Evidência e limites em
 [clip-split-report.md](../migration/clip-split-report.md). Sem ponteiro físico, sem áudio ouvido e sem pixels: a prova da
 janela é semântica (`ui get/set/invoke/op`).
@@ -125,7 +125,7 @@ Contrato detalhado, controles e limites na [entrega BL081.5](../migration/clip-s
 ## Evidências
 
 Ver [clip-split-report.md](../migration/clip-split-report.md): `crates/core/tests/clip_split.rs` (23 testes: lib e processo
-`tessel-headless`), `crates/core/tests/clip_split_envelope.rs` e `clip_split_envelope/` (BL081.2 + BL081.2.2, 42 testes: planos e PCM bit a bit, controles, rampas herdadas por fade editado), testes de unidade (`id`, `inspector`, `tree`), `crates/desktop/src/workstation/split_tests.rs` (5 testes
+`tessel-headless`), `crates/core/tests/clip_split_envelope.rs` e `clip_split_envelope/` (BL081.2 + BL081.2.2, 44 testes: planos e PCM bit a bit, controles, rampas herdadas por fade editado), testes de unidade (`id`, `inspector`, `tree`), `crates/desktop/src/workstation/split_tests.rs` (5 testes
 GPUI com clique simulado, incluindo o corte dentro de um fade) e a prova na janela própria por `tessel-editor ui …`.
 
 Revisão Mac: uma recusa preserva também o gesto de slider aberto e seu histórico;
@@ -154,7 +154,7 @@ JSON fracionário. Regressões distinguem `as_i64` e `as_f64` na resposta.
 BL081.15 validado Mac: split23/23 e fmt/check/clippy/no-run/build exit0; sem
 nova janela ou execução Windows. O teste compara o tipo JSON além do valor.
 
-BL081.2 (implementado, a validar): `split_unsupported`, `SplitBlock::FadeCrossesCut` e `FadesLongerThanClip` foram removidos;
+BL081.2 (validado Mac/Windows): `split_unsupported`, `SplitBlock::FadeCrossesCut` e `FadesLongerThanClip` foram removidos;
 o JSON inteiro de BL081.15 não tem mais onde aparecer porque não há recusa por fade. Evidências no relatório do BL081.2.
 
 
@@ -176,3 +176,12 @@ com leitores anteriores. A revisão da implementação e o aceite Windows são d
 Prova funcional reproduzível: [scripts/split-fades-proof.py](../../scripts/split-fades-proof.py),
 com argumentos REPO e OUT, após build de tessel-headless e tessel-editor. Sem
 coordenadas, desempenho, pixels ou áudio ouvido.
+
+
+Validação final BL081.2: commit local8901553; Mac core1587 e desktop516,
+prova headless12/12 e janela12/12. Windows envelope44/44 e GPUI split5/fades2;
+headless16/16 e janela27/27, 14 WAVs iguais entre superfícies. Leitor antigo
+real recusa schema3 (unsupported_schema found3/supported2). No Windows, o
+harness foi o equivalente PowerShell preservado nos logs, sem executar o
+Python versionado. Sem pixels, ponteiro, áudio ouvido ou desempenho. Ver
+[fechamento técnico](../migration/clip-split-fades-report.md#10-fechamento-técnico-macwindows).
