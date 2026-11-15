@@ -3,7 +3,9 @@
 //! A [`Refusal`] is what the pure planner returns. It becomes an [`EditError`] at the edge of the
 //! batch (`into_edit_error`), with the facts in `details`: `shot`, `edge`, `asked_frame` and
 //! `limit_frame` (the nearest frame, in the op's own clock, where this same rule does not refuse,
-//! decision #33), plus the few extra keys a rule has (`from`/`to`, `instance`, `option`).
+//! decision #33), plus the few extra keys a rule has (`from`/`to`, `instance`, `option`, `path`,
+//! `layer`). `shot` and `edge` are **always the target of the op** (what it named); the shot a
+//! rule is actually about, when that is another one (the neighbour of a roll), is `affected_shot`.
 //!
 //! The command-code mapping (`error.rs` of `scene_edit`) and the localized texts are S3's; until
 //! then an `EditError` of this module reaches a `CommandError` as `invalid_edit`.
@@ -54,6 +56,7 @@ pub const CODES: [&str; 11] = [
 pub struct Facts {
     pub code: &'static str,
     pub message: String,
+    /// The target of the op: the shot it named (none for `move_cut`, which names a cut).
     pub shot: Option<String>,
     /// `start` or `end`: the border of `shot` the op moved.
     pub edge: Option<&'static str>,
@@ -61,7 +64,8 @@ pub struct Facts {
     pub asked_frame: Option<i64>,
     /// The nearest frame where this rule does not refuse (#33), in the same clock as `asked_frame`.
     pub limit_frame: Option<i64>,
-    /// Extra facts of the rule (`from`, `to`, `instance`, `shots`, `option`, `reason`).
+    /// Extra facts of the rule (`from`, `to`, `instance`, `shots`, `option`, `reason`,
+    /// `affected_shot`, `path`, `layer`).
     pub extra: Map<String, Value>,
 }
 
@@ -99,6 +103,22 @@ impl Refusal {
 
     pub(super) fn shot(mut self, id: &str) -> Self {
         self.shot = Some(id.to_string());
+        self
+    }
+
+    /// The shot the rule is about when it is not the target of the op (the neighbour of a roll).
+    pub(super) fn affected(self, id: &str) -> Self {
+        self.with("affected_shot", id.into())
+    }
+
+    /// The cut a `move_cut` names, unless the rule already said so.
+    pub(super) fn cut(mut self, from: &str, to: &str) -> Self {
+        self.extra
+            .entry("from".to_string())
+            .or_insert_with(|| from.into());
+        self.extra
+            .entry("to".to_string())
+            .or_insert_with(|| to.into());
         self
     }
 

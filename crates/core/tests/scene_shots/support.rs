@@ -131,11 +131,10 @@ pub fn op(value: Value) -> Vec<ShotOp> {
     parse_shot_ops(&json!([value])).unwrap_or_else(|error| panic!("the op did not parse: {error}"))
 }
 
+/// `apply_shots` takes the scene by shared reference, so the type system already says the input
+/// never changes; the tests that care compare documents after a refusal where it is not trivial.
 pub fn run(scene: &DirectedScene, value: Value) -> Result<ShotsOutcome, EditError> {
-    let before = scene.document().clone();
-    let result = apply_shots(scene, &op(value));
-    assert_eq!(*scene.document(), before, "the input scene changed");
-    result
+    apply_shots(scene, &op(value))
 }
 
 #[track_caller]

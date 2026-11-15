@@ -10,6 +10,8 @@
 //! * `ops`: T01-T04 (one border at a time), T09 (`NO_HEAD_FRAMES`), T10 (the other refusals).
 //! * `joins`: T05 (continuous joins), T06 (the temporal gate), T07 (`editLocked`), T08 (instances).
 //! * `batch`: the batch, malformed ops, T16, T17 and the planner alone with a reserve.
+//! * `robust`: frames at the edge of `i64` (op and document), numbers such as `30.0`, and the
+//!   fields of the document that the op does not know.
 //! * `property`: T21 (random sequences) and T22 (no shot path in the catalog).
 
 mod shot_trim_support;
@@ -22,5 +24,7 @@ mod joins;
 mod ops;
 #[path = "scene_shots/property.rs"]
 mod property;
+#[path = "scene_shots/robust.rs"]
+mod robust;
 #[path = "scene_shots/support.rs"]
 mod support;

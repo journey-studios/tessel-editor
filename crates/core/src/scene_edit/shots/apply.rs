@@ -12,6 +12,8 @@
 //! other edits are in another slice's files, so this module calls the same three pieces itself.
 //! An op that changes nothing ends the batch without the gate: there is no candidate to judge.
 
+use std::collections::HashMap;
+
 use serde_json::{Map, Value, json};
 
 use crate::directed_scene::fx::{Alignment, Handles, transition_window};
@@ -20,7 +22,7 @@ use crate::scene_edit::batch::rejected;
 use crate::scene_edit::error::{DOCUMENT_MISMATCH, EditError};
 
 use super::plan::{Placement, PlanInput, PlanInstance, PlanShot, ShotPlan, plan_op};
-use super::{FRAME_BOUND, ShotOp, check_batch_len};
+use super::{ShotOp, check_batch_len, lenient_int};
 
 /// The instance grew so the shot fits (#6).
 pub const INSTANCE_GREW: &str = "INSTANCE_GREW";
@@ -114,11 +116,10 @@ fn mismatch(what: impl Into<String>) -> EditError {
     EditError::new(DOCUMENT_MISMATCH, what)
 }
 
+/// A frame as the importer reads it (`30` and `30.0` both count, up to 2^53 - 1): a document the
+/// importer accepted is a document this module can edit.
 fn int(value: &Value, what: &str) -> Result<i64, EditError> {
-    value
-        .as_i64()
-        .filter(|frame| frame.abs() <= FRAME_BOUND)
-        .ok_or_else(|| mismatch(format!("`{what}` is not an integer frame")))
+    lenient_int(value).ok_or_else(|| mismatch(format!("`{what}` is not an integer frame")))
 }
 
 fn text<'a>(value: &'a Value, key: &str, what: &str) -> Result<&'a str, EditError> {
@@ -156,6 +157,7 @@ fn read_input(work: &Value) -> Result<PlanInput, EditError> {
             })
         })
         .collect::<Result<Vec<_>, EditError>>()?;
+    let reserves = reserves_of(work);
     let shots = list(work, "shots")?
         .iter()
         .enumerate()
@@ -165,7 +167,7 @@ fn read_input(work: &Value) -> Result<PlanInput, EditError> {
                 .get("editRange")
                 .ok_or_else(|| mismatch(format!("`{what}/editRange` is missing")))?;
             let id = text(shot, "id", &what)?.to_string();
-            let reserve = reserve_of(work, &id);
+            let reserve = reserves.get(id.as_str()).copied().unwrap_or(0);
             Ok(PlanShot {
                 instance: text(shot, "sceneInstanceId", &what)?.to_string(),
                 at: Placement {
@@ -184,24 +186,54 @@ fn read_input(work: &Value) -> Result<PlanInput, EditError> {
             })
         })
         .collect::<Result<Vec<_>, EditError>>()?;
-    Ok(PlanInput::new(edit_frames, shots, instances))
+    let mut input = PlanInput::new(edit_frames, shots, instances);
+    input.refused_layer = refused_layer(work);
+    Ok(input)
 }
 
-/// The head frames the transition **into** `shot_id` draws before the cut (#29): none without a
-/// transition or when its `handles` is `hold`. A transition document only exists when the scene
-/// was admitted under `TransitionAdmission::Accept` (public admission refuses `fx.transitions`
-/// today), so in production this is 0.
-fn reserve_of(work: &Value, shot_id: &str) -> i64 {
-    let Some(transition) = work
-        .pointer("/fx/transitions")
-        .and_then(Value::as_array)
-        .and_then(|list| {
-            list.iter()
-                .find(|item| item.get("toShotId").and_then(Value::as_str) == Some(shot_id))
-        })
-    else {
-        return 0;
+/// The fields of the S0 audit (`DEFERRED_AUDIT`, destination `refuse`) that this phase refuses
+/// with `SHOTS_LAYER_NOT_YET`, as the reference's `_refused_layers` lists them: `sceneDefinitions[].key`
+/// for a key of a scene definition, otherwise a key of the bundle. **Empty today**: the audit
+/// has no field with edit time in a shape the planner cannot move (D12), so a field that joins
+/// the list later is one line here.
+const REFUSED_LAYERS: &[&str] = &[];
+
+fn refused_layer(work: &Value) -> Option<String> {
+    REFUSED_LAYERS
+        .iter()
+        .find(|field| has_field(work, field))
+        .map(|field| (*field).to_string())
+}
+
+fn has_field(work: &Value, field: &str) -> bool {
+    match field.strip_prefix("sceneDefinitions[].") {
+        Some(key) => work
+            .get("sceneDefinitions")
+            .and_then(Value::as_array)
+            .is_some_and(|definitions| definitions.iter().any(|item| item.get(key).is_some())),
+        None => work.get(field).is_some(),
+    }
+}
+
+/// The head frames each transition **into** a shot draws before the cut (#29), by `toShotId`:
+/// one pass over `fx.transitions` (the first transition into a shot counts). A shot absent from
+/// the map has none; so has one whose `handles` is `hold`. A transition document only exists
+/// when the scene was admitted under `TransitionAdmission::Accept` (public admission refuses
+/// `fx.transitions` today), so in production the map is empty.
+fn reserves_of(work: &Value) -> HashMap<&str, i64> {
+    let mut reserves = HashMap::new();
+    let Some(list) = work.pointer("/fx/transitions").and_then(Value::as_array) else {
+        return reserves;
     };
+    for transition in list {
+        if let Some(to) = transition.get("toShotId").and_then(Value::as_str) {
+            reserves.entry(to).or_insert_with(|| reserve_of(transition));
+        }
+    }
+    reserves
+}
+
+fn reserve_of(transition: &Value) -> i64 {
     let handles = transition
         .get("handles")
         .and_then(Value::as_str)
@@ -225,9 +257,11 @@ fn reserve_of(work: &Value, shot_id: &str) -> i64 {
     }
 }
 
-/// Sets `key` of `object` to `value` when it differs. `true` when it wrote.
+/// Sets `key` of `object` to `value` when it differs **numerically**: a `0.0` the importer reads
+/// as 0 is left as the document wrote it, so a shot the op did not move is not rewritten (and not
+/// reported as changed). `true` when it wrote.
 fn set_int(object: &mut Value, key: &str, value: i64) -> bool {
-    if object.get(key).and_then(Value::as_i64) == Some(value) {
+    if object.get(key).and_then(lenient_int) == Some(value) {
         return false;
     }
     object[key] = json!(value);
@@ -254,9 +288,10 @@ fn write_plan(
         .get_mut("shots")
         .and_then(Value::as_array_mut)
         .ok_or_else(|| mismatch("`/shots` is not an array"))?;
+    let placements = plan.placements_by_id();
     for (index, shot) in shots.iter_mut().enumerate() {
         let id = shot.get("id").and_then(Value::as_str).unwrap_or_default();
-        let Some(at) = plan.placement(id).copied() else {
+        let Some(at) = placements.get(id).copied().copied() else {
             continue;
         };
         let mut changed = set_int(shot, "instanceStartFrame", at.instance_start);
@@ -277,13 +312,17 @@ fn write_plan(
         .get_mut("sceneInstances")
         .and_then(Value::as_array_mut)
         .ok_or_else(|| mismatch("`/sceneInstances` is not an array"))?;
+    let mut positions: HashMap<String, usize> = HashMap::new();
+    for (index, instance) in instances.iter().enumerate() {
+        if let Some(id) = instance.get("id").and_then(Value::as_str) {
+            positions.entry(id.to_string()).or_insert(index);
+        }
+    }
     for growth in &plan.growth {
-        let Some((index, instance)) = instances.iter_mut().enumerate().find(|(_, instance)| {
-            instance.get("id").and_then(Value::as_str) == Some(&growth.instance)
-        }) else {
+        let Some(&index) = positions.get(&growth.instance) else {
             return Err(mismatch(format!("no instance `{}`", growth.instance)));
         };
-        set_int(instance, "durationFrames", growth.to);
+        set_int(&mut instances[index], "durationFrames", growth.to);
         pointers.push(format!("/sceneInstances/{index}"));
         notes.push(ShotNote::new(
             INSTANCE_GREW,

@@ -4,7 +4,9 @@ use core::prelude::v1::test;
 
 use serde_json::{Map, Value, json};
 use tessel_editor_core::directed_scene::DirectedScene;
-use tessel_editor_core::scene_edit::shots::{CODES, MAX_EDIT_FRAMES, SHOTS_LAYER_NOT_YET, apply_shots};
+use tessel_editor_core::scene_edit::shots::{
+    CODES, MAX_EDIT_FRAMES, SHOTS_LAYER_NOT_YET, apply_shots,
+};
 use tessel_editor_core::scene_edit::{CANDIDATE_REJECTED, INVALID_OP, catalog};
 
 use super::support::*;

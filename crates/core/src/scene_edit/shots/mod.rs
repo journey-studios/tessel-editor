@@ -27,29 +27,57 @@ mod apply;
 mod error;
 mod plan;
 
-pub use apply::{ShotNote, ShotsOutcome, apply_shots, apply_shots_with};
+pub use apply::{
+    AUTO_FELL_TO_FOLLOW, INSTANCE_GREW, ShotNote, ShotsOutcome, apply_shots, apply_shots_with,
+};
 pub use error::{
-    CODES, CONTINUOUS_JOIN, EDIT_TOO_LONG, LOCKED, NO_HEAD_FRAMES, Refusal, SHOT_NOT_FOUND,
+    CODES, CONTINUOUS_JOIN, EDIT_TOO_LONG, Facts, LOCKED, NO_HEAD_FRAMES, Refusal, SHOT_NOT_FOUND,
     SHOT_TOO_SHORT, SHOTS_LAYER_NOT_YET, SHOTS_NOT_ADJACENT, SHOTS_OPTION_NOT_YET,
 };
 pub use plan::{
-    Growth, MovedEdge, Placement, PlanInput, PlanInstance, PlanShot, ShotPlan, Splice, plan_op,
+    FollowFallback, Growth, MovedEdge, Placement, PlanInput, PlanInstance, PlanShot, PlanTarget,
+    ShotPlan, Splice, plan_op,
 };
 
-use serde_json::{Map, Value};
+use serde_json::{Map, Number, Value};
 
 use super::error::{EditError, INVALID_OP};
 
 /// One hour at 60 fps (decision #18).
 pub const MAX_EDIT_FRAMES: i64 = 216_000;
 
-/// A batch holds at most this many ops (each one is planned and written on a clone of the
-/// document, so the bound keeps a hostile batch from costing more than a person's edit would).
+/// A batch holds at most this many ops. The whole batch works on one clone of the document, but
+/// each op is still planned and written, so the bound keeps a hostile batch from costing more
+/// than a person's edit would.
 pub const MAX_SHOT_BATCH_OPS: usize = 256;
 
-/// A frame in an op or in the document is read as an `i64` and must not exceed this (2^52, the
-/// largest integer a JSON number carries exactly): every sum the planner makes then fits.
-pub(super) const FRAME_BOUND: i64 = 1 << 52;
+/// A frame in an op or in the document is read as an `i64` and must be within `+-FRAME_BOUND`
+/// (2^53 - 1, the importer's `MAX_SAFE_INT` in `directed_scene/read.rs`, the largest integer
+/// JavaScript carries exactly): every sum the planner makes then fits in an `i64`.
+pub(super) const FRAME_BOUND: i64 = (1 << 53) - 1;
+
+/// Whether `frame` is within `+-FRAME_BOUND`. A range test, never `abs()` (`i64::MIN.abs()` panics).
+pub(super) fn in_bound(frame: i64) -> bool {
+    (-FRAME_BOUND..=FRAME_BOUND).contains(&frame)
+}
+
+/// An integer-valued JSON number read as the importer reads a frame (`12` and `12.0` both count,
+/// as in JavaScript), within `+-FRAME_BOUND`. Replicates `as_integer` + the range check of
+/// `directed_scene/read.rs` (`Obj::int`), which this module does not own.
+pub(super) fn lenient_int(value: &Value) -> Option<i64> {
+    let Value::Number(number) = value else {
+        return None;
+    };
+    let integer = number.as_i64().or_else(|| float_integer(number))?;
+    in_bound(integer).then_some(integer)
+}
+
+fn float_integer(number: &Number) -> Option<i64> {
+    let float = number.as_f64()?;
+    // `|float| <= 2^53` is exact in f64; the caller's range test rejects what is past 2^53 - 1.
+    (float.is_finite() && float.fract() == 0.0 && float.abs() <= 9.007_199_254_740_992e15)
+        .then_some(float as i64)
+}
 
 /// Whether a ripple moves what follows (`ripple`) or the neighbour absorbs the change (`roll`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -235,7 +263,7 @@ fn frame(body: &Map<String, Value>, key: &str) -> Result<i64, EditError> {
         .get(key)
         .and_then(Value::as_i64)
         .ok_or_else(|| invalid(format!("`{key}` must be an integer")))?;
-    if value.abs() > FRAME_BOUND {
+    if !in_bound(value) {
         return Err(invalid(format!("`{key}` is beyond +-{FRAME_BOUND}")));
     }
     Ok(value)

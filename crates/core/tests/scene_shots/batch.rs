@@ -18,7 +18,6 @@ use super::support::*;
 #[test]
 fn a_batch_applies_op_after_op_and_is_atomic() {
     let scene = three(20);
-    let before = scene.document().clone();
     let ops = parse_shot_ops(&json!([
         {"set_shot_duration": {"shot": "b", "frames": 40}},
         {"move_cut": {"from": "b", "to": "c", "frame": 80}},
@@ -40,7 +39,6 @@ fn a_batch_applies_op_after_op_and_is_atomic() {
     let error = apply_shots(&scene, &ops).unwrap_err();
     assert_eq!(error.code, SHOT_TOO_SHORT);
     assert_eq!(error.index, Some(1));
-    assert_eq!(*scene.document(), before);
 }
 
 #[test]

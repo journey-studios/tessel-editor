@@ -10,11 +10,14 @@
 //! shot, a continuous join, the head frames, the length of the edit, the lock, then (S2) the
 //! transitions, then the gate.
 
+use std::collections::HashMap;
+
 use super::error::{
     CONTINUOUS_JOIN, EDIT_TOO_LONG, LOCKED, NO_HEAD_FRAMES, Refusal, SHOT_NOT_FOUND,
-    SHOT_TOO_SHORT, SHOTS_NOT_ADJACENT, SHOTS_OPTION_NOT_YET,
+    SHOT_TOO_SHORT, SHOTS_LAYER_NOT_YET, SHOTS_NOT_ADJACENT, SHOTS_OPTION_NOT_YET,
 };
-use super::{Content, Edge, MAX_EDIT_FRAMES, Mode, ShotOp};
+use super::{Content, Edge, FRAME_BOUND, MAX_EDIT_FRAMES, Mode, ShotOp, in_bound};
+use crate::scene_edit::error::INVALID_OP;
 
 /// Where a shot sits on the edit and on its scene and camera clip.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,6 +67,10 @@ pub struct PlanInput {
     pub edit_frames: i64,
     pub shots: Vec<PlanShot>,
     pub instances: Vec<PlanInstance>,
+    /// A field of the S0 audit that this phase refuses (`SHOTS_LAYER_NOT_YET`, D12) and that the
+    /// document carries: the planner refuses right after it resolved the ids, as the reference
+    /// does. `None` with the audit's list of today (it is empty).
+    pub refused_layer: Option<String>,
 }
 
 impl PlanInput {
@@ -73,6 +80,7 @@ impl PlanInput {
             edit_frames,
             shots,
             instances,
+            refused_layer: None,
         }
     }
 
@@ -136,8 +144,21 @@ pub struct FollowFallback {
     pub followed: i64,
 }
 
+/// What the op named, in the words of the `details` of a refusal (`shot`, `edge`, `asked_frame`):
+/// the apply step needs it to refuse in the op's name after the planner is done.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct PlanTarget {
+    /// The shot the op named; `None` for `move_cut`, which names a cut.
+    pub shot: Option<String>,
+    pub edge: Option<&'static str>,
+    /// The frame the op asked for, in its own clock (the end of the shot for a duration).
+    pub asked_frame: i64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ShotPlan {
+    /// The target of the op that made the plan.
+    pub target: PlanTarget,
     /// Every shot with its new placement, ordered by old start.
     pub shots: Vec<(String, Placement)>,
     pub edit_frames: i64,
@@ -153,40 +174,77 @@ pub struct ShotPlan {
 }
 
 impl ShotPlan {
+    /// One lookup, linear. A caller that looks up every shot builds [`Self::placements_by_id`].
     pub fn placement(&self, id: &str) -> Option<&Placement> {
         self.shots
             .iter()
             .find(|(shot, _)| shot == id)
             .map(|(_, at)| at)
     }
+
+    /// Every shot's placement by id, for a caller that looks up all of them.
+    pub fn placements_by_id(&self) -> HashMap<&str, &Placement> {
+        self.shots
+            .iter()
+            .map(|(id, at)| (id.as_str(), at))
+            .collect()
+    }
 }
 
-/// Plans one op over the shots as they are now. `Ok(None)` is a no-op (the op writes what is
-/// there). A refusal carries the shot, the edge and the frame the op asked for.
-pub fn plan_op(input: &PlanInput, op: &ShotOp) -> Result<Option<ShotPlan>, Refusal> {
-    let options = op.options();
-    if options.with_narration {
-        return Err(Refusal::new(
-            SHOTS_OPTION_NOT_YET,
-            "`with_narration` is not supported yet: narration never moves in this phase",
-        )
-        .with("option", "with_narration".into()));
-    }
-    let content = options.content;
-    let roll = options.mode == Mode::Roll;
-    let last = input.shots.len().checked_sub(1);
-    match op {
-        ShotOp::SetEditDuration { frames, .. } => {
-            let Some(index) = last else {
-                return Err(Refusal::new(SHOT_NOT_FOUND, "the edit has no shots"));
-            };
-            let id = input.shots[index].id.clone();
-            end_ripple(input, index, *frames)
-                .map_err(|refusal| refusal.in_op(Some(&id), Some("end"), *frames))
+/// The frames the planner will add up, checked against [`FRAME_BOUND`] before any arithmetic: the
+/// op's own frame (a typed op does not pass through the JSON parser, so the bound is asked
+/// again) and the document the typed input describes. A frame outside is `INVALID_OP`, never a
+/// wrap-around (`i64::MIN` has no absolute value).
+fn check_bounds(input: &PlanInput, op: &ShotOp) -> Result<(), Refusal> {
+    let (asked, name) = match op {
+        ShotOp::TrimShot { frame, .. } | ShotOp::MoveCut { frame, .. } => (*frame, "frame"),
+        ShotOp::SetShotDuration { frames, .. } | ShotOp::SetEditDuration { frames, .. } => {
+            (*frames, "frames")
         }
-        ShotOp::MoveCut {
-            from, to, frame, ..
-        } => {
+    };
+    if !in_bound(asked) {
+        let mut refusal = Refusal::new(
+            INVALID_OP,
+            format!("`{name}` is beyond +-{FRAME_BOUND}: {asked}"),
+        );
+        refusal.asked_frame = Some(asked);
+        return Err(refusal);
+    }
+    let document_is_in_bound = in_bound(input.edit_frames)
+        && input
+            .instances
+            .iter()
+            .all(|instance| in_bound(instance.frames))
+        && input.shots.iter().all(|shot| {
+            [
+                shot.at.start,
+                shot.at.end,
+                shot.at.instance_start,
+                shot.at.camera_in,
+                shot.reserve,
+            ]
+            .into_iter()
+            .all(in_bound)
+        });
+    if !document_is_in_bound {
+        return Err(Refusal::new(
+            INVALID_OP,
+            format!("a frame of the edit is beyond +-{FRAME_BOUND}"),
+        ));
+    }
+    Ok(())
+}
+
+/// The index of the shot the op works on, in the order of the reference's refusals: the ids, then
+/// the adjacency of a cut. For `move_cut` it is the shot **before** the cut.
+fn resolve(input: &PlanInput, op: &ShotOp) -> Result<usize, Refusal> {
+    match op {
+        ShotOp::SetEditDuration { .. } => input
+            .shots
+            .len()
+            .checked_sub(1)
+            .ok_or_else(|| Refusal::new(SHOT_NOT_FOUND, "the edit has no shots")),
+        ShotOp::MoveCut { from, to, .. } => {
             let previous = input.index_of(from)?;
             let following = input.index_of(to)?;
             if previous + 1 != following {
@@ -197,22 +255,74 @@ pub fn plan_op(input: &PlanInput, op: &ShotOp) -> Result<Option<ShotPlan>, Refus
                 .with("from", from.as_str().into())
                 .with("to", to.as_str().into()));
             }
+            Ok(previous)
+        }
+        ShotOp::SetShotDuration { shot, .. } | ShotOp::TrimShot { shot, .. } => {
+            input.index_of(shot)
+        }
+    }
+}
+
+/// Plans one op over the shots as they are now. `Ok(None)` is a no-op (the op writes what is
+/// there). A refusal carries the shot, the edge and the frame the op asked for.
+///
+/// Order of the refusals (the reference's `apply_op`): a frame out of bounds, the option, the ids,
+/// the refused fields of the audit, then the rules of each planner.
+pub fn plan_op(input: &PlanInput, op: &ShotOp) -> Result<Option<ShotPlan>, Refusal> {
+    check_bounds(input, op)?;
+    let options = op.options();
+    if options.with_narration {
+        return Err(Refusal::new(
+            SHOTS_OPTION_NOT_YET,
+            "`with_narration` is not supported yet: narration never moves in this phase",
+        )
+        .with("option", "with_narration".into()));
+    }
+    let index = resolve(input, op)?;
+    if let Some(field) = &input.refused_layer {
+        return Err(Refusal::new(
+            SHOTS_LAYER_NOT_YET,
+            format!("the document has `{field}`, a layer in edit time this phase cannot move"),
+        )
+        .with("field", field.as_str().into()));
+    }
+    let content = options.content;
+    let roll = options.mode == Mode::Roll;
+    let (plan, target) = match op {
+        ShotOp::SetEditDuration { frames, .. } => {
+            let id = input.shots[index].id.clone();
+            let plan = end_ripple(input, index, *frames)
+                .map_err(|refusal| refusal.in_op(Some(&id), Some("end"), *frames))?;
+            (plan, (Some(id), Some("end"), *frames))
+        }
+        ShotOp::MoveCut {
+            from, to, frame, ..
+        } => {
             // A cut is the border of two shots: no single `edge` names it.
-            roll_cut(input, previous, *frame, content)
-                .map_err(|refusal| refusal.in_op(None, None, *frame))
+            let plan = roll_cut(input, index, *frame, content)
+                .map_err(|refusal| refusal.in_op(None, None, *frame).cut(from, to))?;
+            (plan, (None, None, *frame))
         }
         ShotOp::SetShotDuration { shot, frames, .. } => {
-            let index = input.index_of(shot)?;
             let frame = input.shots[index].at.start + frames;
-            edge_op(input, index, Edge::End, frame, roll, content)
+            let plan = edge_op(input, index, Edge::End, frame, roll, content)?;
+            (plan, (Some(shot.clone()), Some("end"), frame))
         }
         ShotOp::TrimShot {
             shot, edge, frame, ..
         } => {
-            let index = input.index_of(shot)?;
-            edge_op(input, index, *edge, *frame, roll, content)
+            let plan = edge_op(input, index, *edge, *frame, roll, content)?;
+            (plan, (Some(shot.clone()), Some(edge.name()), *frame))
         }
-    }
+    };
+    Ok(plan.map(|mut plan| {
+        plan.target = PlanTarget {
+            shot: target.0,
+            edge: target.1,
+            asked_frame: target.2,
+        };
+        plan
+    }))
 }
 
 /// `trim_shot` and `set_shot_duration`: a border of one shot, in ripple or in roll.
@@ -345,31 +455,54 @@ fn follow_into_continuous() -> Refusal {
 
 /// `editLocked` (#10): shots of one locked instance that were in step (the same
 /// `instanceStartFrame - startFrame`) must still be after the op.
+///
+/// Linear in the shots: the members of an instance are grouped by their old step, and a group is
+/// broken when its members no longer share one new step. The pair reported is the first one in
+/// order of the reference's double loop (the first member, and the first later member that
+/// differs from it); across groups the earliest pair wins.
 fn lock_problem(input: &PlanInput, new: &[Placement]) -> Option<Refusal> {
+    let mut members: HashMap<&str, Vec<usize>> = HashMap::new();
+    for (index, shot) in input.shots.iter().enumerate() {
+        members
+            .entry(shot.instance.as_str())
+            .or_default()
+            .push(index);
+    }
     for instance in input.instances.iter().filter(|instance| instance.locked) {
-        let members: Vec<usize> = (0..input.shots.len())
-            .filter(|&index| input.shots[index].instance == instance.id)
-            .collect();
-        for (x, &a) in members.iter().enumerate() {
-            for &b in &members[x + 1..] {
-                let was_in_step = input.shots[a].at.step() == input.shots[b].at.step();
-                if was_in_step && new[a].step() != new[b].step() {
-                    return Some(
-                        Refusal::new(
-                            LOCKED,
-                            format!(
-                                "shots `{}` and `{}` of the locked instance `{}` would leave step",
-                                input.shots[a].id, input.shots[b].id, instance.id
-                            ),
-                        )
-                        .with("instance", instance.id.as_str().into())
-                        .with(
-                            "shots",
-                            vec![input.shots[a].id.as_str(), input.shots[b].id.as_str()].into(),
-                        ),
-                    );
-                }
-            }
+        let Some(members) = members.get(instance.id.as_str()) else {
+            continue;
+        };
+        let mut groups: HashMap<i64, Vec<usize>> = HashMap::new();
+        for (position, &shot) in members.iter().enumerate() {
+            groups
+                .entry(input.shots[shot].at.step())
+                .or_default()
+                .push(position);
+        }
+        let broken = groups
+            .values()
+            .filter_map(|group| {
+                let first = group[0];
+                let step = new[members[first]].step();
+                let other = group[1..]
+                    .iter()
+                    .find(|&&position| new[members[position]].step() != step)?;
+                Some((first, *other))
+            })
+            .min();
+        if let Some((x, y)) = broken {
+            let (a, b) = (&input.shots[members[x]], &input.shots[members[y]]);
+            return Some(
+                Refusal::new(
+                    LOCKED,
+                    format!(
+                        "shots `{}` and `{}` of the locked instance `{}` would leave step",
+                        a.id, b.id, instance.id
+                    ),
+                )
+                .with("instance", instance.id.as_str().into())
+                .with("shots", vec![a.id.as_str(), b.id.as_str()].into()),
+            );
         }
     }
     None
@@ -391,17 +524,16 @@ fn finish(
     if let Some(refusal) = lock_problem(input, &new) {
         return Err(refusal);
     }
+    let mut needs: HashMap<&str, i64> = HashMap::new();
+    for (shot, at) in input.shots.iter().zip(&new) {
+        let need = needs.entry(shot.instance.as_str()).or_insert(i64::MIN);
+        *need = (*need).max(at.instance_start + at.frames());
+    }
     let growth = input
         .instances
         .iter()
         .filter_map(|instance| {
-            let needed = input
-                .shots
-                .iter()
-                .zip(&new)
-                .filter(|(shot, _)| shot.instance == instance.id)
-                .map(|(_, at)| at.instance_start + at.frames())
-                .max()?;
+            let needed = *needs.get(instance.id.as_str())?;
             (needed > instance.frames).then(|| Growth {
                 instance: instance.id.clone(),
                 from: instance.frames,
@@ -419,6 +551,8 @@ fn finish(
         })
         .collect();
     Ok(ShotPlan {
+        // `plan_op` fills the target: the rules below do not know which op they serve.
+        target: PlanTarget::default(),
         shots: input
             .shots
             .iter()
@@ -653,7 +787,7 @@ fn roll_cut(
                 p_start + 1
             ),
         )
-        .shot(&before.id)
+        .affected(&before.id)
         .limit(p_start + 1));
     }
     if frame >= q_end {
@@ -665,7 +799,7 @@ fn roll_cut(
                 q_end - 1
             ),
         )
-        .shot(&after.id)
+        .affected(&after.id)
         .limit(q_end - 1));
     }
     let edges = vec![
@@ -707,7 +841,8 @@ fn roll_cut(
         after.reserve,
         after.continuous_in,
         cut - head,
-    )?;
+    )
+    .map_err(|refusal| refusal.affected(&after.id))?;
     let chain_end = input.take_end(following);
     let mut last = None;
     for anchored in tries {
