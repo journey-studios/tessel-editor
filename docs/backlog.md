@@ -2650,3 +2650,48 @@ Computador, evidence.log, gates-summary.log e logs1–8 por comando.
 Sem push/PR/merge desta entrega. BL081.1.1.b (tecla física/WebView e beep
 não observado) e BL081.1.2 (lote/seleção múltipla) continuam pendentes;
 nenhuma captura global, suporte WebView ou aprovação física é alegada.
+
+
+### BL081 — integração de fades e atalho à main (2026-11-15)
+
+Base main9073e775e0014b3927dfde7ff0a76d8eb4ead2ce integrada localmente
+em f217814; quatro commits das entregas8901553/12ac339/cb86d05/d55e87d
+preservados. Conflito somente no backlog: registros BL081 e o histórico de
+claims/P4b mantidos, BL082.4.15 usa o estado atualizado da main.
+OpenQodex b6d7517a2064: revisão completa,118/118trechos e15/15candidatos,
+sem achados no diff inicial de40arquivos. Não é aprovação do ajuste abaixo.
+
+Mac integrado: fmt/checkalltargets/clippy/no-run/build0; core1732/0/7ignorados,
+desktop532/0, exportFFmpeg11/11, atalho16/16, split5/5, fades2/2.
+A execução dos demais crates parou em scene_frames (7passam/1falha): teste
+comparava anúncio JS com Capability::ALL, agora com FxTransition interno.
+F064 documenta14capacidadesRust e13JS, runtime/S2 e admissão pública fechados.
+A enumeração, o anúncio JS e o teste original são iguais aos de main9073e77;
+isso foi conferido por fonte, sem executar checkout separado da base.
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL081.16 | Integração / F064 | Handshake de scene_frames exige a capacidade interna FxTransition no runtime público | Corrigido e validado Mac — commit5232ea7, render136/0/3ignorados | BL081.2, BL081.1.1, BL082.4.3 | Coordenação | Exigir exatamente capacidades públicas, rejeitar anúncio fxTransition enquanto S2/admissão estiverem fechados; render completo com TESSEL_REQUIRE_RUNTIME=1, sem habilitar produto ou alterar runtime |
+
+Nova prova funcional headless/janela e gates do ajuste ficam separados das
+provas Windows anteriores. Sem aceite Windows do novo merge, tecla física,
+WebView focada, áudio ouvido ou desempenho; sem merge remoto autorizado.
+
+
+Integração Mac validada na branch feat/clip-split-fades-shortcut. Correção de
+expectativa do handshake em5232ea7; runtime e admissão pública inalterados.
+Render completo com TESSEL_REQUIRE_RUNTIME=1:136passam/0falhas/3ignorados;
+clippyalltargets-Dwarnings e builddesktop+corebins finais0. Prova versionada
+nos binários integrados: headless12/12 e janela12/12,0skips; WAV e envelope
+mantidos, undo/redo e save/reopen schema3. A primeira tentativa dessa prova
+executou0checks por binários removidos pelo GC automático do mbx; reconstrução
+normal e nova prova passaram. Logs antigos preservados, sem clean/gc manual.
+
+A rodada ampla --workspace com core/desktop excluídos terminou101 no teste
+de handshake original; o teste corrigido e o restante de render foram
+executados integralmente na rodada estrita136/0/3. Core/desktop foram
+executados antes em comandos separados. Não se alega um cargo test --workspace
+único com exit0. Nenhuma prova Windows do novo merge é herdada das entregas.
+[Relatório de integração](migration/clip-split-integration-report.md).
+Revisão OpenQodex final pré-push cobre o teste corrigido e a reconciliação
+documental; PR preparado após aprovação, merge remoto segue sem autorização.
