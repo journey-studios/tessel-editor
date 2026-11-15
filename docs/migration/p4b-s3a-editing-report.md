@@ -229,3 +229,32 @@ Não se usa o head antigo como prova do patch: os logs e hashes são próprios.
 Nenhum fixture foi alterado. Os três comentários automáticos de .28 foram lidos
 e confirmados no código, com regressões específicas. A revisão Windows da R1
 continua atribuída a33323a2; .26–.28 aguardam rechecagem independente do novo código.
+
+## 13. Revisão independente Windows R2 — código aceito
+
+R2 não encontrou bloqueante em `512685ab1ebdcbb08746f1c50b1f0a9ff741aedd`
+(código `b097979`). Windows: fmt/check/clippy-all-targets/no-run/build exit0;
+transições/corpus/X/baseline175/10/5/1 em debug e preserve_order, lib606 e
+desktopFX80. Controle repetido após restaurar mutantes. Nenhum release, core
+completo, desktop508, workspace global, runtime/GPU/performance foi reexecutado.
+Os dois gizmos Windows continuam vermelhos na base, conforme a R1; Mac é separado.
+
+17 mutantes concluídos:14 mortos,2 sobreviventes de cobertura e1 equivalente.
+Os dois sobreviventes R1 agora morrem (hint es e errors[] em falha de look mista);
+retirar a restauração da grafia também falha na lib e no executor. Um mutante
+de filtro noop foi abortado e não recebe classificação. As12 probes próprias
+confirmaram valores não revertidos, outros parâmetros/transições, seed/note,
+atribuição entre tipos e contagens inválidas de cameraEnd com fallback correto.
+
+Ressalvas registradas, sem bloqueio: falta teste permanente da guarda effect/from/to
+da restauração e de cameraEnd inválido (a probe o comprovou); E13 acrescentou
+edit/list/inspect, mas não novas asserções frame/gesto. Reutilizar um ID dentro do
+mesmo tipo ainda pode atribuir a recusa à remoção anterior (.29); a correção .28
+é entre tipos. No-op líquido mantém changes por op e changed_ops intermediário,
+com modified/changed falsos, sem revisão/undo, como o protocolo anterior.
+
+.25 (dica da cauda) permanece pendente e não bloqueante. Fixtures continuam
+intactos. A adaptação de hint do corpus compara todo o texto, salvo o nome da
+operação explicitamente mapeado. Fechamento seguinte é apenas documental;
+Refuse continua fechado e F064 produto P. Este é aceite da S3a interna, não de
+UI, render, export nem da aparência humana.

@@ -1881,7 +1881,7 @@ concreto da S0, sem link para arquivo inexistente nem validação de lib/CLI/UI 
 | BL082.4.2 | P4b/S1a | Documento/janela/validação tipada e política de admissão fechada | Concluído no escopo interno; R2 aprova a752f0a | BL082.4.1/.11 concluídos | Coordenador / revisão Windows | R2:61transition/25scene_fx/80GPUI, processo headless real, perfis serde e mutantes dinâmicos/scanner/domínio. fmt/check/clippy/no-run/build passam. Core1525ok/2gizmosbase, workspaceexecutado/Mac pendentes. Produto P; IDgerado fica BL082.4.15/S3. |
 | BL082.4.3 | P4b/S1b | Avaliação dos dois decks e plano, recursos por assetId/used_by sem ambiguidade | Concluída no escopo interno — R3 Windows4199af0 | BL082.4.2 integrada | Coordenador / Cursor Sonnet5.5 | Head73775c3:106transições/10corpus/594lib/80GPUI e gates Windows relatados; produtoP. Mac106+10+baseline debug/release passam após correção de dados(.16), três kitsXparciais(.17) em revisão. SemS2/S3a iniciadas. |
 | BL082.4.4 | P4b/S2 | Runtime/renderer/mistura e lifecycle/cache | Pendente | BL082.4.3; S2A também BL082.4.5/S3a | Não atribuído | Cor8bits/alpha declarados, capability, dois splats/leases/contextloss/dispose e pixelsindependentes |
-| BL082.4.5 | P4b/S3 | Ops/gestos/inspector/persistência ecoreparser/nós | A validar — S3a PR66, Mac33323a2 passou; revisão Windows pendente; S3b pendente | BL082.4.3 | Cursor Sonnet5.5 / coordenador | Atomicidade/revisão/undo, módulossemcrescerarquivosproibidos; dividirS3aseS3bseútil |
+| BL082.4.5 | P4b/S3 | Ops/gestos/inspector/persistência ecoreparser/nós | Concluída no escopo interno — R2 Windows512685a; S3b pendente | BL082.4.3 | Cursor Sonnet5.5 / coordenador | Atomicidade/revisão/undo, módulossemcrescerarquivosproibidos; dividirS3aseS3bseútil |
 | BL082.4.6 | P4b/S4 | UIKit/provaautomação/guardasoverlaycore | Pendente | BL082.4.4/.5; W1integrada | Não atribuído | Controlesreais, predicadocoreúnico, gestoqueentranajanela/hitpress, célulastestadasporfase |
 | BL082.4.7 | P4b/S6 | Dissolve legado com faixaoráculonova e divergênciasdeveredito declaradas | Pendente | BL082.4.10 | Não atribuído | NÃO alterar invalid-dissolve-transition.expected/hashantigo; fixturesnovas/pinpiloto e contraexemploalphaStraightUNSUPPORTED_ALPHA; registrarexpansãodecontrato |
 | BL082.4.8 | P4b/perf | Custo dos dois decks/splats | Pendente | BL082.4.4 | Não atribuído | Medição própriacomlockperformance, não inferirbenefíciodeteste funcional |
@@ -2050,7 +2050,7 @@ atributo no próprio módulo em linha, não a declaração externa dentro dele.
 
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
-| BL082.4.15 | PR62 R2 / S3 | IDs automáticos de looks e trilhas ignoram IDs de transições | A validar — corrigida na S3a PR66, revisão pendente | BL082.4.5 | Cursor Sonnet5.5 / coordenador | Incluir transitions no namespace de every_id; provar transições fx-1/fx-track-1, IDs automáticos distintos, recusa explícita atômica, undo/redo. Hoje apenas Accept: recusa segura, não corrupção, sem acesso público. Não bloqueia S1a. |
+| BL082.4.15 | PR62 R2 / S3 | IDs automáticos de looks e trilhas ignoram IDs de transições | Validado Windows R2 em512685a — namespace único; .29 diagnóstico separado | BL082.4.5 | Cursor Sonnet5.5 / coordenador | Incluir transitions no namespace de every_id; provar transições fx-1/fx-track-1, IDs automáticos distintos, recusa explícita atômica, undo/redo. Hoje apenas Accept: recusa segura, não corrupção, sem acesso público. Não bloqueia S1a. |
 
 ### PR60 R3 aprova Windows; integração e validação Unix pendentes — 2026-11-14
 
@@ -2273,7 +2273,7 @@ quadros anteriores reais. Ausência de comprimento conhecido conserva comportame
 
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
-| BL082.4.24 | PR63 / handles | cameraIn além do fim conta cabeça inexistente e use/refuse aceita frames presos | A validar — admissão S1b validada; dica de cabeça corrigida na S3a PR66 | BL082.4.3 | Coordenador | Regressões49/60 com câmera48 recusam TRANSITION_NO_HANDLES, hold admite e prende47; 47/48 conservam cabeça real e não prendem o vizinho. Testar/core/Mac e rechecagem Windows nova antes do merge; acervoS0 intocado. R3:114/10/1 EXPECT0/1,admission4,clippy/tree/check,4mutantes. Dica60/48sugere6masfaltam12; corrigir antes deS2A. |
+| BL082.4.24 | PR63 / handles | cameraIn além do fim conta cabeça inexistente e use/refuse aceita frames presos | Validado Windows R2 em512685a — admissão e dica de cabeça; .25 cauda separada | BL082.4.3 | Coordenador | Regressões49/60 com câmera48 recusam TRANSITION_NO_HANDLES, hold admite e prende47; 47/48 conservam cabeça real e não prendem o vizinho. Testar/core/Mac e rechecagem Windows nova antes do merge; acervoS0 intocado. R3:114/10/1 EXPECT0/1,admission4,clippy/tree/check,4mutantes. Dica60/48sugere6masfaltam12; corrigir antes deS2A. |
 
 BL082.4.24: produção69c5143; Mac896 core1596/0/7,114/10/1 preserve,GPUI80,
 check passam. Clippy apontou err-expect só no teste; forma da asserção ajustada
@@ -2364,9 +2364,9 @@ da R1 não serão herdados pelo código corrigido. .25 reproduzido, só dica e n
 
 | ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
 |---|---|---|---|---|---|---|
-| BL082.4.26 | PR66 R1 / no-op | Ida e volta de intensity inteiro grava float equivalente e gera revisão/undo | A validar — b097979 passou no Mac; rechecagem Windows pendente | BL082.4.5 | Coordenador | 1→0.5→1 preserva grafia/documento/revisão/histórico; float e parâmetro omitido continuam distintos; lote com outra mudança preserva autoria do parâmetro revertido. |
-| BL082.4.27 | PR66 R1 / provas | Lacunas de hint localizado, erro de look em lote misto e orçamento S3a; envelope de parse pouco explícito | A validar — b097979 passou no Mac; rechecagem Windows pendente | BL082.4.5 | Coordenador | Matar mutantes hint espanhol inglês e errors[] anexado à falha de look; provar orçamento com edição de transição; documentar parser invalid_op fora da projeção e reconciliar E-IDs com o plano. |
-| BL082.4.28 | PR66 / bots reproduzíveis | Metadado incompleto apaga diagnóstico; ID reutilizado cruza atribuição clip/transição; hint usa comando camelCase inexistente | A validar — b097979 passou no Mac; rechecagem Windows pendente | BL082.4.5 | Coordenador | Preservar diagnóstico original/untranslated se falta contagem; atribuir erro só à entidade correta após reutilizar ID; hint set_transition nas três línguas e importador, com divergência de vocabulário explícita no consumidor, sem regravar fixture. |
+| BL082.4.26 | PR66 R1 / no-op | Ida e volta de intensity inteiro grava float equivalente e gera revisão/undo | Validado Windows/Mac — b097979; teste de guarda a formalizar | BL082.4.5 | Coordenador | 1→0.5→1 preserva grafia/documento/revisão/histórico; float e parâmetro omitido continuam distintos; lote com outra mudança preserva autoria do parâmetro revertido. |
+| BL082.4.27 | PR66 R1 / provas | Lacunas de hint localizado, erro de look em lote misto e orçamento S3a; envelope de parse pouco explícito | Parcial — mutantes R1 mortos e edit/list/inspect provados; E13 frame/gesto a formalizar | BL082.4.5 | Coordenador | Matar mutantes hint espanhol inglês e errors[] anexado à falha de look; provar orçamento com edição de transição; documentar parser invalid_op fora da projeção e reconciliar E-IDs com o plano. |
+| BL082.4.28 | PR66 / bots reproduzíveis | Metadado incompleto apaga diagnóstico; ID reutilizado cruza atribuição clip/transição; hint usa comando camelCase inexistente | Validado Windows/Mac — b097979; cameraEnd tem probe, teste permanente pendente | BL082.4.5 | Coordenador | Preservar diagnóstico original/untranslated se falta contagem; atribuir erro só à entidade correta após reutilizar ID; hint set_transition nas três línguas e importador, com divergência de vocabulário explícita no consumidor, sem regravar fixture. |
 
 PR66 correções de .26–.28 implementadas em b097979: Mac core1673/0/7,175transições
 preserve,clippy workspace/build0; nove fontes Rust idênticos porSHA aos que rodaram,
@@ -2375,3 +2375,14 @@ reproduzida antes dofix; hints/erro misto/orçamento agora têm asserções pró
 Corpus fixado intacto; uma adaptação explícita de vocabulário muda somente o nome
 do comando na dica TRANSITION_DUPLICATE esperada pelo consumidor Rust. Rechecagem
 Windows independente do patch pendente antes do merge; .25 continua não bloqueante.
+
+PR66 R2 aceitou512685a/códigob097979:175/10/5/1 debug/preserve,lib606,desktopFX80,
+gatesfmt/check/clippy/no-run/build0. Dois sobreviventes R1 mortos;17mutantes:
+14mortos,2lacunas,1equivalente;1abortado não classificado. Mac1673/0/7 separado.
+Semworkspaceglobal/runtime/GPU/produto. Ressalvas: testes permanentes de guarda
+effect/from/to e cameraEnd inválido, e E13frame/gesto continuam a formalizar; probes
+deR2 confirmaram o comportamento. Relatório S3a§13; .25 continua não bloqueante.
+
+| ID | Origem | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL082.4.29 | PR66 R2 / diagnóstico | ID removido e recriado dentro do mesmo tipo ainda atribui falha ao op antigo | Pendente — diagnóstico, sem corrupção | BL082.4.28 | Coordenador / próxima fatia core | remove_transition X + set_transition X inválido deve apontar só à entidade final; incluir edits anteriores à remoção, casos entre tipos e atomicidade. Não promover .28 a rastreamento de gerações. |

@@ -704,3 +704,17 @@ mensagem/hint originais e marcam `untranslated`; zero válido não é ausência.
 A atribuição de erro retém o tipo clip/transição ao reutilizar um ID num lote.
 A dica TRANSITION_DUPLICATE usa `set_transition` nas três línguas e no importador,
 com a adaptação de vocabulário do corpus registrada acima.
+
+### Aceite interno S3a após R2 Windows
+
+R2 aceitou512685a/códigob097979:175/10/5/1 debug e preserve_order,lib606,
+desktopFX80,gatesfmt/check/clippy/no-run/build0. Dois mutantes R1 agora mortos;
+controle repetido após restauração. Mac1673/0/7 é prova separada. Sem execução
+do workspace global, runtime/GPU/UI física; Refuse fechado e F064 produto P.
+
+Ressalvas de cobertura: guarda effect/from/to e cameraEnd inválido sem testes
+permanentes discriminantes, embora probes confirmem o comportamento; E13 novo
+prova edit/list/inspect, não frame/gesto. Reutilização de ID dentro do mesmo tipo
+ainda pode atribuir erro à remoção anterior (.29); .28 trata tipos diferentes.
+No-op líquido relata alterações intermediárias por op, sem revisar/gravar o
+resultado líquido. Dica da cauda(.25) pendente; detalhes no relatório S3a§13.
