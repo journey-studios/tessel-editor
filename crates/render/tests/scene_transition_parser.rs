@@ -588,12 +588,15 @@ fn the_item_ceiling_accepts_a_core_valid_plan_and_refuses_one_more_pass() {
     let plan = ScenePlan::from_json(&value).expect("the whole plan is valid in the core");
     plan.validate().unwrap();
     let exact = plan.to_json_string();
-    let mut over = value;
-    over["fx"]
-        .as_array_mut()
-        .unwrap()
-        .push(pass(MAX_TRANSITION_PLAN_ITEMS));
+    let normalized = plan.to_json();
+    let mut over = normalized.clone();
+    let mut extra = over["fx"][0].clone();
+    extra["clipId"] = json!(format!("c-{}", MAX_TRANSITION_PLAN_ITEMS));
+    over["fx"].as_array_mut().unwrap().push(extra);
     assert_eq!(count(&over) + count(&over["transition"]["other"]), 20_001);
+    let mut without_extra = over.clone();
+    without_extra["fx"].as_array_mut().unwrap().pop();
+    assert_eq!(without_extra, normalized, "only the last pass differs");
     let over = over.to_string();
     assert!(exact.len() < MAX_TRANSITION_PLAN_BYTES);
     assert!(over.len() < MAX_TRANSITION_PLAN_BYTES);

@@ -10,7 +10,7 @@ pixel de transição, bridge, compositor, mudança de `hello`, flag nem ativaç�
 
 - `parseDirectedLayer` (a entrada de produção) continua **recusando** todo plano com `transition`: com `fxTransition` em
   `requires` é `unsupported` com `details.missing: ["fxTransition"]` (como antes); **sem** ela é agora `invalid_plan` em
-  `/requires` (a recusa que faltava). Planos sem a chave: mesmo resultado, mensagem e ordem.
+  `/requires` (a recusa que faltava). Planos JSON sem a chave: mesmo resultado, mensagem e ordem; versões cíclicas/BigInt têm a correção defensiva descrita no reforço.
 - `SCENE_CAPABILITIES` (JS) = 13 nomes, sem `fxTransition`; `Capability` (Rust) = 14; admissão pública `Refuse`; F064 produto **P**.
 - `runtime/dist/runtime.js` não contém o leitor (nada de produção o importa; só os próprios módulos e os testes).
 - Intocados (diff contra `a61b7a9` só lista os arquivos abaixo): `compositor.js`, `assets.js`, `splat-stage.js`, bridge/worker,
@@ -28,7 +28,10 @@ pixel de transição, bridge, compositor, mudança de `hello`, flag nem ativaç�
 | `e529482` | Testes JS e fixtures feitas à mão (`directed-transition{,-refusals,-limits}.test.mjs`, `directed-transition-fixtures.mjs`). |
 | `b57304e` | Interoperabilidade: `directed-transition-interop.mjs` e `crates/render/tests/scene_transition_parser.rs`. |
 | `ca234c1` | Dois mutantes sobreviventes da primeira bateria (M03, M34) ganham teste; M15b é equivalente. |
-| (este) | Docs: este relatório, `fx-transitions.md`, `scene-plan.md`. Só docs; árvore de código idêntica a `ca234c1`. |
+| `9c3a643` | Docs da entrega original; sua árvore de código era a de `ca234c1`. |
+| `0175cec` | Recusa arrays herdados, MDC exato nas razões e teto com plano core-válido 20000/+1. |
+| `a3c357b` | Versão cíclica/BigInt tipada e serializável nos casos testados; dez testes de borda. |
+| fechamento R2 | Docs e testes apenas; produção idêntica a `a3c357b`. |
 
 Todos os gates abaixo rodaram em `ca234c1` (a árvore de código da entrega9c3a643 é a dele; reforços posteriores separados abaixo).
 
@@ -286,3 +289,54 @@ quatro recusas tipadas; os logs foram relidos e classificados, sem fingir erro d
 compilação ou repetir o lote. Artefatos r1-close-* e r1-mut-* no cache Mac da PR75.
 Esses11mutantes são do coordenador, não a reexecução dos134da R1 nem prova de todas
 as32sobrevivências. R2 do head consolidado ainda pendente.
+
+
+## R2 Windows em a3c357b — aprovação interna e fechamento
+
+A [R2](t3-thread://v2/33595e42-547d-42b7-92a7-cb4acb430dd7/mcp:launch:222645598b8326c7fe1dee8ec9ec23d8bd9e6989e9a48416e100df053c9488e6)
+aprova a3c357b sem bloqueio, revendo0175cec e a3c357b independentemente da R1.
+Windows nativo, checkout limpo, wrapper/defaultmbx. Build runtime0; Node194/0/0skips,
+dos quais120puros e74dos arquivos antigos que incluem browser; interop5;
+core216/10/5/8/1 EXPECT0 e preserve_order EXPECT1; fmt/check/clippy workspace-all-targets,
+no-run/build0, tree sem gpui/wry. No-run só compila; workspace global/core completo,
+gizmos, release, áudio, stress, GPU/performance, UI física e origem não executados.
+
+R2 executou21mutantes:17mortos/4sobreviventes (M5:0/2 recusado tarde; M7/M9/M18:
+rótulo/typeof e found da versão). Três mutantes adicionais na interop morreram.
+Retirar import gerando ReferenceError e tentativas de quoting inválido foram
+descartados, não contam como controles discriminantes. Fontes restauradas por SHA
+e controles120/0. Esses números não são somados aos do autor/R1/coordenador.
+
+N1 e N2 são limites preservados: getter próprio que troca o array depois da contagem
+aceita30.002 recursos, e toJSON que falha na segunda chamada faz falhar a serialização
+posterior do erro. Ambos reproduzidos pelo coordenador sem modificar fonte. R2 também
+relata versão profunda; não reexecutada pelo coordenador. Não há defesa universal
+contra objetos JavaScript ativos/profundos. Nenhuma porta produtiva chega ao parser
+interno; JSON textual não contém esses mecanismos. Limites registrados em F064 e
+BL082.4.4, sem promover proteção da API de objeto ou ativar produto.
+
+N3/N2b: testes reforçados sem mudar produção. 0/2 no other com heldInstance errado
+exige o ponteiro da razão antes do erro de held;0/2 no primary exige seu próprio
+ponteiro. As duas entradas também pinam found, typeof no rótulo e mensagem da versão
+cíclica/BigInt. O coordenador aplicou os quatro mutantes correspondentes:4/4mortos
+por asserção, restauração por bytes/SHA/mtime e2/2controles após cada um. Logs r2-close-*.
+Isso fecha essas quatro lacunas, não todas as sobrevivências da R1.
+
+N5: na R2, o plano exato era normalizado e o excedente não (3.852.871 contra3.573.246
+bytes), ambos abaixo de4MiB. O teste final deriva ambos da mesma árvore normalizada,
+clona um passe normalizado com ID novo e verifica que removê-lo restaura exatamente
+a árvore original. Agora compara o mesmo plano mais um passe, com20.000/20.001itens.
+N4: contagem29adulterações e tabela de commits corrigidas.
+
+A produção final é byte-idêntica à aprovada em a3c357b; só docs/testes mudam neste
+fechamento. Provas finais Mac são separadas por conteúdo e head; os gates Windows
+permanecem atribuídos a a3c357b. F064 P/Refuse/JS13; desenho R/S2A pendentes.
+
+
+Fechamento Mac (conteúdo final conferido por SHA-256): grupo Node195/0/0skips,
+interop5/0 com o par normalizado20000/+1, clippy do alvo interop-Dwarnings,
+fmt e19specs de tabelas passaram. Logs r2-final-summary.json e r2-final-hashes.json;
+fontes e testes não mudaram durante os gates. Os quatro mutantes reforçados morreram
+por asserção com controles2/2 (r2-close-mutants.json). Produção idêntica a a3c357b
+por diff; aprovação Windows R2 é desse código. Este fechamento não rebatiza os
+gates completos do workspace como nova execução Mac/Windows.

@@ -25,9 +25,19 @@ test('cyclic and BigInt versions give serializable typed refusals on both entrie
   for (const version of [cycle, 1n, { nested: 1n }]) {
     const plan = basePlan();
     plan.planVersion = version;
-    refused(() => parseTransitionPlan(plan, []), null, 'unsupported_plan_version');
-    delete plan.transition;
-    refused(() => parseDirectedLayer(directedLayer(plan, [])), null, 'unsupported_plan_version');
+    const plain = { ...plan };
+    delete plain.transition;
+    const label = `[unserializable ${typeof version}]`;
+    for (const read of [() => parseTransitionPlan(plan, []), () => parseDirectedLayer(directedLayer(plain, []))]) {
+      assert.throws(read, (error) => {
+        assert.ok(error instanceof RuntimeError);
+        assert.equal(error.code, 'unsupported_plan_version');
+        assert.deepEqual(error.details, { found: label, supported: 1 });
+        assert.equal(error.message, `Scene plan version ${JSON.stringify(label)} is not supported (this runtime draws 1)`);
+        assert.doesNotThrow(() => JSON.stringify(error.toJSON()));
+        return true;
+      });
+    }
   }
   for (const version of [undefined, null, 2, '2', false, {}, [2]]) {
     const plan = basePlan();

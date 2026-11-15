@@ -327,6 +327,13 @@ test('a non-reduced ratio is refused at its own field before comparing the decks
   }
 });
 
+test('zero over two is refused during reading before a later frame or held fault', () => {
+  refusedAt('/transition/other/frame/instanceTime', {
+    '/transition/other/frame/instanceTime': ratio(0, 2), '/transition/heldInstance': false,
+  });
+  refusedAt('/frame/editTime', { '/frame/editTime': ratio(0, 2) });
+});
+
 test('every time is the exact reduced ratio counter x den / num, in both decks', () => {
   for (const field of ['instanceTime', 'cameraClipTime']) {
     refusedAt(`/frame/${field}`, { [`/frame/${field}`]: ratio(1, 2) });

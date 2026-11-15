@@ -861,18 +861,20 @@ com 13 capacidades (sem `fxTransition`), o core continua com 14, a admissão pú
 `parseDirectedLayer` continua recusando todo plano com `transition` (agora também com `invalid_plan` em `/requires` quando
 o plano tem a chave sem exigir `fxTransition`). Não há renderização, GL, pixel, flag nem ativação. Interoperabilidade: o
 teste `crates/render/tests/scene_transition_parser.rs` entrega ao leitor, via Node (obrigatório; ausente é falha), os
-planos que o core constrói em cada quadro da janela do bundle público e confere o resultado contra o plano tipado; 28
+planos que o core constrói em cada quadro da janela do bundle público e confere o resultado contra o plano tipado; 29
 planos adulterados são recusados pelo core e pelo leitor no mesmo ponteiro. Continuam pendentes (BL082.4.4/F064): carregar
 os dois decks, desenhar a mistura, bridge/worker, gestos, UI e qualquer pixel (S2 restante).
 
 R0, reforço do coordenador antes do merge: os seis campos de array de cada deck devem
 ser próprios; herança de protótipo recusa no campo antes da leitura/contagem, fechando
-a fuga do teto da API de objeto. Planos JSON e planos sem transição conservam o contrato.
+a fuga por herança de protótipo. Accessors/Proxy com estado ainda podem trocar o array
+depois da contagem na API de objeto (R2:30.002 recursos aceitos); JSON textual não os
+produz e nenhuma entrada produtiva entrega dados assim. Planos JSON e planos sem transição conservam o contrato.
 Inteiros JS são valores seguros, não fidelidade lexical:12.0/12e0 viram Number12 no
 JSON.parse, enquanto o leitor textual Rust pode recusar essas grafias. Um teste Rust→Node
 adicional verifica um plano completo aceito pelo core com20.000 itens e recusa20.001;
 o vetor JS de recursos sintéticos sozinho não demonstra validade do plano no core.
-A revisão independente deve conferir este reforço, sem herdar o aceite de9c3a643.
+A R2 em a3c357b conferiu esse reforço sem herdar o aceite de9c3a643; o fechamento posterior só altera docs/testes.
 
 R0, reforço de diagnóstico: uma razão não reduzida (por exemplo editTime6/4 em36/24fps)
 recusa no próprio campo antes da comparação entre decks; não culpa o vizinho3/2. A
@@ -895,3 +897,18 @@ Um planVersion cíclico/BigInt na API de objeto agora produz unsupported_plan_ve
 tipado e serializável. found/message dos valores JSON normais permanecem iguais;
 quando JSON.stringify falha, found vira o rótulo [unserializable object] ou
 [unserializable bigint]. Nenhum dado malformado é aceito por esse reparo.
+
+### R0 — aceite interno R2 e limites dos objetos JavaScript
+
+R2 Windows aprova a3c357b sem bloqueio: grupo Node194 (120puros), interop5,
+core216/10/5/8/1 nos dois perfis, fmt/check/clippy/no-run/build0 e tree sem gpui/wry.
+Não houve workspace global, GPU física/desempenho, UI física ou origem executada.
+
+A API de objeto espera dados estáveis. Accessors/Proxy com estado podem contornar
+o teto após a contagem (30.002 recursos reproduzidos); não há isolamento de código
+JavaScript arbitrário. toJSON instável também pode fazer a serialização posterior
+do erro falhar. Ciclos/BigInt dos testes têm recusa tipada e serializável, sem uma
+garantia universal sobre objetos executáveis/profundos. O caminho textual recebe
+JSON, não esses objetos, e o parser interno continua fora das portas produtivas.
+Esses limites ficam em BL082.4.4 para o desenho/transporte seguinte. Produto P,
+Refuse fechado e JS13; não é aceite de pixels, cache/lifecycle ou ativação.

@@ -339,3 +339,13 @@ numéricas, campos vazios, FOV, faixa segura e derivação exata de requires com
 verificadas pela R1. Os testes novos fecham bordas discriminantes, sem alegar que todos
 os134mutantes independentes foram mortos. Recursos format/alpha/colorSpace têm teste
 defensivo do helper de união; não transformá-lo em prova de plano inteiro no core.
+
+
+## Limite de objetos ativos, registrado após R2
+
+A recusa de arrays herdados não isola accessors/Proxy com estado: o leitor pode
+contar um array e depois consumir outro, nem garante serialização de toJSON que
+muda entre chamadas. A API de objeto é interna para dados estáveis; JSON textual
+não transporta accessors/Proxy/toJSON executável. R2 não bloqueia a fundação R0 por
+essas entradas não produtivas; a futura ligação ao transporte deve preservar a
+fronteira de dados. Não alegar defesa universal de objetos JavaScript.
