@@ -447,9 +447,11 @@ Detalhe, mutantes, divergências e comandos: [p4b-s1b-evaluation-report.md](../m
   (`progress` suavizado, `amount = clamp01(intensity)`) e saída, uma vez. Orçamento (`fx/budget.rs`): só aviso.
 - **Plano.** `scene_plan/transition{,_json,_validate}.rs`: ver [scene-plan.md](scene-plan.md). Recursos por deck, união
   derivada com `used_by` qualificado, `requires` ganha `fxTransition`, tetos 4 MiB / 20 000 itens / profundidade 1.
-- **Prova (Windows, head de código desta entrega).** `scene_fx_transition` 106 testes e `pilot_dissolve_corpus` 10, nos
+- **Prova histórica (Windows, commit `73775c3`).** `scene_fx_transition` 106 testes e `pilot_dissolve_corpus` 10, nos
   dois perfis de `serde_json` (com e sem `preserve_order`); core completo com 2 falhas de base (`scene_gizmo_rotation`,
   `scene_gizmo_scale`, também na base sem alteração); GPUI `scene_fx` 80. 18 mutantes essenciais mortos.
+  Esses gates não comprovam os patches posteriores. O limite de cabeça de câmera (.24) tem
+  114 testes e revisão Windows R3 em `4199af0`, descrita no fechamento abaixo.
 - **Não provado / A validar:** pixels reais, GPU, runtime e shader (S2), Mac, origem (`ORIGIN_NOT_EXECUTED`), comparação
   com ouro (`GOLDEN_NOT_COMPARABLE`), aceite humano. A linha de pixels do corpus é um cálculo de referência
   (decodificação sRGB, mistura, codificação, meio para cima), **não** saída de GPU.

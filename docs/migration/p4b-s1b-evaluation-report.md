@@ -23,7 +23,11 @@ Compatibilidade: um plano sem transição mantém bytes e digests (`PLAN_VERSION
 `import_*_admitting` interno e o scanner de fronteira proíbe seu uso em produção. Planos reais do corpus: ~6 KB
 (spec edit, frames 42–53), muito abaixo dos tetos.
 
-## 2. Provado (Windows x64, Rust 1.99.1, head de código desta entrega)
+## 2. Prova histórica (Windows x64, Rust 1.99.1, commit `73775c3`)
+
+Esta tabela pertence ao head inicial, antes dos reforços e do patch de cabeça de câmera
+(.24). Não constitui prova desses patches. As rodadas posteriores têm seus próprios SHAs
+e escopos nas seções seguintes; a R3 Windows de `4199af0` executou 114 testes de transição.
 
 | Prova | Resultado |
 |---|---|
