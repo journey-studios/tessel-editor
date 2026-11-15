@@ -2,7 +2,8 @@
 //! that read a result back. Every number in the tests is written by hand, never read from here.
 
 use serde_json::{Map, Value, json};
-use tessel_editor_core::directed_scene::DirectedScene;
+use tessel_editor_core::directed_scene::fx::TransitionAdmission;
+use tessel_editor_core::directed_scene::{DirectedScene, Limits};
 use tessel_editor_core::scene_edit::shots::{ShotOp, ShotsOutcome, apply_shots, parse_shot_ops};
 use tessel_editor_core::scene_edit::{CANDIDATE_REJECTED, EditError};
 
@@ -94,6 +95,13 @@ pub fn bundle(edit: i64, shots: &[Sh], instances: &[(&str, i64, bool)], extra: V
 
 pub fn scene_of(document: Value) -> DirectedScene {
     DirectedScene::import_value(document).unwrap_or_else(|error| panic!("the fixture: {error:?}"))
+}
+
+/// A scene admitted under `TransitionAdmission::Accept`, the door the corpus uses: the public
+/// admission refuses `fx.transitions` today.
+pub fn scene_admitting(document: Value) -> DirectedScene {
+    DirectedScene::import_value_admitting(document, &Limits::default(), TransitionAdmission::Accept)
+        .unwrap_or_else(|error| panic!("the fixture: {error:?}"))
 }
 
 pub fn build(edit: i64, shots: &[Sh], instances: &[(&str, i64, bool)]) -> DirectedScene {

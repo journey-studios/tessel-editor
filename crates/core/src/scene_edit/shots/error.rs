@@ -29,8 +29,11 @@ pub const LOCKED: &str = "LOCKED";
 pub const CONTINUOUS_JOIN: &str = "CONTINUOUS_JOIN";
 /// `anchor` with fewer head frames than the shot gains (#9).
 pub const NO_HEAD_FRAMES: &str = "NO_HEAD_FRAMES";
-/// A deferred field with edit time in a shape the planner cannot move (D12). **Unreachable with
-/// the list audited in S0**: the code exists for a field that joins the list later.
+/// The op would have to move a layer in edit frames (an effect clip, a transition, a light key or
+/// a `weatherKeys` entry) and S1 does not move any: `details` has the JSON pointer of the first
+/// item (`path`) and its `layer` (`fx_clip_output`, `fx_clip_shot`, `transition`, `light_keys`,
+/// `weather_keys`). S2 implements the movement and drops this refusal; a field of the S0 audit
+/// that joins the list of refused fields (D12) uses the same code with `field`.
 pub const SHOTS_LAYER_NOT_YET: &str = "SHOTS_LAYER_NOT_YET";
 /// An option this phase refuses (`with_narration`, D13).
 pub const SHOTS_OPTION_NOT_YET: &str = "SHOTS_OPTION_NOT_YET";

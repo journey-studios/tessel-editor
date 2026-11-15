@@ -1,5 +1,6 @@
-//! The batch, the parsing of ops, the layers S1 does not move (T16), narration (T17) and the
-//! planner alone with a reserve (T14b).
+//! The batch, the parsing of ops, the refusal of an op that would move a layer S1 does not move
+//! (T16; the rest of that family is in `layers.rs`), narration (T17) and the planner alone with a
+//! reserve (T14b).
 
 use core::prelude::v1::test;
 
@@ -114,7 +115,7 @@ fn t16_the_layer_code_exists_and_every_code_is_listed() {
 }
 
 #[test]
-fn t16_a_layer_the_slice_does_not_move_fails_the_gate_and_never_changes_silently() {
+fn t16_an_op_that_would_move_an_output_clip_is_refused_and_one_that_leaves_it_alone_is_not() {
     let fx = json!({"fx": {"tracks": [{"id": "o", "clips": [
         {"id": "o1", "startFrame": 40, "durationFrames": 40, "keys": {}},
     ]}], "transitions": []}});
@@ -128,17 +129,42 @@ fn t16_a_layer_the_slice_does_not_move_fails_the_gate_and_never_changes_silently
         &[("ia", 60, false), ("ib", 60, false), ("ic", 60, false)],
         fx,
     ));
-    // The clip ends at 80: an edit of 70 frames leaves it outside, and S1 does not move it.
-    let error = refused(&scene, json!({"set_edit_duration": {"frames": 70}}));
-    finding(&error, "FX_CLIP_OUT_OF_RANGE");
-    // An op the clip survives leaves the whole `fx` object as it was, byte for byte.
+    // The clip [40,80) crosses the seam at 60 that a longer `b` opens: the reference stretches it,
+    // S1 does not, and the op is refused instead of leaving the clip where it was.
+    let error = refused(
+        &scene,
+        json!({"set_shot_duration": {"shot": "b", "frames": 40}}),
+    );
+    assert_eq!(error.code, SHOTS_LAYER_NOT_YET, "{error}");
+    assert_eq!(error.index, Some(0));
+    assert_eq!(detail(&error, "layer"), json!("fx_clip_output"));
+    assert_eq!(detail(&error, "path"), json!("/fx/tracks/0/clips/0"));
+    // `shot` and `edge` are the target of the op; the frame is the end it asked for.
+    assert_eq!(detail(&error, "shot"), json!("b"));
+    assert_eq!(detail(&error, "edge"), json!("end"));
+    assert_eq!(detail(&error, "asked_frame"), json!(70));
+    // A shrinking edit that cuts the clip's tail is refused the same way.
+    let shrink = refused(&scene, json!({"set_edit_duration": {"frames": 70}}));
+    assert_eq!(shrink.code, SHOTS_LAYER_NOT_YET, "{shrink}");
+    // `keep_absolute` freezes output clips: the first op passes with `fx` byte for byte, and the
+    // second is the gate's legitimate refusal (the clip leaves the edit).
+    let kept = done(
+        &scene,
+        json!({"set_shot_duration": {"shot": "b", "frames": 40, "keep_absolute": true}}),
+    );
+    assert_eq!(kept.candidate.document()["fx"], scene.document()["fx"]);
+    let out = refused(
+        &scene,
+        json!({"set_edit_duration": {"frames": 70, "keep_absolute": true}}),
+    );
+    finding(&out, "FX_CLIP_OUT_OF_RANGE");
+    // The seam of a longer `c` is at frame 90, after the clip: nothing to move, `fx` untouched.
     let out = done(
         &scene,
         json!({"set_shot_duration": {"shot": "c", "frames": 40}}),
     );
     assert_eq!(out.candidate.document()["fx"], scene.document()["fx"]);
 }
-
 #[test]
 fn t17_narration_is_refused_as_an_option_and_never_moves_with_the_shots() {
     let extra = json!({

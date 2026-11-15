@@ -15,16 +15,30 @@
 //!   temporal join rules. A finding is `CANDIDATE_REJECTED` linked to the op by JSON pointer.
 //!
 //! **This slice (S1) moves the shots, the instances and the edit length only.** The layers that
-//! count edit frames (effect clips, transitions, light keys, `weatherKeys`) are S2's: a document
-//! that needs one of them moved fails the gate (`FX_SCOPE_MISMATCH`, `FX_CLIP_OUT_OF_RANGE`,
-//! `TRANSITION_TOO_LONG`, ...), it is not repaired. `keep_absolute` and `shrink_transitions` are
-//! parsed and carried, and have no effect until then. No property of a shot is in the catalog
+//! count edit frames (effect clips, transitions, light keys, `weatherKeys`) are S2's. Until S2 an
+//! op that would have to move one of them is **refused** with `SHOTS_LAYER_NOT_YET` (the first
+//! item and its layer in `details`: `path`, `layer`); it is never accepted with the layer left
+//! where it was. What would move (`layers.rs` replicates the reference's mapping to tell):
+//!
+//! * an `output` effect clip the chain of splices moves, stretches, cuts or removes, and a
+//!   light key or `weatherKeys` entry the chain moves or drops (`keep_absolute: true` freezes
+//!   these, so they do not refuse);
+//! * a `shot`-scoped effect clip of a shot whose picture slid or whose range was cut (it follows
+//!   the plan, so `keep_absolute` does not help);
+//! * a transition tied to a touched shot that no longer fits, when `shrink_transitions` asked
+//!   for the shrink S1 cannot do. Without that option a transition that does not fit is the
+//!   gate's own finding (`TRANSITION_TOO_LONG`), and one that still fits stays as the reference
+//!   leaves it.
+//!
+//! S2 removes this refusal when it implements the movement. `keep_absolute` and
+//! `shrink_transitions` are parsed and carried. No property of a shot is in the catalog
 //! (D15): a property would write an `editRange` without the ripple.
 //!
 //! The command (`SceneCommand`), the JSONL op and the localized texts are S3's.
 
 mod apply;
 mod error;
+mod layers;
 mod plan;
 
 pub use apply::{

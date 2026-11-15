@@ -11,6 +11,11 @@
 //! The shared `candidate_gate` of the plan (§4) is not extracted here: the importer paths of the
 //! other edits are in another slice's files, so this module calls the same three pieces itself.
 //! An op that changes nothing ends the batch without the gate: there is no candidate to judge.
+//!
+//! Between the planner and the write an op that would have to move a layer in edit frames is
+//! refused (`SHOTS_LAYER_NOT_YET`, `layers.rs`): S1 does not move effect clips, light keys or
+//! `weatherKeys`, and writing the shots over them in silence would pass the gate with the layer
+//! left behind.
 
 use std::collections::HashMap;
 
@@ -21,6 +26,7 @@ use crate::directed_scene::{DirectedScene, ImportError, Limits};
 use crate::scene_edit::batch::rejected;
 use crate::scene_edit::error::{DOCUMENT_MISMATCH, EditError};
 
+use super::layers;
 use super::plan::{Placement, PlanInput, PlanInstance, PlanShot, ShotPlan, plan_op};
 use super::{ShotOp, check_batch_len, lenient_int};
 
@@ -86,6 +92,11 @@ pub fn apply_shots_with(
         let Some(plan) = planned else {
             continue;
         };
+        if let Some(unmoved) = layers::first_unmoved(&work, &plan, op.options()) {
+            return Err(layers::refusal(&plan, &unmoved)
+                .into_edit_error()
+                .at_op(index));
+        }
         let written =
             write_plan(&mut work, &plan, &mut notes).map_err(|error| error.at_op(index))?;
         pointers.extend(written.into_iter().map(|pointer| (index, pointer)));
