@@ -46,8 +46,11 @@ Limites declarados (nada abaixo é prometido):
   um pai por link entre duas operações de caminho; isso exige E/S ancorada em diretório
   (`openat`), que não existe na std e pediria dependência (`libc`/`rustix`) → patch de `Cargo`
   do coordenador.
-- Identidade de arquivo por inode só existe em Unix; Windows e normalização Unicode NFC/NFD
-  continuam em BL078. O PNG é validado só no cabeçalho (F038).
+- Identidade de arquivo por inode só existe em Unix. No Windows, só os arquivos de lock do ledger (BL167.6)
+  e do lease (BL167.6.3) têm identidade, pelo volume e pelo índice do arquivo (`same-file`); a do lease
+  vale desde 2026-11-14, junto com o PID do detentor num stream NTFS, porque o lock do Windows impede
+  ler o arquivo. A identidade dos recursos e a normalização Unicode NFC/NFD continuam em BL078. O PNG é
+  validado só no cabeçalho (F038).
 - BL089/BL096/BL097 (ver "Limpeza de resultados cancelados, falhos ou descartados"): import e
   adopt só removem o que eles próprios criaram, e dois resultados que compartilham arquivos
   (mesma pasta de cena) respeitam um ao outro, em qualquer ordem de aceitar e descartar. O
