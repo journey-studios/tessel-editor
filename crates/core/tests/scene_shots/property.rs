@@ -4,8 +4,8 @@ use core::prelude::v1::test;
 
 use serde_json::{Map, Value, json};
 use tessel_editor_core::directed_scene::DirectedScene;
-use tessel_editor_core::scene_edit::shots::{CODES, MAX_EDIT_FRAMES, apply_shots};
-use tessel_editor_core::scene_edit::{INVALID_OP, catalog};
+use tessel_editor_core::scene_edit::shots::{CODES, MAX_EDIT_FRAMES, SHOTS_LAYER_NOT_YET, apply_shots};
+use tessel_editor_core::scene_edit::{CANDIDATE_REJECTED, INVALID_OP, catalog};
 
 use super::support::*;
 // ---- T21: a property over random sequences ---------------------------------------------------
@@ -184,7 +184,6 @@ fn t21_random_sequences_pass_the_gate_refusals_change_nothing_and_the_limit_does
         let mut scene = property_scene();
         for _ in 0..6 {
             let value = random_op(&mut rng, &scene);
-            let before = scene.document().clone();
             match apply_shots(&scene, &op(value.clone())) {
                 Ok(out) => {
                     assert_sound(&scene, &out.candidate);
@@ -196,9 +195,17 @@ fn t21_random_sequences_pass_the_gate_refusals_change_nothing_and_the_limit_does
                 }
                 Err(error) => {
                     refusals += 1;
-                    assert_eq!(*scene.document(), before, "{value} changed the input");
                     assert!(CODES.contains(&error.code), "{value}: {}", error.code);
                     assert_ne!(error.code, INVALID_OP, "{value}");
+                    // The scene has no layer and a camera that holds still, so an op that obeys
+                    // every rule of the planner passes the gate: a `CANDIDATE_REJECTED` here is a
+                    // plan the planner should have refused itself (or a wrong plan), never a
+                    // legitimate refusal. Nor can a layer be in the way.
+                    assert_ne!(
+                        error.code, CANDIDATE_REJECTED,
+                        "{value}: the planner let through what the gate refuses: {error}"
+                    );
+                    assert_ne!(error.code, SHOTS_LAYER_NOT_YET, "{value}: {error}");
                     if let Some(limit) = error.details().and_then(|d| d["limit_frame"].as_i64()) {
                         let twin = at_limit(&value, &scene, limit);
                         if let Err(again) = apply_shots(&scene, &op(twin.clone())) {
