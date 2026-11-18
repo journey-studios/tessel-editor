@@ -8,7 +8,12 @@ use serde_json::{Value, json};
 use super::error::CommandError;
 use crate::camera_keys::CameraKey;
 use crate::content::{Camera, TextSpec};
+use crate::group::GroupInstance;
+use crate::group::KeyTrack;
 use crate::id::Id;
+use crate::player::PlayerSpec;
+use crate::shape::ShapeSpec;
+use crate::subtitles::SubtitleSpec;
 use crate::time::{Rate, Ratio};
 
 /// Frame rate of the demonstration sequence. Dynamic projects read [`Timeline::rate`].
@@ -46,6 +51,14 @@ pub enum ClipKind {
     Audio,
     /// Three.js scene or Gaussian splat asset.
     Scene,
+    /// An editable vector shape drawn by the compositor, without a media file (F067).
+    Shape,
+    /// An instance of a reusable group of shapes and text, with keyframes (F069).
+    Group,
+    /// A waveform, progress bar and timer tied to an audio clip of the sequence (F071).
+    Player,
+    /// A caption track of timed cues, imported from or exported to SRT (F071).
+    Subtitles,
 }
 
 impl ClipKind {
@@ -55,15 +68,28 @@ impl ClipKind {
             Self::Title => "title",
             Self::Audio => "audio",
             Self::Scene => "scene",
+            Self::Shape => "shape",
+            Self::Group => "group",
+            Self::Player => "player",
+            Self::Subtitles => "subtitles",
         }
     }
 
-    /// Audio never lands on a video track and vice versa. Titles and scenes are visual.
+    /// Audio never lands on a video track and vice versa. Titles, shapes, groups, players, caption
+    /// tracks and scenes are visual.
     pub fn fits(self, track: TrackKind) -> bool {
         matches!(
             (self, track),
-            (Self::Video | Self::Title | Self::Scene, TrackKind::Video)
-                | (Self::Audio, TrackKind::Audio)
+            (
+                Self::Video
+                    | Self::Title
+                    | Self::Scene
+                    | Self::Shape
+                    | Self::Group
+                    | Self::Player
+                    | Self::Subtitles,
+                TrackKind::Video
+            ) | (Self::Audio, TrackKind::Audio)
         )
     }
 }
@@ -97,10 +123,21 @@ pub struct Clip {
     pub source_start: Ratio,
     /// Text of a title clip.
     pub text: Option<TextSpec>,
+    /// Specification of a shape clip.
+    pub shape: Option<ShapeSpec>,
+    /// The group a group clip shows and the texts it changes (F069).
+    pub group: Option<GroupInstance>,
+    /// The player (waveform, progress bar and timer) a player clip draws (F071).
+    pub player: Option<PlayerSpec>,
+    /// The caption track (cues and style) a subtitle clip draws (F071).
+    pub subtitles: Option<SubtitleSpec>,
     /// Camera of a scene clip.
     pub camera: Option<Camera>,
     /// Keyframes of a scene clip's camera (BL140), sorted by scene time; empty = no keyframes.
     pub camera_keys: Vec<CameraKey>,
+    /// Keyframes of the clip's position, zoom, rotation and opacity over its own time (F073), one
+    /// track per property in the inspector's order; empty = the inspector values hold.
+    pub keys: Vec<KeyTrack>,
 }
 
 impl Clip {
@@ -268,8 +305,13 @@ impl Timeline {
                     media: media.map(Id::lit),
                     source_start: Ratio::ZERO,
                     text: None,
+                    shape: None,
+                    group: None,
+                    player: None,
+                    subtitles: None,
                     camera: None,
                     camera_keys: Vec::new(),
+                    keys: Vec::new(),
                 }
             };
         let mut title = clip(

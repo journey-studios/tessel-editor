@@ -17,6 +17,72 @@ pub(super) fn fixture(cx: &mut TestAppContext) -> (Entity<Workstation>, &mut Vis
 }
 
 #[gpui_kit::test]
+fn scrolling_the_timeline_keeps_track_headers_aligned_and_reaches_the_bottom(
+    cx: &mut TestAppContext,
+) {
+    let (view, cx) = fixture(cx);
+    view.update(cx, |view, cx| {
+        for index in 0..8 {
+            view.execute(
+                Command::CreateTrack {
+                    id: Some(format!("scroll-test-{index}")),
+                    name: format!("Title {index}"),
+                    kind: crate::state::timeline::TrackKind::Video,
+                },
+                Source::Cli,
+                cx,
+            )
+            .unwrap();
+        }
+        view.execute(
+            Command::SetTimelineZoom {
+                zoom: Raw::Number(120.),
+            },
+            Source::Cli,
+            cx,
+        )
+        .unwrap();
+    });
+    cx.run_until_parked();
+    let (viewport, header, last) = view.read_with(cx, |view, _| {
+        let last = view.state.timeline.tracks.last().unwrap().id.to_string();
+        (
+            view.geometry.get("timeline-scroll").unwrap(),
+            view.geometry.get("timeline-headers").unwrap(),
+            last,
+        )
+    });
+    let positions = |cx: &mut VisualTestContext| {
+        view.read_with(cx, |view, _| {
+            (
+                view.geometry.get(&format!("header:{last}")).unwrap(),
+                view.geometry.get(&format!("lane:{last}")).unwrap(),
+            )
+        })
+    };
+    assert!(positions(cx).1.origin.y >= viewport.bottom());
+    let wheel = |cx: &mut VisualTestContext, position, x, y| {
+        cx.simulate_event(ScrollEvent {
+            position,
+            delta: ScrollDelta::Pixels(point(px(x), px(y))),
+            ..Default::default()
+        });
+        cx.run_until_parked();
+    };
+    wheel(cx, viewport.center(), 0., -4000.);
+    let (bottom_header, bottom_lane) = positions(cx);
+    assert!(viewport.contains(&point(viewport.center().x, bottom_lane.center().y)));
+    assert_eq!(bottom_header.origin.y, bottom_lane.origin.y);
+    wheel(cx, viewport.center(), -200., 0.);
+    let (after_header, after_lane) = positions(cx);
+    assert_eq!(after_header.origin, bottom_header.origin);
+    assert_eq!(after_lane.origin.y, bottom_lane.origin.y);
+    assert!(after_lane.origin.x < bottom_lane.origin.x);
+    wheel(cx, header.center(), 0., 4000.);
+    assert!(positions(cx).1.origin.y >= viewport.bottom());
+}
+
+#[gpui_kit::test]
 fn dragging_trim_handle_changes_duration(cx: &mut TestAppContext) {
     let (view, cx) = fixture(cx);
     let (start, end) = view.read_with(cx, |view, _| {

@@ -23,6 +23,7 @@ use super::library::{Folder, MediaItem};
 use super::property_gesture::OpenGesture;
 use super::timeline::Timeline;
 use super::{CommandError, EditorState};
+use crate::group::GroupBook;
 use crate::id::Id;
 use crate::scene_interaction::Dropped;
 use crate::scene_project::SceneBook;
@@ -41,6 +42,8 @@ pub struct Snapshot {
     overrides: Overrides,
     /// Shares each attached bundle (`Arc`), so a snapshot costs pointers, not documents.
     scenes: SceneBook,
+    /// Group definitions and text styles (F069); clips of every sequence refer to them.
+    groups: GroupBook,
 }
 
 #[derive(Debug, Clone)]
@@ -131,6 +134,7 @@ impl EditorState {
             others: self.sequences.clone(),
             overrides: self.inspector.overrides_snapshot(),
             scenes: self.scenes.clone(),
+            groups: self.groups.clone(),
         }
     }
 
@@ -168,6 +172,7 @@ impl EditorState {
         self.sequences = others;
         self.inspector.restore_overrides(snapshot.overrides);
         self.scenes = snapshot.scenes;
+        self.groups = snapshot.groups;
         let dropped = self.scene_interaction.selection.prune(&self.scenes);
         // F061: `undo()`/`redo()` and a rolled-back transaction do not pass through `apply`.
         self.prune_fx_target();

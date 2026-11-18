@@ -10,6 +10,7 @@
 
 use serde_json::json;
 
+use crate::content::{TextSpec, TitleFont};
 use crate::state::error::CommandError;
 
 /// Non-ASCII characters the font draws, one source for the core and the runtime tests.
@@ -171,6 +172,27 @@ fn is_marked(ch: char) -> bool {
 ///
 /// The text is never clipped by the frame and never grows. Lines are centred by the renderer.
 pub fn layout(content: &str, size: f64, width: u32, height: u32) -> TextLayout {
+    layout_in(content, size, width, height, 0.0)
+}
+
+/// Fraction of the canvas width a box of `box_percent` percent spans; `0` is the title-safe area.
+fn box_fraction(box_percent: f64) -> f64 {
+    if box_percent > 0.0 {
+        (box_percent / 100.0).min(1.0)
+    } else {
+        SAFE_AREA
+    }
+}
+
+/// [`layout`] in a text box `box_percent` percent of the canvas width wide (`0`: the title-safe
+/// area, which is what [`layout`] uses). The text height still stays inside the safe area.
+pub fn layout_in(
+    content: &str,
+    size: f64,
+    width: u32,
+    height: u32,
+    box_percent: f64,
+) -> TextLayout {
     let (width, height) = (f64::from(width.max(1)), f64::from(height.max(1)));
     let cell = |scale: f64| size / 100.0 * height / GLYPH_ROWS as f64 * scale;
     let columns = |chars: usize| (chars * GLYPH_ADVANCE).saturating_sub(1) as f64;
@@ -184,7 +206,7 @@ pub fn layout(content: &str, size: f64, width: u32, height: u32) -> TextLayout {
         .map(|word| word.chars().count())
         .max()
         .unwrap_or(0);
-    let max_width = SAFE_AREA * width;
+    let max_width = box_fraction(box_percent) * width;
     let max_height = SAFE_AREA * height;
     let mut scale = if longest == 0 || columns(longest) * cell(1.0) <= max_width {
         1.0
@@ -258,6 +280,109 @@ pub fn anchor_offset(
     (grow_down - grow_up) / 2.0 / height * 100.0
 }
 
+/// Advance of `ch` in Inter, in ems. A character the table lacks (the core only ever sees
+/// normalised text, so this is a safety net) counts as the widest digit.
+fn inter_advance(ch: char) -> f64 {
+    crate::inter_widths::INTER_ADVANCES
+        .iter()
+        .find(|(candidate, _)| *candidate == ch)
+        .map_or(0.7, |(_, units)| f64::from(*units) / 1000.0)
+}
+
+fn inter_width(text: &str) -> f64 {
+    text.chars().map(inter_advance).sum()
+}
+
+/// Lays a sans (Inter) title out in a box `box_percent` percent of the canvas width wide (`0`:
+/// the title-safe area), breaking at spaces and at `\n` like [`layout`] does for the bitmap font.
+///
+/// WHY the core and not the runtime: with the breaks known here, a text revealed line by line
+/// (F070) can count its lines, a typed one keeps the lines it will end with from the first
+/// letter on, and the monitor and the export cannot disagree about them. Widths come from
+/// `inter_widths.rs` (measured from the bundled font, without kerning, which only tightens a
+/// line), so a line that fits here fits the box once drawn. A word wider than the box keeps a
+/// line of its own: the runtime shrinks the whole title to fit, as it always did.
+pub fn layout_sans(
+    content: &str,
+    size: f64,
+    width: u32,
+    height: u32,
+    box_percent: f64,
+) -> TextLayout {
+    let (width, height) = (f64::from(width.max(1)), f64::from(height.max(1)));
+    let glyph = size / 100.0 * height;
+    let max_width = box_fraction(box_percent) * width;
+    let mut lines = Vec::new();
+    for paragraph in content.split('\n') {
+        let mut line = String::new();
+        for (index, word) in paragraph.split(' ').enumerate() {
+            if index == 0 {
+                line.push_str(word);
+                continue;
+            }
+            let extended = format!("{line} {word}");
+            if inter_width(&extended) * glyph > max_width && !line.is_empty() {
+                lines.push(std::mem::replace(&mut line, word.to_string()));
+            } else {
+                line = extended;
+            }
+        }
+        lines.push(line);
+    }
+    TextLayout { lines, scale: 1.0 }
+}
+
+/// Line pitch of a sans title, in ems (`LINE_PITCH` in `runtime/src/typographic-text.js`).
+pub const SANS_LINE_PITCH: f64 = 1.12;
+
+/// Size of the picture a sans title draws, as `(width, height)` in percent of the canvas width and
+/// height: the widest of `lines` (Inter advances, no kerning, as [`layout_sans`] measures) and
+/// `lines × pitch`. A caption box (F071) is sized from it, so the box follows the text it holds.
+pub fn sans_block(lines: &[String], size: f64, width: u32, height: u32) -> (f64, f64) {
+    let (width, height) = (f64::from(width.max(1)), f64::from(height.max(1)));
+    let glyph = size / 100.0 * height;
+    let widest = lines
+        .iter()
+        .map(|line| inter_width(line))
+        .fold(0.0, f64::max);
+    (
+        widest * glyph / width * 100.0,
+        lines.len() as f64 * SANS_LINE_PITCH * size,
+    )
+}
+
+/// The lines a title is drawn in on a `width x height` canvas, as the plan states them.
+pub fn lines_of(text: &TextSpec, width: u32, height: u32) -> TextLayout {
+    match text.font {
+        TitleFont::Bitmap => layout_in(&text.content, text.size, width, height, text.width),
+        TitleFont::Sans => layout_sans(&text.content, text.size, width, height, text.width),
+    }
+}
+
+/// Where each of `lines` begins in `content`, counted in characters. A layout drops the space
+/// it breaks at, so the lines are found in order, each at the first place from the end of the
+/// previous one where it matches. The runtime walks the content the same way
+/// (`runtime/src/text-reveal.js`), which is what lets a count of typed characters mean the same
+/// letters on both sides.
+pub fn line_starts(content: &str, lines: &[String]) -> Vec<usize> {
+    let chars: Vec<char> = content.chars().collect();
+    let mut cursor = 0;
+    lines
+        .iter()
+        .map(|line| {
+            let wanted: Vec<char> = line.chars().collect();
+            let fits = |at: usize| at + wanted.len() <= chars.len();
+            let mut at = cursor;
+            while fits(at) && chars[at..at + wanted.len()] != wanted[..] {
+                at += 1;
+            }
+            let start = if fits(at) { at } else { cursor };
+            cursor = start + wanted.len();
+            start
+        })
+        .collect()
+}
+
 /// Greedy wrap of each paragraph's words into lines of at most `fit` characters (a longer word,
 /// which the scale already prevents, keeps a line of its own).
 fn wrap(paragraphs: &[Vec<&str>], fit: usize) -> Vec<String> {
@@ -286,6 +411,58 @@ fn wrap(paragraphs: &[Vec<&str>], fit: usize) -> Vec<String> {
 mod tests {
     use super::*;
     use core::prelude::v1::test;
+
+    // The same fixtures as `runtime/test/text-reveal.test.mjs`: a count of typed characters must
+    // name the same letters in the core and in the runtime.
+    #[test]
+    fn line_starts_walk_the_content_like_the_runtime_does() {
+        let lines = |list: &[&str]| list.iter().map(|line| line.to_string()).collect::<Vec<_>>();
+        for (content, wrapped, expected) in [
+            (
+                "um dois três quatro",
+                lines(&["um dois", "três", "quatro"]),
+                vec![0, 8, 13],
+            ),
+            ("ab\ncd", lines(&["ab", "cd"]), vec![0, 3]),
+            ("aa aa aa", lines(&["aa aa", "aa"]), vec![0, 6]),
+            ("a\n\nb", lines(&["a", "", "b"]), vec![0, 1, 3]),
+            ("ação é já", lines(&["ação é", "já"]), vec![0, 7]),
+        ] {
+            assert_eq!(line_starts(content, &wrapped), expected, "{content}");
+        }
+    }
+
+    #[test]
+    fn a_sans_box_wraps_at_words_and_never_changes_with_what_is_typed() {
+        let content = "A chave está com a guardiã Mira, que a escondeu no cofre do sino";
+        let wide = layout_sans(content, 4.0, 1280, 720, 80.0);
+        let narrow = layout_sans(content, 4.0, 1280, 720, 30.0);
+        assert!(
+            narrow.lines.len() > wide.lines.len(),
+            "a narrower box has more lines"
+        );
+        for layout in [&wide, &narrow] {
+            assert_eq!(layout.scale, 1.0);
+            assert_eq!(
+                layout.lines.join(" "),
+                content,
+                "words are kept, spaces dropped at breaks"
+            );
+        }
+        let again = layout_sans(content, 4.0, 1280, 720, 30.0);
+        assert_eq!(
+            narrow.lines, again.lines,
+            "the same input is the same lines"
+        );
+        // Each line fits the box by the measured advances (that is what the runtime relies on).
+        let limit = 0.30 * 1280.0;
+        for line in &narrow.lines {
+            assert!(
+                inter_width(line) * (4.0 / 100.0 * 720.0) <= limit + 1e-6,
+                "{line}"
+            );
+        }
+    }
 
     #[test]
     fn composed_and_decomposed_spellings_are_one_string() {

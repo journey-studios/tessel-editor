@@ -155,6 +155,10 @@ fn set_clip_text_fields_run_the_same_rules_as_the_op() {
     );
     assert_eq!(
         fail(&mut state, set("font", json!("serif"))),
+        "invalid_value"
+    );
+    assert_eq!(
+        fail(&mut state, set("letter_spacing", json!(2))),
         "unknown_field"
     );
     assert_eq!(state.to_document(None), document);

@@ -28,7 +28,8 @@ projeto numa transação (**um undo**). A falha de um arquivo é resultado **por
 | `media.search` | `folder`, `apply?` | procura arquivos movidos (não segue links simbólicos); `apply` religa os que conferem |
 | `media.prepare` | `assets?` | decodifica vídeo em contêiner e áudio comprimido para o cache. Na janela é um job; **não é mais necessário rodar à mão**: o host agenda o decode de assets sem `decoded` ao abrir/importar |
 
-Formatos garantidos: PNG/JPEG/WebP/BMP/TIFF (imagem), WAV e áudio que o FFmpeg decodifique, vídeo H.264/AAC (MP4/MOV) e o que
+Formatos garantidos: PNG/JPEG/WebP/BMP (imagem direta), TIFF/JPEG 2000/JPEG-LS (imagem desenhada por um PNG derivado no import),
+GIF, APNG e WebP animados (todos os quadros, com transparência; limites e provas em [F073](media-animation.md)), WAV e áudio que o FFmpeg decodifique, vídeo H.264/AAC (MP4/MOV) e o que
 o FFprobe da máquina decodificar, cenas `tessel-scene@1`, splats (`splat|ply|spz`, [F030](spark.md)), sequências de frames
 numerados **PNG ou JPEG** (um formato, um tamanho, todos os quadros presentes; padrão `%0Nd` ou `%d`). `webm` **não é
 garantido**: só o que o monitor lê de verdade (prova no carregamento; no WebKit VP8/VP9/AV1 viram `unsupported_format`);

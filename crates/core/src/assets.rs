@@ -149,7 +149,20 @@ pub struct AudioStream {
     pub offset: Ratio,
 }
 
+/// Still formats the runtime decodes by itself (`createImageBitmap`). Any other still format the
+/// probe accepts (TIFF, JPEG 2000, JPEG-LS) is drawn from a PNG the media adapter derives from the
+/// original (F073): a browser engine cannot read them, and a frame that fails to decode is the
+/// exact "valid file, blank clip" failure the import is there to prevent.
+pub const NATIVE_STILL_FORMATS: [&str; 5] = ["png", "jpeg", "webp", "gif", "bmp"];
+
 impl Meta {
+    /// Whether this still must be drawn from a derived PNG (see [`NATIVE_STILL_FORMATS`]).
+    pub fn still_needs_png(&self) -> bool {
+        self.format
+            .as_deref()
+            .is_some_and(|format| !NATIVE_STILL_FORMATS.contains(&format))
+    }
+
     /// The stream a clip asks for: recorded streams first, then the legacy single-stream fields.
     pub fn audio_stream(&self, index: u32) -> Option<AudioStream> {
         if let Some(stream) = self.audio_streams.iter().find(|s| s.index == index) {
@@ -322,7 +335,27 @@ pub struct DecodedFrames {
     pub count: i64,
 }
 
+/// Whether an FFprobe pixel format carries an alpha channel.
+pub fn pix_fmt_has_alpha(pix_fmt: &str) -> bool {
+    [
+        "yuva", "gbrap", "ya8", "ya16", "argb", "abgr", "rgba", "bgra", "ayuv",
+    ]
+    .iter()
+    .any(|prefix| pix_fmt.starts_with(prefix))
+}
+
 impl Asset {
+    /// Whether the picture of a video asset can be transparent (animated GIF/APNG/WebP and
+    /// videos stored with an alpha channel, such as ProRes 4444 or QuickTime Animation), from the
+    /// pixel format recorded at import.
+    pub fn has_alpha(&self) -> bool {
+        self.identity
+            .probe
+            .as_ref()
+            .and_then(|probe| probe["color"]["pix_fmt"].as_str())
+            .is_some_and(pix_fmt_has_alpha)
+    }
+
     pub fn to_json(&self, kind: MediaKind) -> Value {
         let source = match &self.source {
             Source::Demo(image) => json!({ "type": "demo", "name": image.file_name() }),

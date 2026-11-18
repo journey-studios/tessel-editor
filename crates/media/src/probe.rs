@@ -363,11 +363,44 @@ fn probe_with_ffprobe(tools: &Tools, path: &Path, size: u64) -> Result<Probe, Jo
                 summary: json!(compact),
             });
         }
-        if container.contains("gif") || codec == "gif" {
-            return Err(unsupported(
+        // GIF, APNG and animated WebP hold pictures with their own display times: a video asset
+        // on the grid of those times, or a still when the file holds a single picture (F073).
+        if crate::animated::is_animated_format(codec, &container) {
+            let animated = crate::animated::probe_animated(
+                tools,
                 path,
-                "animated GIF is not supported; convert it to MP4",
-            ));
+                size,
+                (width, height),
+                codec,
+                &container,
+                json!(compact),
+            )?;
+            if let Some(probe) = animated {
+                return Ok(probe);
+            }
+            return Ok(Probe {
+                kind: MediaKind::Still,
+                meta: Meta {
+                    width: Some(width),
+                    height: Some(height),
+                    format: Some(
+                        if codec == "gif" || container.contains("gif") {
+                            "gif"
+                        } else if codec == "apng" || container == "apng" {
+                            "png"
+                        } else {
+                            "webp"
+                        }
+                        .into(),
+                    ),
+                    ..Meta::default()
+                },
+                size,
+                has_audio: false,
+                has_video: true,
+                warnings,
+                summary: json!(compact),
+            });
         }
         let average = video["avg_frame_rate"].as_str().and_then(fraction);
         let nominal = video["r_frame_rate"].as_str().and_then(fraction);

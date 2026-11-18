@@ -93,6 +93,9 @@ pub enum Reason {
     PolicyOriginal,
     NoFrames,
     SmallEnough,
+    /// The frames carry transparency, which a JPEG proxy would flatten to black: the full-size
+    /// frames are drawn instead (F073).
+    HasAlpha,
     Missing,
     Stale,
     Ready,
@@ -105,6 +108,7 @@ impl Reason {
             Self::PolicyOriginal => "policy_original",
             Self::NoFrames => "no_frames",
             Self::SmallEnough => "small_enough",
+            Self::HasAlpha => "has_alpha",
             Self::Missing => "proxy_missing",
             Self::Stale => "proxy_stale",
             Self::Ready => "proxy_ready",
@@ -153,7 +157,10 @@ impl PreviewPolicy {
                 Reason::Ready => coverage.ready += 1,
                 Reason::Missing | Reason::Stale => coverage.pending += 1,
                 Reason::NoFrames => coverage.undecoded += 1,
-                Reason::NotVideo | Reason::PolicyOriginal | Reason::SmallEnough => {}
+                Reason::NotVideo
+                | Reason::PolicyOriginal
+                | Reason::SmallEnough
+                | Reason::HasAlpha => {}
             }
         }
         coverage
@@ -191,6 +198,9 @@ impl PreviewPolicy {
         let height = asset.and_then(|asset| asset.meta.height).unwrap_or(0);
         if height <= self.max_height {
             return Reason::SmallEnough;
+        }
+        if self.format == ProxyFormat::Jpeg && asset.is_some_and(Asset::has_alpha) {
+            return Reason::HasAlpha;
         }
         match &decoded.proxy {
             None => Reason::Missing,

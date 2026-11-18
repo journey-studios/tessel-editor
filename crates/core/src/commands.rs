@@ -13,6 +13,7 @@ use crate::preview::PreviewMode;
 use crate::scene_interaction::{GizmoCommand, GizmoSpace, GizmoTool};
 use crate::scene_project::SceneCommand;
 use crate::state::camera_edit::{CameraKeysCommand, KEY_FIELDS};
+use crate::state::clip_key_edit::ClipKeysCommand;
 use crate::state::inspector::{InspectorTab, PropertyKind, property_def};
 use crate::state::layout::{Destination, GroupRef, Layout, LayoutCommand, PanelKind, Region, Side};
 use crate::state::split::SplitAvailability;
@@ -305,10 +306,19 @@ fn parse_set_entity(target: &str, field: &str, value: &Raw) -> Result<Parsed, Co
             frame: value.integer()?,
         }
     } else if let Some(id) = split(target, "clip_text:") {
-        if !["content", "size", "color"].contains(&field) {
+        if !crate::content::TextSpec::FIELDS.contains(&field) {
             return Err(unknown_field(target, field));
         }
         Command::SetClipTextField {
+            clip: id.to_string(),
+            field: field.to_string(),
+            value: value.clone(),
+        }
+    } else if let Some(id) = split(target, "clip_shape:") {
+        if !crate::shape::ShapeSpec::FIELDS.contains(&field) {
+            return Err(unknown_field(target, field));
+        }
+        Command::SetClipShapeField {
             clip: id.to_string(),
             field: field.to_string(),
             value: value.clone(),
@@ -324,6 +334,22 @@ fn parse_set_entity(target: &str, field: &str, value: &Raw) -> Result<Parsed, Co
             field: field.to_string(),
             value: value.clone(),
         })
+    } else if let Some(id) = split(target, "clip_key:") {
+        let (clip, prop, index) = parse_clip_key_ref(id, target)?;
+        if !crate::group::Key::FIELDS.contains(&field) {
+            return Err(unknown_field(target, field));
+        }
+        Command::ClipKeys(ClipKeysCommand::Field {
+            clip,
+            prop,
+            index,
+            field: field.to_string(),
+            value: value.clone(),
+        })
+    } else if let Some(command) = parse_set_group(target, field, value)? {
+        command
+    } else if let Some(command) = parse_set_live(target, field, value)? {
+        command
     } else if let Some(id) = split(target, "folder:") {
         match field {
             "expanded" => Command::SetFolderExpanded {
@@ -365,6 +391,311 @@ fn parse_set_entity(target: &str, field: &str, value: &Raw) -> Result<Parsed, Co
     Ok(Parsed::Run(command))
 }
 
+/// The `/`-separated parts of a group target (`group_key:<group>/<child>/<prop>/<index>`). IDs
+/// never hold a `/`, so the split is unambiguous.
+fn group_parts<'a>(
+    id: &'a str,
+    target: &str,
+    shape: &str,
+    count: usize,
+) -> Result<Vec<&'a str>, CommandError> {
+    let parts: Vec<&str> = id.split('/').collect();
+    if parts.len() != count || parts.iter().any(|part| part.is_empty()) {
+        return Err(
+            CommandError::new("unknown_element", format!("`{target}` is not `{shape}`"))
+                .target(target),
+        );
+    }
+    Ok(parts)
+}
+
+/// `set` on the targets of F069: groups, their children, keys, tracks, text styles and the text
+/// a group clip shows. `None` when `target` is not one of them.
+fn parse_set_group(
+    target: &str,
+    field: &str,
+    value: &Raw,
+) -> Result<Option<Command>, CommandError> {
+    use crate::group::{GroupDef, Prop, RepeatMode, TextStyle};
+    use crate::state::group_edit::GroupCommand;
+    let command = if let Some(id) = split(target, "clip_group:") {
+        if field != "group" {
+            return Err(unknown_field(target, field));
+        }
+        GroupCommand::Use {
+            clip: id.to_string(),
+            group: value.text(),
+        }
+    } else if let Some(id) = split(target, "group_def:") {
+        if !GroupDef::FIELDS.contains(&field) {
+            return Err(unknown_field(target, field));
+        }
+        GroupCommand::Field {
+            group: id.to_string(),
+            field: field.to_string(),
+            value: value.clone(),
+        }
+    } else if let Some(id) = split(target, "group_child:") {
+        let parts = group_parts(id, target, "group_child:<group>/<child>", 2)?;
+        // The child's own fields depend on what it draws; the state names the valid ones when
+        // the field is not among them.
+        GroupCommand::ChildField {
+            group: parts[0].to_string(),
+            child: parts[1].to_string(),
+            field: field.to_string(),
+            value: value.clone(),
+        }
+    } else if let Some(id) = split(target, "group_key:") {
+        let parts = group_parts(id, target, "group_key:<group>/<child>/<prop>/<index>", 4)?;
+        GroupCommand::KeyField {
+            group: parts[0].to_string(),
+            child: parts[1].to_string(),
+            prop: Prop::parse(parts[2])?,
+            index: parts[3].parse::<usize>().map_err(|_| {
+                CommandError::new(
+                    "unknown_element",
+                    format!("`{target}` has no key number `{}`", parts[3]),
+                )
+                .target(target)
+            })?,
+            field: field.to_string(),
+            value: value.clone(),
+        }
+    } else if let Some(id) = split(target, "group_track:") {
+        let parts = group_parts(id, target, "group_track:<group>/<child>/<prop>", 3)?;
+        let (repeat, mode) = match field {
+            "repeat" => (
+                Some(u32::try_from(value.integer()?).map_err(|_| {
+                    CommandError::invalid_value(
+                        "`repeat` is a whole number from 1",
+                        json!({ "min": 1, "max": crate::group::MAX_REPEAT }),
+                    )
+                })?),
+                None,
+            ),
+            "mode" => (None, Some(RepeatMode::parse(&value.text())?)),
+            _ => return Err(unknown_field(target, field)),
+        };
+        GroupCommand::Repeat {
+            group: parts[0].to_string(),
+            child: parts[1].to_string(),
+            prop: Prop::parse(parts[2])?,
+            repeat,
+            mode,
+        }
+    } else if let Some(id) = split(target, "text_style:") {
+        if !TextStyle::FIELDS.contains(&field) {
+            return Err(unknown_field(target, field));
+        }
+        GroupCommand::StyleField {
+            style: id.to_string(),
+            field: field.to_string(),
+            value: value.clone(),
+        }
+    } else if let Some(id) = split(target, "group_text:") {
+        let parts = group_parts(id, target, "group_text:<clip>/<child>", 2)?;
+        if field != "text" {
+            return Err(unknown_field(target, field));
+        }
+        GroupCommand::Text {
+            clip: parts[0].to_string(),
+            child: parts[1].to_string(),
+            text: Some(value.text()),
+        }
+    } else {
+        return Ok(None);
+    };
+    Ok(Some(Command::Group(command)))
+}
+
+/// `set` on the targets of F071: a player's fields, a caption track's style and one of its cues.
+/// `None` when `target` is not one of them.
+fn parse_set_live(target: &str, field: &str, value: &Raw) -> Result<Option<Command>, CommandError> {
+    use crate::player::PlayerSpec;
+    use crate::state::live_edit::LiveCommand;
+    use crate::subtitles::SubtitleSpec;
+    let command = if let Some(id) = split(target, "clip_player:") {
+        if !PlayerSpec::FIELDS.contains(&field) {
+            return Err(unknown_field(target, field));
+        }
+        LiveCommand::PlayerField {
+            clip: id.to_string(),
+            field: field.to_string(),
+            value: value.clone(),
+        }
+    } else if let Some(id) = split(target, "clip_subtitles:") {
+        if !SubtitleSpec::STYLE_FIELDS.contains(&field) {
+            return Err(unknown_field(target, field));
+        }
+        LiveCommand::SubtitleStyle {
+            clip: id.to_string(),
+            field: field.to_string(),
+            value: value.clone(),
+        }
+    } else if let Some(id) = split(target, "subtitle_cue:") {
+        let (clip, index) = parse_cue_ref(id, target)?;
+        if !SubtitleSpec::CUE_FIELDS.contains(&field) {
+            return Err(unknown_field(target, field));
+        }
+        LiveCommand::SubtitleCue {
+            clip,
+            index,
+            field: field.to_string(),
+            value: value.clone(),
+        }
+    } else {
+        return Ok(None);
+    };
+    Ok(Some(Command::Live(command)))
+}
+
+/// `<clip>/<index>` of a `subtitle_cue:` target (clip IDs never hold a `/`).
+fn parse_cue_ref(id: &str, target: &str) -> Result<(String, usize), CommandError> {
+    id.split_once('/')
+        .and_then(|(clip, index)| Some((clip.to_string(), index.parse::<usize>().ok()?)))
+        .filter(|(clip, _)| !clip.is_empty())
+        .ok_or_else(|| {
+            CommandError::new(
+                "unknown_element",
+                format!("`{target}` is not `subtitle_cue:<clip>/<index>`"),
+            )
+            .target(target)
+        })
+}
+
+/// `invoke` on the targets of F071: removing a cue and adding one at the playhead. `None` when
+/// `target` is not one of them.
+fn parse_invoke_live(
+    state: &EditorState,
+    target: &str,
+    action: &str,
+) -> Result<Option<Command>, CommandError> {
+    use crate::state::live_edit::LiveCommand;
+    let unknown = || {
+        CommandError::new(
+            "unknown_action",
+            format!("`{target}` has no action `{action}`"),
+        )
+        .target(target)
+    };
+    let command = if let Some(id) = split(target, "subtitle_cue:") {
+        let (clip, index) = parse_cue_ref(id, target)?;
+        match action {
+            "remove" => LiveCommand::SubtitleCueRemove { clip, index },
+            _ => return Err(unknown()),
+        }
+    } else if let Some(id) = split(target, "clip_subtitles:") {
+        match action {
+            "add_cue" => {
+                let (start_ms, end_ms) = state.cue_slot_at_playhead(id)?;
+                LiveCommand::SubtitleCueAdd {
+                    clip: id.to_string(),
+                    start_ms,
+                    end_ms,
+                    text: crate::state::live_edit::NEW_CUE_TEXT.to_string(),
+                }
+            }
+            _ => return Err(unknown()),
+        }
+    } else {
+        return Ok(None);
+    };
+    Ok(Some(Command::Live(command)))
+}
+
+/// `invoke` on the targets of F069 (`remove`, and `reset` of a text override). `None` when
+/// `target` is not one of them.
+fn parse_invoke_group(
+    state: &EditorState,
+    target: &str,
+    action: &str,
+) -> Result<Option<Command>, CommandError> {
+    use crate::group::Prop;
+    use crate::state::group_edit::GroupCommand;
+    let unknown = || {
+        CommandError::new(
+            "unknown_action",
+            format!("`{target}` has no action `{action}`"),
+        )
+        .target(target)
+    };
+    let command = if let Some(id) = split(target, "group_def:") {
+        match action {
+            "remove" => GroupCommand::Remove {
+                group: id.to_string(),
+            },
+            _ => return Err(unknown()),
+        }
+    } else if let Some(id) = split(target, "group_child:") {
+        let parts = group_parts(id, target, "group_child:<group>/<child>", 2)?;
+        match action {
+            "remove" => GroupCommand::ChildRemove {
+                group: parts[0].to_string(),
+                child: parts[1].to_string(),
+            },
+            _ => return Err(unknown()),
+        }
+    } else if let Some(id) = split(target, "group_track:") {
+        let parts = group_parts(id, target, "group_track:<group>/<child>/<prop>", 3)?;
+        match action {
+            "remove" => GroupCommand::TrackRemove {
+                group: parts[0].to_string(),
+                child: parts[1].to_string(),
+                prop: Prop::parse(parts[2])?,
+            },
+            _ => return Err(unknown()),
+        }
+    } else if let Some(id) = split(target, "group_key:") {
+        let parts = group_parts(id, target, "group_key:<group>/<child>/<prop>/<index>", 4)?;
+        let prop = Prop::parse(parts[2])?;
+        let key = parts[3].parse::<usize>().ok().and_then(|index| {
+            state
+                .groups
+                .def(parts[0])?
+                .child(parts[1])?
+                .track(prop)?
+                .keys
+                .get(index)
+        });
+        match (action, key) {
+            ("remove", Some(key)) => GroupCommand::KeyRemove {
+                group: parts[0].to_string(),
+                child: parts[1].to_string(),
+                prop,
+                time_ms: key.time_ms,
+            },
+            ("remove", None) => {
+                return Err(CommandError::new(
+                    "unknown_element",
+                    format!("`{target}` is not a key of the project"),
+                )
+                .target(target));
+            }
+            _ => return Err(unknown()),
+        }
+    } else if let Some(id) = split(target, "text_style:") {
+        match action {
+            "remove" => GroupCommand::StyleRemove {
+                style: id.to_string(),
+            },
+            _ => return Err(unknown()),
+        }
+    } else if let Some(id) = split(target, "group_text:") {
+        let parts = group_parts(id, target, "group_text:<clip>/<child>", 2)?;
+        match action {
+            "reset" => GroupCommand::Text {
+                clip: parts[0].to_string(),
+                child: parts[1].to_string(),
+                text: None,
+            },
+            _ => return Err(unknown()),
+        }
+    } else {
+        return Ok(None);
+    };
+    Ok(Some(Command::Group(command)))
+}
+
 /// `<clip>:<index>` of a `camera_key:` target.
 fn parse_camera_key_ref(id: &str, target: &str) -> Result<(String, usize), CommandError> {
     id.rsplit_once(':')
@@ -374,6 +705,47 @@ fn parse_camera_key_ref(id: &str, target: &str) -> Result<(String, usize), Comma
             CommandError::new(
                 "unknown_element",
                 format!("`{target}` is not `camera_key:<clip>:<index>`"),
+            )
+            .target(target)
+        })
+}
+
+/// `<clip>:<prop>:<index>` of a `clip_key:` target (clip IDs hold no `:`).
+fn parse_clip_key_ref(
+    id: &str,
+    target: &str,
+) -> Result<(String, crate::group::Prop, usize), CommandError> {
+    let bad = || {
+        CommandError::new(
+            "unknown_element",
+            format!("`{target}` is not `clip_key:<clip>:<property>:<index>`"),
+        )
+        .target(target)
+    };
+    let mut parts = id.rsplitn(3, ':');
+    let index = parts
+        .next()
+        .and_then(|index| index.parse::<usize>().ok())
+        .ok_or_else(bad)?;
+    let property = parts.next().ok_or_else(bad)?;
+    let clip = parts
+        .next()
+        .filter(|clip| !clip.is_empty())
+        .ok_or_else(bad)?;
+    let prop = crate::clip_keys::parse_property(property).map_err(|_| bad())?;
+    Ok((clip.to_string(), prop, index))
+}
+
+/// The selected clip, which must be one a key can animate (the targets of `clip_keys.*`).
+fn selected_keyed_clip(state: &EditorState, target: &str) -> Result<String, CommandError> {
+    state
+        .selected_clip()
+        .filter(|clip| crate::state::inspector::Applies::Framed.includes(clip.kind))
+        .map(|clip| clip.id.to_string())
+        .ok_or_else(|| {
+            CommandError::new(
+                "no_selection",
+                "Select a video, image, title, shape or scene clip in the timeline first",
             )
             .target(target)
         })
@@ -410,6 +782,12 @@ pub fn parse_invoke(
             snap: !state.timeline.snap,
         },
         ("folder:all", "select") => Command::SelectFolder { folder: None },
+        ("timeline.add_title", "invoke") => Command::AddTitle,
+        ("timeline.add_shape", "invoke") => Command::AddShape,
+        ("timeline.add_group", "invoke") => Command::AddGroup,
+        ("timeline.add_chat", "invoke") => Command::AddChat,
+        ("timeline.add_player", "invoke") => Command::AddPlayer,
+        ("timeline.add_subtitles", "invoke") => Command::AddSubtitles,
         // F017: the selected clip at the playhead. The refusal is the node's `disabled_reason`,
         // so a client that skips the tree (the headless `invoke`) gets the same answer.
         ("timeline.split", "invoke") => match state.split_availability() {
@@ -614,6 +992,57 @@ fn parse_invoke_entity(
             }
             _ => return Err(unknown()),
         }
+    } else if let Some(id) = split(target, "clip_key:") {
+        let (clip, prop, index) = parse_clip_key_ref(id, target)?;
+        let key = state
+            .timeline
+            .clip(clip.as_str())
+            .and_then(|entry| entry.keys.iter().find(|track| track.prop == prop))
+            .and_then(|track| track.keys.get(index));
+        match (action, key) {
+            ("remove", Some(key)) => Command::ClipKeys(ClipKeysCommand::Remove {
+                clip,
+                prop,
+                time_ms: key.time_ms,
+            }),
+            ("remove", None) => {
+                return Err(CommandError::new(
+                    "unknown_element",
+                    format!("`{target}` is not a key of the project"),
+                )
+                .target(target));
+            }
+            _ => return Err(unknown()),
+        }
+    } else if let Some(property) = split(target, "clip_keys.capture:") {
+        match action {
+            "invoke" => Command::ClipKeys(ClipKeysCommand::Capture {
+                clip: selected_keyed_clip(state, target)?,
+                prop: crate::clip_keys::parse_property(property)?,
+                easing: None,
+            }),
+            _ => return Err(unknown()),
+        }
+    } else if let Some(property) = split(target, "clip_keys.clear:") {
+        match action {
+            "invoke" => Command::ClipKeys(ClipKeysCommand::Clear {
+                clip: selected_keyed_clip(state, target)?,
+                prop: Some(crate::clip_keys::parse_property(property)?),
+            }),
+            _ => return Err(unknown()),
+        }
+    } else if target == "clip_keys.clear" {
+        match action {
+            "invoke" => Command::ClipKeys(ClipKeysCommand::Clear {
+                clip: selected_keyed_clip(state, target)?,
+                prop: None,
+            }),
+            _ => return Err(unknown()),
+        }
+    } else if let Some(command) = parse_invoke_group(state, target, action)? {
+        command
+    } else if let Some(command) = parse_invoke_live(state, target, action)? {
+        command
     } else if let Some(id) = split(target, "inspector.") {
         match action {
             "toggle" => Command::SetSectionExpanded {

@@ -291,6 +291,9 @@ impl EditorState {
                     "fade_in": fade_detail(fade_in), "fade_out": fade_detail(fade_out),
                     "frames_before": before, "frames_after": after }))
         };
+        // Clip keys need nothing here: they are read at source time (`clip_keys`), and the right
+        // half's `source_start` is exactly the source time the whole clip has at the cut, so both
+        // halves read the same key values the whole clip did.
         // The mixer shortens two fades that together outlast a sound, in proportion; a half is
         // shorter, so it would shorten them differently and the gain would move.
         if entry.kind == ClipKind::Audio
@@ -346,6 +349,21 @@ impl EditorState {
                 half: Half::Right,
                 property: "fade_in",
                 value: 0.0,
+            });
+        }
+        // A reveal sweeps from the clip's first frame (F072): the right half would replay it,
+        // so its delay moves back by the frames the left half took, and its first frame is
+        // exactly the frame the whole clip showed at the cut. The slider's floor only clamps
+        // once the sweep (at most as long as the floor) is already over at the cut.
+        let revealing = matches!(
+            property_def("reveal_mode").map(|property| self.inspector.value(clip, property)),
+            Some(PropertyValue::Choice("wipe"))
+        );
+        if revealing {
+            adjustments.push(Adjustment {
+                half: Half::Right,
+                property: "reveal_offset",
+                value: property_number(self, clip, "reveal_offset") - before as f64,
             });
         }
         // A still drifts from `zoom` to `end_zoom` over `duration - 1` frames: the left half

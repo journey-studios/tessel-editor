@@ -5,11 +5,14 @@
 //! There is no second copy of this state anywhere.
 
 pub mod camera_edit;
+pub mod clip_key_edit;
 pub mod error;
+pub mod group_edit;
 pub mod history;
 pub mod inspector;
 pub mod layout;
 pub mod library;
+pub mod live_edit;
 pub mod project;
 pub mod property_gesture;
 pub mod split;
@@ -22,17 +25,26 @@ pub use error::{CommandError, Raw};
 use history::History;
 use inspector::{Inspector, InspectorTab};
 use library::{Library, MediaItem};
+pub use live_edit::LiveSpec;
 pub use project::{ProjectMeta, ProjectSession, ProjectStamp};
 use timeline::{Clip, ClipKind, Placement, SequenceSettings, Timeline, TrackFlag, TrackKind};
 
 use crate::assets::{Asset, MediaKind, ProxyFormat};
-use crate::content::{Camera, TextSpec};
+use crate::content::{Camera, TextSpec, TitleAlignment, TitleAnimation, TitleFont};
+use crate::group::{GroupBook, GroupInstance};
 use crate::id::Id;
 use crate::plan::PreviewIntent;
 use crate::preview::{PreviewMode, PreviewPolicy};
 use crate::scene_interaction::{GizmoCommand, PointerCommand, SceneInteraction};
 use crate::scene_project::{SceneBook, SceneCommand};
+use crate::shape::ShapeSpec;
 use crate::time::Ratio;
+
+/// How long a generated clip (title, shape, group) is when it is added at the playhead.
+const DEFAULT_GENERATED_SECONDS: f64 = 3.0;
+/// A chat needs time to type its question, show the answer and mark the source, and then to
+/// hold the finished card long enough to read.
+const CHAT_CLIP_SECONDS: f64 = 8.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorkspaceTab {
@@ -93,6 +105,10 @@ pub struct EditorState {
     /// Directed scenes attached to the project (F036). Part of the document and of every undo
     /// snapshot; empty for a project that never attached one.
     pub scenes: SceneBook,
+    /// Reusable groups and the text styles they share (F069). Part of the document and of every
+    /// undo snapshot, one per project: group clips of every sequence refer to it. Empty for a
+    /// project that never defined one, which then saves exactly as before.
+    pub groups: crate::group::GroupBook,
     /// F039: selection of scene entities and the open scene gesture. Session state, like the
     /// playhead: not in the document, not in an undo snapshot (so undo/redo never restores it),
     /// and empty in every project that is created or opened.
@@ -215,6 +231,67 @@ pub enum Command {
         /// Inspector values applied together with the creation (all or nothing).
         properties: Vec<(String, Raw)>,
     },
+    /// Inserts and selects an editable title at the playhead.
+    AddTitle,
+    /// Inserts and selects a rectangle at the playhead (F067).
+    AddShape,
+    /// Creates a shape clip from explicit IDs; the shape counterpart of [`Command::AddClip`],
+    /// with its inspector values applied together with the creation (all or nothing).
+    AddShapeClip {
+        id: Option<String>,
+        name: Option<String>,
+        track: String,
+        start: i64,
+        duration: i64,
+        shape: ShapeSpec,
+        properties: Vec<(String, Raw)>,
+    },
+    /// Inserts and selects a group clip at the playhead (F069), defining a starter group (a panel
+    /// and a title with an entrance) in the same undo entry.
+    AddGroup,
+    /// Like [`Command::AddGroup`] with the chat preset of F070 (campaign, question that types in,
+    /// answer by line, source with a mark), on a clip long enough for the whole sequence.
+    AddChat,
+    /// Creates a clip that shows an existing group; the group counterpart of
+    /// [`Command::AddShapeClip`], with its inspector values applied together with the creation.
+    AddGroupClip {
+        id: Option<String>,
+        name: Option<String>,
+        track: String,
+        start: i64,
+        duration: i64,
+        group: GroupInstance,
+        properties: Vec<(String, Raw)>,
+    },
+    /// A `group.*`, `group_child.*`, `group_key.*` or `text_style.*` edit (see `group_edit`).
+    Group(group_edit::GroupCommand),
+    /// Inserts and selects a player at the playhead, or over the audio clip it follows (F071).
+    AddPlayer,
+    /// Inserts and selects a caption track at the playhead (F071).
+    AddSubtitles,
+    /// Creates a player or caption clip from explicit IDs; the F071 counterpart of
+    /// [`Command::AddShapeClip`].
+    AddLiveClip {
+        id: Option<String>,
+        name: Option<String>,
+        track: String,
+        start: i64,
+        duration: i64,
+        spec: LiveSpec,
+        properties: Vec<(String, Raw)>,
+    },
+    /// A `player.*` or `subtitles.*` edit (see `live_edit`).
+    Live(live_edit::LiveCommand),
+    SetClipShape {
+        clip: String,
+        shape: ShapeSpec,
+    },
+    /// Edits one field (`width`, `height`, `fill` or `radius`) of a shape, keeping the others.
+    SetClipShapeField {
+        clip: String,
+        field: String,
+        value: Raw,
+    },
     /// Same as `SetProperty`, with an explicit clip instead of the selection.
     SetClipProperty {
         clip: String,
@@ -225,7 +302,7 @@ pub enum Command {
         clip: String,
         text: TextSpec,
     },
-    /// Edits one field (`content`, `size` or `color`) of a title's text, keeping the others. The
+    /// Edits one field of a title's text, keeping the others. The
     /// whole new text is validated and normalized (NFC) before anything is stored.
     SetClipTextField {
         clip: String,
@@ -284,6 +361,9 @@ pub enum Command {
     },
     /// A `clip.camera_key*` edit of a scene clip's camera keyframes (BL140, see `camera_edit`).
     CameraKeys(camera_edit::CameraKeysCommand),
+    /// A `clip.key*` edit of a clip's position, zoom, rotation or opacity keyframes (F073, see
+    /// `clip_key_edit`).
+    ClipKeys(clip_key_edit::ClipKeysCommand),
     /// A `scene.*` operation on the directed scenes of the project (see `scene_project`).
     Scene(SceneCommand),
     /// One slider drag as a single undoable edit: begin, update (live preview), then commit
@@ -307,10 +387,25 @@ impl Command {
             Self::AddAsset { .. } => "Add asset",
             Self::ReplaceAsset { .. } => "Relink asset",
             Self::AddClip { .. } => "Add clip",
+            Self::AddTitle => "Add title",
+            Self::AddShape | Self::AddShapeClip { .. } => "Add shape",
+            Self::SetClipShape { .. } | Self::SetClipShapeField { .. } => "Edit shape",
+            Self::AddGroup | Self::AddGroupClip { .. } => "Add group",
+            Self::AddChat => "Add chat",
+            Self::Group(_) => "Edit group",
+            Self::AddPlayer => "Add player",
+            Self::AddSubtitles => "Add subtitles",
+            Self::AddLiveClip {
+                spec: LiveSpec::Player(_),
+                ..
+            } => "Add player",
+            Self::AddLiveClip { .. } => "Add subtitles",
+            Self::Live(command) => command.history_label(),
             Self::SetClipText { .. } | Self::SetClipTextField { .. } => "Edit text",
             Self::SetClipCamera { .. } => "Edit camera",
             Self::SetClipCameraFromCapture { .. } => "Use capture camera",
             Self::CameraKeys(_) => "Edit camera keys",
+            Self::ClipKeys(_) => "Edit keys",
             Self::SetSequenceLength { .. } => "Sequence length",
             Self::AddSequence { .. } => "Add sequence",
             Self::ActivateSequence { .. } => return None,
@@ -372,6 +467,7 @@ impl EditorState {
             preview: PreviewIntent::Sequence,
             preview_policy: PreviewPolicy::default(),
             scenes: SceneBook::default(),
+            groups: crate::group::GroupBook::default(),
             scene_interaction: SceneInteraction::default(),
             thumbnails: Default::default(),
         }
@@ -404,6 +500,7 @@ impl EditorState {
             preview: PreviewIntent::Sequence,
             preview_policy: PreviewPolicy::default(),
             scenes: SceneBook::default(),
+            groups: crate::group::GroupBook::default(),
             scene_interaction: SceneInteraction::default(),
             thumbnails: Default::default(),
         })
@@ -463,6 +560,27 @@ impl EditorState {
         entry.text = Some(text.clone());
         Ok(json!({ "target": format!("clip:{id}"), "field": "text",
             "value": text.to_json(), "changed": changed }))
+    }
+
+    /// Stores a validated shape on a shape clip; the same rule for `clip.shape`, `set clip_shape:`
+    /// and the inspector controls.
+    fn apply_clip_shape(&mut self, clip: &str, shape: ShapeSpec) -> Result<Value, CommandError> {
+        shape.validate()?;
+        let (id, kind) = self.clip_ref(clip)?;
+        if kind != ClipKind::Shape {
+            return Err(
+                CommandError::new("not_applicable", "Only shape clips carry a shape")
+                    .target(format!("clip:{id}")),
+            );
+        }
+        let entry = self.timeline.clips.iter_mut().find(|entry| entry.id == id);
+        let Some(entry) = entry else {
+            return Err(CommandError::unknown_element("clip", clip));
+        };
+        let changed = entry.shape.as_ref() != Some(&shape);
+        entry.shape = Some(shape.clone());
+        Ok(json!({ "target": format!("clip:{id}"), "field": "shape",
+            "value": shape.to_json(), "changed": changed }))
     }
 
     /// The SHARP capture of the splat a scene clip shows (BL143), if there is one.
@@ -755,6 +873,107 @@ impl EditorState {
                 folder,
             } => self.add_asset(id, &name, kind, *asset, folder.as_deref()),
             Command::ReplaceAsset { asset_id, asset } => self.replace_asset(&asset_id, *asset),
+            Command::AddTitle => self.add_title(),
+            Command::AddShape => self.add_shape(),
+            Command::AddGroup => self.add_group(),
+            Command::AddChat => self.add_chat(),
+            Command::Group(command) => self.apply_group(command),
+            Command::AddGroupClip {
+                id,
+                name,
+                track,
+                start,
+                duration,
+                group,
+                properties,
+            } => {
+                // WHY: same all-or-nothing creation as `AddClip`.
+                let backup = self.clone();
+                let outcome = self.add_clip(AddClip {
+                    id,
+                    name,
+                    track,
+                    asset: None,
+                    start,
+                    duration,
+                    source_start: None,
+                    text: None,
+                    shape: None,
+                    group: Some(group),
+                    live: None,
+                    camera: None,
+                    properties,
+                });
+                if outcome.is_err() {
+                    *self = backup;
+                }
+                outcome
+            }
+            Command::AddShapeClip {
+                id,
+                name,
+                track,
+                start,
+                duration,
+                shape,
+                properties,
+            } => {
+                // WHY: same all-or-nothing creation as `AddClip`.
+                let backup = self.clone();
+                let outcome = self.add_clip(AddClip {
+                    id,
+                    name,
+                    track,
+                    asset: None,
+                    start,
+                    duration,
+                    source_start: None,
+                    text: None,
+                    shape: Some(shape),
+                    group: None,
+                    live: None,
+                    camera: None,
+                    properties,
+                });
+                if outcome.is_err() {
+                    *self = backup;
+                }
+                outcome
+            }
+            Command::AddLiveClip {
+                id,
+                name,
+                track,
+                start,
+                duration,
+                spec,
+                properties,
+            } => {
+                // WHY: same all-or-nothing creation as `AddClip`.
+                let backup = self.clone();
+                let outcome = self.add_clip(AddClip {
+                    id,
+                    name,
+                    track,
+                    asset: None,
+                    start,
+                    duration,
+                    source_start: None,
+                    text: None,
+                    shape: None,
+                    group: None,
+                    live: Some(spec),
+                    camera: None,
+                    properties,
+                });
+                if outcome.is_err() {
+                    *self = backup;
+                }
+                outcome
+            }
+            Command::AddPlayer => self.add_player(),
+            Command::AddSubtitles => self.add_subtitles(),
+            Command::Live(command) => self.apply_live(command),
             Command::AddClip {
                 id,
                 name,
@@ -779,6 +998,9 @@ impl EditorState {
                     duration,
                     source_start,
                     text,
+                    shape: None,
+                    group: None,
+                    live: None,
                     camera,
                     properties,
                 });
@@ -798,7 +1020,7 @@ impl EditorState {
             Command::SetClipText { clip, text } => self.apply_clip_text(&clip, text),
             Command::SetClipTextField { clip, field, value } => {
                 let (id, kind) = self.clip_ref(&clip)?;
-                let current = self
+                let mut text = self
                     .timeline
                     .clip(&clip)
                     .and_then(|entry| entry.text.clone())
@@ -807,20 +1029,48 @@ impl EditorState {
                         CommandError::new("not_applicable", "Only title clips carry text")
                             .target(format!("clip:{id}"))
                     })?;
-                let text = match field.as_str() {
-                    "content" => TextSpec::new(value.text(), current.size, current.color)?,
-                    "size" => TextSpec::new(current.content, value.number()?, current.color)?,
-                    "color" => TextSpec::new(current.content, current.size, value.text())?,
+                match field.as_str() {
+                    "content" => text.content = crate::text::normalize(&value.text())?,
+                    "size" => text.size = value.number()?,
+                    "color" => text.color = value.text(),
+                    "font" => text.font = TitleFont::parse(&value.text())?,
+                    "animation" => text.animation = TitleAnimation::parse(&value.text())?,
+                    "align" => text.align = TitleAlignment::parse(&value.text())?,
+                    "animation_ms" => {
+                        text.animation_ms = u32::try_from(value.integer()?).map_err(|_| {
+                            CommandError::invalid_value(
+                                "Text animation duration must be positive",
+                                json!({"min": 1, "max": crate::content::MAX_TITLE_ANIMATION_MS}),
+                            )
+                        })?;
+                    }
                     _ => {
                         return Err(CommandError::new(
                             "unknown_field",
                             format!("A title's text has no field `{field}`"),
                         )
                         .target(format!("clip_text:{id}"))
-                        .details(json!({ "available": ["content", "size", "color"] })));
+                        .details(json!({ "available": TextSpec::FIELDS })));
                     }
-                };
+                }
                 self.apply_clip_text(&clip, text)
+            }
+            Command::SetClipShape { clip, shape } => self.apply_clip_shape(&clip, shape),
+            Command::SetClipShapeField { clip, field, value } => {
+                let (id, kind) = self.clip_ref(&clip)?;
+                let current = self
+                    .timeline
+                    .clip(&clip)
+                    .and_then(|entry| entry.shape.clone())
+                    .filter(|_| kind == ClipKind::Shape)
+                    .ok_or_else(|| {
+                        CommandError::new("not_applicable", "Only shape clips carry a shape")
+                            .target(format!("clip:{id}"))
+                    })?;
+                let shape = current
+                    .with_field(&field, &value)
+                    .map_err(|error| error.target(format!("clip_shape:{id}")))?;
+                self.apply_clip_shape(&clip, shape)
             }
             Command::SetClipCamera { clip, camera } => {
                 camera.validate()?;
@@ -896,6 +1146,7 @@ impl EditorState {
                 )
             }
             Command::CameraKeys(command) => self.apply_camera_keys(command),
+            Command::ClipKeys(command) => self.apply_clip_keys(command),
             Command::SetSequenceLength { frames } => self.timeline.set_length(frames),
             Command::SavePreset { preset } => self.save_preset(&preset),
             Command::DeletePreset { id } => self.delete_preset(&id),
@@ -966,6 +1217,15 @@ impl EditorState {
     }
 }
 
+/// What a clip made of its own specification (not of a media file) is made of.
+enum Generated {
+    Text(TextSpec),
+    Shape(ShapeSpec),
+    Group(GroupInstance),
+    /// A player or a caption track (F071).
+    Live(LiveSpec),
+}
+
 /// Arguments of [`Command::AddClip`], grouped so the handler stays readable.
 struct AddClip {
     id: Option<String>,
@@ -976,6 +1236,10 @@ struct AddClip {
     duration: i64,
     source_start: Option<Ratio>,
     text: Option<TextSpec>,
+    shape: Option<ShapeSpec>,
+    group: Option<GroupInstance>,
+    /// The specification of a player or caption clip (F071).
+    live: Option<LiveSpec>,
     camera: Option<Camera>,
     properties: Vec<(String, Raw)>,
 }
@@ -1217,6 +1481,139 @@ impl EditorState {
         true
     }
 
+    fn add_title(&mut self) -> Result<Value, CommandError> {
+        let mut text = TextSpec::new("Seu título", 10.0, "#ffffff")?;
+        text.font = TitleFont::Sans;
+        self.add_generated_clip(
+            ClipKind::Title,
+            ("titles", "Títulos"),
+            Generated::Text(text),
+            DEFAULT_GENERATED_SECONDS,
+        )
+    }
+
+    fn add_shape(&mut self) -> Result<Value, CommandError> {
+        self.add_generated_clip(
+            ClipKind::Shape,
+            ("shapes", "Formas"),
+            Generated::Shape(ShapeSpec::default()),
+            DEFAULT_GENERATED_SECONDS,
+        )
+    }
+
+    /// The toolbar "add group": a starter group is defined and a clip showing it is inserted at
+    /// the playhead, as one edit (one undo entry), so undo removes both.
+    fn add_group(&mut self) -> Result<Value, CommandError> {
+        let (book, id) = self.starter_book()?;
+        self.add_group_with(book, id, DEFAULT_GENERATED_SECONDS)
+    }
+
+    /// The toolbar "add chat" (F070): the same single edit as [`Self::add_group`], with the chat
+    /// preset and a clip long enough to type the question, show the answer and mark the source.
+    fn add_chat(&mut self) -> Result<Value, CommandError> {
+        let (book, id) = self.chat_book()?;
+        self.add_group_with(book, id, CHAT_CLIP_SECONDS)
+    }
+
+    fn add_group_with(
+        &mut self,
+        book: GroupBook,
+        id: Id,
+        seconds: f64,
+    ) -> Result<Value, CommandError> {
+        let backup = self.groups.clone();
+        self.groups = book;
+        let outcome = self.add_generated_clip(
+            ClipKind::Group,
+            ("groups", "Grupos"),
+            Generated::Group(GroupInstance::new(id)),
+            seconds,
+        );
+        if outcome.is_err() {
+            self.groups = backup;
+        }
+        outcome
+    }
+
+    /// Inserts a clip made of its own specification (a title, a shape) at the playhead and moves the
+    /// playhead onto it. It lands on the top track when that track holds only clips of the same
+    /// kind and has room; otherwise one new track is created, in the same undo entry.
+    /// `track_names` is the ID prefix and the display name of a track created for the kind.
+    fn add_generated_clip(
+        &mut self,
+        kind: ClipKind,
+        track_names: (&str, &str),
+        generated: Generated,
+        seconds: f64,
+    ) -> Result<Value, CommandError> {
+        let timeline = &self.timeline;
+        let preferred = (timeline.rate.as_f64() * seconds).round() as i64;
+        let preferred = preferred.clamp(1, timeline.length);
+        let start = if timeline.playhead == timeline.length {
+            timeline.length - preferred
+        } else {
+            timeline.playhead
+        };
+        let duration = preferred.min(timeline.length - start);
+        self.add_generated_clip_at(kind, track_names, generated, start, duration)
+    }
+
+    /// [`Self::add_generated_clip`] on an explicit span of the sequence (a player that covers the
+    /// audio clip it follows).
+    fn add_generated_clip_at(
+        &mut self,
+        kind: ClipKind,
+        track_names: (&str, &str),
+        generated: Generated,
+        start: i64,
+        duration: i64,
+    ) -> Result<Value, CommandError> {
+        let (text, shape, group, live) = match generated {
+            Generated::Text(text) => (Some(text), None, None, None),
+            Generated::Shape(shape) => (None, Some(shape), None, None),
+            Generated::Group(group) => (None, None, Some(group), None),
+            Generated::Live(spec) => (None, None, None, Some(spec)),
+        };
+        let timeline = &self.timeline;
+        let existing = timeline.tracks.first().filter(|track| {
+            track.kind == TrackKind::Video
+                && !track.hidden
+                && timeline.clips_on(&track.id).all(|clip| {
+                    clip.kind == kind && (clip.end() <= start || clip.start >= start + duration)
+                })
+        });
+        let backup = self.timeline.clone();
+        let track = if let Some(track) = existing {
+            track.id
+        } else {
+            let id = self.timeline.fresh_id(track_names.0);
+            self.timeline
+                .add_track(id, track_names.1, TrackKind::Video)?;
+            id
+        };
+        let outcome = self.add_clip(AddClip {
+            id: None,
+            name: None,
+            track: track.to_string(),
+            asset: None,
+            start,
+            duration,
+            source_start: None,
+            text,
+            shape,
+            group,
+            live,
+            camera: None,
+            properties: Vec::new(),
+        });
+        if outcome.is_ok() {
+            self.timeline.playhead = start;
+        } else {
+            self.timeline = backup;
+        }
+        outcome
+    }
+
     fn add_clip(&mut self, args: AddClip) -> Result<Value, CommandError> {
         let id = match args.id {
             Some(raw) => explicit_id(&raw)?,
@@ -1250,10 +1647,16 @@ impl EditorState {
                 ));
             }
             None if args.text.is_some() => ClipKind::Title,
+            None if args.shape.is_some() => ClipKind::Shape,
+            None if args.group.is_some() => ClipKind::Group,
+            None if args.live.is_some() => match &args.live {
+                Some(LiveSpec::Player(_)) => ClipKind::Player,
+                _ => ClipKind::Subtitles,
+            },
             None => {
                 return Err(CommandError::new(
                     "missing_argument",
-                    "A clip needs an `asset` or, for a title, `text`",
+                    "A clip needs an `asset` or, for a title, `text` or, for a shape, `shape` or, for a group, `group` or, for a player, `player` or, for captions, `subtitles`",
                 ));
             }
         };
@@ -1273,10 +1676,17 @@ impl EditorState {
                 json!({ "min": 0 }),
             ));
         }
+        // A looping clip repeats its source, so it may be longer than the source (an animated GIF
+        // as a background for a 10 s cut). The check stays for every clip that plays once.
+        let looping = args
+            .properties
+            .iter()
+            .any(|(name, value)| name == "loop" && value.boolean().unwrap_or(false));
         if let Some(duration) = media
             .and_then(|item| item.asset.as_ref())
             .and_then(|asset| asset.meta.duration)
             && matches!(kind, ClipKind::Video | ClipKind::Audio)
+            && !(looping && kind == ClipKind::Video)
         {
             let span = self.timeline.rate.frame_to_time(args.duration.max(0));
             let needed = source_start.add(span).unwrap_or(duration);
@@ -1315,6 +1725,49 @@ impl EditorState {
                 }
             }
         }
+        let shape = match (kind, args.shape) {
+            (ClipKind::Shape, Some(shape)) => {
+                shape.validate()?;
+                Some(shape)
+            }
+            (_, Some(_)) => {
+                return Err(CommandError::new(
+                    "not_applicable",
+                    "Only shape clips carry a shape",
+                ));
+            }
+            (_, None) => None,
+        };
+        let group = match (kind, args.group) {
+            (ClipKind::Group, Some(group)) => {
+                self.groups.check_instance(&group)?;
+                Some(group)
+            }
+            (_, Some(_)) => {
+                return Err(CommandError::new(
+                    "not_applicable",
+                    "Only group clips show a group",
+                ));
+            }
+            (_, None) => None,
+        };
+        let (player, subtitles) = match (kind, args.live) {
+            (ClipKind::Player, Some(LiveSpec::Player(player))) => {
+                self.check_player(&player)?;
+                (Some(player), None)
+            }
+            (ClipKind::Subtitles, Some(LiveSpec::Subtitles(subtitles))) => {
+                subtitles.validate()?;
+                (None, Some(subtitles))
+            }
+            (_, Some(_)) => {
+                return Err(CommandError::new(
+                    "not_applicable",
+                    "Only player and subtitle clips carry a player or subtitles",
+                ));
+            }
+            (_, None) => (None, None),
+        };
         let camera = match (kind, args.camera) {
             (ClipKind::Scene, camera) => {
                 // WHY: a SHARP splat is only right seen from the camera that took its picture;
@@ -1357,8 +1810,13 @@ impl EditorState {
             media: media_id,
             source_start,
             text,
+            shape,
+            group,
+            player,
+            subtitles,
             camera,
             camera_keys: Vec::new(),
+            keys: Vec::new(),
         });
         let mut outcome = outcome?;
         self.subject = Subject::Clip;

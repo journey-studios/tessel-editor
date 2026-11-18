@@ -15,6 +15,7 @@ use crate::assets::{Asset, AudioStream, DemoImage, Identity, MediaKind, Meta, So
 use crate::content::{Camera, TextSpec};
 use crate::id::Id;
 use crate::scene_project::SceneBook;
+use crate::shape::ShapeSpec;
 use crate::state::history::History;
 use crate::state::inspector::Inspector;
 use crate::state::library::{Folder, FolderIcon, Library, MediaItem};
@@ -180,6 +181,12 @@ fn clip_json(clip: &crate::state::timeline::Clip) -> Value {
     put_opt(&mut map, "text", clip.text.as_ref().map(TextSpec::to_json));
     put_opt(
         &mut map,
+        "shape",
+        // Only the fields that differ from step 1A's contract are written (`to_document_json`).
+        clip.shape.as_ref().map(ShapeSpec::to_document_json),
+    );
+    put_opt(
+        &mut map,
         "camera",
         clip.camera.as_ref().map(Camera::to_json),
     );
@@ -189,6 +196,28 @@ fn clip_json(clip: &crate::state::timeline::Clip) -> Value {
             crate::camera_keys::keys_to_json(&clip.camera_keys),
         );
     }
+    if !clip.keys.is_empty() {
+        map.insert("keys".into(), crate::clip_keys::tracks_to_json(&clip.keys));
+    }
+    put_opt(
+        &mut map,
+        "group",
+        clip.group
+            .as_ref()
+            .map(crate::group::GroupInstance::to_json),
+    );
+    put_opt(
+        &mut map,
+        "player",
+        clip.player.as_ref().map(crate::player::PlayerSpec::to_json),
+    );
+    put_opt(
+        &mut map,
+        "subtitles",
+        clip.subtitles
+            .as_ref()
+            .map(crate::subtitles::SubtitleSpec::to_json),
+    );
     Value::Object(map)
 }
 
@@ -209,6 +238,17 @@ impl EditorState {
     /// Smallest schema that can preserve this project's data when it is saved.
     pub fn document_schema_version(&self) -> u64 {
         if self.scenes.has_document_data()
+            // F069: groups and their text styles are a schema 2 block; an older reader would
+            // drop the block and then refuse (or blank) the group clips that point into it.
+            || !self.groups.is_empty()
+            // F071: player and caption clips are unknown kinds to an older reader, which would
+            // refuse the whole project at the first of them.
+            || self.all_sequences().any(|timeline| {
+                timeline
+                    .clips
+                    .iter()
+                    .any(|clip| matches!(clip.kind, ClipKind::Player | ClipKind::Subtitles))
+            })
             || self.library.items.iter().any(|item| {
                 item.asset
                     .as_ref()
@@ -220,6 +260,16 @@ impl EditorState {
                     .iter()
                     .any(|clip| !clip.camera_keys.is_empty())
             })
+            // F073: clip keys and the `loop` property are unknown to an older reader, which
+            // would refuse the document (unknown property) or play the clip without its motion.
+            || self.all_sequences().any(|timeline| {
+                timeline.clips.iter().any(|clip| !clip.keys.is_empty())
+            })
+            || self
+                .inspector
+                .overrides_sorted()
+                .iter()
+                .any(|(_, property, _)| *property == "loop")
         {
             SCHEMA_VERSION
         } else {
@@ -310,6 +360,10 @@ impl EditorState {
         // a project without any is byte-identical to what earlier editors wrote.
         if let Some(scenes) = self.scenes.to_json() {
             document["scenes"] = scenes;
+        }
+        // Same rule for the groups block (F069): absent while the project defines none.
+        if let Some(groups) = self.groups.to_json() {
+            document["groups"] = groups;
         }
         document
     }
@@ -424,6 +478,25 @@ impl EditorState {
             .transpose()?
             .unwrap_or_default();
 
+        // F069: the same all-or-nothing rule. A group clip whose group, or whose text override,
+        // the document does not define is a damaged document, not a clip to draw blank.
+        let groups = doc
+            .get("groups")
+            .map(crate::group::GroupBook::from_json)
+            .transpose()
+            .map_err(|error| invalid(format!("`groups`: {}", error.message)))?
+            .unwrap_or_default();
+        for timeline in std::iter::once(&active_timeline).chain(timelines.iter()) {
+            for clip in &timeline.clips {
+                let Some(instance) = &clip.group else {
+                    continue;
+                };
+                groups.check_instance(instance).map_err(|error| {
+                    invalid(format!("Group clip `{}`: {}", clip.id, error.message))
+                })?;
+            }
+        }
+
         let selected_media = library.items.first().map(|item| item.id);
         Ok(Self {
             project_name: name.trim().to_string(),
@@ -440,6 +513,7 @@ impl EditorState {
             preview: crate::plan::PreviewIntent::Sequence,
             preview_policy: crate::preview::PreviewPolicy::default(),
             scenes,
+            groups,
             scene_interaction: Default::default(),
             thumbnails: Default::default(),
         })
@@ -762,6 +836,10 @@ fn parse_sequence(value: &Value, library: &Library) -> Result<Timeline, CommandE
             ClipKind::Title,
             ClipKind::Audio,
             ClipKind::Scene,
+            ClipKind::Shape,
+            ClipKind::Group,
+            ClipKind::Player,
+            ClipKind::Subtitles,
         ]
         .into_iter()
         .find(|kind| Some(kind.label()) == clip["kind"].as_str())
@@ -797,6 +875,68 @@ fn parse_sequence(value: &Value, library: &Library) -> Result<Timeline, CommandE
             text: match clip.get("text") {
                 Some(text) => Some(TextSpec::from_json(text).map_err(|e| invalid(e.message))?),
                 None => None,
+            },
+            shape: match (kind, clip.get("shape")) {
+                (ClipKind::Shape, Some(shape)) => Some(
+                    ShapeSpec::from_json(shape)
+                        .map_err(|e| invalid(format!("Clip `{clip_id}`: {}", e.message)))?,
+                ),
+                (ClipKind::Shape, None) => {
+                    return Err(invalid(format!("Shape clip `{clip_id}` has no `shape`")));
+                }
+                (_, Some(_)) => {
+                    return Err(invalid(format!(
+                        "Clip `{clip_id}`: only shape clips carry a shape"
+                    )));
+                }
+                (_, None) => None,
+            },
+            group: match (kind, clip.get("group")) {
+                (ClipKind::Group, Some(group)) => Some(
+                    crate::group::GroupInstance::from_json(group)
+                        .map_err(|e| invalid(format!("Clip `{clip_id}`: {}", e.message)))?,
+                ),
+                (ClipKind::Group, None) => {
+                    return Err(invalid(format!("Group clip `{clip_id}` has no `group`")));
+                }
+                (_, Some(_)) => {
+                    return Err(invalid(format!(
+                        "Clip `{clip_id}`: only group clips carry a group"
+                    )));
+                }
+                (_, None) => None,
+            },
+            player: match (kind, clip.get("player")) {
+                (ClipKind::Player, Some(player)) => Some(
+                    crate::player::PlayerSpec::from_json(player)
+                        .map_err(|e| invalid(format!("Clip `{clip_id}`: {}", e.message)))?,
+                ),
+                (ClipKind::Player, None) => {
+                    return Err(invalid(format!("Player clip `{clip_id}` has no `player`")));
+                }
+                (_, Some(_)) => {
+                    return Err(invalid(format!(
+                        "Clip `{clip_id}`: only player clips carry a player"
+                    )));
+                }
+                (_, None) => None,
+            },
+            subtitles: match (kind, clip.get("subtitles")) {
+                (ClipKind::Subtitles, Some(subtitles)) => Some(
+                    crate::subtitles::SubtitleSpec::from_json(subtitles)
+                        .map_err(|e| invalid(format!("Clip `{clip_id}`: {}", e.message)))?,
+                ),
+                (ClipKind::Subtitles, None) => {
+                    return Err(invalid(format!(
+                        "Subtitle clip `{clip_id}` has no `subtitles`"
+                    )));
+                }
+                (_, Some(_)) => {
+                    return Err(invalid(format!(
+                        "Clip `{clip_id}`: only subtitle clips carry subtitles"
+                    )));
+                }
+                (_, None) => None,
             },
             camera: match clip.get("camera") {
                 Some(camera) => Some(Camera::from_json(camera).map_err(|e| invalid(e.message))?),
@@ -835,6 +975,19 @@ fn parse_sequence(value: &Value, library: &Library) -> Result<Timeline, CommandE
                 }
                 None => Vec::new(),
             },
+            keys: match clip.get("keys") {
+                Some(tracks) => {
+                    if !crate::state::inspector::Applies::Framed.includes(kind) {
+                        return Err(invalid(format!(
+                            "Clip `{clip_id}`: a {} clip carries no keys",
+                            kind.label()
+                        )));
+                    }
+                    crate::clip_keys::tracks_from_json(tracks)
+                        .map_err(|e| invalid(format!("Clip `{clip_id}`: {}", e.message)))?
+                }
+                None => Vec::new(),
+            },
         };
         // Reuses the editing rules (track kind, bounds, overlap): a document cannot smuggle in
         // a layout the editor itself would refuse.
@@ -856,6 +1009,36 @@ fn has_camera_keys(doc: &Value) -> bool {
                     clip.get("camera_keys")
                         .and_then(Value::as_array)
                         .is_some_and(|keys| !keys.is_empty())
+                })
+            })
+        })
+    })
+}
+
+/// Whether any clip of any sequence stores a non-empty `keys` list (F073).
+fn has_clip_keys(doc: &Value) -> bool {
+    doc["sequences"].as_array().is_some_and(|sequences| {
+        sequences.iter().any(|sequence| {
+            sequence["clips"].as_array().is_some_and(|clips| {
+                clips.iter().any(|clip| {
+                    clip.get("keys")
+                        .and_then(Value::as_array)
+                        .is_some_and(|keys| !keys.is_empty())
+                })
+            })
+        })
+    })
+}
+
+/// Whether any clip of any sequence is of one of the document `kinds` (F071).
+fn has_clip_kind(doc: &Value, kinds: &[&str]) -> bool {
+    doc["sequences"].as_array().is_some_and(|sequences| {
+        sequences.iter().any(|sequence| {
+            sequence["clips"].as_array().is_some_and(|clips| {
+                clips.iter().any(|clip| {
+                    clip["kind"]
+                        .as_str()
+                        .is_some_and(|kind| kinds.contains(&kind))
                 })
             })
         })
@@ -893,6 +1076,21 @@ pub fn migrate(doc: Value) -> Result<Value, CommandError> {
     if version == LEGACY_SCHEMA_VERSION && has_camera_keys(&doc) {
         return Err(invalid(
             "Camera keys require project schema 2; schema 1 readers would discard them",
+        ));
+    }
+    if version == LEGACY_SCHEMA_VERSION && has_clip_keys(&doc) {
+        return Err(invalid(
+            "Clip keys require project schema 2; schema 1 readers would discard them",
+        ));
+    }
+    if version == LEGACY_SCHEMA_VERSION && doc.get("groups").is_some() {
+        return Err(invalid(
+            "Groups require project schema 2; schema 1 readers would discard them",
+        ));
+    }
+    if version == LEGACY_SCHEMA_VERSION && has_clip_kind(&doc, &["player", "subtitles"]) {
+        return Err(invalid(
+            "Player and subtitle clips require project schema 2; schema 1 readers would refuse them",
         ));
     }
     if version == 0 {
