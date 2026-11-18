@@ -101,7 +101,7 @@ fn handshake_reports_the_runtime_and_the_layers_it_can_draw() {
     assert_eq!(caps["bridge_version"], 1);
     assert_eq!(
         caps["layers"],
-        json!(["image", "video", "text", "scene", "waveform"])
+        json!(["image", "video", "text", "scene", "waveform", "shape"])
     );
     assert!(
         caps["renderer"].as_str().unwrap().len() > 3,

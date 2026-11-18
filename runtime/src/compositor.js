@@ -21,11 +21,16 @@ import { prepareDirectedScene, sceneMaterial } from './directed-deck-draw.js';
 import { forEachLitCell, measureText, GLYPH_ROWS, LINE_PITCH_ROWS } from './font.js';
 import { isIdentityGrading, makeGraded, setGrading } from './grading.js';
 import { fnv1a64, meanColor } from './hash.js';
+import { makeMasked, maskRect, setMask } from './mask.js';
+import { makeRevealed, setReveal } from './reveal.js';
 import { OutputFxPipeline } from './output-fx.js';
 import { BLEND_MODES, RuntimeError } from './protocol.js';
 import { LIMITS, LruCache, RetentionCounters, rgbaBytes, targetBytes } from './retention.js';
 import { SceneRig, layerScene, splatLayerScene } from './scene.js';
+import { drawShape } from './shape-draw.js';
 import { SplatStage } from './splat-stage.js';
+import { shownCounts } from './text-reveal.js';
+import { drawTypographicText, loadTypographicFont } from './typographic-text.js';
 
 THREE.ColorManagement.enabled = false;
 
@@ -95,18 +100,25 @@ const drawText = (spec, canvasHeight) => {
   canvas.height = rows * cellPixels;
   const context = canvas.getContext('2d');
   context.fillStyle = spec.color;
+  // Typing and line-by-line reveal (F070): the canvas is the whole layout's, only the first
+  // `spec.visible` characters are lit, so what is already drawn never moves.
+  const shown = shownCounts(spec.content, lines, spec.visible);
   lines.forEach((line, index) => {
     // Lines of n characters are 6n - 1 columns: the difference of two is a multiple of 6, so the
     // centring offset is a whole number of cells (an empty line draws nothing anyway).
-    const left = Math.floor((columns - measured[index].columns) / 2);
+    const left = spec.align === 'left' ? 0 : Math.floor((columns - measured[index].columns) / 2);
     const top = index * LINE_PITCH_ROWS + (pad - measured[index].pad);
     forEachLitCell(line, (column, row) => {
       context.fillRect((left + column) * cellPixels, (top + row) * cellPixels, cellPixels, cellPixels);
-    });
+    }, shown[index]);
   });
   const ratio = cell / cellPixels;
   return { canvas, width: canvas.width * ratio, height: canvas.height * ratio };
 };
+
+const titlePicture = (spec, width, height) => (
+  spec.font === 'sans' ? drawTypographicText(spec, width, height) : drawText(spec, height)
+);
 
 const drawWaveform = (layer, width, height) => {
   const canvas = document.createElement('canvas');
@@ -175,7 +187,7 @@ export const PREVIEW_SORT_CHOICES = ['latest', 'exact'];
 export const DEFAULT_PREVIEW_SORT = 'latest';
 
 /** `grading` is null for an ungraded layer, which keeps the plain material (and its exact pixels). */
-const createLayerMaterial = (blend, texture, opacity, tint, grading = null) => {
+const createLayerMaterial = (blend, texture, opacity, tint, grading = null, mask = null, reveal = null) => {
   const material = new THREE.MeshBasicMaterial({
     map: texture,
     transparent: true,
@@ -185,7 +197,9 @@ const createLayerMaterial = (blend, texture, opacity, tint, grading = null) => {
     color: new THREE.Color().setScalar(tint),
     ...BLENDING[blend],
   });
-  return grading ? makeGraded(material, grading) : material;
+  const graded = grading ? makeGraded(material, grading) : material;
+  const masked = mask ? makeMasked(graded, mask.rect, mask.shape) : graded;
+  return reveal ? makeRevealed(masked, reveal.edge, reveal.width) : masked;
 };
 
 const disposeTarget = (target) => target.dispose();
@@ -818,8 +832,13 @@ export class Compositor {
         return { texture, width: entry.width, height: entry.height, fit: true, flipV: false };
       }
       case 'text': {
-        const text = this.retain ? this.retainedText(layer.text, height) : this.freshText(layer.text, height, keep);
-        return { texture: text.texture, width: text.width, height: text.height, fit: false, flipV: false };
+        if (layer.text.font === 'sans') await loadTypographicFont();
+        const text = this.retain ? this.retainedText(layer.text, width, height) : this.freshText(layer.text, width, height, keep);
+        return { ...text, fit: false, flipV: false };
+      }
+      case 'shape': {
+        const shape = this.retain ? this.retainedShape(layer.shape, width, height) : this.freshShape(layer.shape, width, height, keep);
+        return { ...shape, fit: false, flipV: false };
       }
       case 'waveform': {
         const texture = keep(canvasTexture(drawWaveform(layer, width, height)));
@@ -891,9 +910,33 @@ export class Compositor {
     return sceneMaterial(this, order, alpha, index, texture, keep);
   }
 
-  freshText(spec, canvasHeight, keep) {
-    const text = drawText(spec, canvasHeight);
-    return { texture: keep(canvasTexture(text.canvas)), width: text.width, height: text.height };
+  freshText(spec, canvasWidth, canvasHeight, keep) {
+    const picture = titlePicture(spec, canvasWidth, canvasHeight);
+    return { ...picture, texture: keep(canvasTexture(picture.canvas)) };
+  }
+
+  freshShape(spec, canvasWidth, canvasHeight, keep) {
+    const picture = drawShape(spec, canvasWidth, canvasHeight);
+    return { ...picture, texture: keep(canvasTexture(picture.canvas)) };
+  }
+
+  /**
+   * A shape layer's texture. Its picture depends only on the spec and the canvas size, so those are
+   * the key. Shapes share the bounded cache (and the `text_*` counters) of the other generated
+   * pictures: a shape that animates every frame cycles through it instead of growing it.
+   */
+  retainedShape(spec, canvasWidth, canvasHeight) {
+    const key = JSON.stringify(['shape', spec, canvasWidth, canvasHeight]);
+    const hit = this.text.get(key);
+    if (hit) {
+      this.counters.add('text_reused');
+      return hit;
+    }
+    const drawn = drawShape(spec, canvasWidth, canvasHeight);
+    const shape = { ...drawn, texture: canvasTexture(drawn.canvas) };
+    this.text.set(key, shape, rgbaBytes(drawn.canvas.width, drawn.canvas.height));
+    this.counters.add('text_created');
+    return shape;
   }
 
   /**
@@ -902,15 +945,19 @@ export class Compositor {
    * Bounded by count and bytes: a text that changes every frame (a counter) cycles through the
    * cache instead of growing it.
    */
-  retainedText(spec, canvasHeight) {
-    const key = JSON.stringify([spec.content, spec.size, spec.color, canvasHeight, spec.lines ?? null, spec.scale ?? 1]);
+  retainedText(spec, canvasWidth, canvasHeight) {
+    const key = JSON.stringify([
+      spec.content, spec.size, spec.color, canvasHeight, spec.lines ?? null, spec.scale ?? 1,
+      spec.font ?? 'bitmap', spec.align ?? 'center', spec.font === 'sans' ? canvasWidth : null,
+      spec.visible ?? null, spec.width ?? null,
+    ]);
     const hit = this.text.get(key);
     if (hit) {
       this.counters.add('text_reused');
       return hit;
     }
-    const drawn = drawText(spec, canvasHeight);
-    const text = { texture: canvasTexture(drawn.canvas), canvas: drawn.canvas, width: drawn.width, height: drawn.height };
+    const drawn = titlePicture(spec, canvasWidth, canvasHeight);
+    const text = { ...drawn, texture: canvasTexture(drawn.canvas) };
     this.text.set(key, text, rgbaBytes(drawn.canvas.width, drawn.canvas.height));
     this.counters.add('text_created');
     return text;
@@ -1012,16 +1059,33 @@ export class Compositor {
     const fit = prepared.fit ? Math.min(width / prepared.width, height / prepared.height) : 1;
     const layerWidth = prepared.width * fit * transform.scale;
     const layerHeight = prepared.height * fit * transform.scale;
-    const geometry = keep(quadGeometry(layerWidth, layerHeight, transform.crop, prepared.flipV));
+    let crop = transform.crop;
+    const reveal = layer.text?.reveal;
+    if (layer.kind === 'text' && Number.isFinite(reveal) && reveal < 1) {
+      const [left, right, top, bottom] = crop;
+      crop = [left, right, top + (100 - top - bottom) * (1 - Math.max(0, reveal)), bottom];
+    }
+    const geometry = keep(quadGeometry(layerWidth, layerHeight, crop, prepared.flipV));
+    if (layer.kind === 'text' && layer.text.align === 'left') {
+      const scale = fit * transform.scale;
+      geometry.translate(layerWidth / 2 - (prepared.anchorX ?? 0) * scale,
+        -layerHeight / 2 + (prepared.anchorY ?? 0) * scale, 0);
+    }
     // Blend modes that cannot use source alpha fade by scaling color instead.
     const fades = layer.blend !== 'normal';
     const opacity = fades ? 1 : layer.opacity;
     const tint = fades ? layer.opacity : 1;
     // Colour correction grades the layer's texel before opacity, tint and blend (grading.js).
     const grading = isIdentityGrading(layer.grading) ? null : layer.grading;
+    // A mask cuts the cropped picture (mask.js); only pictures and videos carry one (F068).
+    const pictureMask = layer.mask && (layer.kind === 'image' || layer.kind === 'video')
+      ? { shape: layer.mask.shape, rect: maskRect(layerWidth, layerHeight, crop, layer.mask) }
+      : null;
+    // A sweeping edge uncovers every kind of layer, in screen space (reveal.js, F072).
+    const revealing = layer.reveal ? { edge: layer.reveal, width } : null;
     const material = this.retain
-      ? this.layerMaterial(layer.blend, order, prepared.texture, opacity, tint, grading)
-      : keep(createLayerMaterial(layer.blend, prepared.texture, opacity, tint, grading));
+      ? this.layerMaterial(layer.blend, order, prepared.texture, opacity, tint, grading, pictureMask, revealing)
+      : keep(createLayerMaterial(layer.blend, prepared.texture, opacity, tint, grading, pictureMask, revealing));
     const mesh = new THREE.Mesh(geometry, material);
     mesh.position.set((transform.x / 100) * width, (-transform.y / 100) * height, 0);
     mesh.rotation.z = -THREE.MathUtils.degToRad(transform.rotation);
@@ -1029,9 +1093,10 @@ export class Compositor {
     return mesh;
   }
 
-  layerMaterial(blend, slot, texture, opacity, tint, grading = null) {
-    // A graded layer has its own material (another program); the plain one stays as it was.
-    const key = `${blend}:${slot}${grading ? ':graded' : ''}`;
+  layerMaterial(blend, slot, texture, opacity, tint, grading = null, mask = null, reveal = null) {
+    // A graded, masked or revealing layer has its own material (another program); the plain one
+    // stays as it was.
+    const key = `${blend}:${slot}${grading ? ':graded' : ''}${mask ? ':masked' : ''}${reveal ? ':revealed' : ''}`;
     let material = this.materials.get(key);
     if (material) {
       this.counters.add('material_reused');
@@ -1039,9 +1104,11 @@ export class Compositor {
       material.opacity = opacity;
       material.color.setScalar(tint);
       if (grading) setGrading(material, grading);
+      if (mask) setMask(material, mask.rect, mask.shape);
+      if (reveal) setReveal(material, reveal.edge, reveal.width);
       return material;
     }
-    material = createLayerMaterial(blend, texture, opacity, tint, grading);
+    material = createLayerMaterial(blend, texture, opacity, tint, grading, mask, reveal);
     this.materials.set(key, material);
     this.counters.add('material_created');
     return material;

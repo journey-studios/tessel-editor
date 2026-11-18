@@ -7,6 +7,7 @@
 
 use std::collections::HashMap;
 use std::fs;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use serde_json::{Value, json};
 
@@ -192,6 +193,116 @@ pub fn waveform_peaks(path: &str, buckets: usize) -> Result<Vec<f32>, String> {
                 })
         })
         .collect())
+}
+
+/// Entries the window-peaks cache keeps. A project shows a handful of player waveforms, and
+/// every frame of an export asks for the same one, so a small bound is plenty.
+const WINDOW_CACHE_LIMIT: usize = 16;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct WindowKey {
+    path: String,
+    /// File length and modification time: a file replaced under the same path must not be served
+    /// from the old entry.
+    len: u64,
+    modified_ns: u128,
+    from_us: i64,
+    to_us: i64,
+    buckets: usize,
+}
+
+type WindowCache = Mutex<Vec<(WindowKey, Arc<Vec<f32>>)>>;
+
+fn window_cache() -> &'static WindowCache {
+    static CACHE: OnceLock<WindowCache> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// Peak amplitude per bucket of the part of a WAV file between `from_s` and `to_s` (seconds on
+/// the file's own clock), `0.0..=1.0`. Time outside the file counts as silence, so a clip that
+/// starts before the first sample or ends after the last one keeps its bars in place.
+///
+/// WHY a cache: the plan of a player is recomputed for every frame of an export, and the bars
+/// never change between frames. The result is shared (`Arc`) and keyed by what was asked and by
+/// the state of the file, so a replaced file is read again. Samples are read straight from the
+/// bytes, never decoded into a second copy of the whole file.
+pub fn waveform_window(
+    path: &str,
+    from_s: f64,
+    to_s: f64,
+    buckets: usize,
+) -> Result<Arc<Vec<f32>>, String> {
+    if buckets == 0 || !from_s.is_finite() || !to_s.is_finite() || to_s <= from_s {
+        return Ok(Arc::new(vec![0.0; buckets]));
+    }
+    let metadata = fs::metadata(path).map_err(|error| format!("Cannot read `{path}`: {error}"))?;
+    let key = WindowKey {
+        path: path.to_string(),
+        len: metadata.len(),
+        modified_ns: metadata
+            .modified()
+            .ok()
+            .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+            .map_or(0, |elapsed| elapsed.as_nanos()),
+        from_us: (from_s * 1.0e6).round() as i64,
+        to_us: (to_s * 1.0e6).round() as i64,
+        buckets,
+    };
+    {
+        let cache = window_cache()
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        if let Some((_, hit)) = cache.iter().find(|(cached, _)| *cached == key) {
+            return Ok(Arc::clone(hit));
+        }
+    }
+    let bytes = fs::read(path).map_err(|error| format!("Cannot read `{path}`: {error}"))?;
+    let info = wav_info(&bytes)?;
+    let peaks = Arc::new(window_peaks(&bytes, &info, from_s, to_s, buckets));
+    let mut cache = window_cache()
+        .lock()
+        .unwrap_or_else(|poison| poison.into_inner());
+    if cache.len() >= WINDOW_CACHE_LIMIT {
+        cache.remove(0);
+    }
+    cache.push((key, Arc::clone(&peaks)));
+    Ok(peaks)
+}
+
+fn window_peaks(bytes: &[u8], info: &WavInfo, from_s: f64, to_s: f64, buckets: usize) -> Vec<f32> {
+    let rate = f64::from(info.sample_rate);
+    let channels = usize::from(info.channels);
+    let width = match info.format {
+        WavFormat::Pcm16 => 2,
+        WavFormat::Float32 => 4,
+    };
+    let data = &bytes[info.data_offset..info.data_offset + info.data_len];
+    let sample = |frame: usize, channel: usize| -> f32 {
+        let at = (frame * channels + channel) * width;
+        match info.format {
+            WavFormat::Pcm16 => f32::from(i16::from_le_bytes([data[at], data[at + 1]])) / 32768.0,
+            WavFormat::Float32 => {
+                f32::from_le_bytes([data[at], data[at + 1], data[at + 2], data[at + 3]])
+            }
+        }
+    };
+    let total = info.frames as usize;
+    let span = to_s - from_s;
+    (0..buckets)
+        .map(|bucket| {
+            // Source frames of this bucket, on the file's clock; before the start or after the
+            // end the range is empty and the bucket is silent.
+            let lo = (from_s + span * bucket as f64 / buckets as f64) * rate;
+            let hi = (from_s + span * (bucket + 1) as f64 / buckets as f64) * rate;
+            let first = lo.floor().max(0.0) as usize;
+            let last = (hi.ceil().max(0.0) as usize).max(first + 1).min(total);
+            (first..last)
+                .flat_map(|frame| (0..channels).map(move |channel| (frame, channel)))
+                .fold(0.0f32, |peak, (frame, channel)| {
+                    peak.max(sample(frame, channel).abs())
+                })
+        })
+        .collect()
 }
 
 /// One clip's contribution to the mix, already clipped to the requested interval.

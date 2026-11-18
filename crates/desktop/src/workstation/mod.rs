@@ -13,8 +13,10 @@ mod drag;
 mod env_mode;
 mod flows;
 mod geometry;
+mod group_inspector;
 mod inspector_panel;
 mod library_panel;
+mod live_inspector;
 mod media;
 mod monitor;
 mod ops;
@@ -34,6 +36,7 @@ mod scene_model;
 mod scene_monitor;
 mod scene_panel;
 mod scene_ui;
+mod shape_inspector;
 mod slider_gesture;
 mod status_bar;
 mod timeline_panel;
@@ -48,7 +51,7 @@ use std::collections::HashMap;
 
 use gpui_kit::component::IndexPath;
 use gpui_kit::component::dock::{DockEvent, DockToggleEvent};
-use gpui_kit::component::input::{InputEvent, InputState};
+use gpui_kit::component::input::{InputEvent, InputState, TextareaState};
 use gpui_kit::component::searchable_list::SearchableVec;
 use gpui_kit::component::select::{SelectEvent, SelectState};
 use gpui_kit::component::slider::{SliderEvent, SliderState};
@@ -99,8 +102,14 @@ pub struct Workstation {
     /// The text input of the inspector's "Texto" section (title clips). Like the search box it
     /// follows the model: `title_text_shown` is the `(clip, content)` last pushed into it, so the
     /// model is written back only when it changed, never over what is being typed.
-    title_text: Entity<InputState>,
+    title_text: Entity<TextareaState>,
     title_text_shown: Option<(String, String)>,
+    /// The inputs of the inspector's "Forma" section (shape clips); see `shape_inspector.rs`.
+    shape_inputs: shape_inspector::ShapeInputs,
+    /// The inputs of the inspector's "Grupo" section (group clips); see group_inspector.rs.
+    group_inputs: group_inspector::GroupInputs,
+    /// The inputs of the inspector's "Player" and "Legendas" sections (F071); see live_inspector.rs.
+    live_inputs: live_inspector::LiveInputs,
     sliders: HashMap<&'static str, Entity<SliderState>>,
     selects: HashMap<&'static str, OptionSelect>,
     library_tree: Entity<TreeState>,
@@ -149,19 +158,31 @@ impl Workstation {
         })
         .detach();
 
-        let title_text = cx.new(|cx| InputState::new(window, cx).placeholder("Texto do título"));
+        let title_text = cx.new(|cx| {
+            TextareaState::new(window, cx)
+                .rows(2)
+                .submit_on_enter(true)
+                .placeholder("Texto do título")
+        });
         // Enter or leaving the field commits ONE `SetClipTextField` (one undo entry), never one
         // per keystroke; a refused text (a character the font cannot draw) puts the model's back.
         cx.subscribe_in(
             &title_text,
             window,
             |this, input, event: &InputEvent, _window, cx| {
-                if matches!(event, InputEvent::PressEnter { .. } | InputEvent::Blur) {
+                if matches!(
+                    event,
+                    InputEvent::PressEnter { shift: false, .. } | InputEvent::Blur
+                ) {
                     this.commit_title_text(input, cx);
                 }
             },
         )
         .detach();
+
+        let shape_inputs = shape_inspector::ShapeInputs::new(window, cx);
+        let group_inputs = group_inspector::GroupInputs::new();
+        let live_inputs = live_inspector::LiveInputs::new(window, cx);
 
         let mut sliders = HashMap::new();
         let mut selects = HashMap::new();
@@ -333,6 +354,9 @@ impl Workstation {
             search,
             title_text,
             title_text_shown: None,
+            shape_inputs,
+            group_inputs,
+            live_inputs,
             sliders,
             selects,
             library_tree,
@@ -849,13 +873,19 @@ mod audio_fades_tests;
 #[cfg(test)]
 mod camera_keys_tests;
 #[cfg(test)]
+mod clip_keys_tests;
+#[cfg(test)]
 mod dock_tests;
 #[cfg(test)]
 mod env_mode_tests;
 #[cfg(test)]
+mod group_clip_tests;
+#[cfg(test)]
 mod identity_tests;
 #[cfg(test)]
 mod input_tests;
+#[cfg(test)]
+mod live_clip_tests;
 #[cfg(test)]
 mod perf_history_tests;
 #[cfg(test)]
@@ -884,6 +914,8 @@ mod scene_gizmo_tests;
 mod scene_light_tests;
 #[cfg(test)]
 mod scene_tests;
+#[cfg(test)]
+mod shape_clip_tests;
 #[cfg(test)]
 mod sharp_capture_tests;
 #[cfg(test)]

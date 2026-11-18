@@ -45,6 +45,13 @@ export (`video_audio.rs`: trim, offset, speed, mute, stream ausente) e análise 
 pelas três superfícies.
 `export.start` roda o preflight e falha com os mesmos blockers.
 
+Para automação de conteúdo, [`scripts/export-video.py`](../../scripts/export-video.py) abre um
+projeto, inicia o export nativo em uma única sessão JSONL e consulta o progresso do job.
+Use `python -X utf8 scripts/export-video.py projeto.tessel.json saida.mp4 --range 675 735`
+para conferir um corte ou omita a faixa para exportar a sequência inteira. O progresso sai em
+stderr e o relatório de export em stdout. O script usa o binário `tessel-render` de debug por
+padrão e aceita `--renderer` para indicar outro build.
+
 Verificação final (ffprobe lê o arquivo de volta e o compara com o plano): codec h264, resolução, `yuv420p`, taxa de frames, nº de frames e duração do vídeo e do áudio; qualquer divergência falha o job e nada é publicado (exit 0 do encoder não basta). Cancelar remove o staging e não deixa arquivo no destino; falha de disco idem. A prova com um volume cheio de verdade (`export.rs::a_full_disk_ends_the_export_with_disk_full_and_leaves_the_volume_clean`, imagem HFS+ de 40 MB) pula com `skipped: hdiutil attach failed` onde o sistema nega o `hdiutil attach` (sandboxes) e apaga a imagem ao soltar o volume (BL082.47).
 
 ## Limites (honestos)

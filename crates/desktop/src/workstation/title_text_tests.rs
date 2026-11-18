@@ -188,6 +188,73 @@ fn the_semantic_set_and_the_input_run_the_same_command(cx: &mut TestAppContext) 
 }
 
 #[gpui_kit::test]
+fn one_click_changes_the_title_preset_and_undo_restores_it(cx: &mut TestAppContext) {
+    let (view, cx) = fixture(cx);
+    select_title(&view, cx);
+    let animation = |cx: &mut VisualTestContext| {
+        node(&view, cx, "clip_text:title-north").unwrap()["state"]["animation"].clone()
+    };
+    assert_eq!(animation(cx), "none");
+    let at = view.read_with(cx, |view, _| {
+        view.geometry
+            .get("control:title-animation-rise")
+            .expect("the rise preset is laid out in the title inspector")
+            .center()
+    });
+    cx.simulate_click(at, Default::default());
+    cx.run_until_parked();
+    assert_eq!(animation(cx), "rise");
+
+    let Parsed::Run(command) = tessel_editor_core::commands::parse_set(
+        "clip_text:title-north",
+        "animation",
+        &Raw::Text("pop".into()),
+    )
+    .unwrap() else {
+        panic!("the animation field must use the shared state command");
+    };
+    view.update(cx, |view, cx| view.execute(command, Source::Cli, cx))
+        .unwrap();
+    assert_eq!(animation(cx), "pop");
+    view.update(cx, |view, cx| view.execute(Command::Undo, Source::Cli, cx))
+        .unwrap();
+    assert_eq!(animation(cx), "rise");
+}
+
+#[gpui_kit::test]
+fn the_title_input_keeps_explicit_line_breaks(cx: &mut TestAppContext) {
+    let (view, cx) = fixture(cx);
+    select_title(&view, cx);
+    type_and_confirm(&view, cx, "Uma história\nem dois atos");
+    assert_eq!(model_text(&view, cx), "Uma história\nem dois atos");
+    assert_eq!(shown(&view, cx), "Uma história\nem dois atos");
+}
+
+#[gpui_kit::test]
+fn the_timeline_button_inserts_and_selects_a_new_title(cx: &mut TestAppContext) {
+    let (view, cx) = fixture(cx);
+    let at = view.read_with(cx, |view, _| {
+        view.geometry
+            .get("control:timeline-add-title")
+            .expect("the title button is laid out in the timeline toolbar")
+            .center()
+    });
+    cx.simulate_click(at, Default::default());
+    cx.run_until_parked();
+    let title = view.read_with(cx, |view, _| {
+        let clip = view.state.inspector_clip().expect("new title selected");
+        assert_eq!(clip.kind, crate::state::timeline::ClipKind::Title);
+        assert_eq!(clip.start, view.state.timeline.playhead);
+        assert_eq!(clip.text.as_ref().unwrap().font.as_str(), "sans");
+        clip.id.to_string()
+    });
+    assert!(node(&view, cx, &format!("clip_text:{title}")).is_some());
+    type_and_confirm(&view, cx, "O próximo capítulo");
+    let field = node(&view, cx, &format!("clip_text:{title}")).unwrap();
+    assert_eq!(field["state"]["content"], "O próximo capítulo");
+}
+
+#[gpui_kit::test]
 fn a_delayed_input_event_cannot_write_into_a_different_selected_title(cx: &mut TestAppContext) {
     let (view, cx) = fixture(cx);
     select_title(&view, cx);

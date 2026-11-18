@@ -4,12 +4,101 @@ use serde_json::{Value, json};
 
 use crate::state::error::CommandError;
 
-/// Text of a title clip, or of a text asset used as a source.
-///
-/// Rendered by the runtime's built-in bitmap font (see `docs/features/accented-titles.md`):
-/// printable ASCII plus the Portuguese/Western European accents of [`crate::text`], one line, no
-/// shaping, no system fonts, so output does not depend on installed fonts. `content` is always in
-/// NFC: a composed `ã` and `a` + U+0303 are the same text from every entry point.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum TitleFont {
+    #[default]
+    Bitmap,
+    Sans,
+}
+
+impl TitleFont {
+    pub const OPTIONS: [&str; 2] = ["bitmap", "sans"];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Bitmap => "bitmap",
+            Self::Sans => "sans",
+        }
+    }
+
+    pub fn parse(value: &str) -> Result<Self, CommandError> {
+        match value {
+            "bitmap" => Ok(Self::Bitmap),
+            "sans" => Ok(Self::Sans),
+            _ => Err(invalid_choice("font", &Self::OPTIONS)),
+        }
+    }
+}
+
+/// Built-in entrance effects; the sequence clock evaluates these into each render plan.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum TitleAnimation {
+    #[default]
+    None,
+    Rise,
+    Fade,
+    Pop,
+}
+
+impl TitleAnimation {
+    pub const OPTIONS: [&str; 4] = ["none", "rise", "fade", "pop"];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Rise => "rise",
+            Self::Fade => "fade",
+            Self::Pop => "pop",
+        }
+    }
+
+    pub fn parse(value: &str) -> Result<Self, CommandError> {
+        match value {
+            "none" => Ok(Self::None),
+            "rise" => Ok(Self::Rise),
+            "fade" => Ok(Self::Fade),
+            "pop" => Ok(Self::Pop),
+            _ => Err(invalid_choice("animation", &Self::OPTIONS)),
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum TitleAlignment {
+    /// Preserve the existing centered title and its vertical safe-area behavior.
+    #[default]
+    Center,
+    /// Position and scale the title relative to the top-left corner of its text box.
+    Left,
+}
+
+impl TitleAlignment {
+    pub const OPTIONS: [&str; 2] = ["center", "left"];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Center => "center",
+            Self::Left => "left",
+        }
+    }
+
+    pub fn parse(value: &str) -> Result<Self, CommandError> {
+        match value {
+            "center" => Ok(Self::Center),
+            "left" => Ok(Self::Left),
+            _ => Err(invalid_choice("align", &Self::OPTIONS)),
+        }
+    }
+}
+
+fn invalid_choice(field: &str, choices: &[&str]) -> CommandError {
+    CommandError::invalid_value(
+        format!("Unknown text {field}"),
+        json!({ "field": field, "options": choices }),
+    )
+}
+
+/// Text of a title clip, or of a text asset used as a source. Content is always NFC.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TextSpec {
     pub content: String,
@@ -17,11 +106,39 @@ pub struct TextSpec {
     pub size: f64,
     /// `#rrggbb`.
     pub color: String,
+    pub font: TitleFont,
+    pub animation: TitleAnimation,
+    pub align: TitleAlignment,
+    pub animation_ms: u32,
+    /// Width of the box the text wraps in, percent of the canvas width. `0` (the default and
+    /// what every title written before F070 has) is the title-safe area. A text with a box is
+    /// broken into lines by the core (`text::layout_sans`, `text::layout_in`), so a reveal by
+    /// line and a typing animation agree with the picture.
+    pub width: f64,
 }
 
 pub const TEXT_MAX_CHARS: usize = 256;
+pub const DEFAULT_TITLE_ANIMATION_MS: u32 = 450;
+pub const MAX_TITLE_ANIMATION_MS: u32 = 3000;
+
+fn invalid_animation_ms() -> CommandError {
+    CommandError::invalid_value(
+        "Text animation duration must be a whole number of milliseconds",
+        json!({ "field": "animation_ms", "min": 1, "max": MAX_TITLE_ANIMATION_MS }),
+    )
+}
 
 impl TextSpec {
+    pub const FIELDS: [&str; 7] = [
+        "content",
+        "size",
+        "color",
+        "font",
+        "animation",
+        "align",
+        "animation_ms",
+    ];
+
     pub fn new(
         content: impl Into<String>,
         size: f64,
@@ -31,6 +148,11 @@ impl TextSpec {
             content: crate::text::normalize(&content.into())?,
             size,
             color: color.into(),
+            font: TitleFont::default(),
+            animation: TitleAnimation::default(),
+            align: TitleAlignment::default(),
+            animation_ms: DEFAULT_TITLE_ANIMATION_MS,
+            width: 0.0,
         };
         spec.validate()?;
         Ok(spec)
@@ -64,11 +186,37 @@ impl TextSpec {
                 json!({ "format": "#rrggbb" }),
             ));
         }
+        if !(1..=MAX_TITLE_ANIMATION_MS).contains(&self.animation_ms) {
+            return Err(invalid_animation_ms());
+        }
+        if !self.width.is_finite() || !(0.0..=100.0).contains(&self.width) {
+            return Err(CommandError::invalid_value(
+                "Text box width is 0 (automatic) or a percentage of the canvas width up to 100",
+                json!({ "field": "width", "min": 0, "max": 100 }),
+            ));
+        }
         Ok(())
     }
 
     pub fn to_json(&self) -> Value {
-        json!({ "content": self.content, "size": self.size, "color": self.color })
+        // Preserve the existing JSON representation for older projects and render clients.
+        let mut value = json!({ "content": self.content, "size": self.size, "color": self.color });
+        if self.font != TitleFont::default() {
+            value["font"] = json!(self.font.as_str());
+        }
+        if self.animation != TitleAnimation::default() {
+            value["animation"] = json!(self.animation.as_str());
+        }
+        if self.align != TitleAlignment::default() {
+            value["align"] = json!(self.align.as_str());
+        }
+        if self.animation_ms != DEFAULT_TITLE_ANIMATION_MS {
+            value["animation_ms"] = json!(self.animation_ms);
+        }
+        if self.width != 0.0 {
+            value["width"] = json!(self.width);
+        }
+        value
     }
 
     pub fn from_json(value: &Value) -> Result<Self, CommandError> {
@@ -76,14 +224,41 @@ impl TextSpec {
             .get("content")
             .and_then(Value::as_str)
             .ok_or_else(|| CommandError::new("invalid_request", "Text needs a string `content`"))?;
-        Self::new(
+        let mut text = Self::new(
             content,
             value.get("size").and_then(Value::as_f64).unwrap_or(10.0),
             value
                 .get("color")
                 .and_then(Value::as_str)
                 .unwrap_or("#ffffff"),
-        )
+        )?;
+        for (field, options) in [
+            ("font", TitleFont::OPTIONS.as_slice()),
+            ("animation", TitleAnimation::OPTIONS.as_slice()),
+            ("align", TitleAlignment::OPTIONS.as_slice()),
+        ] {
+            if let Some(value) = value.get(field) {
+                let value = value
+                    .as_str()
+                    .ok_or_else(|| invalid_choice(field, options))?;
+                match field {
+                    "font" => text.font = TitleFont::parse(value)?,
+                    "animation" => text.animation = TitleAnimation::parse(value)?,
+                    _ => text.align = TitleAlignment::parse(value)?,
+                }
+            }
+        }
+        if let Some(duration) = value.get("animation_ms") {
+            text.animation_ms = duration
+                .as_u64()
+                .and_then(|number| u32::try_from(number).ok())
+                .ok_or_else(invalid_animation_ms)?;
+        }
+        if let Some(width) = value.get("width") {
+            text.width = width.as_f64().unwrap_or(f64::NAN);
+        }
+        text.validate()?;
+        Ok(text)
     }
 }
 

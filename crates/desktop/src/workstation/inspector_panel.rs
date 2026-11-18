@@ -1,35 +1,40 @@
 //! Inspector panel: Kit tabs, accordion sections and property rows (Kit
 //! `Slider`, `Select` and `Switch`) for the selected clip.
 //!
-//! Edits change illustrative UI state only; no render or export follows.
+//! Controls dispatch core edits so the monitor and export use the same clip state.
 
 use gpui_kit::assets::IconName;
 use gpui_kit::component::accordion::Accordion;
 use gpui_kit::component::button::{Button, ButtonVariants};
-use gpui_kit::component::input::{Input, InputState};
+use gpui_kit::component::input::{Textarea, TextareaState};
 use gpui_kit::component::scroll::ScrollableElement;
 use gpui_kit::component::select::Select;
 use gpui_kit::component::slider::Slider;
 use gpui_kit::component::switch::Switch;
-use gpui_kit::component::{Disableable, Sizable};
+use gpui_kit::component::{Disableable, Selectable, Sizable};
 use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
 use super::controls::{
-    TabSpec, TabStyle, command_tabs, glyph, property_row, quantize, tool_button, value_after_key,
+    TabSpec, TabStyle, click, command_tabs, glyph, property_row, quantize, tool_button,
+    value_after_key,
 };
 use super::media::demo_image;
 use super::slider_gesture::{slider_key_up, slider_keys, slider_press};
 use super::tokens::Tokens;
 use super::{Source, Workstation};
 use crate::state::camera_edit::CameraKeysCommand;
+use crate::state::clip_key_edit::ClipKeysCommand;
 use crate::state::inspector::{
-    InspectorTab, PropertyDef, PropertyKind, SECTIONS, SectionDef, Value, section_properties,
+    InspectorTab, PropertyDef, PropertyKind, SECTIONS, SectionDef, Value, property_def,
+    section_properties,
 };
 use crate::state::timeline::ClipKind;
 use crate::state::{Command, Raw};
 use tessel_editor_core::camera_keys::Easing;
+use tessel_editor_core::clip_keys;
+use tessel_editor_core::easing::KeyEasing;
 
 fn tab_label(tab: InspectorTab) -> &'static str {
     match tab {
@@ -46,9 +51,38 @@ fn format_number(value: f64, decimals: u32) -> String {
 /// Slider state is `f32`; anything closer than this is the same value.
 const SLIDER_EPSILON: f32 = 1e-4;
 
+/// Title choices render from the model and dispatch the same field edit as `set clip_text:`.
+fn title_choice(
+    cx: &mut Context<Workstation>,
+    clip: &str,
+    field: &'static str,
+    value: &'static str,
+    label: &'static str,
+    selected: bool,
+) -> Button {
+    Button::new(SharedString::from(format!("title-{field}-{value}")))
+        .outline()
+        .xsmall()
+        .label(label)
+        .selected(selected)
+        .toggled(selected)
+        .on_click(click(
+            cx,
+            Command::SetClipTextField {
+                clip: clip.to_string(),
+                field: field.to_string(),
+                value: Raw::Text(value.to_string()),
+            },
+        ))
+}
+
 impl Workstation {
     /// Writes the input's text into the selected title, through the shared command.
-    pub(super) fn commit_title_text(&mut self, input: &Entity<InputState>, cx: &mut Context<Self>) {
+    pub(super) fn commit_title_text(
+        &mut self,
+        input: &Entity<TextareaState>,
+        cx: &mut Context<Self>,
+    ) {
         let Some(clip) = self
             .state
             .inspector_clip()
@@ -99,6 +133,61 @@ impl Workstation {
         self.title_text
             .update(cx, |input, cx| input.set_value(content, window, cx));
         self.title_text_shown = Some(wanted);
+    }
+
+    fn title_choices(&self, t: &Tokens, cx: &mut Context<Self>, clip: &str) -> Option<Div> {
+        let text = self.state.timeline.clip(clip)?.text.as_ref()?;
+        let mut choices = v_flex().px(px(10.)).pb(px(6.)).gap(px(5.));
+        for (label, field, selected, options) in [
+            (
+                "Animação de entrada",
+                "animation",
+                text.animation.as_str(),
+                &[
+                    ("none", "Sem efeito"),
+                    ("rise", "Subir"),
+                    ("fade", "Dissolver"),
+                    ("pop", "Salto"),
+                ][..],
+            ),
+            (
+                "Fonte",
+                "font",
+                text.font.as_str(),
+                &[("sans", "Sem serifa"), ("bitmap", "Pixel")][..],
+            ),
+            (
+                "Alinhamento",
+                "align",
+                text.align.as_str(),
+                &[("left", "À esquerda"), ("center", "Centralizado")][..],
+            ),
+        ] {
+            let row = div()
+                .flex()
+                .flex_wrap()
+                .gap(px(4.))
+                .children(options.iter().map(|&(value, caption)| {
+                    div()
+                        .relative()
+                        .child(
+                            self.geometry
+                                .probe(format!("control:title-{field}-{value}")),
+                        )
+                        .child(title_choice(
+                            cx,
+                            clip,
+                            field,
+                            value,
+                            caption,
+                            selected == value,
+                        ))
+                }));
+            choices = choices
+                .child(div().text_size(px(10.)).text_color(t.dim).child(label))
+                .child(row);
+        }
+        Some(choices)
     }
 
     fn property_control(
@@ -264,7 +353,7 @@ impl Workstation {
             return body
                 .child(
                     div().px(px(10.)).py(px(4.)).child(
-                        Input::new(&self.title_text)
+                        Textarea::new(&self.title_text)
                             .small()
                             .aria_label("Texto do título"),
                     ),
@@ -275,10 +364,21 @@ impl Workstation {
                         .pb(px(4.))
                         .text_size(px(10.))
                         .text_color(t.faint)
-                        .child(
-                            "Enter confirma. ASCII e acentos do português (á é ã ç…); um texto longo quebra em linhas sozinho.",
-                        ),
-                );
+                        .child("Enter confirma. Shift+Enter insere uma quebra de linha."),
+                )
+                .children(self.title_choices(t, cx, clip));
+        }
+        if section.id == "shape" {
+            return self.shape_section_body(t, window, cx);
+        }
+        if section.id == "group" {
+            return self.group_section_body(t, window, cx);
+        }
+        if section.id == "player" {
+            return self.player_section_body(t, window, cx);
+        }
+        if section.id == "subtitles" {
+            return self.subtitles_section_body(t, window, cx);
         }
         if section.id == "transform" {
             body = body.child(self.inspector_thumbnail(t));
@@ -288,6 +388,9 @@ impl Workstation {
         }
         if section.id == "camera" {
             body = body.child(self.camera_keys_body(t, cx, clip));
+        }
+        if section.id == "keys" {
+            body = body.child(self.clip_keys_body(t, cx, clip));
         }
         let timing_entry = self
             .state
@@ -509,6 +612,162 @@ impl Workstation {
         column.into_any_element()
     }
 
+    /// Keyframes of what a clip shows (F073): per keyable property a button that keys the value at
+    /// the playhead and one that removes the property's keys, then one row per key (source time,
+    /// value, easing that cycles on click, remove). Every button runs a `ClipKeysCommand`, the same
+    /// handler `ui op`/`set`/`invoke` reach; the time and value of a key are edited with
+    /// `set clip_key:<clip>:<property>:<n>`.
+    fn clip_keys_body(
+        &mut self,
+        t: &Tokens,
+        cx: &mut Context<Self>,
+        clip: &'static str,
+    ) -> impl IntoElement + use<> {
+        let Some(entry) = self.state.timeline.clip(clip) else {
+            return div().into_any_element();
+        };
+        let playhead = self.state.timeline.playhead;
+        let inside = playhead >= entry.start && playhead < entry.end();
+        let tracks = entry.keys.clone();
+        let mut column = v_flex().w_full().gap(px(2.)).px(px(10.)).py(px(4.));
+        let hint = if !inside {
+            "Mova o playhead sobre o clipe para gravar uma chave."
+        } else if tracks.is_empty() {
+            "Sem chaves: valem os valores do inspetor. Ajuste um valor e grave uma chave."
+        } else {
+            "O valor interpola entre as chaves; o easing vale para o trecho seguinte."
+        };
+        column = column.child(
+            div()
+                .text_size(px(10.))
+                .text_color(t.faint)
+                .child(hint.to_string()),
+        );
+        for (property, prop) in clip_keys::PROPERTIES {
+            let label = property_def(property).map_or(property, |def| def.label);
+            let track = tracks.iter().find(|track| track.prop == prop);
+            let add = Button::new(SharedString::from(format!("clip-key-add-{property}")))
+                .ghost()
+                .xsmall()
+                .icon(IconName::Plus)
+                .tooltip(if inside {
+                    format!("Grava {label} no playhead como uma chave")
+                } else {
+                    "Mova o playhead sobre o clipe para gravar uma chave.".to_string()
+                })
+                .accessibility_label(format!("Adicionar chave de {label} no playhead"))
+                .disabled(!inside)
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.dispatch(
+                        Command::ClipKeys(ClipKeysCommand::Capture {
+                            clip: clip.to_string(),
+                            prop,
+                            easing: None,
+                        }),
+                        cx,
+                    );
+                }));
+            let clear = tool_button(
+                SharedString::from(format!("clip-key-clear-{property}")),
+                IconName::Trash,
+                &format!("Remover as chaves de {label}"),
+            )
+            .disabled(track.is_none())
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.dispatch(
+                    Command::ClipKeys(ClipKeysCommand::Clear {
+                        clip: clip.to_string(),
+                        prop: Some(prop),
+                    }),
+                    cx,
+                );
+            }));
+            column = column.child(
+                h_flex()
+                    .items_center()
+                    .gap(px(6.))
+                    .h(px(24.))
+                    .text_size(px(11.))
+                    .child(div().flex_1().min_w(px(0.)).text_color(t.text).child(label))
+                    .child(add)
+                    .child(clear),
+            );
+            let Some(track) = track else {
+                continue;
+            };
+            for (index, key) in track.keys.iter().enumerate() {
+                let next = {
+                    let at = KeyEasing::ALL
+                        .iter()
+                        .position(|easing| *easing == key.easing)
+                        .unwrap_or(0);
+                    KeyEasing::ALL[(at + 1) % KeyEasing::ALL.len()]
+                };
+                let cycle = Button::new(SharedString::from(format!(
+                    "clip-key-easing-{property}-{index}"
+                )))
+                .ghost()
+                .xsmall()
+                .label(key.easing.label())
+                .tooltip("Alternar o easing do trecho que começa nesta chave")
+                .accessibility_label(format!("Easing da chave {index} de {label}"))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.dispatch(
+                        Command::ClipKeys(ClipKeysCommand::Field {
+                            clip: clip.to_string(),
+                            prop,
+                            index,
+                            field: "easing".to_string(),
+                            value: Raw::Text(next.label().to_string()),
+                        }),
+                        cx,
+                    );
+                }));
+                let time_ms = key.time_ms;
+                let remove = tool_button(
+                    SharedString::from(format!("clip-key-remove-{property}-{index}")),
+                    IconName::Trash,
+                    &format!("Remover a chave de {label} em {time_ms} ms"),
+                )
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.dispatch(
+                        Command::ClipKeys(ClipKeysCommand::Remove {
+                            clip: clip.to_string(),
+                            prop,
+                            time_ms,
+                        }),
+                        cx,
+                    );
+                }));
+                column = column.child(
+                    h_flex()
+                        .items_center()
+                        .gap(px(6.))
+                        .h(px(24.))
+                        .pl(px(10.))
+                        .text_size(px(11.))
+                        .child(
+                            div()
+                                .w(px(56.))
+                                .text_color(t.text)
+                                .child(format!("{time_ms} ms")),
+                        )
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w(px(0.))
+                                .truncate()
+                                .text_color(t.dim)
+                                .child(format!("{:.1}", key.value)),
+                        )
+                        .child(cycle)
+                        .child(remove),
+                );
+            }
+        }
+        column.into_any_element()
+    }
+
     fn inspector_empty(&self, t: &Tokens, message: &str) -> impl IntoElement + use<> {
         v_flex()
             .items_center()
@@ -549,7 +808,10 @@ impl Workstation {
             .text_size(px(12.))
             .text_color(t.text)
             .child(section.label)
-            .when(section.id != "text", |row| row.child(reset))
+            .when(
+                !matches!(section.id, "text" | "shape" | "player" | "subtitles"),
+                |row| row.child(reset),
+            )
     }
 
     pub(super) fn render_clip_inspector(
@@ -575,7 +837,17 @@ impl Workstation {
             (Some(item), _) => (item.name.to_string(), item.meta.to_string()),
             (None, Some(entry)) => (
                 entry.name.to_string(),
-                format!("TÍTULO · {}", self.state.timeline.timecode(entry.duration)),
+                format!(
+                    "{} · {}",
+                    match entry.kind {
+                        ClipKind::Shape => "FORMA",
+                        ClipKind::Group => "GRUPO",
+                        ClipKind::Player => "PLAYER",
+                        ClipKind::Subtitles => "LEGENDAS",
+                        _ => "TÍTULO",
+                    },
+                    self.state.timeline.timecode(entry.duration)
+                ),
             ),
             (None, None) => (
                 "Nada selecionado".to_string(),
@@ -648,7 +920,7 @@ impl Workstation {
                 if applicable.is_empty() {
                     let message = match active {
                         InspectorTab::Audio => "Este clipe não tem áudio.",
-                        _ => "Esta aba se aplica apenas a clipes de vídeo e título.",
+                        _ => "Esta aba se aplica apenas a clipes de vídeo, título e forma.",
                     };
                     sections = sections.child(self.inspector_empty(t, message));
                 }

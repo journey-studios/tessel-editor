@@ -6,7 +6,7 @@ export const RUNTIME_NAME = 'tessel-three';
 export const RUNTIME_VERSION = '0.1.0';
 
 /** Layer kinds of the render plan this runtime draws (crates/core/src/plan.rs). */
-export const LAYERS = ['image', 'video', 'text', 'scene', 'waveform'];
+export const LAYERS = ['image', 'video', 'text', 'scene', 'waveform', 'shape'];
 
 /** Blend modes drawn with fixed-function blending. `overlay` needs the backdrop and is refused. */
 export const BLEND_MODES = ['normal', 'multiply', 'screen', 'darken', 'lighten'];

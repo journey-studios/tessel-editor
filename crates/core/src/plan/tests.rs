@@ -96,7 +96,11 @@ mod occlusion {
             opacity: 1.0,
             blend: "normal".to_string(),
             grading: Grading::default(),
+            mask: None,
+            reveal: None,
             occluded: false,
+            text_reveal: None,
+            text_visible: None,
         }
     }
 
@@ -207,6 +211,25 @@ mod occlusion {
         assert!(
             !covers(&|top| top.transform.crop = [0.0, 0.5, 0.0, 0.0]),
             "cropped"
+        );
+        assert!(
+            !covers(&|top| {
+                top.mask = Some(Mask {
+                    shape: MaskShape::Rounded,
+                    radius: 1.0,
+                })
+            }),
+            "a mask cuts the corners, so the picture no longer reaches every pixel"
+        );
+        assert!(
+            !covers(&|top| {
+                top.reveal = Some(Reveal {
+                    edge: 50.0,
+                    angle: 0.0,
+                    rightward: true,
+                })
+            }),
+            "a sweeping edge leaves part of the canvas to what lies below"
         );
         assert!(!covers(&|top| top.opacity = f64::NAN), "not a number");
         assert!(!covers(&|top| top.transform.scale = f64::NAN));
@@ -378,4 +401,26 @@ mod occlusion {
         assert_eq!(layer_json(&layers[0], 1280, 720)["occluded"], true);
         assert!(layer_json(&layers[1], 1280, 720).get("occluded").is_none());
     }
+}
+
+#[test]
+fn a_loop_wraps_source_time_exactly_inside_one_repetition() {
+    let span = Ratio::new(3, 10).unwrap();
+    let at = |num, den| wrap(Ratio::new(num, den).unwrap(), span);
+    assert_eq!(at(0, 1), Ratio::ZERO);
+    assert_eq!(at(1, 10), Ratio::new(1, 10).unwrap());
+    // Exactly one repetition later is the first picture again, never the last of the pass.
+    assert_eq!(at(3, 10), Ratio::ZERO);
+    assert_eq!(at(7, 10), Ratio::new(1, 10).unwrap());
+    // 1 s at 24 fps is not a whole number of milliseconds; the wrap stays exact.
+    assert_eq!(
+        at(25, 24),
+        Ratio::new(25, 24)
+            .unwrap()
+            .sub(span.mul_int(3).unwrap())
+            .unwrap()
+    );
+    assert!(at(25, 24) < span);
+    // A negative time (never produced by a clip) is left alone instead of wrapped wrongly.
+    assert!(wrap(Ratio::new(-1, 10).unwrap(), span).is_negative());
 }

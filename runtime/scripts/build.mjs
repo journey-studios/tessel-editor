@@ -59,6 +59,11 @@ export const bundleRuntime = (env, extra = {}) =>
     minify: env.TESSEL_RUNTIME_MINIFY === '1',
     sourcemap: false,
     legalComments: 'none',
+    loader: { '.woff2': 'binary' },
+    banner: {
+      js: '/* Inter 4.1 — https://github.com/rsms/inter/tree/v4.1\n'
+        + readFileSync(join(root, 'src/fonts/Inter-OFL.txt'), 'utf8') + '\n*/',
+    },
     logLevel: 'info',
     plugins: runtimePlugins(env),
     ...extra,

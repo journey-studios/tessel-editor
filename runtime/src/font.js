@@ -178,10 +178,13 @@ const lit = (bits, column) => bits[column] === '1';
  * Calls `fillCell(column, row)` for every lit cell of `text`; the caller decides what a cell
  * is (a canvas rectangle in the runtime, a counter in tests). Rows count from the top of the
  * `measureText(text).rows` box, so the body starts at `pad`.
+ *
+ * `limit` draws only the first `limit` characters while the geometry (the pad, the columns the
+ * caller measured) stays that of the whole line: a text that types in does not shift.
  */
-export const forEachLitCell = (text, fillCell) => {
+export const forEachLitCell = (text, fillCell, limit = Infinity) => {
   const { pad } = measureText(text);
-  characters(text).forEach(({ glyph }, position) => {
+  characters(text).slice(0, limit).forEach(({ glyph }, position) => {
     const { body, top, bottom } = glyph ?? { body: UNKNOWN };
     const draw = (rows, offset) =>
       rows.split(' ').forEach((bits, row) => {

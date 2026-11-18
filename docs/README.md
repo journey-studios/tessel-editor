@@ -9,6 +9,12 @@ cada acesso pela UI, CLI com UI, CLI headless e biblioteca Rust.
 - [Próxima entrega — dez frentes](migration/next-delivery-ten-agents.md): contratos e ownership; status e delegações no backlog comum.
 - [Integração M/N/O/P](migration/round-mnop-report.md): renderer, recursos portáteis, inspector e provas do fluxo dirigido.
 - [Títulos com acentos em português (BL141)](features/accented-titles.md): NFC, marcas compostas na grade 5×7, recusa fora da cobertura; monitor, quadro e export iguais.
+- [Retângulo editável na timeline (F067, BL169.6)](features/shape-clips.md): clipe sem arquivo com tamanho, cor e raio; botão da timeline, seção Forma do inspetor, CLI, plano, quadro e export iguais.
+- [Formas com estilo e máscara de imagem (F068, BL169.6)](features/shape-style.md): elipse, caminho, gradientes linear e radial, contorno, sombra e máscara arredondada de imagem; inspetor, CLI, plano, quadro e export iguais.
+- [Digitação, revelação por linha e preset de chat (F070, BL169.6)](features/chat-typing.md): `reveal` e `step_ms` por filho de texto, `after` e `delay_ms` na agenda, caixa de texto com quebra decidida pelo core, `chat.add` e botão da timeline; PNG e MP4 com a mesma sequência.
+- [Player de áudio e legendas SRT (F071, BL169.6)](features/player-subtitles.md): `player` (onda dos picos reais, progresso e cronômetro presos à timeline) e `subtitles` (cues importáveis e editáveis, estilo, `burn` e `.srt` ao lado do vídeo); PNG e MP4 com áudio sintético.
+- [Revelação diagonal e feixe de luz (F072, BL169.6)](features/reveal-beam.md): `reveal_*` (aresta inclinada animada de qualquer clipe visual), `stops` nos gradientes e o feixe como grupo comum; PNG e MP4 antes/durante/depois e demonstração privada dos 23 s.
+- [Grupos reutilizáveis, estilos de texto e quadros-chave (F069, BL169.6)](features/groups-keyframes.md): grupos com filhos editáveis, estilos de texto do projeto, chaves com easing, entradas escalonadas e repetição; botão da timeline, seção Grupo do inspetor, CLI, plano, quadro e export iguais.
 - [Keyframes da câmera de clipe de cena (BL140)](features/camera-keys.md): chaves de posição/alvo/FOV com easing, tempo de cena, lib/JSONL/UI e export igual ao monitor.
 - [PLY do SHARP direto, com a câmera da captura (BL143)](features/sharp-import.md): eixos OpenCV, FOV das intrínsecas, recusa de metadado ambíguo, câmera restaurável, pixels reais na janela e no export.
 - [Renderer de cenas dirigidas](features/scene-renderer.md): scene.plan/scene.render, lib/JSONL e monitor com mapas verificados.
@@ -28,6 +34,7 @@ cada acesso pela UI, CLI com UI, CLI headless e biblioteca Rust.
 - [Triagem dos docs do piloto](migration/pilot-docs-triage-2026-11-11.md): 52 documentos avaliados, o que veio, o que ficou de fora e por quê.
 - [Especificações da origem](migration/origin-specs/README.md): dez documentos do piloto copiados literalmente (efeitos, comandos de câmera, ripple, fronteira Studio/core, glossário), somente leitura.
 - [Projetos locais](../projects/README.md): `projects/<nome>/` guarda projetos privados ou pesados e é ignorado pelo Git.
+- [Skill de edição de vídeo pela CLI](../.agents/skills/tessel-video-editing/SKILL.md): revisão de cortes, tipografia, ilustrações, cenários SHARP e export com progresso.
 - [Fade de entrada e saída em clipe de áudio (BL142)](features/audio-fades.md): rampa linear de ganho relativa ao clipe, mix em blocos = mix inteiro, sobreposição encurtada.
 - [Recursos da cena dirigida](features/scene-resources.md): manifesto, preflight e materialização inicial; identidade por assetId, transporte parcial e pacote ainda protegido pelas guardas.
 - [Interação de cenas dirigidas](features/scene-interaction.md): seleção, árvore, avaliação e gestos via comandos; gate local da rodada passou; inspector parcial em F039-UI.
