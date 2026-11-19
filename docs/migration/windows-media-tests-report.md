@@ -218,3 +218,9 @@ async_host8/8 e job_commit_state1/1 com FFmpeg real. O wrapper Windows permanece
 inalterado. Gates finais de fmt/check/clippy/no-run/build desktop exit0 no Mac;
 sem nova execução Windows. Logs no SSD de coordenação, github-review-final/.
 [PR #57](https://github.com/journey-studios/tessel-editor/pull/57).
+
+## Seguimento W1 (2026-11-14): BL167.3 e BL167.7
+
+O `shasum` dos dois testes de render, as duas falhas de gizmo e o helper `tree()` de `directed_resources_common` foram
+tratados na rodada Windows seguinte: causas, reproduções, gates e limites em
+[windows-w1-portability-report.md](windows-w1-portability-report.md). Este relatório permanece como histórico de BL167.1.
