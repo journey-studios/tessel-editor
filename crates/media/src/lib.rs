@@ -15,6 +15,7 @@ pub mod package;
 pub mod probe;
 pub mod scene_encoder;
 pub mod scene_resources;
+mod splat_generation;
 pub mod thumbnails;
 pub mod tools;
 pub mod zip;

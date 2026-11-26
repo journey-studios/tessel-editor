@@ -255,6 +255,28 @@ impl Workflow {
 impl Workstation {
     // ---- operations outside the core vocabulary (media.*, export.*, job.*, project.package…) ----
 
+    pub(super) fn splat_source(&self) -> Option<String> {
+        use tessel_editor_core::assets::{MediaKind, Source as AssetSource};
+        let item = self.state.library.item(self.state.selected_media?)?;
+        if item.kind == MediaKind::Still
+            && matches!(item.asset.as_ref()?.source, AssetSource::File { .. })
+        {
+            return Some(item.id.to_string());
+        }
+        None
+    }
+
+    pub(super) fn generate_selected_splat(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> Result<Value, CommandError> {
+        let image = self
+            .splat_source()
+            .ok_or_else(|| CommandError::new("not_image", "Selecione uma imagem na biblioteca"))?;
+        self.run_media_op(&json!({ "op": "media.splat.generate", "image": image }), cx)
+            .expect("media operation is handled by MediaHost")
+    }
+
     /// Runs `request` on the media host when it is one of its operations.
     pub(super) fn run_media_op(
         &mut self,
@@ -926,6 +948,16 @@ impl Workstation {
             "children": [], "enabled": true, "visible": true, "fields": [], "actions": [],
             "state": self.jobs_report(),
         }));
+        let source = self.splat_source();
+        let ready = source.is_some() && self.state.project.workspace.is_some();
+        nodes.push(json!({
+            "id": "library.generate_splat", "kind": "button", "label": "Gerar splat",
+            "parent": "region:library", "children": [], "visible": source.is_some(),
+            "enabled": ready,
+            "disabled_reason": if source.is_none() { Some("Selecione uma imagem na biblioteca") }
+                else if !ready { Some("Salve o projeto para gerar um splat") } else { None },
+            "fields": [], "actions": [{ "action": "generate", "label": "Gerar splat" }],
+        }));
         nodes.extend(self.scene_import_nodes());
         let Some(flow) = &self.workflow.flow else {
             return nodes;
@@ -993,6 +1025,7 @@ impl Workstation {
             (_, Some(kind)) => self.open_flow(kind, window, cx),
             ("flow.save" | "node:19", _) => self.save_project(window, cx),
             ("flow.jobs" | "node:21", _) => self.open_jobs(window, cx),
+            ("library.generate_splat", _) => self.generate_selected_splat(cx),
             ("monitor.play", _) => self.playback_toggle(cx),
             ("node:9", _) => self.undo(cx),
             ("node:11", _) => self.redo(cx),

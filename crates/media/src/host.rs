@@ -69,6 +69,7 @@ use crate::scene_resources::{
     AdoptionTarget, Invalidation, LoadRequest, PendingAdoption, ResolvedResourceMap, ResourceBase,
     SceneResourceSession,
 };
+use crate::splat_generation::{self, Generated, Placement};
 use crate::thumbnails::{self as thumbs, Made};
 use crate::tools::Tools;
 
@@ -83,6 +84,7 @@ enum Pending {
         folder: Option<String>,
         prepare: bool,
     },
+    GeneratedSplat(Box<Generated>),
     Relink(Vec<(String, Asset)>),
     ProjectImport(Box<PreparedProjectImport>),
     /// Decoded media for the project `project`; each item applies only while its asset still has
@@ -142,6 +144,7 @@ impl Pending {
     fn label(&self) -> &'static str {
         match self {
             Self::Import { .. } => "import",
+            Self::GeneratedSplat(_) => "generated-splat",
             Self::Relink(_) => "relink",
             Self::ProjectImport(_) => "project-import",
             Self::Decoded { .. } => "decoded-media",
@@ -1105,6 +1108,7 @@ impl MediaHost {
         match op {
             "media.status" => Ok(import::status(state)),
             "media.import" => self.import(state, request),
+            "media.splat.generate" => self.generate_splat(state, request),
             "media.relink" => self.relink(state, request),
             "media.search" => self.search(state, request),
             "media.prepare" => self.prepare(state, request),
@@ -1181,6 +1185,81 @@ impl MediaHost {
                     prepare,
                 }),
                 summary,
+            ))
+        });
+        self.finish(state, request, id, slot)
+    }
+
+    fn generate_splat(
+        &mut self,
+        state: &mut EditorState,
+        request: &Value,
+    ) -> Result<Value, CommandError> {
+        let workspace = workspace(state)?;
+        let mut folder = optional_text(request, "folder")?.map(str::to_owned);
+        let image = match (
+            optional_text(request, "path")?,
+            optional_text(request, "image")?,
+        ) {
+            (Some(path), None) => PathBuf::from(path),
+            (None, Some(id)) => {
+                let item = state
+                    .library
+                    .item(id)
+                    .ok_or_else(|| CommandError::unknown_element("asset", id))?;
+                let source = item.asset.as_ref().map(|asset| &asset.source);
+                let Some(tessel_editor_core::assets::Source::File { path }) =
+                    source.filter(|_| item.kind == MediaKind::Still)
+                else {
+                    return Err(CommandError::new(
+                        "not_image",
+                        "Select a library image with a source file",
+                    ));
+                };
+                folder.get_or_insert_with(|| item.folder.to_string());
+                PathBuf::from(path)
+            }
+            _ => return Err(invalid("Provide a single image path or library image ID")),
+        };
+        let placement = request
+            .get("place")
+            .filter(|value| !value.is_null())
+            .map(|place| {
+                let frames = |key: &str| {
+                    place[key].as_i64().ok_or_else(|| {
+                        invalid(format!("`place.{key}` must be an integer in frames"))
+                    })
+                };
+                let start = frames("start")?;
+                let duration = frames("duration")?;
+                if start < 0 || duration < 1 {
+                    return Err(invalid(
+                        "`place.start` must be non-negative and `place.duration` positive",
+                    ));
+                }
+                Ok(Placement {
+                    id: optional_text(place, "id")?.map(str::to_owned),
+                    track: text(place, "track")?.to_owned(),
+                    start,
+                    duration,
+                })
+            })
+            .transpose()?;
+        let session = state.project.session;
+        let tools = self.tools.clone();
+        let (id, slot) = self.start(JobKind::Import, "Generate splat (SHARP)", move |ctx| {
+            let item = splat_generation::prepare(&tools.get()?, &workspace, &image, ctx)?;
+            let report = item.to_json();
+            let result = Generated {
+                item,
+                session,
+                workspace,
+                folder,
+                placement,
+            };
+            Ok((
+                Some(Pending::GeneratedSplat(Box::new(result))),
+                json!({ "file": report }),
             ))
         });
         self.finish(state, request, id, slot)
@@ -2348,6 +2427,11 @@ fn apply_pending(
                     state.set_decoded(&id, outcome);
                 }
             }
+            Ok(Some(report))
+        }
+        Pending::GeneratedSplat(generated) => {
+            let report = generated.apply(state)?;
+            *took = report["changed"] == true;
             Ok(Some(report))
         }
         Pending::Relink(replacements) => {

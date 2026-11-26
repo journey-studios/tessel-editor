@@ -13,7 +13,7 @@ Fonte de cada regra (lidas no lugar, nada copiado): `sharp/utils/gaussians.py::s
 OpenCV). Nada é executado: sem modelo, sem pesos, sem mídia gerada, sem serviço remoto. Todos os arquivos dos testes são
 sintéticos (`fixtures::write_sharp_ply`, aritmética pura, reproduzível byte a byte).
 
-Fora do escopo: rodar o SHARP, múltiplas câmeras/cenas, `intrinsic` com pixel não quadrado ou ponto principal fora do centro
+Para rodar o SHARP a partir da imagem, veja [F074](splat-generation.md). Fora do escopo desta importação: múltiplas câmeras/cenas, `intrinsic` com pixel não quadrado ou ponto principal fora do centro
 (recusados, ver abaixo), conversão de espaço de cor (BL139, só um aviso), aplicar a captura automaticamente a um `tessel-scene`
 que referencia o splat (BL143.2).
 
