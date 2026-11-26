@@ -2,7 +2,7 @@
 
 Para editar pela janela ou pelo terminal, comece pelos
 [guias de uso](guides/README.md). Eles cobrem geração de splat, câmera e prévia de trecho.
-O terminal também mostra esses guias com `./scripts/ui help`.
+O terminal também mostra esses guias com `./scripts/tessel help`.
 
 A [matriz de features](features/README.md) registra o contrato e o estado de
 cada acesso pela UI, CLI com UI, CLI headless e biblioteca Rust.

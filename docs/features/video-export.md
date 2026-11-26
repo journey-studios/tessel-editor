@@ -12,7 +12,7 @@ WinGet, Program Files, `LOCALAPPDATA`); `TESSEL_FFMPEG`/`TESSEL_FFPROBE` inváli
 (`export.start` real com FFmpeg 9.0.2, sem overrides): [media-setup](../media-setup.md#descoberta-dos-executáveis) e
 [relatório](../migration/windows-tool-discovery-report.md). Só o Windows foi provado nesta entrega.
 
-[Guia de prévias por trecho](../guides/preview.md) · `./scripts/render help preview`
+[Guia de prévias por trecho](../guides/preview.md) · `./scripts/tessel help preview`
 
 ## Pipeline
 

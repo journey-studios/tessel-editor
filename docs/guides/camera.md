@@ -13,13 +13,13 @@ O avanço usa o alvo e a escala da câmera do clipe. Funciona com splats comuns 
 `amount` é a fração de avanço, acima de 0 e até 0,8. `frames` é o número de quadros finais do clipe, incluindo a pose inicial. Use pelo menos dois. Os dois parâmetros podem ser omitidos. O comando retorna `range: [início, fim)` com o trecho afetado.
 
 ```sh
-./scripts/headless <<'JSONL'
+./scripts/tessel headless <<'JSONL'
 {"op":"project.open","path":"/caminho/aventura.tessel.json"}
 {"op":"clip.camera.push_in","clip":"take-final","amount":0.24,"frames":18}
 {"op":"project.save","path":"/caminho/aventura.tessel.json"}
 JSONL
 ```
 
-Com a janela aberta, `./scripts/ui invoke camera.push_in` aplica o padrão e toca a prévia. Para remover pela CLI, envie `{"op":"clip.camera.push_in.clear","clip":"take-final"}`. O projeto com a aproximação salva exige um editor que leia o esquema 3.
+Com a janela aberta, `./scripts/tessel ui invoke camera.push_in` aplica o padrão e toca a prévia. Para remover pela CLI, envie `{"op":"clip.camera.push_in.clear","clip":"take-final"}`. O projeto com a aproximação salva exige um editor que leia o esquema 3.
 
 [Prévia e exportação do trecho](preview.md) · [Contrato da câmera](../features/camera-push-in.md)

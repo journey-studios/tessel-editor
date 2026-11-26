@@ -1,6 +1,6 @@
 # F075 — Aproximação de câmera e prévia de trecho
 
-[Guia de uso pela janela e pela CLI](../guides/camera.md) · `./scripts/ui help camera`
+[Guia de uso pela janela e pela CLI](../guides/camera.md) · `./scripts/tessel help camera`
 
 ## Comportamento
 
@@ -18,18 +18,18 @@ O efeito é salvo em `camera_push_in` com os limites em segundos racionais da fo
 
 ## CLI headless
 
-Envie estas linhas à mesma sessão de `./scripts/render`, depois de `project.open`:
+Envie estas linhas à mesma sessão de `./scripts/tessel render`, depois de `project.open`:
 
 ```jsonl
 {"op":"clip.camera.push_in","clip":"s6-torre","amount":0.24,"frames":18}
 {"op":"export.start","camera_preview":"s6-torre","destination":"/tmp/previa-torre.mp4"}
 ```
 
-`camera_preview` resolve o intervalo automaticamente e usa o export de intervalo existente. O preset padrão mantém a proporção da sequência, com lado maior de até 640 px, e exporta sem áudio. Um `preset` explícito usa as suas preferências. Para exportar também o começo que mudou ao encurtar uma aproximação anterior, use o `range` retornado pela edição no lugar de `camera_preview`, com um preset de exportação. A edição e a remoção (`clip.camera.push_in.clear`) também funcionam em `./scripts/headless`. O MP4 requer o renderer e o FFmpeg.
+`camera_preview` resolve o intervalo automaticamente e usa o export de intervalo existente. O preset padrão mantém a proporção da sequência, com lado maior de até 640 px, e exporta sem áudio. Um `preset` explícito usa as suas preferências. Para exportar também o começo que mudou ao encurtar uma aproximação anterior, use o `range` retornado pela edição no lugar de `camera_preview`, com um preset de exportação. A edição e a remoção (`clip.camera.push_in.clear`) também funcionam em `./scripts/tessel headless`. O MP4 requer o renderer e o FFmpeg.
 
 ## Janela e automação
 
-Selecione um clipe de cena, abra **Câmera** e clique em **Aproximar e pré-visualizar**. O equivalente é `./scripts/ui invoke camera.push_in`. O botão tem o nó `camera.push_in.clear` para remoção. `playback.status` expõe o intervalo da prévia e o estado do monitor. A prévia pode ser interrompida pelo controle de reprodução.
+Selecione um clipe de cena, abra **Câmera** e clique em **Aproximar e pré-visualizar**. O equivalente é `./scripts/tessel ui invoke camera.push_in`. O botão tem o nó `camera.push_in.clear` para remoção. `playback.status` expõe o intervalo da prévia e o estado do monitor. A prévia pode ser interrompida pelo controle de reprodução.
 
 ## Evidências locais
 

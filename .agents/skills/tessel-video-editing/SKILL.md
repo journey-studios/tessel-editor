@@ -7,13 +7,13 @@ description: Montar e revisar vídeos no Tessel Editor pela CLI nativa, com cen�
 
 Leia [AGENTS.md](../../../AGENTS.md) e o [contrato do export](../../../docs/features/video-export.md). Trabalhe em `projects/<nome>/` para projetos privados ou mídia pesada. Use o contrato de features do repositório se for mudar o comportamento do editor.
 
-Consulte `./scripts/render help` para descobrir os guias locais. Use os tópicos `splat`,
+Consulte `./scripts/tessel help` para descobrir os guias locais. Use os tópicos `splat`,
 `camera` e `preview` para exemplos, ou envie `{"op":"help","topic":"camera"}` à sessão JSONL
 já aberta.
 
 ## Revisar uma montagem
 
-1. Abra a versão existente com `project.open`, leia `project.header` e consulte `plan` nos quadros que precisam de revisão. Preserve a origem e salve a revisão com `project.save` em outro caminho. Monte as alterações com operações JSONL públicas via `scripts/headless` ou `scripts/render`.
+1. Abra a versão existente com `project.open`, leia `project.header` e consulte `plan` nos quadros que precisam de revisão. Preserve a origem e salve a revisão com `project.save` em outro caminho. Monte as alterações com operações JSONL públicas via `./scripts/tessel headless` ou `./scripts/tessel render`.
 2. Marque os momentos da locução em que uma imagem deve mudar, uma palavra deve aparecer ou uma ação deve ser demonstrada. Preserve o áudio e o relógio quando a revisão for visual. Dê tempo de leitura a perguntas, respostas e fontes. Crie texto de apoio curto para as passagens que vendem o benefício.
 3. Consulte a demonstração original para extrair textos, fatos e nomes. Se o print estiver pequeno, redesenhe só o componente necessário em resolução de saída. Anime pergunta, resposta e fonte na ordem em que são narradas. Identifique a reprodução como ilustração quando for confundível com uma gravação real. Para capas, prefira os arquivos de arte originais.
 4. Componha cenários, takes, correção de cor, áudio, cortes e fades no editor. `asset.add` aceita PLY com `kind:"splat",capture:"auto"`. Verifique câmera, eixos e espaço de cor na resposta. Use `clip.camera.push_in` para uma aproximação proporcional ao enquadramento e `export.start` com `camera_preview` para rever o trecho. Para movimentos manuais, `clip.camera_keys` usa tempo racional da fonte em segundos. Confira início, meio e fim com `render.frame`; num splat de imagem única, um arco maior pode revelar partes mal reconstruídas atrás do primeiro plano. Ajuste a distância ou a direção e reveja o movimento.

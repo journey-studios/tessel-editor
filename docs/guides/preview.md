@@ -5,7 +5,7 @@ Na janela, **Câmera → Aproximar e pré-visualizar** toca a parte alterada no 
 Prepare o runtime e o FFmpeg para gerar um MP4 curto a partir de um projeto salvo. [Configuração de mídia](../media-setup.md)
 
 ```sh
-./scripts/render <<'JSONL'
+./scripts/tessel render <<'JSONL'
 {"op":"project.open","path":"/caminho/aventura.tessel.json"}
 {"op":"export.start","camera_preview":"take-final","destination":"/tmp/previa-take-final.mp4"}
 JSONL

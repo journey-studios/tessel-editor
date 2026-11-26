@@ -17,10 +17,10 @@ for the implemented surfaces and remaining work.
 
 ## Run
 
-Use the cached Cargo wrapper (see [docs/cargo-worktrees.md](docs/cargo-worktrees.md)):
+Open the desktop editor from the same entry point used for automation.
 
 ```sh
-./scripts/cargo run -p tessel-editor --locked
+./scripts/tessel editor
 ```
 
 macOS needs full Xcode and Metal Toolchain. If necessary:
@@ -45,12 +45,15 @@ native Windows AF_UNIX socket (`target\debug\tessel-editor.exe ui status`); see 
 Read the same guides from the terminal without opening the editor.
 
 ```sh
-./scripts/ui help
-./scripts/media help splat
-./scripts/render help preview
+./scripts/tessel help
+./scripts/tessel help splat
+./scripts/tessel help camera
+./scripts/tessel help preview
 ```
 
-Use `{"op":"help","topic":"camera"}` inside a JSONL session to receive the guide as Markdown.
+Use `./scripts/tessel ui <command>` for a running window. The `headless`, `media` and `render`
+subcommands accept JSONL on stdin. Use `{"op":"help","topic":"camera"}` inside any JSONL session
+to receive the guide as Markdown.
 
 ## Validate
 
@@ -73,7 +76,7 @@ cargo fmt --all -- --check
   is custom drawing; `*_tests.rs` hold GPUI input and dock tests.
 - `crates/media`: file-system, FFmpeg and archive adapters injected into the core's `Extension` hook
   (import, derived media, packages, project interchange, video export) plus the `tessel-media` JSON Lines
-  binary (`./scripts/media`). Setup: [docs/media-setup.md](docs/media-setup.md).
+  binary (`./scripts/tessel media`). Setup: [docs/media-setup.md](docs/media-setup.md).
 - `crates/render`: the real render backends (Node + headless Chrome worker, WebView asset
   server) and the `tessel-render`/`tessel-fixtures` binaries. `runtime/`: the local Three.js
   runtime (JS, built with esbuild by `./scripts/runtime setup`, always pnpm). See
@@ -95,14 +98,14 @@ References: [GPUI Kit](https://gpui-kit.com/docs/installation/),
 ## Control the running UI
 
 ```sh
-./scripts/ui tree
-./scripts/ui set property:zoom value 110
-./scripts/ui move clip:river-detail --track picture --frame 360
-./scripts/ui dock                                  # live dock layout
-./scripts/ui dock move inspector --to bottom
-./scripts/ui dock resize left 300
-./scripts/ui dock reset
-./scripts/ui theme light
+./scripts/tessel ui tree
+./scripts/tessel ui set property:zoom value 110
+./scripts/tessel ui move clip:river-detail --track picture --frame 360
+./scripts/tessel ui dock                                  # live dock layout
+./scripts/tessel ui dock move inspector --to bottom
+./scripts/tessel ui dock resize left 300
+./scripts/tessel ui dock reset
+./scripts/tessel ui theme light
 ```
 
 See [docs/ui-automation.md](docs/ui-automation.md) for commands, IDs, value policies,
@@ -116,7 +119,7 @@ Every implemented or changed feature must update its own Markdown contract and m
 UI and CLI consume `tessel-editor-core`; no domain rule requires a window.
 
 ```sh
-./scripts/headless <<'JSONL'
+./scripts/tessel headless <<'JSONL'
 {"op":"set","target":"timeline.playhead","field":"frame","value":120}
 {"op":"status"}
 JSONL

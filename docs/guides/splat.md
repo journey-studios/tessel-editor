@@ -13,11 +13,11 @@ A geração usa o Apple SHARP local. Instale o comando `sharp` e seu checkpoint.
 Troque os caminhos pelos seus e `v1` pelo ID de uma trilha de vídeo existente. `place` é opcional e recebe posição e duração em quadros. Sem ele, o resultado entra direto na Biblioteca. O ID do splat vem em `applied.asset`.
 
 ```sh
-./scripts/media --empty <<'JSONL'
+./scripts/tessel media --empty <<'JSONL'
 {"op":"project.open","path":"/caminho/aventura.tessel.json"}
 {"op":"media.splat.generate","path":"/caminho/aventura.png","place":{"id":"take-final","track":"v1","start":0,"duration":90}}
 {"op":"project.save","path":"/caminho/aventura.tessel.json"}
 JSONL
 ```
 
-Com a janela aberta, `./scripts/ui tree` mostra os IDs das trilhas. O equivalente ao botão da Biblioteca é `./scripts/ui invoke library.generate_splat generate`.
+Com a janela aberta, `./scripts/tessel ui tree` mostra os IDs das trilhas. O equivalente ao botão da Biblioteca é `./scripts/tessel ui invoke library.generate_splat generate`.

@@ -7,18 +7,23 @@ O binário incorpora os mesmos arquivos Markdown do repositório.
 ## Terminal e JSONL
 
 ```sh
-./scripts/ui help
-./scripts/media help splat
-./scripts/headless help camera
-./scripts/render help preview
+./scripts/tessel help
+./scripts/tessel help splat
+./scripts/tessel help camera
+./scripts/tessel help preview
 ```
 
-`--help` e `-h` são equivalentes a `help`. O comando roda sem projeto, janela ou
-renderer e retorna código 2 para um tópico desconhecido ou excesso de argumentos.
+`./scripts/tessel` sem argumentos, `--help` e `-h` mostram o índice. A ajuda roda
+sem projeto, janela ou renderer e retorna código 2 para tópico desconhecido ou
+excesso de argumentos.
+
+O comando central abre o app com `editor`, controla a janela com
+`ui` e encaminha o JSONL em stdin com `headless`, `media` e `render`. Os quatro
+scripts anteriores encaminham os mesmos argumentos para os respectivos subcomandos.
 
 Dentro de uma sessão JSONL, envie `{"op":"help"}` para receber `topics` e
 `markdown`. Envie `{"op":"help","topic":"preview"}` para receber `topic` e
-`markdown`. Na sessão da janela, use `./scripts/ui op '{"op":"help","topic":"preview"}'`.
+`markdown`. Na sessão da janela, use `./scripts/tessel ui op '{"op":"help","topic":"preview"}'`.
 Um tópico desconhecido retorna `unknown_topic` com os tópicos válidos. A operação
 é de leitura e não altera projeto, histórico ou preview.
 
@@ -37,3 +42,8 @@ guia, a saída do binário, a recusa de tópico desconhecido e a preservação d
 Os quatro scripts foram executados sem janela, com saída igual ao guia em disco.
 O mesmo pedido JSONL passou em headless, media, render e numa janela nativa do Mac
 acessada pelo socket semântico.
+
+O ponto de entrada central foi validado a partir de fora do repositório. Os três
+tópicos coincidiram com os guias em disco. As rotas JSONL receberam stdin e
+argumentos e devolveram as mesmas respostas dos aliases. No Mac, `tessel editor`
+abriu uma janela isolada e `tessel ui` consultou o status e o guia no socket dela.
