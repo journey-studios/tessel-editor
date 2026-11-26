@@ -1,5 +1,9 @@
 # UI automation
 
+`./scripts/ui help` lista os comandos e os [guias de uso](guides/README.md). Use
+`./scripts/ui help camera` para ler um tópico sem conectar à janela. Numa sessão
+ativa, `./scripts/ui op '{"op":"help","topic":"camera"}'` retorna o mesmo guia em JSON.
+
 Control the running editor through a local CLI, without mouse coordinates. Start the
 app (`./scripts/cargo run -p tessel-editor --locked`), then from the repository:
 

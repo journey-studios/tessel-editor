@@ -9,6 +9,7 @@
 //! with the setup command. `scene.render` and `scene.export` (a directed scene as an MP4, F042)
 //! go through `SceneHost`; without the runtime `scene.export` answers `backend_unavailable`.
 use std::io::{self, BufWriter};
+use std::process::ExitCode;
 use std::sync::Arc;
 
 use tessel_editor_core::state::ProjectSettings;
@@ -18,8 +19,12 @@ use tessel_editor_render::{RuntimeConfig, session};
 
 const USAGE: &str = "Usage: tessel-render [--demo] [--gl swiftshader|gpu]  (JSON Lines on stdin)";
 
-fn main() {
-    let mut args = std::env::args().skip(1);
+fn main() -> ExitCode {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if let Some(exit) = tessel_editor_core::help::cli(&args, USAGE) {
+        return exit;
+    }
+    let mut args = args.into_iter();
     let mut demo = false;
     let mut gl = None;
     while let Some(arg) = args.next() {
@@ -90,11 +95,11 @@ fn main() {
         }
     };
     match result {
-        Ok(false) => {}
-        Ok(true) => std::process::exit(1),
+        Ok(false) => ExitCode::SUCCESS,
+        Ok(true) => ExitCode::FAILURE,
         Err(error) => {
             eprintln!("I/O failed: {error}");
-            std::process::exit(1);
+            ExitCode::FAILURE
         }
     }
 }

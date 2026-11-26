@@ -1,6 +1,10 @@
 # Documentação do Tessel Editor
 
-Comece pela [matriz de features](features/README.md): ela registra o contrato e o estado de
+Para editar pela janela ou pelo terminal, comece pelos
+[guias de uso](guides/README.md). Eles cobrem geração de splat, câmera e prévia de trecho.
+O terminal também mostra esses guias com `./scripts/ui help`.
+
+A [matriz de features](features/README.md) registra o contrato e o estado de
 cada acesso pela UI, CLI com UI, CLI headless e biblioteca Rust.
 
 - [Piloto de efeitos, planos e Studio: tudo para portar](migration/pilot-fx-shots-studio-features.md): 59 efeitos, comandos, gestos, inspector, runtime, timeline e CLI do branch `t3/scene-engine-pilot`, com ordem sugerida para o Rust.

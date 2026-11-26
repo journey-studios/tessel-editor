@@ -72,6 +72,7 @@ impl Workstation {
             ));
         };
         match op {
+            Op::Help(topic) => tessel_editor_core::help::guide(topic.as_deref()).map(OpReply::Done),
             Op::Status => Ok(OpReply::Done(self.state.summary())),
             Op::Header => Ok(OpReply::Done(self.state.header().to_json())),
             Op::Run(command) => self.execute(command, Source::Cli, cx).map(OpReply::Done),

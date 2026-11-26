@@ -173,6 +173,7 @@ fn run_op(
     op: Op,
 ) -> Result<Value, CommandError> {
     match op {
+        Op::Help(topic) => crate::help::guide(topic.as_deref()),
         Op::Status => Ok(state.summary()),
         Op::Header => Ok(state.header().to_json()),
         Op::Run(command) => state.execute(command),

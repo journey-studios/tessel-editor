@@ -831,6 +831,14 @@ pub fn parse_invoke(
             },
         },
         ("monitor.reload", "invoke") => return Ok(Parsed::ReloadViewport),
+        ("camera.push_in", "invoke") => Command::SetCameraPushIn {
+            clip: selected_scene_clip(state, target)?,
+            options: Some(Default::default()),
+        },
+        ("camera.push_in.clear", "invoke") => Command::SetCameraPushIn {
+            clip: selected_scene_clip(state, target)?,
+            options: None,
+        },
         ("camera_keys.capture", "invoke") => Command::CameraKeys(CameraKeysCommand::Capture {
             clip: selected_scene_clip(state, target)?,
             easing: None,

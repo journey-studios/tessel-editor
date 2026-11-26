@@ -12,6 +12,8 @@ WinGet, Program Files, `LOCALAPPDATA`); `TESSEL_FFMPEG`/`TESSEL_FFPROBE` inváli
 (`export.start` real com FFmpeg 9.0.2, sem overrides): [media-setup](../media-setup.md#descoberta-dos-executáveis) e
 [relatório](../migration/windows-tool-discovery-report.md). Só o Windows foi provado nesta entrega.
 
+[Guia de prévias por trecho](../guides/preview.md) · `./scripts/render help preview`
+
 ## Pipeline
 
 `snapshot imutável → preflight → prepare (decode) → mix WAV em blocos de 10 s → frame PNG a frame → FFmpeg
@@ -21,8 +23,12 @@ cruza o pipe, o áudio vai direto para arquivo.
 
 | `op` | Campos | Notas |
 |---|---|---|
-| `export.preflight` | `preset?`, `destination`, `sequence?`, `range?` | `{ok, blockers[], warnings[], summary}` (`summary`: faixa, tamanhos de render/saída, áudio, `estimate` de bytes de saída/staging/memória, espaço livre, encoder, versão do FFmpeg, capacidades do renderer) |
+| `export.preflight` | `preset?`, `destination`, `sequence?`, `range?`, `camera_preview?` | `{ok, blockers[], warnings[], summary}` (`summary`: faixa, tamanhos de render/saída, áudio, `estimate` de bytes de saída/staging/memória, espaço livre, encoder, versão do FFmpeg, capacidades do renderer) |
 | `export.start` | idem + `replace?`, `wait?` | job `video_export`; `range` = `[início, fim)` em frames |
+
+`camera_preview` recebe o ID de um clipe e calcula o intervalo da
+[aproximação visível](camera-push-in.md). Use um único seletor de intervalo por operação.
+Sem preset explícito, a prévia é um MP4 sem áudio com até 640 px no lado maior.
 
 Blockers: `invalid_preset`, `invalid_destination`, `destination_exists`, `disk_full`, `encoder_unavailable`,
 `asset_missing`, `asset_changed`, `no_workspace` (mídia a decodificar sem workspace), `render_too_large`,

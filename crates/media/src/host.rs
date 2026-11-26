@@ -1873,9 +1873,38 @@ impl MediaHost {
         state: &EditorState,
         request: &Value,
     ) -> Result<(EditorState, ExportRequest), CommandError> {
+        let camera_preview = optional_text(request, "camera_preview")?;
+        if camera_preview.is_some() && request.get("range").is_some_and(|range| !range.is_null()) {
+            return Err(invalid("Choose either `camera_preview` or `range`"));
+        }
+        let mut snapshot = state.clone();
+        if let Some(sequence) = optional_text(request, "sequence")? {
+            snapshot.execute(Command::ActivateSequence {
+                sequence: sequence.to_string(),
+            })?;
+        }
         let preset = match request.get("preset") {
             Some(Value::String(id)) => preset::find(id, &state.project.user_presets)?,
             Some(inline @ Value::Object(_)) => Preset::from_json(inline)?,
+            None | Some(Value::Null) if camera_preview.is_some() => {
+                let (width, height) = (snapshot.timeline.width, snapshot.timeline.height);
+                let scale = 640.0 / f64::from(width.max(height)).max(640.0);
+                let side = |n: u32| {
+                    ((f64::from(n) * scale / 2.0).round() as u32 * 2).max(preset::MIN_SIDE)
+                };
+                Preset {
+                    id: "camera-preview".into(),
+                    name: "Camera preview".into(),
+                    builtin: false,
+                    width: side(width),
+                    height: side(height),
+                    fps: None,
+                    fit: preset::Fit::Contain,
+                    crf: 26,
+                    audio: false,
+                    audio_kbps: 128,
+                }
+            }
             _ => match state.project.export_preset.as_deref() {
                 Some(id) => preset::find(id, &state.project.user_presets)?,
                 None => {
@@ -1885,13 +1914,11 @@ impl MediaHost {
                 }
             },
         };
-        let mut snapshot = state.clone();
-        if let Some(sequence) = optional_text(request, "sequence")? {
-            snapshot.execute(Command::ActivateSequence {
-                sequence: sequence.to_string(),
-            })?;
-        }
         let mut export = ExportRequest::new(preset, text(request, "destination")?);
+        if let Some(clip) = camera_preview {
+            let [from, end] = snapshot.camera_push_in_preview_range(clip)?;
+            export.range = Some((from, end));
+        }
         export.replace = flag(request, "replace", false);
         if let Some(range) = request.get("range").filter(|range| !range.is_null()) {
             let bounds = range

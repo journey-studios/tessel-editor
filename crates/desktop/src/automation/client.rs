@@ -5,8 +5,9 @@ use serde_json::{Map, Value, json};
 
 use super::UnixStream;
 
-const HELP: &str = "tessel-editor ui <command>
+pub const HELP: &str = "tessel-editor ui <command>
 
+  help [topic]                  user guides for splats, camera and previews
   tree                          live component tree (regions, controls, values)
   status                        window, theme and editor summary
   actions                       every operation currently available
@@ -42,7 +43,7 @@ Docking (acts on the live DockArea; the same handlers as the header buttons and 
 IDs come from `tree`. Failures print a JSON error and exit nonzero.";
 
 pub fn run_cli(args: &[String]) -> Result<(), String> {
-    if args.is_empty() || args == ["--help"] {
+    if args.is_empty() {
         println!("{HELP}");
         return Ok(());
     }

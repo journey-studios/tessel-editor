@@ -135,6 +135,7 @@ pub struct Clip {
     pub camera: Option<Camera>,
     /// Keyframes of a scene clip's camera (BL140), sorted by scene time; empty = no keyframes.
     pub camera_keys: Vec<CameraKey>,
+    pub camera_push_in: Option<super::camera_push_in::CameraPushIn>,
     /// Keyframes of the clip's position, zoom, rotation and opacity over its own time (F073), one
     /// track per property in the inspector's order; empty = the inspector values hold.
     pub keys: Vec<KeyTrack>,
@@ -311,6 +312,7 @@ impl Timeline {
                     subtitles: None,
                     camera: None,
                     camera_keys: Vec::new(),
+                    camera_push_in: None,
                     keys: Vec::new(),
                 }
             };

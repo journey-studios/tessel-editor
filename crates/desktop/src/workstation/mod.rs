@@ -393,6 +393,14 @@ impl Workstation {
         cx: &mut Context<Self>,
     ) -> Result<Value, CommandError> {
         let ordinary_preview = matches!(command, Command::SetPreview { .. });
+        let camera_edit = matches!(command, Command::SetCameraPushIn { .. });
+        let camera_preview = matches!(
+            command,
+            Command::SetCameraPushIn {
+                options: Some(_),
+                ..
+            }
+        );
         let moved_playhead = matches!(
             command,
             Command::SetPlayhead { .. }
@@ -413,14 +421,29 @@ impl Workstation {
             // reuses it instead of planning the scene again for the same state.
             self.overlay_adopt(outcome);
         }
-        if result.is_ok() {
+        let mut previewing_camera = false;
+        if camera_edit && let Ok(outcome) = &result {
+            self.playback_stop(cx);
+            if camera_preview
+                && let (Some(from), Some(end)) =
+                    (outcome["range"][0].as_i64(), outcome["range"][1].as_i64())
+            {
+                self.playback_camera_preview(from, end, cx);
+                previewing_camera = true;
+            }
+        }
+        if result.is_ok() && !previewing_camera {
             // After a failed command the state is untouched, so the picture stays as it was.
             self.viewport_sync(cx);
         }
         self.activity = Some(match &result {
             Ok(outcome) => Activity {
                 source,
-                text: describe(outcome),
+                text: if previewing_camera {
+                    "Prévia da aproximação (sem som)".into()
+                } else {
+                    describe(outcome)
+                },
                 error: false,
             },
             Err(error) => Activity {

@@ -39,6 +39,19 @@ plain `cargo build -p tessel-editor --locked` (MSVC Build Tools, `pnpm install -
 native Windows AF_UNIX socket (`target\debug\tessel-editor.exe ui status`); see BL054 in
 [docs/backlog.md](docs/backlog.md).
 
+## User guides
+
+[Generate splats, move the camera and preview a range](docs/guides/README.md).
+Read the same guides from the terminal without opening the editor.
+
+```sh
+./scripts/ui help
+./scripts/media help splat
+./scripts/render help preview
+```
+
+Use `{"op":"help","topic":"camera"}` inside a JSONL session to receive the guide as Markdown.
+
 ## Validate
 
 ```sh

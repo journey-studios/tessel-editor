@@ -46,6 +46,8 @@ enum Audio {
         device: DeviceInfo,
         open: Duration,
     },
+    /// The camera review deliberately skips the sequence mix.
+    Muted,
     /// No sound: the reason is part of every report.
     Silent(AudioError),
 }
@@ -129,6 +131,8 @@ pub(super) enum Tick {
 pub struct Playback {
     anchor: Instant,
     from: i64,
+    end: Option<i64>,
+    waiting_for_picture: bool,
     fps: f64,
     audio: Audio,
     wall: WallClock,
@@ -156,6 +160,7 @@ pub struct PlaybackState {
     /// How the clock is polled (`TESSEL_PLAYBACK_POLL`, BL157.6); read once with the window.
     poll: PollMode,
     last: Option<Value>,
+    generation: u64,
 }
 
 /// The core's audio plan of the whole sequence, mixed to the stereo samples the device plays.
@@ -186,7 +191,7 @@ impl Playback {
     fn shared(&self) -> Option<&Arc<Shared>> {
         match &self.audio {
             Audio::Opening(output, _) | Audio::Running { output, .. } => Some(output.shared()),
-            Audio::Silent(_) => None,
+            Audio::Silent(_) | Audio::Muted => None,
         }
     }
 
@@ -236,7 +241,7 @@ impl Playback {
             Audio::Running { output, .. } => {
                 Some(output.shared().position() / f64::from(rate) * self.fps)
             }
-            Audio::Silent(_) => Some(self.wall.frame(self.fps)),
+            Audio::Silent(_) | Audio::Muted => Some(self.wall.frame(self.fps)),
         }
     }
 
@@ -244,13 +249,14 @@ impl Playback {
         match &self.audio {
             Audio::Opening(..) => "starting",
             Audio::Running { .. } => "audio_device",
-            Audio::Silent(_) => "wall",
+            Audio::Silent(_) | Audio::Muted => "wall",
         }
     }
 
     fn audio_report(&self) -> Value {
         match &self.audio {
             Audio::Opening(..) => json!({ "output": null, "status": "opening" }),
+            Audio::Muted => json!({ "output": null, "status": "muted" }),
             Audio::Silent(error) => json!({ "output": null,
                 "error": { "code": error.code, "message": error.message } }),
             Audio::Running {
@@ -326,7 +332,8 @@ impl PlaybackState {
             .clock_frame(rate)
             .map_or(active.frame, |frame| frame.floor() as i64);
         json!({
-            "state": if active.paused { "paused" } else { "playing" },
+            "state": if active.paused { "paused" }
+                else if active.waiting_for_picture { "preparing" } else { "playing" },
             "from": active.from, "frame": active.frame, "fps": active.fps,
             "clock": active.clock_name(),
             // How the clock is polled (`TESSEL_PLAYBACK_POLL`): `fixed` (half a frame after each answer) or `deadline`.
@@ -337,6 +344,7 @@ impl PlaybackState {
             "lag_frames": clock - active.frame,
             "ticks": active.ticks, "skipped_frames": active.skipped, "max_gap_frames": active.max_gap,
             "audio": active.audio_report(),
+            "range": active.end.map(|end| [active.from, end]),
         })
     }
 }
@@ -368,13 +376,18 @@ impl Workstation {
             .trace()
             .event("play_command", || json!({ "from": from }));
         let snapshot = self.state.clone();
+        let generation = self.playback.generation;
         cx.spawn(async move |this, cx| {
             // The mix is offline and can take a moment on a long sequence: never on the UI thread.
             let mixed = cx
                 .background_executor()
                 .spawn(async move { mix_sequence(&snapshot) })
                 .await;
-            let _ = this.update(cx, |this, cx| this.playback_begin(from, mixed, cx));
+            let _ = this.update(cx, |this, cx| {
+                if this.playback.generation == generation {
+                    this.playback_begin(from, mixed, cx);
+                }
+            });
         })
         .detach();
         cx.notify();
@@ -405,10 +418,33 @@ impl Workstation {
                 message: error.message,
             }),
         };
+        self.playback_run(from, None, audio, cx);
+    }
+
+    pub(super) fn playback_camera_preview(&mut self, from: i64, end: i64, cx: &mut Context<Self>) {
+        let _ = self.state.execute(Command::SetPreview {
+            intent: tessel_editor_core::plan::PreviewIntent::Sequence,
+        });
+        self.viewport.leave_directed();
+        let _ = self.state.execute(Command::SetPlayhead {
+            frame: Raw::Number(from as f64),
+        });
+        self.playback_run(from, Some(end), Audio::Muted, cx);
+        self.viewport_sync(cx);
+    }
+
+    fn playback_run(&mut self, from: i64, end: Option<i64>, audio: Audio, cx: &mut Context<Self>) {
+        let fps = self.state.timeline.rate.as_f64();
         let silent = matches!(audio, Audio::Silent(_));
+        let waiting_for_picture = end.is_some()
+            && self.viewport_view.is_some()
+            && self.viewport.on_screen
+            && self.viewport.presented_frame() != Some(from);
         self.playback.active = Some(Playback {
             anchor: Instant::now(),
             from,
+            end,
+            waiting_for_picture,
             fps,
             audio,
             wall: WallClock {
@@ -430,6 +466,8 @@ impl Workstation {
             || json!({ "from": from, "fps": fps, "poll": poll.name() }),
         );
         // The first wait is the fixed one (the device may still be opening); every tick says how long the next one waits.
+        self.playback.generation = self.playback.generation.wrapping_add(1);
+        let generation = self.playback.generation;
         let mut delay = playback_poll::interval(fps);
         cx.spawn(async move |this, cx| {
             loop {
@@ -437,7 +475,12 @@ impl Workstation {
                 let armed = Instant::now();
                 cx.background_executor().timer(delay).await;
                 let tick = this
-                    .update(cx, |this, cx| this.playback_tick(cx, armed, delay))
+                    .update(cx, |this, cx| {
+                        if this.playback.generation != generation {
+                            return Tick::Stop;
+                        }
+                        this.playback_tick(cx, armed, delay)
+                    })
                     .ok();
                 let Some(Tick::Continue { next, .. }) = tick else {
                     break;
@@ -501,6 +544,25 @@ impl Workstation {
             return Tick::Stop;
         };
         let fps = active.fps;
+        if active.waiting_for_picture {
+            if self.viewport.presented_frame() == Some(active.from) {
+                active.waiting_for_picture = false;
+                active.wall.seek(active.from as f64);
+            } else if active.anchor.elapsed() >= Duration::from_secs(15) {
+                self.playback_stop(cx);
+                self.activity = Some(Activity {
+                    source: Origin::Gesture,
+                    text: "A aproximação foi aplicada. O monitor não exibiu o primeiro quadro da prévia.".into(),
+                    error: true,
+                });
+                return Tick::Stop;
+            } else {
+                return Tick::Continue {
+                    next: playback_poll::next_poll(poll, fps, None),
+                    clock: None,
+                };
+            }
+        }
         if let Some(error) = active.settle() {
             // The device could not be used: the picture goes on silent, and the status bar says why.
             self.activity = Some(Activity {
@@ -529,11 +591,12 @@ impl Workstation {
         let ended = match &active.audio {
             Audio::Running { output, .. } => output.shared().finished(),
             _ => false,
-        } || frame >= length;
+        } || frame >= active.end.unwrap_or(length).min(length);
         if ended {
+            let final_frame = active.end.map_or(length, |end| (end - 1).min(length));
             self.playback_stop(cx);
             let _ = self.state.execute(Command::SetPlayhead {
-                frame: Raw::Number(length as f64),
+                frame: Raw::Number(final_frame as f64),
             });
             self.viewport_sync(cx);
             return Tick::Stop;
@@ -554,7 +617,13 @@ impl Workstation {
             self.viewport_sync(cx);
             // The clock is moving: load what the next couple of seconds will need, so a cut into
             // a large splat does not stall the first frame that draws it.
-            if self.viewport.prefetch_ahead(&self.state) > 0 {
+            if self
+                .playback
+                .active
+                .as_ref()
+                .is_some_and(|active| active.end.is_none())
+                && self.viewport.prefetch_ahead(&self.state) > 0
+            {
                 self.viewport_flush(cx);
             }
         }
@@ -573,6 +642,7 @@ impl Workstation {
     }
 
     pub fn playback_stop(&mut self, cx: &mut Context<Self>) -> Value {
+        self.playback.generation = self.playback.generation.wrapping_add(1);
         self.playback.preparing = None;
         let mut report = self.playback.report();
         self.perf_playback_stopped();
@@ -580,7 +650,7 @@ impl Workstation {
             // Asks the audio thread to release the device; it does that off this thread.
             match &mut active.audio {
                 Audio::Opening(output, _) | Audio::Running { output, .. } => output.close(),
-                Audio::Silent(_) => {}
+                Audio::Silent(_) | Audio::Muted => {}
             }
             report["state"] = json!("stopped");
             self.playback.last = Some(report.clone());
@@ -649,6 +719,15 @@ impl Workstation {
             ));
         }
         let active = self.active_playback()?;
+        if let Some(end) = active.end
+            && !(active.from..end).contains(&frame)
+        {
+            return Err(CommandError::new(
+                "out_of_bounds",
+                format!("Seek must stay inside the preview ({}..{end})", active.from),
+            ));
+        }
+        active.waiting_for_picture = false;
         if let Some(shared) = active.shared() {
             let audio_frame = frame as f64 / active.fps * f64::from(shared.sample_rate());
             shared.seek(audio_frame as u64);

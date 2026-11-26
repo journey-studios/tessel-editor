@@ -975,6 +975,27 @@ fn build_camera_keys(
 ) {
     let playhead = state.timeline.playhead;
     let inside = playhead >= clip.start && playhead < clip.end();
+    let mut push_in = Node::new("camera.push_in", "button", "Push in and preview")
+        .parent(parent)
+        .visible(shown)
+        .state("clip", clip.id)
+        .state(
+            "current",
+            clip.camera_push_in.map(|effect| effect.to_json()),
+        )
+        .action("invoke");
+    if clip.duration < 2 {
+        push_in = push_in.disabled("The clip needs at least two frames");
+    }
+    nodes.push(push_in);
+    if clip.camera_push_in.is_some() {
+        nodes.push(
+            Node::new("camera.push_in.clear", "button", "Remove camera push-in")
+                .parent(parent)
+                .visible(shown)
+                .action("invoke"),
+        );
+    }
     let mut capture = Node::new("camera_keys.capture", "button", "Add key at playhead")
         .parent(parent)
         .visible(shown)

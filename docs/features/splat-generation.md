@@ -5,6 +5,8 @@ projeto e pode criar um clipe em uma trilha indicada pelo chamador. O editor gua
 como mídia gerenciada. Ao salvar, a biblioteca e a timeline continuam funcionando sem
 executar o modelo novamente. A câmera da captura vem do fluxo de [importação SHARP](sharp-import.md).
 
+[Guia de uso pela janela e pela CLI](../guides/splat.md) · `./scripts/media help splat`
+
 ## Configuração local
 
 Instale o [Apple ml-sharp](https://github.com/apple/ml-sharp) e o checkpoint no ambiente local.
