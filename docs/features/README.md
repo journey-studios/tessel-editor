@@ -91,6 +91,7 @@ Lib V significa testes do modelo demo, não um motor real de edição.
 | F074 | [Gerar splats a partir de imagens](splat-generation.md) | V (janela no Mac, via ação semântica) | V | V | V | SHARP em MPS, biblioteca do projeto, câmera da captura e clipe opcional. Três PLYs reais colocados via JSONL e exportados. |
 | F075 | [Aproximação de câmera e prévia de trecho](camera-push-in.md) | V (Mac, via ação semântica) | V | V | V | Usa a câmera do clipe e preserva suas chaves e órbita. Prévia no monitor ou MP4 apenas do intervalo. |
 | F076 | [Ajuda local no CLI](cli-help.md) | N/A (documentação no terminal) | V | V | V | `./scripts/tessel help [topic]` sem backend e `{"op":"help","topic":"camera"}` nas sessões JSONL. Os guias do repositório fornecem o texto. |
+| F077 | [Fluxos de projeto no CLI](cli-workflows.md) | N/A (adaptador CLI) | N/A | V | V via F026 e F029 | `tessel export`, `setup`, `package` e `restore` sobre os backends nativos, com ajuda por tópico. |
 
 ¹ Dock/tema/janela são capacidades de apresentação. A lib valida layout, mas quem o executa
 é o DockArea vivo; não há execução do Dock no core. UI nativa não é requisito para fluxos

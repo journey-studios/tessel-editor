@@ -1,7 +1,7 @@
 # Documentação do Tessel Editor
 
 Para editar pela janela ou pelo terminal, comece pelos
-[guias de uso](guides/README.md). Eles cobrem geração de splat, câmera e prévia de trecho.
+[guias de uso](guides/README.md). Eles cobrem geração de splat, câmera, prévia, exportação, setup e pacotes.
 O terminal também mostra esses guias com `./scripts/tessel help`.
 
 A [matriz de features](features/README.md) registra o contrato e o estado de

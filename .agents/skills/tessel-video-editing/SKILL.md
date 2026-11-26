@@ -8,7 +8,7 @@ description: Montar e revisar vídeos no Tessel Editor pela CLI nativa, com cen�
 Leia [AGENTS.md](../../../AGENTS.md) e o [contrato do export](../../../docs/features/video-export.md). Trabalhe em `projects/<nome>/` para projetos privados ou mídia pesada. Use o contrato de features do repositório se for mudar o comportamento do editor.
 
 Consulte `./scripts/tessel help` para descobrir os guias locais. Use os tópicos `splat`,
-`camera` e `preview` para exemplos, ou envie `{"op":"help","topic":"camera"}` à sessão JSONL
+`camera`, `preview`, `export`, `setup`, `package` e `restore` para exemplos, ou envie `{"op":"help","topic":"camera"}` à sessão JSONL
 já aberta.
 
 ## Revisar uma montagem
@@ -30,11 +30,15 @@ já aberta.
 
 ## Conferir e exportar
 
-Prepare o runtime com `./scripts/runtime setup` quando necessário. Compile pelo wrapper com `./scripts/cargo build --locked -p tessel-editor-render --bin tessel-render`. O [helper de export](../../../scripts/export-video.py) usa o binário já construído e informa o progresso pelo job nativo. `--renderer` aponta para outro build. Use caminhos fora do projeto apenas se os assets permanecerem resolvíveis.
+Use `./scripts/tessel setup` para preparar o runtime ou `./scripts/tessel setup --check`
+para verificar a instalação existente. O [guia de exportação](../../../docs/guides/export.md)
+mostra os comandos, opções e a saída de progresso. Use caminhos fora do projeto quando
+os assets permanecerem resolvíveis.
 
-```powershell
-python -X utf8 scripts/export-video.py projects/exemplo/revisao.tessel.json projects/exemplo/corte.mp4 --range 675 735
-python -X utf8 scripts/export-video.py projects/exemplo/revisao.tessel.json projects/exemplo/final.mp4 > projects/exemplo/export.json
+```sh
+./scripts/tessel export projects/exemplo/revisao.tessel.json projects/exemplo/corte.mp4 --range 675 735
+./scripts/tessel export projects/exemplo/revisao.tessel.json projects/exemplo/camera.mp4 --clip take-final
+./scripts/tessel export projects/exemplo/revisao.tessel.json projects/exemplo/final.mp4 > projects/exemplo/export.json
 ```
 
 A faixa é `[início,fim)` em quadros. No exemplo a 30 fps, ela cobre de 22,5 a 24,5 s. Em JSONL, envie `project.open` e `export.start` com `preset:"fullhd"`, destino absoluto e `range:[675,735]`. Para progresso, use `wait:false` e consulte `job.get` na mesma sessão.

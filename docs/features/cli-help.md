@@ -1,7 +1,7 @@
 # F076 — Ajuda local no CLI
 
 O comando `help` lista os [guias de uso](../guides/README.md). `help <tópico>`
-imprime os passos pela janela e exemplos copiáveis para `splat`, `camera` ou `preview`.
+imprime os passos pela janela e exemplos copiáveis para os tópicos listados no índice, incluindo [export, setup e pacotes](cli-workflows.md).
 O binário incorpora os mesmos arquivos Markdown do repositório.
 
 ## Terminal e JSONL
@@ -11,6 +11,10 @@ O binário incorpora os mesmos arquivos Markdown do repositório.
 ./scripts/tessel help splat
 ./scripts/tessel help camera
 ./scripts/tessel help preview
+./scripts/tessel help export
+./scripts/tessel help setup
+./scripts/tessel help package
+./scripts/tessel help restore
 ```
 
 `./scripts/tessel` sem argumentos, `--help` e `-h` mostram o índice. A ajuda roda

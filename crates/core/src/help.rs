@@ -22,6 +22,26 @@ const GUIDES: &[(&str, &str, &str)] = &[
         "Rever só um trecho",
         include_str!("../../../docs/guides/preview.md"),
     ),
+    (
+        "export",
+        "Exportar vídeo com progresso",
+        include_str!("../../../docs/guides/export.md"),
+    ),
+    (
+        "setup",
+        "Preparar o ambiente de edição",
+        include_str!("../../../docs/guides/setup.md"),
+    ),
+    (
+        "package",
+        "Arquivar um projeto editável com seus assets",
+        include_str!("../../../docs/guides/package.md"),
+    ),
+    (
+        "restore",
+        "Restaurar um projeto editável",
+        include_str!("../../../docs/guides/restore.md"),
+    ),
 ];
 
 fn topics() -> Value {

@@ -125,6 +125,10 @@ fn help_returns_the_packaged_guides_without_changing_the_session() {
         ("splat", include_str!("../../../docs/guides/splat.md")),
         ("camera", include_str!("../../../docs/guides/camera.md")),
         ("preview", include_str!("../../../docs/guides/preview.md")),
+        ("export", include_str!("../../../docs/guides/export.md")),
+        ("setup", include_str!("../../../docs/guides/setup.md")),
+        ("package", include_str!("../../../docs/guides/package.md")),
+        ("restore", include_str!("../../../docs/guides/restore.md")),
     ]
     .into_iter()
     .enumerate()

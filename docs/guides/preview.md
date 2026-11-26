@@ -2,7 +2,11 @@
 
 Na janela, **Câmera → Aproximar e pré-visualizar** toca a parte alterada no monitor e para no último quadro do trecho. Use o controle de reprodução para interromper.
 
-Prepare o runtime e o FFmpeg para gerar um MP4 curto a partir de um projeto salvo. [Configuração de mídia](../media-setup.md)
+Com o projeto salvo e o ambiente preparado, use
+`./scripts/tessel export aventura.tessel.json previa.mp4 --clip take-final`.
+O comando acompanha o progresso no terminal. [Guia de exportação](export.md)
+
+Para rodar o mesmo fluxo por JSONL, use o renderer.
 
 ```sh
 ./scripts/tessel render <<'JSONL'

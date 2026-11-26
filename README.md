@@ -49,6 +49,10 @@ Read the same guides from the terminal without opening the editor.
 ./scripts/tessel help splat
 ./scripts/tessel help camera
 ./scripts/tessel help preview
+./scripts/tessel help export
+./scripts/tessel help setup
+./scripts/tessel help package
+./scripts/tessel help restore
 ```
 
 Use `./scripts/tessel ui <command>` for a running window. The `headless`, `media` and `render`
