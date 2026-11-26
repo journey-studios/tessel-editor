@@ -70,7 +70,9 @@ Limites declarados:
   `position_x`, `position_y`, `zoom`, `rotation`, `opacity`, nos mesmos valores do inspetor
   (porcentagem, graus). O tempo da chave é **inteiro em ms do tempo de fonte** do clipe
   (`source_start` + decorrido na velocidade do clipe): mover, aparar a cabeça ou dividir o clipe não
-  reescreve chaves. Opacidade com faixa continua multiplicada pelos fades.
+  reescreve chaves. Opacidade com faixa continua multiplicada pelos fades. Cada propriedade aceita
+  até `group::MAX_KEYS` (1024) chaves, o mesmo limite das trilhas de grupo ([BL169.6.9](../backlog.md));
+  uma chave a mais é recusada (`invalid_value`) sem alterar o clipe.
 - `crates/core/src/plan.rs`: `loop_span`, `wrap`, valor chaveado de transformação e opacidade
   (`clip_keyed_value`). Monitor, `render.frame` e export usam o mesmo plano.
 - Persistência: esquema 2 só quando há chaves ou a propriedade `loop`; o editor do esquema 1 recusa.

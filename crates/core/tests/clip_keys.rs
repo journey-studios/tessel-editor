@@ -303,3 +303,29 @@ fn the_nodes_key_the_value_at_the_playhead_edit_a_key_and_remove_it() {
         "invalid_time"
     );
 }
+
+#[test]
+fn a_clip_track_takes_a_key_per_frame_up_to_the_limit_and_refuses_one_more() {
+    use tessel_editor_core::group::MAX_KEYS;
+    let mut state = project();
+    for index in 0..MAX_KEYS as i64 {
+        run(&mut state, key("position_x", index, (index % 50) as f64));
+    }
+    let full = state.to_document(None);
+    assert_eq!(
+        code(&mut state, key("position_x", MAX_KEYS as i64, 1.0)),
+        "invalid_value",
+        "one key past the limit is refused"
+    );
+    assert_eq!(
+        state.to_document(None),
+        full,
+        "the refused key leaves the clip untouched"
+    );
+    run(&mut state, key("position_x", 0, 7.0));
+    assert_ne!(
+        state.to_document(None),
+        full,
+        "a key that already exists can still be changed at the limit"
+    );
+}
