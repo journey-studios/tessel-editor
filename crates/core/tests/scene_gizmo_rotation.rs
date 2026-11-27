@@ -1437,6 +1437,58 @@ fn the_rotate_overlay_has_three_closed_rings_and_the_metrics_to_draw_them() {
 }
 
 #[test]
+fn every_ring_closes_on_its_first_point_bit_for_bit_in_any_view_space_and_pose() {
+    // BL167.3. The polygon of a ring ends where it starts. The last angle is `TAU`, the `f64`
+    // nearest to 2π, whose sine is -2.4e-16, not 0: whether that residue changed the projected
+    // last point depended on the libm and on the view, so the closure held on one platform and
+    // not on another. The invariant is checked across views, spaces and poses, not for one shot.
+    let cameras = [
+        ([0.0, 0.0, 8.0], [0.0, 0.0, 0.0]),
+        ([3.0, 2.0, 7.0], [0.0, 0.5, 0.0]),
+        ([-4.5, 1.25, 6.0], [0.3, 0.0, -0.2]),
+        ([0.7, 5.0, 4.0], [0.0, 0.0, 0.0]),
+    ];
+    let poses = [
+        None,
+        Some(quat_about([0.0, 1.0, 0.0], 90.0)),
+        Some(quat_about([1.0, 2.0, 0.5], 40.0)),
+        Some(quat_about([0.3, 1.0, -0.4], 33.0)),
+    ];
+    let mut rings = 0;
+    for (position, target) in cameras {
+        for pose in poses {
+            for space in ["world", "local"] {
+                let mut state = street();
+                ok(
+                    &mut state,
+                    json!({"op":"scene.edit","scene":"street","ops":[
+                    {"set": format!("{CAMERA_START}/position"),
+                     "value": {"x": position[0], "y": position[1], "z": position[2]}},
+                    {"set": format!("{CAMERA_START}/target"),
+                     "value": {"x": target[0], "y": target[1], "z": target[2]}}]}),
+                );
+                set_figure(&mut state, pose, None);
+                select(&mut state, FIGURE);
+                tool(&mut state, "rotate", space);
+                let shown = overlay(&mut state);
+                for ring in shown["handles"].as_array().unwrap() {
+                    let points = ring["points"].as_array().unwrap();
+                    assert_eq!(points.len(), 65, "{position:?} {space} {pose:?}");
+                    assert_eq!(
+                        points.first(),
+                        points.last(),
+                        "ring {} is open: camera {position:?} space {space} pose {pose:?}",
+                        ring["id"]
+                    );
+                    rings += 1;
+                }
+            }
+        }
+    }
+    assert_eq!(rings, 4 * 4 * 2 * 3, "every ring was checked");
+}
+
+#[test]
 fn a_ring_seen_edge_on_does_not_open_a_drag() {
     // A camera at the height of the figure looks at it along the plane of the Y ring: the
     // pointer says nothing about the angle there.
