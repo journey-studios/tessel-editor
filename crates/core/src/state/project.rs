@@ -294,7 +294,10 @@ impl EditorState {
             .iter()
             .position(|timeline| timeline.id == id)
             .ok_or_else(|| CommandError::unknown_element("sequence", id))?;
+        self.check_localized_sequence(&self.sequences[index])?;
+        let locale = self.detach_localized_view();
         std::mem::swap(&mut self.timeline, &mut self.sequences[index]);
+        self.restore_localized_view(locale.as_deref());
         // The sequence that was active keeps its slot, so the order of `sequences` is stable.
         self.subject = super::Subject::Media;
         Ok(json!({ "action": "sequence.activate", "sequence": id,

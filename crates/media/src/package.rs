@@ -120,6 +120,11 @@ fn select(state: &EditorState, sequences: Option<&[String]>) -> Result<EditorSta
     let Some(wanted) = sequences else {
         return Ok(selected);
     };
+    if state.localization.is_some() {
+        return Err(invalid_request(
+            "Package the full localized project to keep every language",
+        ));
+    }
     if wanted.is_empty() {
         return Err(invalid_request("`sequences` cannot be empty"));
     }

@@ -117,10 +117,15 @@ pub struct EditorState {
     /// BL144: library thumbnails of splats and scenes. Session state like the playhead: not in
     /// the document, not in an undo snapshot, empty in every project that is created or opened.
     pub thumbnails: crate::thumbnails::ThumbnailBook,
+    pub localization: Option<crate::localization::Localization>,
+    pub(crate) active_locale: Option<String>,
+    /// The original active sequence while the timeline is showing a language projection.
+    pub(crate) localization_base: Option<crate::localization::ProjectedSequence>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Command {
+    Localization(crate::localization::Edit),
     SetFolderExpanded {
         folder: String,
         expanded: bool,
@@ -420,6 +425,7 @@ impl Command {
             Self::SavePreset { .. } | Self::DeletePreset { .. } => "Export preset",
             Self::SelectPreset { .. } => "Select export preset",
             Self::Scene(scene) => return scene.history_label(),
+            Self::Localization(edit) => return edit.history_label(),
             _ => return None,
         })
     }
@@ -476,6 +482,9 @@ impl EditorState {
             groups: crate::group::GroupBook::default(),
             scene_interaction: SceneInteraction::default(),
             thumbnails: Default::default(),
+            localization: None,
+            active_locale: None,
+            localization_base: None,
         }
     }
 
@@ -509,6 +518,9 @@ impl EditorState {
             groups: crate::group::GroupBook::default(),
             scene_interaction: SceneInteraction::default(),
             thumbnails: Default::default(),
+            localization: None,
+            active_locale: None,
+            localization_base: None,
         })
     }
 }
@@ -689,6 +701,28 @@ impl EditorState {
     /// Runs one command. Edits (see [`Command::history_label`]) become one undo entry and bump
     /// the project revision when they changed something; a rejected command changes nothing.
     pub fn execute(&mut self, command: Command) -> Result<Value, CommandError> {
+        if self.is_localized_view()
+            && !matches!(
+                &command,
+                Command::Localization(_)
+                    | Command::AddAsset { .. }
+                    | Command::SavePreset { .. }
+                    | Command::SelectPreset { .. }
+                    | Command::DeletePreset { .. }
+            )
+        {
+            if matches!(&command, Command::PropertyGesture(_) | Command::Scene(_)) {
+                return Err(self.shared_edit_error());
+            }
+            if let Some(label) = command.history_label() {
+                let before = self.snapshot();
+                let outcome = self.edit_localized_clip(command)?;
+                if outcome["changed"] != false {
+                    self.record_edit(label, before);
+                }
+                return Ok(outcome);
+            }
+        }
         // Gesture phases manage their own history entry (see `property_gesture`).
         let command = match command {
             Command::PropertyGesture(gesture) => return self.run_property_gesture(gesture),
@@ -760,7 +794,7 @@ impl EditorState {
     /// The funnel of every command: whatever it did to the scenes, an effect target the project no
     /// longer holds is dropped before anything reads it (also after an error, which may have moved
     /// the project halfway).
-    fn apply(&mut self, command: Command) -> Result<Value, CommandError> {
+    pub(crate) fn apply(&mut self, command: Command) -> Result<Value, CommandError> {
         let outcome = self.apply_command(command);
         self.prune_fx_target();
         outcome
@@ -768,6 +802,7 @@ impl EditorState {
 
     fn apply_command(&mut self, command: Command) -> Result<Value, CommandError> {
         match command {
+            Command::Localization(edit) => self.apply_localization(edit),
             Command::SetFolderExpanded { folder, expanded } => {
                 self.library.set_expanded(&folder, expanded)
             }

@@ -86,6 +86,9 @@ pub fn parse_set(target: &str, field: &str, value: &Raw) -> Result<Parsed, Comma
         ("timeline.sequence", "value") => Command::ActivateSequence {
             sequence: value.text(),
         },
+        ("timeline.language", "value") => {
+            Command::Localization(crate::localization::Edit::Select(value.text()))
+        }
         ("timeline.zoom", "value") => Command::SetTimelineZoom {
             zoom: value.clone(),
         },
@@ -778,6 +781,14 @@ pub fn parse_invoke(
         ("toolbar.theme", "toggle") => return Ok(Parsed::ToggleTheme),
         (perf::TARGET, "toggle") => return Ok(Parsed::PerfMeter(PerfMeterCommand::Toggle)),
         (perf_history::TARGET, action) => return parse_invoke_history(action),
+        ("timeline.language.approve", "invoke") => {
+            if !state.is_localized_view() {
+                return Err(CommandError::disabled("Select a translation to approve"));
+            }
+            Command::Localization(crate::localization::Edit::Approve(
+                state.active_language().unwrap_or_default().to_string(),
+            ))
+        }
         ("timeline.snap", "toggle") => Command::SetSnap {
             snap: !state.timeline.snap,
         },

@@ -23,6 +23,16 @@ const GUIDES: &[(&str, &str, &str)] = &[
         include_str!("../../../docs/guides/preview.md"),
     ),
     (
+        "video",
+        "Montar e revisar vídeos, inclusive em retrato",
+        include_str!("../../../.agents/skills/tessel-video-editing/SKILL.md"),
+    ),
+    (
+        "localization",
+        "Editar e exportar um projeto em vários idiomas",
+        include_str!("../../../docs/guides/localization.md"),
+    ),
+    (
         "export",
         "Exportar vídeo com progresso",
         include_str!("../../../docs/guides/export.md"),
@@ -60,7 +70,11 @@ fn markdown(topic: Option<&str>) -> Result<&'static str, CommandError> {
     GUIDES
         .iter()
         .find(|(id, _, _)| *id == topic)
-        .map(|(_, _, doc)| *doc)
+        .map(|(_, _, doc)| {
+            doc.strip_prefix("---\n")
+                .and_then(|body| body.split_once("\n---\n"))
+                .map_or(*doc, |(_, body)| body.trim_start())
+        })
         .ok_or_else(|| {
             CommandError::new(
                 "unknown_topic",

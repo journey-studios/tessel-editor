@@ -17,6 +17,7 @@ mod group_inspector;
 mod inspector_panel;
 mod library_panel;
 mod live_inspector;
+mod localization;
 mod media;
 mod monitor;
 mod ops;
@@ -118,6 +119,7 @@ pub struct Workstation {
     /// (`sequence_choices` is what it currently lists) and only dispatches `ActivateSequence`.
     sequence_select: Entity<SelectState<SearchableVec<String>>>,
     sequence_choices: Vec<(String, String)>,
+    language_controls: localization::LanguageControls,
     /// Folder IDs, expansion and selection last pushed into `library_tree`, so
     /// the tree is only rebuilt when the model really changed (rebuilding
     /// resets the tree's own selection).
@@ -363,6 +365,7 @@ impl Workstation {
             zoom_slider,
             sequence_select,
             sequence_choices: Vec::new(),
+            language_controls: localization::LanguageControls::new(window, cx),
             library_signature: Vec::new(),
             preview: None,
             clip_grab_px: 0.0,
@@ -392,6 +395,23 @@ impl Workstation {
         source: Source,
         cx: &mut Context<Self>,
     ) -> Result<Value, CommandError> {
+        if matches!(
+            &command,
+            Command::Localization(
+                tessel_editor_core::localization::Edit::Get { .. }
+                    | tessel_editor_core::localization::Edit::Resolve { .. }
+                    | tessel_editor_core::localization::Edit::Status
+            )
+        ) {
+            return self.state.execute(command);
+        }
+        let switches_language = matches!(
+            &command,
+            Command::Localization(
+                tessel_editor_core::localization::Edit::Select(_)
+                    | tessel_editor_core::localization::Edit::Remove(_)
+            )
+        );
         let ordinary_preview = matches!(command, Command::SetPreview { .. });
         let camera_edit = matches!(command, Command::SetCameraPushIn { .. });
         let camera_preview = matches!(
@@ -410,6 +430,10 @@ impl Workstation {
         if result.is_ok() && moved_playhead {
             // The history's event line: a gesture or `ui set` moved the playhead on purpose.
             self.perf_playhead_moved();
+        }
+        if result.is_ok() && switches_language {
+            self.playback_stop(cx);
+            self.viewport.leave_directed();
         }
         if result.is_ok() && ordinary_preview {
             self.viewport.leave_directed();

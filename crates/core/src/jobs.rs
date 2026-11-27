@@ -350,6 +350,7 @@ pub struct JobRegistry {
 /// Handle a job body uses to report progress and observe cancellation.
 #[derive(Clone)]
 pub struct JobContext {
+    stage_prefix: String,
     id: JobId,
     token: CancelToken,
     registry: JobRegistry,
@@ -373,9 +374,18 @@ impl JobContext {
         self.token.check()
     }
 
+    pub fn with_stage_prefix(&self, prefix: &str) -> Self {
+        Self {
+            stage_prefix: format!("{}{prefix} · ", self.stage_prefix),
+            id: self.id.clone(),
+            token: self.token.clone(),
+            registry: self.registry.clone(),
+        }
+    }
+
     pub fn stage(&self, stage: &str, total: u64) {
         self.registry.update(&self.id, |info| {
-            info.stage = stage.to_string();
+            info.stage = format!("{}{stage}", self.stage_prefix);
             info.done = 0;
             info.total = total;
         });
@@ -521,6 +531,7 @@ impl JobRegistry {
         let (id, token) = self.register(kind, label);
         let registry = self.clone();
         let context = JobContext {
+            stage_prefix: String::new(),
             id: id.clone(),
             token: token.clone(),
             registry: registry.clone(),
@@ -555,6 +566,7 @@ impl JobRegistry {
     {
         let (id, token) = self.register(kind, label);
         let context = JobContext {
+            stage_prefix: String::new(),
             id: id.clone(),
             token,
             registry: self.clone(),

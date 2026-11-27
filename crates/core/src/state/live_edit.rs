@@ -402,6 +402,14 @@ impl EditorState {
     /// sequence is part of a clip that plays on another clock, so it stays drawn rather than
     /// becoming a file whose times would not match the video.
     pub fn set_aside_unburned_captions(&mut self, from: i64, to: i64) -> Vec<CaptionSidecar> {
+        let sidecars = self.unburned_caption_sidecars(from, to);
+        self.timeline
+            .clips
+            .retain(|clip| !clip.subtitles.as_ref().is_some_and(|spec| !spec.burn));
+        sidecars
+    }
+
+    pub fn unburned_caption_sidecars(&self, from: i64, to: i64) -> Vec<CaptionSidecar> {
         let rate = self.timeline.rate;
         let millis = |time: Ratio| {
             Ratio::new(1000, 1)
@@ -443,9 +451,6 @@ impl EditorState {
                 srt: crate::subtitles::write_srt(&cues),
             });
         }
-        self.timeline
-            .clips
-            .retain(|clip| !clip.subtitles.as_ref().is_some_and(|spec| !spec.burn));
         sidecars
     }
 }

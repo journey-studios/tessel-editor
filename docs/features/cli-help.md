@@ -2,7 +2,7 @@
 
 O comando `help` lista os [guias de uso](../guides/README.md). `help <tópico>`
 imprime os passos pela janela e exemplos copiáveis para os tópicos listados no índice, incluindo [export, setup e pacotes](cli-workflows.md).
-O binário incorpora os mesmos arquivos Markdown do repositório.
+O binário incorpora os mesmos arquivos Markdown do repositório. `help video` lê a skill de edição de vídeo, com composição em retrato, transições douradas, legendas e câmera em splats.
 
 ## Terminal e JSONL
 
@@ -11,6 +11,8 @@ O binário incorpora os mesmos arquivos Markdown do repositório.
 ./scripts/tessel help splat
 ./scripts/tessel help camera
 ./scripts/tessel help preview
+./scripts/tessel help video
+./scripts/tessel help localization
 ./scripts/tessel help export
 ./scripts/tessel help setup
 ./scripts/tessel help package

@@ -505,6 +505,15 @@ impl Workstation {
             .clone()
             .unwrap_or_else(std::env::temp_dir);
         match kind {
+            FlowKind::LanguageOverrides => {
+                if let Some(locale) = self.state.active_language().map(str::to_string) {
+                    let patch = self
+                        .state
+                        .localization_overrides(self.state.timeline.id.as_str());
+                    self.flow_prefill("locale", &locale, window, cx);
+                    self.flow_prefill("overrides", &patch.to_string(), window, cx);
+                }
+            }
             FlowKind::Export => self.flow_prefill(
                 "destination",
                 &base.join(format!("{default_name}.mp4")).to_string_lossy(),
@@ -676,9 +685,10 @@ impl Workstation {
         let Some(kind) = self.workflow.flow.as_ref().map(|flow| flow.kind) else {
             return;
         };
-        let Some(request) = flows::report_request(kind, &self.flow_values(cx)) else {
+        let Some(mut request) = flows::report_request(kind, &self.flow_values(cx)) else {
             return;
         };
+        self.apply_export_language_scope(kind, &mut request);
         self.flow_cancel_report();
         if let Some(flow) = &mut self.workflow.flow {
             flow.retry = None;
@@ -777,8 +787,10 @@ impl Workstation {
             // A chain of jobs rather than one operation: see `scene_import.rs`.
             self.scene_import_submit(kind, &values, cx)
         } else {
-            flows::build_request(kind, &values)
-                .and_then(|request| self.run_flow_request(&request, window, cx))
+            flows::build_request(kind, &values).and_then(|mut request| {
+                self.apply_export_language_scope(kind, &mut request);
+                self.run_flow_request(&request, window, cx)
+            })
         };
         match &outcome {
             Ok(_) => {
@@ -807,6 +819,12 @@ impl Workstation {
         });
         cx.notify();
         outcome
+    }
+
+    fn apply_export_language_scope(&self, kind: FlowKind, request: &mut Value) {
+        if kind == FlowKind::Export && self.state.localization.is_some() {
+            request["all_locales"] = json!(true);
+        }
     }
 
     fn run_flow_request(
@@ -1101,6 +1119,17 @@ impl Render for FlowView {
         let Some(flow) = &workstation.read(cx).workflow.flow else {
             return div().into_any_element();
         };
+        let export_languages = (flow.kind == FlowKind::Export)
+            .then(|| workstation.read(cx).state.language_codes().join(", "))
+            .filter(|codes| !codes.is_empty())
+            .map(|codes| {
+                div()
+                    .text_size(px(11.))
+                    .text_color(colors.muted_foreground)
+                    .child(format!(
+                        "Um MP4 por idioma ({codes}). O código entra antes de .mp4."
+                    ))
+            });
         let rows = flow.fields.iter().map(|field| {
             let name = field.spec.name;
             let picker = field.spec.picker;
@@ -1160,6 +1189,7 @@ impl Render for FlowView {
         });
         v_flex()
             .gap_3()
+            .children(export_languages)
             .children(rows)
             .child(
                 h_flex()

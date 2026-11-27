@@ -702,6 +702,33 @@ fn build_timeline(state: &EditorState, nodes: &mut Vec<Node>) {
             .disabled(NO_TOOL)
             .action("invoke"),
     );
+    nodes.push(
+        Node::new("flow.language_add", "button", "Adicionar idioma")
+            .parent("region:timeline")
+            .action("invoke"),
+    );
+    if let Some(active) = state.active_language() {
+        let codes = state.language_codes();
+        nodes.push(
+            Node::new("timeline.language", "select", "Idioma")
+                .parent("region:timeline")
+                .state("value", active)
+                .state("options", json!(codes))
+                .field("value", "choice", json!({ "options": codes })),
+        );
+        if state.is_localized_view() {
+            nodes.push(
+                Node::new("flow.language_overrides", "button", "Ajustes do idioma")
+                    .parent("region:timeline")
+                    .action("invoke"),
+            );
+            nodes.push(
+                Node::new("timeline.language.approve", "button", "Aprovar idioma")
+                    .parent("region:timeline")
+                    .action("invoke"),
+            );
+        }
+    }
     let sequence_ids: Vec<&str> = state.all_sequences().map(|t| t.id.as_str()).collect();
     nodes.push(
         Node::new("timeline.sequence", "select", "Sequence")

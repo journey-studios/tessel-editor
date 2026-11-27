@@ -28,6 +28,15 @@ já aberta.
 7. Para ilustrações ou efeitos que exigem desenho próprio, gere uma sequência RGBA determinística em resolução final e importe com `asset.add`, `kind:"video"`, `pattern`, `first`, `frames` e `rate`. O editor compõe essa camada com os títulos, splats, câmeras e áudio. Guarde o fonte e gere os quadros em processo headless.
 8. Dê ao gerador gráfico um modo de amostra e outro por faixa. Depois de ajustar uma tomada, regenere seus quadros e as margens da transição. Para um teste antes de gerar a sequência completa, importe a faixa como um asset curto. `first` indica o primeiro arquivo no disco. Posicione o clipe no mesmo quadro absoluto da timeline com trim zero e exporte aquela faixa para manter a sincronia.
 
+## Adaptar o demonstrativo do Tessel para retrato
+
+- Componha 9:16 e 4:5 no tamanho de entrega. Use o centro real do quadro como eixo compartilhado da marca, do endereço, dos painéis, das legendas e do CTA. Confira as margens dos dois lados em resolução final e a leitura em largura de celular. Mantenha o alinhamento interno do texto dentro de painéis com bordas simétricas.
+- Reconstrua as interfaces para retrato quando uma tomada horizontal dispersar os elementos. Na gravação, mantenha Discord, Tessel Recorder e envio em um acordeão cuja seção ativa expande quando é citada. Na transcrição, faça a onda ligar as falas à pista e mostre a retirada do papo paralelo. No Palantir, use uma coluna de chat central que apresenta pergunta, consulta, resposta e fontes em ordem legível.
+- Mantenha `tessel.app` junto à marca. Meça os tempos das palavras na faixa de voz aprovada e use blocos curtos de legenda com a palavra falada em dourado. Revise as passagens com o som desligado e cheque se marca, CTA e legendas têm respiro e cabem nas duas proporções.
+- Combine dissolves e fades nas mudanças de continuidade com o feixe dourado nas passagens de capítulo. Mantenha as partículas e os feixes do original quando trocar a composição da cena. Trate imagem, borda luminosa e opacidade como camadas distintas e sobreponha marca e legendas depois da transição.
+- Parta de arte pensada para retrato. Em splats de corredor, mova a câmera em profundidade e teste o caminho até o ponto de interesse. Em um fechamento de grupo, comece aberto e aproxime os personagens com desaceleração suave. Confira pessoas, bordas e composição antes, no meio e depois do avanço para 9:16 e 4:5.
+- Antes de reexportar todas as localizações, confira os estados do acordeão, a resposta completa do Palantir e os quadros que cercam cada fade e feixe. Na entrega, valide a decodificação completa, o início e a duração do áudio e a quantidade de quadros de cada arquivo.
+
 ## Conferir e exportar
 
 Use `./scripts/tessel setup` para preparar o runtime ou `./scripts/tessel setup --check`

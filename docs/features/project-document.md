@@ -61,3 +61,9 @@ F036 adiciona o bloco `scenes` no schema 2. F075 acrescenta `camera_push_in` ao 
 no [schema 3](camera-push-in.md). Um leitor antigo recusa um esquema mais novo para
 proteger os dados que não consegue ler. Save/autosave e pacote conferem os bytes serializados reais
 contra o limite do loader (256 MiB), antes de escrever ou substituir o arquivo.
+
+## Projetos localizados
+
+Projetos com idiomas habilitados usam o schema 4 e gravam o bloco `localization`
+com ajustes e aprovações por idioma. A composição-base continua no bloco
+`sequences`. Veja [F078](localization.md).
