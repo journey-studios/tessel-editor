@@ -7,12 +7,16 @@ description: Montar e revisar vídeos no Tessel Editor pela CLI nativa, com cen�
 
 Leia [AGENTS.md](../../../AGENTS.md) e o [contrato do export](../../../docs/features/video-export.md). Trabalhe em `projects/<nome>/` para projetos privados ou mídia pesada. Use o contrato de features do repositório se for mudar o comportamento do editor.
 
+Consulte `./scripts/tessel help` para descobrir os guias locais. Use os tópicos `splat`,
+`camera`, `preview`, `export`, `setup`, `package` e `restore` para exemplos, ou envie `{"op":"help","topic":"camera"}` à sessão JSONL
+já aberta.
+
 ## Revisar uma montagem
 
-1. Abra a versão existente com `project.open`, leia `project.header` e consulte `plan` nos quadros que precisam de revisão. Preserve a origem e salve a revisão com `project.save` em outro caminho. Monte as alterações com operações JSONL públicas via `scripts/headless` ou `scripts/render`.
+1. Abra a versão existente com `project.open`, leia `project.header` e consulte `plan` nos quadros que precisam de revisão. Preserve a origem e salve a revisão com `project.save` em outro caminho. Monte as alterações com operações JSONL públicas via `./scripts/tessel headless` ou `./scripts/tessel render`.
 2. Marque os momentos da locução em que uma imagem deve mudar, uma palavra deve aparecer ou uma ação deve ser demonstrada. Preserve o áudio e o relógio quando a revisão for visual. Dê tempo de leitura a perguntas, respostas e fontes. Crie texto de apoio curto para as passagens que vendem o benefício.
 3. Consulte a demonstração original para extrair textos, fatos e nomes. Se o print estiver pequeno, redesenhe só o componente necessário em resolução de saída. Anime pergunta, resposta e fonte na ordem em que são narradas. Identifique a reprodução como ilustração quando for confundível com uma gravação real. Para capas, prefira os arquivos de arte originais.
-4. Componha cenários, takes, correção de cor, áudio, cortes e fades no editor. `asset.add` aceita PLY com `kind:"splat",capture:"auto"`. Verifique câmera, eixos e espaço de cor na resposta. `clip.camera_keys` usa tempo local racional em segundos. Confira início, meio e fim com `render.frame`; num splat de imagem única, um arco maior pode revelar partes mal reconstruídas atrás do primeiro plano. Ajuste a distância ou a direção e reveja o movimento.
+4. Componha cenários, takes, correção de cor, áudio, cortes e fades no editor. `asset.add` aceita PLY com `kind:"splat",capture:"auto"`. Verifique câmera, eixos e espaço de cor na resposta. Use `clip.camera.push_in` para uma aproximação proporcional ao enquadramento e `export.start` com `camera_preview` para rever o trecho. Para movimentos manuais, `clip.camera_keys` usa tempo racional da fonte em segundos. Confira início, meio e fim com `render.frame`; num splat de imagem única, um arco maior pode revelar partes mal reconstruídas atrás do primeiro plano. Ajuste a distância ou a direção e reveja o movimento.
 5. Para um dissolve curto na timeline comum, sobreponha os clipes em trilhas alternadas e aplique `fade_in` ou `fade_out` ao clipe de cima na direção da troca. Preserve cobertura do clipe inferior durante o fade. Use movimento e cor da cena como base; concentre efeitos mais fortes nos cortes que precisam de pontuação. Consulte o estado de [F064](../../../docs/features/fx-transitions.md) antes de usar transições de cenas dirigidas.
 6. Use [clipes de título](../../../docs/features/animated-titles.md) para as frases que devem ser editáveis. Crie um título por `title.add` ou use `clip.add` com `text` para controlar tempo, cor, posição e preset. Para trocar a entrada em um título existente, envie `set` ao alvo `clip_text:<id>` com o campo `animation`. Separe linhas em clipes quando elas precisarem de tempos ou cores diferentes.
    Retângulos de fundo ou faixas (cor sólida, cantos arredondados) são [clipes de forma](../../../docs/features/shape-clips.md): `shape.add` ou `clip.add` com `shape`, e `set` ao alvo `clip_shape:<id>` para `kind` (`rect`, `ellipse`, `path`), `width`, `height`, `radius`, `fill`, `fill_mode` (`solid`, `linear`, `radial`, `none`), `fill_to`, `gradient_angle`, `stroke`, `stroke_width`, `shadow`, `shadow_blur`, `shadow_x`, `shadow_y` e `path`; posição e opacidade são as do clipe. Cartões, halos, faixas com contorno ou sombra e triângulos também são formas ([F068](../../../docs/features/shape-style.md)): cores aceitam `#rrggbbaa` (um halo é elipse radial de `fill` até `fill_to` transparente). Capas recortadas são clipes de imagem com `crop_*` e `clip.property` `mask_shape` (`none`, `rounded`, `ellipse`) e `mask_radius` (% do lado menor do retângulo já cortado). `path` aceita só `M L H V C Q Z` absolutos em uma caixa 100×100; um valor recusado deixa o projeto intacto. Uma forma sem preenchimento e sem contorno não desenha e avisa `shape_draws_nothing`. Um projeto que usa campos novos não abre em editor anterior à 1B. Não gere PNG para isso.
@@ -26,11 +30,15 @@ Leia [AGENTS.md](../../../AGENTS.md) e o [contrato do export](../../../docs/feat
 
 ## Conferir e exportar
 
-Prepare o runtime com `./scripts/runtime setup` quando necessário. Compile pelo wrapper com `./scripts/cargo build --locked -p tessel-editor-render --bin tessel-render`. O [helper de export](../../../scripts/export-video.py) usa o binário já construído e informa o progresso pelo job nativo. `--renderer` aponta para outro build. Use caminhos fora do projeto apenas se os assets permanecerem resolvíveis.
+Use `./scripts/tessel setup` para preparar o runtime ou `./scripts/tessel setup --check`
+para verificar a instalação existente. O [guia de exportação](../../../docs/guides/export.md)
+mostra os comandos, opções e a saída de progresso. Use caminhos fora do projeto quando
+os assets permanecerem resolvíveis.
 
-```powershell
-python -X utf8 scripts/export-video.py projects/exemplo/revisao.tessel.json projects/exemplo/corte.mp4 --range 675 735
-python -X utf8 scripts/export-video.py projects/exemplo/revisao.tessel.json projects/exemplo/final.mp4 > projects/exemplo/export.json
+```sh
+./scripts/tessel export projects/exemplo/revisao.tessel.json projects/exemplo/corte.mp4 --range 675 735
+./scripts/tessel export projects/exemplo/revisao.tessel.json projects/exemplo/camera.mp4 --clip take-final
+./scripts/tessel export projects/exemplo/revisao.tessel.json projects/exemplo/final.mp4 > projects/exemplo/export.json
 ```
 
 A faixa é `[início,fim)` em quadros. No exemplo a 30 fps, ela cobre de 22,5 a 24,5 s. Em JSONL, envie `project.open` e `export.start` com `preset:"fullhd"`, destino absoluto e `range:[675,735]`. Para progresso, use `wait:false` e consulte `job.get` na mesma sessão.

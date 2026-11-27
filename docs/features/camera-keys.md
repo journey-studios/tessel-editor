@@ -17,18 +17,18 @@ reutiliza o avaliador dirigido (`directed_scene::apply_easing`, `applyEasing` da
 
 - `CameraKey { time: Ratio, position, target, fov, easing }`; `Easing::{Linear, EaseInOutCubic, EaseOutCubic}` (nomes da
   origem: `linear`, `easeInOutCubic`, `easeOutCubic`). O easing de uma chave vale para o trecho **que começa nela**.
-- `Clip::camera_keys: Vec<CameraKey>` (ordenado por tempo). Vazio = comportamento anterior (`Camera::at`, `orbit`
-  contado do início do clipe), bit a bit.
+- `Clip::camera_keys: Vec<CameraKey>` (ordenado por tempo). Vazio = a câmera base segue `Camera::at`, com a órbita contada a partir do início do clipe.
 - `Command::CameraKeys(CameraKeysCommand)`: `Set` (insere ou substitui a chave do mesmo tempo), `Remove` (por tempo
-  exato), `Replace` (lista inteira; vazia limpa), `Capture` (grava a câmera mostrada no playhead como chave no tempo
+  exato), `Replace` (lista inteira; vazia limpa), `Capture` (grava a câmera base no playhead como chave no tempo
   de cena daquele quadro). **Easing por omissão (BL140.3):** `Set` e `Capture` levam `easing: Option<Easing>`; `None`
   (JSONL sem `easing`, botão da UI, `ui invoke camera_keys.capture`) **preserva o easing da chave existente** no mesmo
   tempo e é `linear` numa chave nova; `Some` é sempre respeitado (inclusive `linear` sobre uma chave cúbica). `Replace`
   é a lista inteira: cada chave sem `easing` vale `linear`. `Field` (edita um campo da n-ésima chave: `time`, `easing`, `fov`, `position_x|y|z`,
   `target_x|y|z`). Cada edição monta a lista candidata **inteira**, valida e só então troca: rejeitada = nada muda
   (documento, revisão, histórico). Uma entrada de undo ("Edit camera keys") por comando que mudou algo.
-- `EditorState::clip_camera_at(clip, frame)` é a **única** avaliação: o plano a usa por quadro (preview e export
-  concordam) e `Capture` a usa para gravar o que está na tela. `clip_scene_time(clip, frame)` expõe o tempo.
+- `EditorState::clip_camera_at(clip, frame)` avalia a câmera para preview e export. Se o clipe tem
+  [aproximação F075](camera-push-in.md), ela é aplicada sobre a câmera base nesse passo. `Capture` grava
+  a câmera base para preservar o resultado exibido. `clip_scene_time(clip, frame)` expõe o tempo.
 
 **Tempo das chaves.** `time` é *tempo de cena* em segundos exatos (`Ratio`): o mesmo `scene_time` do plano (`source_start`
 mais o tempo decorrido na velocidade do clipe). Não é contado do primeiro quadro do clipe. Consequências, todas testadas:
@@ -66,7 +66,7 @@ Erros: `invalid_value` (campo/faixa/ordem/atravessa o alvo), `not_applicable` (c
 aparagem cujo deslocamento estoura o tempo), `camera_orbit_conflict`, `camera_keys_override`.
 
 **Persistência.** `camera_keys` no JSON do clipe só existe quando há chaves; nesse caso o documento é gravado em
-`schema_version` 2 (leitores antigos recusam em vez de descartar as chaves em silêncio). Projetos sem chaves continuam
+`schema_version` 2 ou superior, conforme os outros recursos usados no projeto. Projetos sem chaves continuam
 byte a byte iguais e em schema 1; projetos antigos abrem sem chaves. Documento com chave inválida ou em clipe que não é
 de cena é recusado inteiro, e um documento **schema 1 com `camera_keys` não vazias** também (`invalid_document`, como
 `scenes` em schema 1: um leitor v1 as descartaria).

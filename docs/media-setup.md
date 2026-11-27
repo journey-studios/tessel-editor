@@ -54,6 +54,9 @@ diretório chamado `ffmpeg.exe` é rejeitado.
 
 ## Comandos
 
+Use `./scripts/tessel setup` para preparar e verificar o runtime e `./scripts/tessel setup --check`
+para conferir uma instalação pronta. [Guia de setup](guides/setup.md)
+
 ```sh
 ./scripts/runtime test          # JS: formatos, estágio Spark, frames, contexto perdido (Chrome real)
 ./scripts/fixtures /tmp/dir     # imagem, .splat/.ply/.spz, tom WAV, cena e frames determinísticos

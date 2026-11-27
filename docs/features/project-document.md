@@ -12,12 +12,12 @@ Salvar, estado "salvo/não salvo" na barra; `scripts/live-flow-proof.py`).
 inalterado produz os mesmos bytes. Limite de leitura: 256 MiB (`document_too_large`).
 
 ```text
-format "tessel-project", schema_version 1 (sem cenas) ou 2 (com bloco scenes)
+format "tessel-project", schema_version 1, 2 ou 3 conforme os recursos usados
 project      { id, name, revision, requires { spark "2.4.0", three "0.187.0" } }
 library      { folders[], assets[] }       identidade (id) e conteúdo (hash) separados
 sequences[]  { id, name, rate {num,den}, length, width, height, tracks[], clips[] }
 active_sequence
-scenes       { version, items[], ... }     opcional, exige schema_version 2
+scenes       { version, items[], ... }     opcional, exige schema_version 2 ou superior
 export       { preset, user_presets[] }    presets do usuário vivem no documento
 presentation { playhead, zoom, snap, ... } opcional; um loader pode ignorar
 ```
@@ -51,12 +51,13 @@ a cada 20 s quando há alterações (`workflow_tick`) e oferece recuperar. IDs e
 
 ## Limites
 
-`presentation` é preservada mas não afeta render. Projetos sem dados de cena usam schema 1; com bloco `scenes`, schema 2. Leitores legados recusam schema 2 para evitar perda silenciosa das cenas. O desktop não impede
-fechar a janela com alterações não salvas: o autosave é a rede de segurança, não um aviso.
+`presentation` é preservada e afeta apenas a interface. O documento é salvo no menor esquema
+capaz de preservar os recursos do projeto. Ao fechar a janela com alterações pendentes,
+o mecanismo de recuperação é o autosave.
 
 ## Projetos com cenas dirigidas
 
-F036 adiciona o bloco `scenes` e escreve schema 2 somente quando esse bloco é necessário.
-Projetos comuns permanecem em schema 1. Leitores antigos recusam schema 2, protegendo as
-cenas contra perda silenciosa. Save/autosave e pacote conferem os bytes serializados reais
+F036 adiciona o bloco `scenes` no schema 2. F075 acrescenta `camera_push_in` ao clipe
+no [schema 3](camera-push-in.md). Um leitor antigo recusa um esquema mais novo para
+proteger os dados que não consegue ler. Save/autosave e pacote conferem os bytes serializados reais
 contra o limite do loader (256 MiB), antes de escrever ou substituir o arquivo.

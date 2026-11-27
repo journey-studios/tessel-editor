@@ -3,7 +3,7 @@ mod commands;
 mod model;
 mod server;
 
-pub use client::run_cli;
+pub use client::{HELP as CLI_USAGE, run_cli};
 pub use server::start;
 
 use std::ffi::OsString;

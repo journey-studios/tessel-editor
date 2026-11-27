@@ -6,6 +6,8 @@ Lib **V** (`crates/media/tests/package.rs`, `package_atomic.rs`, `flow.rs`), `sc
 `scripts/live-flow-proof.py` empacota, valida o `.tesselpack` com `zipfile` do Python, torna os originais
 indisponíveis e restaura em outra pasta).
 
+[Guia para empacotar](../guides/package.md) · [Guia para restaurar](../guides/restore.md)
+
 ## Contrato
 
 Três operações distintas: **salvar** o documento (F022), **empacotar** (documento + todas as mídias que ele usa)

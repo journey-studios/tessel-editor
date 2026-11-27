@@ -1,27 +1,31 @@
 # UI automation
 
+`./scripts/tessel ui help` lista os comandos da janela. Use `./scripts/tessel help camera`
+para ler um [guia de uso](guides/README.md) sem conectar à janela. Numa sessão
+ativa, `./scripts/tessel ui op '{"op":"help","topic":"camera"}'` retorna o mesmo guia em JSON.
+
 Control the running editor through a local CLI, without mouse coordinates. Start the
-app (`./scripts/cargo run -p tessel-editor --locked`), then from the repository:
+app with `./scripts/tessel editor`, then run the commands below from the repository.
 
 ```sh
-./scripts/ui status                       # window, theme, live editor summary
-./scripts/ui tree                         # every live component, value, option, limit
-./scripts/ui get property:zoom            # one node: state, fields, actions
-./scripts/ui actions                      # operations currently available
-./scripts/ui set <id> <field> <value…>
-./scripts/ui move clip:<id> [--track T] [--frame N] [--snap true|false]
-./scripts/ui move track:<id> (--before T | --after T)
-./scripts/ui invoke <id> [action]
-./scripts/ui theme dark|light
-./scripts/ui invoke window.minimize       # also activate, maximize, fullscreen, close
+./scripts/tessel ui status                       # window, theme, live editor summary
+./scripts/tessel ui tree                         # every live component, value, option, limit
+./scripts/tessel ui get property:zoom            # one node: state, fields, actions
+./scripts/tessel ui actions                      # operations currently available
+./scripts/tessel ui set <id> <field> <value…>
+./scripts/tessel ui move clip:<id> [--track T] [--frame N] [--snap true|false]
+./scripts/tessel ui move track:<id> (--before T | --after T)
+./scripts/tessel ui invoke <id> [action]
+./scripts/tessel ui theme dark|light
+./scripts/tessel ui invoke window.minimize       # also activate, maximize, fullscreen, close
 ```
 
-`./scripts/ui` uses Cargo to keep the binary current; `target/debug/tessel-editor ui …`
+`./scripts/tessel ui` uses Cargo to keep the binary current; `target/debug/tessel-editor ui …`
 is faster once built. Commands connect to the running app; they never start another one.
 
 ## Project operations and the viewport
 
-`./scripts/ui op '<json|@file>'` sends one project operation (`project.create`, `asset.add`,
+`./scripts/tessel ui op '<json|@file>'` sends one project operation (`project.create`, `asset.add`,
 `track.add`, `clip.add`, `seek`, `plan`, `render.frame`, `render.audio`, …: see
 [F015](features/project-creation.md)) to the live state. `render.frame` is answered only after
 the monitor's WebView has drawn the frame (client timeout 45 s; 5 s for other commands).
@@ -41,7 +45,7 @@ per-frame create/dispose path (A/B and rollback). Neither adds a control: both a
 With the same trace, `ui op '{"op":"render.trace","since":0,"limit":4096}'` returns the correlation events (tick, prefetch, protocol
 requests, asset reads, page spans) after a cursor, with `lost` when the reader fell behind the 16 384-event window;
 `TESSEL_VIEWPORT_ASSET_IO=sync|async` (default `sync`) picks who reads project files for the `tessel://` protocol and
-`render.status` reports `asset_io`. `./scripts/headless` has no window, so it answers `desktop_required` ([F063](features/viewport-asset-io.md)).
+`render.status` reports `asset_io`. `./scripts/tessel headless` has no window, so it answers `desktop_required` ([F063](features/viewport-asset-io.md)).
 
 `scripts/proxy-live-proof.py` (OPT01/OPT04) starts the release binary with an isolated `HOME` per variant and checks, with
 semantic requests only: the media job builds the preview proxy (`op preview.policy` → `proxy_ready`), a scrub frame is drawn
@@ -55,19 +59,19 @@ scene while the playhead moves; default 0, 4 turns the reduction off; BL129), `T
 frame of a moving playhead is drawn with the order of the last finished sort, default `latest`, or waits for its own, `exact`, which only changes the sort, not the preview MSAA or proxies; an unreadable value is `exact` with a warning on
 stderr; BL130; the scrub/playback harness takes it through `--env`, and `--inspect` also compares the last frame the runtime returned
 after every scrub release (not the screen pixels) with an explicit `render.frame`; a release that never settles within the timeout is
-recorded as `passed: false` and the harness exits 1). `./scripts/ui invoke monitor.preview.quality` toggles the policy
+recorded as `passed: false` and the harness exits 1). `./scripts/tessel ui invoke monitor.preview.quality` toggles the policy
 (proxy and lighter MSAA while playing/scrubbing, or the original always);
 `op preview.policy` reads/sets it; `op media.preview_proxy` builds the proxy by hand; `op render.status` carries `ui`
 (`repaints`/`skipped`, OPT04).
 
 To run a second, isolated editor for a proof, start the built binary with `HOME=<scratch dir>` and point the proof
-scripts at the same `HOME` (they resolve the socket under `~/.cache/tessel-editor/`). Do not use `./scripts/ui` or
+scripts at the same `HOME` (they resolve the socket under `~/.cache/tessel-editor/`). Do not use `./scripts/tessel ui` or
 `./scripts/cargo` with that `HOME`: the wrapper treats it as a first build on a new machine, reinstalls the toolchain
 under the scratch `HOME` (several GiB) and repoints `target/` at that cache. Use `HOME=… ./target/debug/tessel-editor ui …`
 for the CLI and delete a stale `ui.sock` of the scratch `HOME` after killing its editor.
 
 macOS does not paint a window that is fully covered, and the monitor's on-screen bookkeeping
-runs in `render`: run `./scripts/ui invoke window.activate` before observing or capturing
+runs in `render`: run `./scripts/tessel ui invoke window.activate` before observing or capturing
 (`screencapture -l <window id>` is the native capture used for evidence). `scripts/live-proof.py`
 drives the full flow and asserts pixels over this socket.
 
@@ -87,7 +91,7 @@ read-only report (packages, export preflight), `invoke dialog.submit` runs the s
 stay in the dialog and are returned as a structured error (`missing_argument` names the field's label).
 
 While any dialog is open the monitor's WebView is hidden (`get monitor.viewport` reports `on_screen:false`) because a
-native view would paint over it; it returns on close. Playback: `./scripts/ui op '{"op":"playback.start"}'`,
+native view would paint over it; it returns on close. Playback: `./scripts/tessel ui op '{"op":"playback.start"}'`,
 `playback.status`, `playback.pause`, `playback.resume`, `playback.seek` (`frame`), `playback.stop` (or `invoke monitor.play`);
 `playback.status` informa o relógio em uso (`clock`: `audio_device` ou `wall`), o dispositivo e a latência estimada pelo host
 ([F018](features/playback.md)). Operações de mídia pesadas (`media.import|prepare|relink`, `project.verify|restore|import`,
@@ -105,23 +109,23 @@ isolar o socket de outra instância do editor. `scripts/headless-flow-proof.py` 
 
 ## Medidor de desempenho (F049)
 
-`./scripts/ui get toolbar.perf_meter` lê o estado do medidor flutuante (`visible`, `shortcut`,
-`placement` e, só quando visível, o `readout`); `./scripts/ui invoke toolbar.perf_meter toggle` e
-`./scripts/ui set toolbar.perf_meter visible true|false` chamam o mesmo handler do atalho
+`./scripts/tessel ui get toolbar.perf_meter` lê o estado do medidor flutuante (`visible`, `shortcut`,
+`placement` e, só quando visível, o `readout`); `./scripts/tessel ui invoke toolbar.perf_meter toggle` e
+`./scripts/tessel ui set toolbar.perf_meter visible true|false` chamam o mesmo handler do atalho
 `⌘⇧D` (`Ctrl+Shift+D` fora do macOS) e do botão do cabeçalho. Contrato e limites em
 [perf-meter.md](features/perf-meter.md); a prova na janela real é `scripts/perf-meter-proof.py`.
 
 ## Histórico de desempenho (F049, BL145.2)
 
-`./scripts/ui get perf.history` lê o estado do histórico de 60 s (`recording`, `visible`, `frozen`,
+`./scripts/tessel ui get perf.history` lê o estado do histórico de 60 s (`recording`, `visible`, `frozen`,
 `selected_ms`, `has_data` e, havendo dados, `view`: janela, picos por métrica, eventos recentes, segmentos,
-contadores e contexto). `./scripts/ui set perf.history recording true|false`, `visible true|false`,
+contadores e contexto). `./scripts/tessel ui set perf.history recording true|false`, `visible true|false`,
 `frozen true|false`, `selected_ms <ms>`, `export_to <caminho absoluto>` (inicia a escrita de um arquivo **novo** em
 segundo plano e responde `state: writing` com `export_id`; o fim é lido em `get perf.history` →
 `export`: `idle|writing|done|failed` com o erro tipado; um destino existente falha como
 `perf_history_export_exists`, um temporário alheio como `perf_history_export_temporary_busy` e uma
 segunda exportação durante a escrita é recusada com `perf_history_export_in_progress`) e `export_destination <caminho>` (preenche o campo
-"Destino do JSON" do painel, sem escrever), e `./scripts/ui invoke perf.history
+"Destino do JSON" do painel, sem escrever), e `./scripts/tessel ui invoke perf.history
 record_start|record_stop|show|hide|freeze|resume|clear|snapshot|clear_selection|export` (o botão Exportar JSON: grava no
 destino do campo; vazio é `perf_history_export_path_missing`) chamam o mesmo handler dos
 botões do painel e do cabeçalho. Gravar e mostrar são independentes: `show` abre um diálogo (a WebView do monitor
@@ -133,7 +137,7 @@ da janela: `tessel-headless` responde `desktop_required`.
 ## Headless access
 
 This page documents the **running window** adapter. For editing without any desktop process,
-use `./scripts/headless` or `tessel_editor_core` directly; see [core architecture](core-architecture.md).
+use `./scripts/tessel headless` or `tessel_editor_core` directly; see [core architecture](core-architecture.md).
 Per-feature coverage and gaps are in [the matrix](features/README.md).
 
 ## One shared core
@@ -208,7 +212,7 @@ was issued; OS animation may finish later.
 Unix socket `~/.cache/tessel-editor/ui.sock`, directory mode 700, socket 600. On Windows the same
 protocol runs over a native AF_UNIX socket (`uds_windows`) at `%LOCALAPPDATA%\tessel-editor\ui.sock`;
 there are no mode bits, the per-user directory ACL is the restriction, and the CLI is
-`target\debug\tessel-editor.exe ui <command>` (`./scripts/ui` is a `sh` wrapper). One instance
+`target\debug\tessel-editor.exe ui <command>` (`./scripts/tessel ui` is a `sh` wrapper). One instance
 owns the endpoint; a stale socket is removed at startup and a live one is never replaced.
 `TESSEL_UI_SOCKET=<absolute path>` moves the endpoint of one window, and of the `ui` CLI started with
 the same variable, so a proof can run its own window next to the user's (BL168.8; a relative path is
@@ -232,16 +236,16 @@ dragging a divider, the collapse buttons) and the CLI end in the same area; `doc
 back, so the CLI never reports a layout the window does not show.
 
 ```sh
-./scripts/ui dock                              # docks, groups, splits, panels, hidden panels
-./scripts/ui dock show|hide|activate <panel>
-./scripts/ui dock move <panel> --to left|right|bottom|center
-./scripts/ui dock move <panel> --group group:N|panel:P [--index N]    # join a tab group
-./scripts/ui dock move <panel> --beside group:N|panel:P --side left|right|top|bottom
-./scripts/ui dock resize left|right|bottom <px>
-./scripts/ui dock open|close left|right|bottom
-./scripts/ui dock split split:N 120,300        # divider sizes, px
-./scripts/ui dock load <json | @file>          # restore a `layout.dump` from `dock`
-./scripts/ui dock reset                        # default layout
+./scripts/tessel ui dock                              # docks, groups, splits, panels, hidden panels
+./scripts/tessel ui dock show|hide|activate <panel>
+./scripts/tessel ui dock move <panel> --to left|right|bottom|center
+./scripts/tessel ui dock move <panel> --group group:N|panel:P [--index N]    # join a tab group
+./scripts/tessel ui dock move <panel> --beside group:N|panel:P --side left|right|top|bottom
+./scripts/tessel ui dock resize left|right|bottom <px>
+./scripts/tessel ui dock open|close left|right|bottom
+./scripts/tessel ui dock split split:N 120,300        # divider sizes, px
+./scripts/tessel ui dock load <json | @file>          # restore a `layout.dump` from `dock`
+./scripts/tessel ui dock reset                        # default layout
 ```
 
 Equivalent spellings: `invoke panel:<id> hide|show|activate`, `set panel:<id> visible false`,
@@ -270,9 +274,9 @@ input. Every new control must follow the checklist in `AGENTS.md`.
 ## Native window sizing
 
 ```sh
-./scripts/ui set window size 960x640
-./scripts/ui get window
-./scripts/ui set window size 1440x900
+./scripts/tessel ui set window size 960x640
+./scripts/tessel ui get window
+./scripts/tessel ui set window size 1440x900
 ```
 
 Requests require integer dimensions from 960×640 through 8192×8192; invalid
@@ -285,9 +289,9 @@ Each clip exposes two handles: `trim:<clip-id>:start` and `trim:<clip-id>:end`.
 Their `frame` field is the absolute sequence frame. For example:
 
 ```sh
-./scripts/ui get trim:first-light:end
-./scripts/ui set trim:first-light:end frame 120
-./scripts/ui set trim:first-light:start frame 24
+./scripts/tessel ui get trim:first-light:end
+./scripts/tessel ui set trim:first-light:end frame 120
+./scripts/tessel ui set trim:first-light:start frame 24
 ```
 
 The opposite edge stays fixed. At least one frame is required; negative frames,

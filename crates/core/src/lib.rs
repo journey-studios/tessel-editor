@@ -20,6 +20,7 @@ pub mod fixtures;
 pub mod group;
 pub mod header;
 pub mod headless;
+pub mod help;
 pub mod id;
 mod inter_widths;
 pub mod interchange;

@@ -24,6 +24,7 @@ use crate::scene_interaction::{
 use crate::scene_project::{CameraAt, FxProbe, SceneCommand, SceneSource};
 use crate::shape::ShapeSpec;
 use crate::state::camera_edit::CameraKeysCommand;
+use crate::state::camera_push_in::PushInOptions;
 use crate::state::timeline::{SequenceSettings, TrackKind};
 use crate::state::{Command, CommandError, EditorState, ProjectSettings, Raw};
 use crate::time::{Rate, Ratio};
@@ -89,6 +90,7 @@ pub const TRACE_EVENTS_MAX: usize = crate::trace::EVENT_WINDOW;
 #[derive(Debug, Clone, PartialEq)]
 pub enum Op {
     Run(Command),
+    Help(Option<String>),
     Project(ProjectOp),
     CreateProject(ProjectSettings),
     Plan(PlanRequest),
@@ -433,6 +435,7 @@ fn project_create(request: &Value) -> Result<ProjectSettings, CommandError> {
 pub fn parse_op(state: &EditorState, request: &Value) -> Result<Option<Op>, CommandError> {
     let op = string(request, "op")?;
     let command = match op {
+        "help" => return Ok(Some(Op::Help(optional_string(request, "topic")?))),
         "status" => return Ok(Some(Op::Status)),
         "project.header" => return Ok(Some(Op::Header)),
         "subtitles.export" => {
@@ -495,6 +498,14 @@ pub fn parse_op(state: &EditorState, request: &Value) -> Result<Option<Op>, Comm
         },
         "clip.camera_capture" => Command::SetClipCameraFromCapture {
             clip: string(request, "clip")?.to_string(),
+        },
+        "clip.camera.push_in" => Command::SetCameraPushIn {
+            clip: string(request, "clip")?.to_string(),
+            options: Some(PushInOptions::from_json(request)?),
+        },
+        "clip.camera.push_in.clear" => Command::SetCameraPushIn {
+            clip: string(request, "clip")?.to_string(),
+            options: None,
         },
         "clip.camera_key" => Command::CameraKeys(CameraKeysCommand::Set {
             clip: string(request, "clip")?.to_string(),

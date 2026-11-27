@@ -27,7 +27,9 @@ use crate::time::{Rate, Ratio};
 
 pub const FORMAT: &str = "tessel-project";
 /// Latest document version this reader supports.
-pub const SCHEMA_VERSION: u64 = 2;
+pub const SCHEMA_VERSION: u64 = PUSH_IN_SCHEMA_VERSION;
+const PUSH_IN_SCHEMA_VERSION: u64 = 3;
+const SCENE_SCHEMA_VERSION: u64 = 2;
 /// Projects without directed-scene data keep the legacy encoding.
 pub const LEGACY_SCHEMA_VERSION: u64 = 1;
 /// Renderer versions a document was written against, checked by the export preflight.
@@ -190,6 +192,11 @@ fn clip_json(clip: &crate::state::timeline::Clip) -> Value {
         "camera",
         clip.camera.as_ref().map(Camera::to_json),
     );
+    put_opt(
+        &mut map,
+        "camera_push_in",
+        clip.camera_push_in.map(|push_in| push_in.to_json()),
+    );
     if !clip.camera_keys.is_empty() {
         map.insert(
             "camera_keys".into(),
@@ -237,6 +244,14 @@ fn sequence_json(timeline: &Timeline) -> Value {
 impl EditorState {
     /// Smallest schema that can preserve this project's data when it is saved.
     pub fn document_schema_version(&self) -> u64 {
+        if self.all_sequences().any(|timeline| {
+            timeline
+                .clips
+                .iter()
+                .any(|clip| clip.camera_push_in.is_some())
+        }) {
+            return PUSH_IN_SCHEMA_VERSION;
+        }
         if self.scenes.has_document_data()
             // F069: groups and their text styles are a schema 2 block; an older reader would
             // drop the block and then refuse (or blank) the group clips that point into it.
@@ -271,7 +286,7 @@ impl EditorState {
                 .iter()
                 .any(|(_, property, _)| *property == "loop")
         {
-            SCHEMA_VERSION
+            SCENE_SCHEMA_VERSION
         } else {
             LEGACY_SCHEMA_VERSION
         }
@@ -942,6 +957,18 @@ fn parse_sequence(value: &Value, library: &Library) -> Result<Timeline, CommandE
                 Some(camera) => Some(Camera::from_json(camera).map_err(|e| invalid(e.message))?),
                 None => None,
             },
+            camera_push_in: match (kind, clip.get("camera_push_in")) {
+                (_, None) => None,
+                (ClipKind::Scene, Some(value)) => Some(
+                    crate::state::camera_push_in::CameraPushIn::from_json(value)
+                        .map_err(|error| invalid(format!("Clip `{clip_id}`: {}", error.message)))?,
+                ),
+                (_, Some(_)) => {
+                    return Err(invalid(format!(
+                        "Clip `{clip_id}`: only scene clips carry a camera push-in"
+                    )));
+                }
+            },
             camera_keys: match clip.get("camera_keys") {
                 Some(keys) => {
                     let keys = crate::camera_keys::keys_from_json(keys)
@@ -1045,9 +1072,8 @@ fn has_clip_kind(doc: &Value, kinds: &[&str]) -> bool {
     })
 }
 
-/// Validates the supported document versions. V1 has no scene storage; v2 protects it from
-/// legacy readers, which reject versions above 1 instead of silently dropping the block.
-/// The input is never rewritten here; ordinary projects may still be saved as v1.
+/// Validates supported versions without rewriting the input. Each version protects its
+/// additional fields from older readers that would silently drop them.
 pub fn migrate(doc: Value) -> Result<Value, CommandError> {
     if doc["format"] != FORMAT {
         return Err(CommandError::new(
@@ -1067,6 +1093,21 @@ pub fn migrate(doc: Value) -> Result<Value, CommandError> {
             ),
         )
         .details(json!({ "found": version, "supported": SCHEMA_VERSION })));
+    }
+    if version < PUSH_IN_SCHEMA_VERSION
+        && doc["sequences"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|sequence| {
+                sequence["clips"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .any(|clip| clip.get("camera_push_in").is_some())
+            })
+    {
+        return Err(invalid("Camera push-ins require project schema 3"));
     }
     if version == LEGACY_SCHEMA_VERSION && doc.get("scenes").is_some() {
         return Err(invalid(

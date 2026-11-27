@@ -45,8 +45,11 @@ use crate::state::error::{CommandError, Raw};
 
 /// Most children one definition holds.
 pub const MAX_CHILDREN: usize = 32;
-/// Most keys one track holds.
-pub const MAX_KEYS: usize = 64;
+/// Most keys one track holds (group children and clip keys alike). 1024 leaves room for a key on
+/// every frame of 34 s at 30 fps, which is what sampled motion (a camera over many clips, a meter
+/// following an audio level) writes; `sample` finds a time by binary search, so a long track
+/// does not make a frame slower to plan.
+pub const MAX_KEYS: usize = 1024;
 /// Latest key time and longest stagger step, in milliseconds.
 pub const MAX_TIME_MS: i64 = 600_000;
 pub const MAX_STAGGER_MS: i64 = 10_000;
@@ -1923,6 +1926,32 @@ mod tests {
         assert_eq!(reveal.visible(content, &wrapped, 100.0), Some(12));
         assert_eq!(reveal.visible(content, &wrapped, 200.0), None);
         assert_eq!(reveal.span_ms(content, &wrapped), 300);
+    }
+
+    #[test]
+    fn a_track_takes_up_to_the_key_limit_and_refuses_one_more() {
+        let keys: Vec<(i64, f64, Easing)> = (0..MAX_KEYS as i64)
+            .map(|index| (index * 33, (index % 100) as f64, Easing::Linear))
+            .collect();
+        let full = track(Prop::X, 1, RepeatMode::Restart, &keys);
+        assert!(full.validate().is_ok(), "{MAX_KEYS} keys fit one track");
+        assert_eq!(
+            full.evaluate(33.0 * 500.0),
+            0.0,
+            "a key deep in a long track is found"
+        );
+        assert_eq!(
+            full.evaluate(33.0 * 500.0 + 16.5),
+            0.5,
+            "and its segment interpolates"
+        );
+
+        let mut over = keys;
+        over.push((MAX_KEYS as i64 * 33, 1.0, Easing::Linear));
+        let error = track(Prop::X, 1, RepeatMode::Restart, &over)
+            .validate()
+            .unwrap_err();
+        assert_eq!(error.code, "invalid_value");
     }
 
     #[test]

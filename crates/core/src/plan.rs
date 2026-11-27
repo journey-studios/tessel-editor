@@ -1119,10 +1119,17 @@ impl EditorState {
         .speed_ratio(clip)
     }
 
-    /// The camera a scene clip shows at sequence `frame`: its keyframes (BL140) at scene time, or
-    /// without keys the still/orbiting camera counted from the clip start. One function for the
-    /// plan (so preview and export agree) and for capturing a key at the playhead.
+    /// The authored camera with the push-in applied, shared by the monitor and export plans.
     pub fn clip_camera_at(&self, clip: &Clip, frame: i64) -> Camera {
+        let base = self.clip_base_camera_at(clip, frame);
+        match clip.camera_push_in {
+            Some(push_in) => push_in.apply(base, self.clip_scene_time(clip, frame)),
+            None => base,
+        }
+    }
+
+    /// Capture edits the underlying key track so a push-in is never applied twice.
+    pub(crate) fn clip_base_camera_at(&self, clip: &Clip, frame: i64) -> Camera {
         let source_time = self.clip_source_time(clip, frame);
         if let Some(camera) = crate::camera_keys::evaluate(&clip.camera_keys, source_time.to_f64())
         {

@@ -436,6 +436,45 @@ impl Workstation {
         let playhead = self.state.timeline.playhead;
         let inside = playhead >= entry.start && playhead < entry.end();
         let keys = entry.camera_keys.clone();
+        let too_short = entry.duration < 2;
+        let has_push_in = entry.camera_push_in.is_some();
+        let push_in = Button::new("camera-push-in")
+            .ghost()
+            .xsmall()
+            .icon(IconName::Camera)
+            .label("Aproximar e pré-visualizar")
+            .tooltip(if too_short {
+                "O clipe precisa de pelo menos dois quadros"
+            } else {
+                "Aproxima a câmera no final do clipe e toca só esse trecho, sem som"
+            })
+            .disabled(too_short)
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.dispatch(
+                    Command::SetCameraPushIn {
+                        clip: clip.to_owned(),
+                        options: Some(Default::default()),
+                    },
+                    cx,
+                );
+            }));
+        let remove_push_in = has_push_in.then(|| {
+            Button::new("camera-push-in-clear")
+                .ghost()
+                .xsmall()
+                .icon(IconName::Trash)
+                .tooltip("Remover a aproximação da câmera")
+                .accessibility_label("Remover a aproximação da câmera")
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.dispatch(
+                        Command::SetCameraPushIn {
+                            clip: clip.to_owned(),
+                            options: None,
+                        },
+                        cx,
+                    );
+                }))
+        });
         let orbiting = entry.camera.is_some_and(|camera| camera.orbit != 0.0);
         let capture = self.state.capture_of_clip(entry.id);
         let capture_row = capture.map(|capture| {
@@ -523,6 +562,12 @@ impl Workstation {
             .gap(px(2.))
             .px(px(10.))
             .py(px(4.))
+            .child(
+                h_flex()
+                    .items_center()
+                    .child(push_in)
+                    .children(remove_push_in),
+            )
             .children(capture_row)
             .child(
                 h_flex()

@@ -36,8 +36,10 @@ muda junto. Remover um estilo em uso ou apontar um filho para um estilo inexiste
 
 - Uma trilha por filho e propriedade: `x`, `y`, `scale`, `rotation`, `opacity` e, só em forma,
   `width`, `height`, `radius`, `stroke_width` (faixas: x/y ±200, escala 1..1000, rotação ±3600,
-  opacidade 0..100, largura/altura (0, 200], raio 0..100, contorno 0..20). Até 64 chaves por
-  trilha, tempo de 0 a 600 000 ms. Com chaves, elas **valem mais** que o valor base.
+  opacidade 0..100, largura/altura (0, 200], raio 0..100, contorno 0..20). Até 1024 chaves por
+  trilha (eram 64 até 2026-11-26, [BL169.6.9](../backlog.md)): cabe uma chave por quadro em 34 s
+  a 30 fps, para movimento amostrado; o plano acha o tempo por busca binária, então uma trilha
+  longa não encarece o quadro. Tempo de 0 a 600 000 ms. Com chaves, elas **valem mais** que o valor base.
 - Entre duas chaves o valor interpola linearmente, com o easing da chave **anterior** (`linear`,
   `easeInOutCubic`, `easeOutCubic` e `smoothStep`, este último entrou na [F072](reveal-beam.md));
   antes da primeira mantém o primeiro valor e depois da última, o

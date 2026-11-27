@@ -5,6 +5,7 @@
 //! There is no second copy of this state anywhere.
 
 pub mod camera_edit;
+pub mod camera_push_in;
 pub mod clip_key_edit;
 pub mod error;
 pub mod group_edit;
@@ -361,6 +362,10 @@ pub enum Command {
     },
     /// A `clip.camera_key*` edit of a scene clip's camera keyframes (BL140, see `camera_edit`).
     CameraKeys(camera_edit::CameraKeysCommand),
+    SetCameraPushIn {
+        clip: String,
+        options: Option<camera_push_in::PushInOptions>,
+    },
     /// A `clip.key*` edit of a clip's position, zoom, rotation or opacity keyframes (F073, see
     /// `clip_key_edit`).
     ClipKeys(clip_key_edit::ClipKeysCommand),
@@ -405,6 +410,7 @@ impl Command {
             Self::SetClipCamera { .. } => "Edit camera",
             Self::SetClipCameraFromCapture { .. } => "Use capture camera",
             Self::CameraKeys(_) => "Edit camera keys",
+            Self::SetCameraPushIn { .. } => "Edit camera push-in",
             Self::ClipKeys(_) => "Edit keys",
             Self::SetSequenceLength { .. } => "Sequence length",
             Self::AddSequence { .. } => "Add sequence",
@@ -1146,6 +1152,7 @@ impl EditorState {
                 )
             }
             Command::CameraKeys(command) => self.apply_camera_keys(command),
+            Command::SetCameraPushIn { clip, options } => self.set_camera_push_in(&clip, options),
             Command::ClipKeys(command) => self.apply_clip_keys(command),
             Command::SetSequenceLength { frames } => self.timeline.set_length(frames),
             Command::SavePreset { preset } => self.save_preset(&preset),
@@ -1816,6 +1823,7 @@ impl EditorState {
             subtitles,
             camera,
             camera_keys: Vec::new(),
+            camera_push_in: None,
             keys: Vec::new(),
         });
         let mut outcome = outcome?;

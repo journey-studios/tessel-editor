@@ -5,21 +5,34 @@ use tessel_editor_core::state;
 mod theme;
 mod workstation;
 
+use std::process::ExitCode;
+
 use gpui_kit::*;
 use shell::EditorShell;
 
-fn main() {
+const USAGE: &str = "Usage: tessel-editor [ui <command> | help [topic]]";
+
+fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().is_some_and(|arg| arg == "ui") {
-        if let Err(error) = automation::run_cli(&args[1..]) {
-            eprintln!("{error}");
-            std::process::exit(1);
+        let args = &args[1..];
+        if let Some(exit) = tessel_editor_core::help::cli(args, automation::CLI_USAGE) {
+            return exit;
         }
-        return;
+        return match automation::run_cli(args) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("{error}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+    if let Some(exit) = tessel_editor_core::help::cli(&args, USAGE) {
+        return exit;
     }
     if !args.is_empty() {
-        eprintln!("Usage: tessel-editor [ui --help]");
-        std::process::exit(2);
+        eprintln!("{USAGE}");
+        return ExitCode::from(2);
     }
     gpui_kit::application()
         .with_assets(gpui_kit::assets::AllAssets)
@@ -58,4 +71,5 @@ fn main() {
             }
             cx.activate(true);
         });
+    ExitCode::SUCCESS
 }
