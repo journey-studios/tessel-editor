@@ -134,6 +134,33 @@ fn windows_require_schema_five_but_other_projects_keep_their_old_version() {
 }
 
 #[test]
+fn a_localized_document_keeps_the_shared_fade_windows_and_uses_schema_five() {
+    let mut state = visual_project((24, 1));
+    set(&mut state, "t", "fade_in", json!(12));
+    run(
+        &mut state,
+        json!({"op":"localization.add","locale":"pt-br"}),
+    );
+    run(&mut state, json!({"op":"localization.add","locale":"en"}));
+    assert_eq!(state.document_schema_version(), 4);
+
+    split(&mut state, "t", 10);
+    let base = state.to_document(None);
+    run(
+        &mut state,
+        json!({"op":"localization.select","locale":"en"}),
+    );
+    let selected = state.to_document(None);
+    assert_eq!(selected["schema_version"], 5);
+    assert_eq!(selected["sequences"], base["sequences"]);
+    assert_eq!(selected["localization"], base["localization"]);
+
+    let reopened = EditorState::from_document(&selected, None).unwrap();
+    assert!(!window_of(&reopened, "t-split-1").is_empty());
+    assert_eq!(reopened.language_codes(), ["pt-br", "en"]);
+}
+
+#[test]
 fn trim_at_the_timeline_limit_is_atomic_and_leaves_a_reopenable_document() {
     let mut state = visual_project((24, 1));
     state.timeline.length = 1_000_000;

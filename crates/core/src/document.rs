@@ -266,7 +266,7 @@ pub(crate) fn property_document(overrides: &crate::state::inspector::Overrides) 
 impl EditorState {
     /// Smallest schema that can preserve this project's data when it is saved.
     pub fn document_schema_version(&self) -> u64 {
-        if self.all_sequences().any(|timeline| {
+        if self.base_sequences().any(|timeline| {
             timeline
                 .clips
                 .iter()
