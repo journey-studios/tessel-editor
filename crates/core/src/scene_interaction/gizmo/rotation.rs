@@ -336,7 +336,16 @@ impl Layout {
             let (u, v) = ring_basis(axis);
             let ring: Vec<Option<Point>> = (0..=RING_SEGMENTS)
                 .map(|step| {
-                    let angle = std::f64::consts::TAU * step as f64 / RING_SEGMENTS as f64;
+                    // The last point is the first one by construction. `TAU` is the `f64`
+                    // nearest to 2*pi, not 2*pi: `sin(TAU)` is -2.4e-16, not 0, and whether
+                    // that residue survives the projection's rounding depends on the
+                    // platform's libm and on the view, so a polygon closed "by the angle" is
+                    // only sometimes closed.
+                    let angle = if step == RING_SEGMENTS {
+                        0.0
+                    } else {
+                        std::f64::consts::TAU * step as f64 / RING_SEGMENTS as f64
+                    };
                     let offset = add(scale(u, angle.cos()), scale(v, angle.sin()));
                     view.project(add(world_origin, scale(offset, radius)))
                 })
