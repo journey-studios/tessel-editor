@@ -20,6 +20,7 @@ use super::drag::{
     ClipDrag, DragGhost, NoGhost, Preview, ScrubDrag, TrackDrag, TrimDrag, scrub_frame,
 };
 use super::media::demo_image;
+use super::split_shortcut;
 use super::tokens::Tokens;
 use super::waveform::waveform;
 use crate::state::split::{SplitAvailability, SplitBlock};
@@ -42,10 +43,6 @@ fn split_block_reason(block: SplitBlock) -> &'static str {
         SplitBlock::NoSelection => "selecione um clipe",
         SplitBlock::PlayheadOutside => {
             "posicione o playhead dentro do clipe selecionado, depois do primeiro quadro"
-        }
-        SplitBlock::FadeCrossesCut => "uma entrada ou saída (fade) do clipe atravessa o playhead",
-        SplitBlock::FadesLongerThanClip => {
-            "os fades são maiores que o clipe; encurte um fade para cortar"
         }
         SplitBlock::Refused => "o core recusa o corte aqui; use clip.split para ver o motivo",
     }
@@ -227,26 +224,28 @@ impl Workstation {
 
     /// F017: "cut at the playhead". Offered exactly when the core would split (the tree node and
     /// `timeline.split invoke` read the same `split_availability`); the click is the `SplitClip`
-    /// command the CLI sends, so the window keeps no cutting rule of its own.
+    /// command the CLI sends, so the window keeps no cutting rule of its own. The shortcut
+    /// (BL081.1.1, `split_shortcut.rs`) builds the same command and its label comes from the same
+    /// platform row the listener matches.
     fn split_button(&self, cx: &mut Context<Self>) -> Div {
+        let platform = split_shortcut::Platform::current();
         let button = match self.state.split_availability() {
             SplitAvailability::Ready { clip, frame } => tool_button(
                 "timeline-split",
                 IconName::Slice,
-                &format!("Cortar {clip} no playhead (quadro {frame})"),
+                &split_shortcut::with_shortcut(
+                    &format!("Cortar {clip} no playhead (quadro {frame})"),
+                    platform,
+                ),
             )
             .on_click(super::controls::click(
                 cx,
-                Command::SplitClip {
-                    clip: clip.to_string(),
-                    frame,
-                    new_id: None,
-                },
+                split_shortcut::split_command(clip, frame),
             )),
             SplitAvailability::Blocked(block) => disabled_tool_button(
                 "timeline-split",
                 IconName::Slice,
-                "Cortar clipe no playhead",
+                &split_shortcut::with_shortcut("Cortar clipe no playhead", platform),
                 split_block_reason(block),
             ),
         };

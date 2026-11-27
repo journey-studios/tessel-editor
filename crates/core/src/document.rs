@@ -27,7 +27,9 @@ use crate::time::{Rate, Ratio};
 
 pub const FORMAT: &str = "tessel-project";
 /// Latest document version this reader supports.
-pub const SCHEMA_VERSION: u64 = LOCALIZATION_SCHEMA_VERSION;
+pub const SCHEMA_VERSION: u64 = FADE_WINDOW_SCHEMA_VERSION;
+// Readers through schema 4 would silently discard inherited fade windows.
+const FADE_WINDOW_SCHEMA_VERSION: u64 = 5;
 const LOCALIZATION_SCHEMA_VERSION: u64 = 4;
 const PUSH_IN_SCHEMA_VERSION: u64 = 3;
 const SCENE_SCHEMA_VERSION: u64 = 2;
@@ -226,6 +228,9 @@ fn clip_json(clip: &crate::state::timeline::Clip) -> Value {
             .as_ref()
             .map(crate::subtitles::SubtitleSpec::to_json),
     );
+    // BL081.2: only a clip cut inside a fade ramp carries one, so every other clip is stored
+    // exactly as before.
+    put_opt(&mut map, "fade_window", clip.fade_window.to_json());
     Value::Object(map)
 }
 
@@ -261,6 +266,14 @@ pub(crate) fn property_document(overrides: &crate::state::inspector::Overrides) 
 impl EditorState {
     /// Smallest schema that can preserve this project's data when it is saved.
     pub fn document_schema_version(&self) -> u64 {
+        if self.base_sequences().any(|timeline| {
+            timeline
+                .clips
+                .iter()
+                .any(|clip| !clip.fade_window.is_empty())
+        }) {
+            return FADE_WINDOW_SCHEMA_VERSION;
+        }
         if self.localization.is_some() {
             return LOCALIZATION_SCHEMA_VERSION;
         }
@@ -526,7 +539,7 @@ impl EditorState {
             .map(crate::localization::Localization::from_json)
             .transpose()?;
         let selected_media = library.items.first().map(|item| item.id);
-        Ok(Self {
+        let mut state = Self {
             project_name: name.trim().to_string(),
             demonstration: project["demonstration"].as_bool().unwrap_or(false),
             library,
@@ -547,7 +560,11 @@ impl EditorState {
             localization,
             active_locale: None,
             localization_base: None,
-        })
+        };
+        // BL081.2: a window whose fade was edited in the file (the guard no longer matches the
+        // stored property) is not live; it is dropped on open, like it is after an edit.
+        state.sweep_fade_windows();
+        Ok(state)
     }
 }
 
@@ -887,6 +904,17 @@ pub(crate) fn parse_sequence(value: &Value, library: &Library) -> Result<Timelin
             }
             None => None,
         };
+        // BL081.2: validated like the rest: a window the editor could not have written is a bad
+        // document, not something to repair silently.
+        let fade_window = match clip.get("fade_window") {
+            Some(window) => crate::state::envelope::FadeWindow::from_json(
+                window,
+                clip["duration"].as_i64().unwrap_or(0),
+                kind == ClipKind::Audio,
+            )
+            .map_err(|message| invalid(format!("Clip `{clip_id}`: {message}")))?,
+            None => Default::default(),
+        };
         let parsed = Clip {
             id: clip_id,
             name: str_of(clip, "name", "A clip")?.to_string(),
@@ -1031,6 +1059,7 @@ pub(crate) fn parse_sequence(value: &Value, library: &Library) -> Result<Timelin
                 }
                 None => Vec::new(),
             },
+            fade_window,
         };
         // Reuses the editing rules (track kind, bounds, overlap): a document cannot smuggle in
         // a layout the editor itself would refuse.
@@ -1054,6 +1083,17 @@ fn has_camera_keys(doc: &Value) -> bool {
                         .is_some_and(|keys| !keys.is_empty())
                 })
             })
+        })
+    })
+}
+
+/// Whether any clip of any sequence stores a `fade_window` (BL081.2).
+fn has_fade_windows(doc: &Value) -> bool {
+    doc["sequences"].as_array().is_some_and(|sequences| {
+        sequences.iter().any(|sequence| {
+            sequence["clips"]
+                .as_array()
+                .is_some_and(|clips| clips.iter().any(|clip| clip.get("fade_window").is_some()))
         })
     })
 }
@@ -1136,6 +1176,11 @@ pub fn migrate(doc: Value) -> Result<Value, CommandError> {
     if version == LEGACY_SCHEMA_VERSION && has_camera_keys(&doc) {
         return Err(invalid(
             "Camera keys require project schema 2; schema 1 readers would discard them",
+        ));
+    }
+    if version < FADE_WINDOW_SCHEMA_VERSION && has_fade_windows(&doc) {
+        return Err(invalid(
+            "Fade windows require project schema 5; earlier readers would discard them",
         ));
     }
     if version == LEGACY_SCHEMA_VERSION && has_clip_keys(&doc) {

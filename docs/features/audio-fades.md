@@ -33,9 +33,25 @@ clipes, fade de pan/volume, envelope por keyframe nem fade em mídia de vídeo c
   S(end) − S(end−fade)`, `clip_offset = S(início do segmento) − S(start)`. A 24 fps a 48 kHz (2000 amostras por quadro) nada
   muda; em 24000/1001 e 30000/1001 o comprimento da rampa e o ponto de cada amostra deixaram de depender de onde o intervalo
   pedido começa, e um mix em pedaços é o inteiro **bit a bit** (antes: dentro de um passo de envelope). Cortar o clipe fora das
-  rampas (F017) mantém o envelope amostra a amostra; cortar **dentro** de uma rampa continua recusado (BL081.2).
+  rampas (F017) mantém o envelope amostra a amostra; cortar **dentro** de uma rampa também (BL081.2, BL081.2.2): cada rampa que o corte
+  deixa numa metade é **fixada** em `Clip.fade_window` com a âncora onde ela começou/termina e a normalização que o mixer lhe deu no
+  clipe cortado, de modo que o PCM do inteiro e o das metades é idêntico bit a bit.
+- **Rampas herdadas de um corte (BL081.2.2).** `AudioSegment.clip_offset` e `clip_frames` medem da **âncora do fade-in** até a **âncora
+  do fade-out**: o próprio clipe (como sempre) ou, para uma rampa herdada, o ponto em que ela começou/termina. A âncora é independente
+  da **normalização**: o `resolve_fades` de uma rampa fixada roda no vão e com o pedido do par que ela teve no clipe cortado
+  (`norm.far`, `norm.peer`), seja qual for o outro fade agora. Uma rampa sem fixação fica na borda e é normalizada com a outra rampa
+  quando esta também não tem fixação (o par de sempre), ou sozinha (limitada ao clipe) quando a outra é herdada. Editar um fade
+  redefine **só aquela rampa** (medida da borda da metade); a outra mantém forma, posição e normalização, mesmo que o clipe inteiro a
+  encurtasse por sobreposição. O fade editado é multiplicado pela rampa herdada (não há vale evitado entre uma rampa nova e uma
+  herdada: o triângulo de `resolve_fades` vale para o par original). Uma rampa só é fixada quando medi-la na própria metade mudaria o
+  resultado **agora ou depois de qualquer edição do outro fade** (âncora fora da borda, ou `rampa + max(par, 48)` acima da metade, 48 =
+  fim do slider); metades longas continuam sem dado novo.
 - **Trim e mover.** Os fades ficam nas bordas **atuais** do clipe: cortar o início/fim ou mover recalcula
   `clip_offset`/`clip_frames` a partir de `clip.start`/`clip.end()` (teste `trimming_and_moving_the_clip_move_its_fades_with_its_edges`).
+  Um clipe sem fixação é o caso acima. Uma metade com rampas herdadas mantém cada âncora e cada vão de normalização **no lugar da
+  sequência** ao aparar (a normalização do outro fade não muda) e perde a âncora quando a borda passa da origem da rampa; editar
+  `fade_in`/`fade_out` dessa metade descarta só a rampa daquele lado (a guarda é o valor do fade). Mover não muda nada (tudo é relativo).
+  Ver [clip-split-fades-report.md](../migration/clip-split-fades-report.md).
 - **Sobreposição** (`audio::resolve_fades`). Se `fade_in + fade_out` cabe no clipe, nada muda. Se passa, os dois são
   **encurtados na proporção dos pedidos** até preencher exatamente o clipe (`40+40` quadros em um clipe de 48 viram
   `24+24`): as rampas se encontram no ganho cheio em uma amostra, formando um triângulo, nunca se multiplicam em um
@@ -90,6 +106,7 @@ O mix para tocar (`playback.*`) é preparado fora da thread da UI (a mesma taref
 | Superfície | Evidência | Resultado |
 |---|---|---|
 | Lib | `crates/core/tests/audio_fades.rs` (8): amostras exatas, RMS, blocos = inteiro, trim/mover, sobreposição, extremos/rejeição sem efeito, desfazer + salvar/reabrir, e (BL081.5) blocos em 24000/1001 e 30000/1001 **idênticos bit a bit** ao mix inteiro (antes: dentro de um passo de envelope); `video_sound.rs` (+1: som do vídeo sem fade); unitários de `inspector`/`tree` | passam; mutação (`clip_offset = 0`) quebra o teste de blocos |
+| Lib (BL081.2.2) | `crates/core/tests/clip_split_envelope/{ramps,ramp_edits,ramp_documents,ramp_surfaces}.rs` (18) e unitários de `state/envelope` (15): editar o fade de uma metade de áudio não move a outra rampa (plano e PCM fora da rampa editada, bit a bit), em 24/25/30/60, 24000/1001, 30000/1001, 44,1/48 kHz, mono/estéreo; fades originais sobrepostos, cortes múltiplos, trim/mover/reset, gesto de slider (cancelar/confirmar), undo/redo, salvar/reabrir, fade fracionário do documento; PCM legado sem janela idêntico; controles do modelo anterior falham | passam; relatório [clip-split-fades-report.md](../migration/clip-split-fades-report.md) |
 | Mídia | `crates/media/tests/export.rs::an_audio_fade_that_crosses_the_export_chunks_is_the_fade_of_the_whole_mix` (FFmpeg real): RMS do export em blocos = RMS do mix inteiro (< 1e-6) e o AAC decodificado sobe de forma monotônica atravessando o corte de 10 s | passa |
 | CLI headless | `scripts/audio-fades-proof.py`: processo `tessel-headless`, WAV de `render.audio` lido por Python (`wave`), 23 checks (rampa, RMS 1/√3, trim, sobreposição, recusas, desfazer, vídeo) | 23/23 |
 | Janela (CLI) | o mesmo roteiro por `tessel-editor ui op/get/set/invoke` com `HOME` próprio + nós `inspector.fades`/`property:fade_in` + captura nativa | 28/28 |
@@ -112,3 +129,20 @@ runtime real, FFmpeg, Chrome). `TESSEL_REQUIRE_RUNTIME=1 ./scripts/cargo test --
 `scripts/*.spec.py` passam; `cargo tree -p tessel-editor-core` sem gpui/wry. Não foi ouvido sinal em dispositivo e não houve clique de
 ponteiro (limites acima). Não foi reexecutado após o merge o caso subframe: áudio-fonte menor que um quadro segue como caso a validar.
 Na integração, `Applies::SoundClip` (fades de áudio) e `Applies::Scene` (câmera de cena, F054) convivem no inspetor.
+
+
+Revisão BL081.2: uma rampa fixada em frames=0 acompanha a borda aparada, como
+a nativa; âncora já externa mantém sua posição. Fixações conservadoras também
+podem elevar cortes comuns de clipes curtos a schema 5, antecipando edição do
+outro fade até48quadros; sem isso a edição renormalizaria a rampa não editada.
+Exemplo:60quadros, fade-in5, corte30. Sem necessidade de fixação, schema1/2
+permanece. O estado de cada janela é inspecionável no nó do clipe.
+
+
+BL081.2 validado tecnicamente no Mac e Windows (commit local8901553): corpus
+envelope44/44 e GPUI split5/fades2 nas duas plataformas; Mac headless12/12 e
+janela12/12, Windows headless16/16 e janela27/27 com 14 WAVs iguais entre
+superfícies. A região da rampa não editada permanece idêntica; salvar/reabrir,
+undo/redo preservam o resultado. Sem áudio ouvido, pixels, ponteiro ou
+medição de desempenho. Harness Windows equivalente em PowerShell, fora do
+repo; [evidência final e limites](../migration/clip-split-fades-report.md#10-fechamento-técnico-macwindows).

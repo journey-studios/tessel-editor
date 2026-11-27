@@ -7,14 +7,16 @@
 //! selection, no revision and no history entry.
 //!
 //! Continuity, in one sentence: every frame of the sequence reads, after the cut, the same
-//! source time, the same camera, the same zoom and the same opacity it read before (see
-//! `docs/features/split.md`). What the model cannot keep that way is refused with
-//! `split_unsupported` instead of being approximated.
+//! source time, the same camera, the same zoom and the same opacity (and gain) it read before
+//! (see `docs/features/split.md`). A cut inside a fade ramp keeps the whole clip's envelope through
+//! a `FadeWindow` on each half (BL081.2, `state::envelope`); an arithmetic overflow refuses the
+//! cut atomically instead of approximating it.
 
 use serde_json::{Value, json};
 
 use super::EditorState;
 use super::Subject;
+use super::envelope::{self, CutInput, FadeWindow};
 use super::error::CommandError;
 use super::inspector::{Value as PropertyValue, property_def};
 use super::timeline::ClipKind;
@@ -53,6 +55,10 @@ pub struct SplitPlan {
     pub right_source_start: Ratio,
     right_camera: Option<Camera>,
     adjustments: Vec<Adjustment>,
+    /// The fade window each half carries (BL081.2); empty when measuring on its own edges
+    /// gives the same envelope.
+    left_window: FadeWindow,
+    right_window: FadeWindow,
 }
 
 /// Why the "cut at the playhead" control is not offered. [`SplitBlock::reason`] is the text of
@@ -62,10 +68,6 @@ pub enum SplitBlock {
     NoSelection,
     /// Not strictly inside the clip: a half would be empty or the playhead is elsewhere.
     PlayheadOutside,
-    /// A fade ramp straddles the cut and cannot be written as two ramps.
-    FadeCrossesCut,
-    /// Overlapping audio fades are shortened by the mixer at every playhead position.
-    FadesLongerThanClip,
     /// Any other refusal of [`EditorState::plan_split`] (overflow, ID policy): run `clip.split`
     /// to read the typed error.
     Refused,
@@ -77,12 +79,6 @@ impl SplitBlock {
             Self::NoSelection => "Select a clip to cut it at the playhead",
             Self::PlayheadOutside => {
                 "Move the playhead inside the selected clip, past its first frame, to cut it"
-            }
-            Self::FadeCrossesCut => {
-                "A fade of the clip spans the playhead: move the playhead or shorten the fade"
-            }
-            Self::FadesLongerThanClip => {
-                "The clip's fades are longer than the clip: shorten a fade to cut it"
             }
             Self::Refused => "The core refuses a cut here: run clip.split to read the reason",
         }
@@ -265,86 +261,30 @@ impl EditorState {
         });
 
         let mut adjustments = Vec::new();
-        // Loaded visual fades may be fractional: match the renderer's unrounded opacity
-        // ramps. Only audio uses the mixer's whole-frame fade durations.
-        let fade = |property| {
-            let value = property_number(self, clip, property);
-            if entry.kind == ClipKind::Audio {
-                value.round()
-            } else {
-                value
-            }
-        };
-        let fade_in = fade("fade_in");
-        let fade_out = fade("fade_out");
-        let fade_detail = |value: f64| {
-            if value.fract() == 0.0 {
-                json!(value as i64)
-            } else {
-                json!(value)
-            }
-        };
-        let unsupported = |reason: &'static str, message: String| {
-            CommandError::new("split_unsupported", message)
-                .target(format!("clip:{}", entry.id))
-                .details(json!({ "reason": reason, "frame": frame,
-                    "fade_in": fade_detail(fade_in), "fade_out": fade_detail(fade_out),
-                    "frames_before": before, "frames_after": after }))
-        };
-        // Clip keys need nothing here: they are read at source time (`clip_keys`), and the right
-        // half's `source_start` is exactly the source time the whole clip has at the cut, so both
-        // halves read the same key values the whole clip did.
-        // The mixer shortens two fades that together outlast a sound, in proportion; a half is
-        // shorter, so it would shorten them differently and the gain would move.
-        if entry.kind == ClipKind::Audio
-            && fade_in > 0.0
-            && fade_out > 0.0
-            && fade_in + fade_out > entry.duration as f64
-        {
-            return Err(unsupported(
-                "fades_longer_than_clip",
-                format!(
-                    "The fades of `{}` ({fade_in} + {fade_out} frames) are longer than the clip, \
-                     so the mixer shortens them; the halves would not shorten them the same way",
-                    entry.id
-                ),
-            ));
-        }
-        if fade_in > 0.0 && (before as f64) < fade_in {
-            return Err(unsupported(
-                "fade_in_crosses_cut",
-                format!(
-                    "The {fade_in}-frame fade-in of `{}` is still ramping at frame {frame}; \
-                     two clips cannot share one ramp. Cut at {} or later, or shorten the fade",
-                    entry.id,
-                    entry.start + fade_in.ceil() as i64
-                ),
-            ));
-        }
-        // The last frame of the left half must already be past the fade-out ramp. A picture
-        // fades by frame (`remaining / fade`, one at the ramp's start); a sound fades by sample,
-        // where the last sample of a frame is one sample short of the next frame boundary.
-        let slack = if entry.kind == ClipKind::Audio { 0 } else { 1 };
-        if fade_out > 0.0 && ((after + slack) as f64) < fade_out {
-            return Err(unsupported(
-                "fade_out_crosses_cut",
-                format!(
-                    "The {fade_out}-frame fade-out of `{}` has already started at frame {frame}; \
-                     two clips cannot share one ramp. Cut at {} or earlier, or shorten the fade",
-                    entry.id,
-                    end - fade_out.ceil() as i64 + slack
-                ),
-            ));
-        }
-        // Each half keeps the ramp at its own outer edge; the inner edges are plain cuts.
-        if fade_out > 0.0 {
+        // BL081.2: no fade is refused any more. A ramp the cut does not reach is zeroed on the
+        // half it does not reach (as before); a ramp that straddles the cut stays on both halves
+        // with the fade window of the whole clip, so each half reads the whole's value at every
+        // frame (picture) and sample (sound). See `state::envelope`.
+        let (raw_in, raw_out) = self.fade_values(clip);
+        let (lead, tail) = entry.fade_window.live_reach(raw_in, raw_out);
+        let fades = envelope::split_fades(CutInput {
+            audio: entry.kind == ClipKind::Audio,
+            before,
+            after,
+            lead,
+            tail,
+            raw_in,
+            raw_out,
+        })
+        .ok_or_else(|| envelope::overflow(target.clone()))?;
+        if fades.left.zero_out {
             adjustments.push(Adjustment {
                 half: Half::Left,
                 property: "fade_out",
                 value: 0.0,
             });
         }
-        if fade_in > 0.0 {
+        if fades.right.zero_in {
             adjustments.push(Adjustment {
                 half: Half::Right,
                 property: "fade_in",
@@ -406,6 +346,8 @@ impl EditorState {
             right_source_start,
             right_camera,
             adjustments,
+            left_window: fades.left.window,
+            right_window: fades.right.window,
         })
     }
 
@@ -423,16 +365,6 @@ impl EditorState {
             },
             Err(error) => SplitAvailability::Blocked(match error.code {
                 "out_of_bounds" | "invalid_duration" => SplitBlock::PlayheadOutside,
-                "split_unsupported"
-                    if error
-                        .details
-                        .as_ref()
-                        .and_then(|details| details["reason"].as_str())
-                        == Some("fades_longer_than_clip") =>
-                {
-                    SplitBlock::FadesLongerThanClip
-                }
-                "split_unsupported" => SplitBlock::FadeCrossesCut,
                 _ => SplitBlock::Refused,
             }),
         }
@@ -474,6 +406,8 @@ impl EditorState {
         right.duration = plan.right_duration;
         right.source_start = plan.right_source_start;
         right.camera = plan.right_camera;
+        right.fade_window = plan.right_window;
+        self.timeline.clips[index].fade_window = plan.left_window;
         self.timeline.clips[index].duration = plan.left_duration;
         self.timeline.clips.insert(index + 1, right);
 
@@ -513,6 +447,8 @@ impl EditorState {
                 "source_start": plan.right_source_start.to_json() },
             "new_id": right_id.as_str(), "selected": format!("clip:{right_id}"),
             "adjusted": adjusted, "changed": true,
+            "fade_window": { "left": plan.left_window.to_json(),
+                "right": plan.right_window.to_json() },
         }))
     }
 }

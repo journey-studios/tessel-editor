@@ -12,7 +12,7 @@ Salvar, estado "salvo/não salvo" na barra; `scripts/live-flow-proof.py`).
 inalterado produz os mesmos bytes. Limite de leitura: 256 MiB (`document_too_large`).
 
 ```text
-format "tessel-project", schema_version 1, 2 ou 3 conforme os recursos usados
+format "tessel-project", schema_version 1 a 5 conforme os recursos usados
 project      { id, name, revision, requires { spark "2.4.0", three "0.187.0" } }
 library      { folders[], assets[] }       identidade (id) e conteúdo (hash) separados
 sequences[]  { id, name, rate {num,den}, length, width, height, tracks[], clips[] }
@@ -67,3 +67,12 @@ contra o limite do loader (256 MiB), antes de escrever ou substituir o arquivo.
 Projetos com idiomas habilitados usam o schema 4 e gravam o bloco `localization`
 com ajustes e aprovações por idioma. A composição-base continua no bloco
 `sequences`. Veja [F078](localization.md).
+
+## Janelas de fade herdadas (BL081.2)
+
+O campo opcional `fade_window` em `clips[]` exige schema 5 em qualquer projeto.
+A janela preserva as rampas após um corte. As partes `lead` e `tail` guardam
+a âncora em quadros e o valor de fade da rampa. Em clipes de áudio, `norm` é
+obrigatório e guarda a normalização congelada. Clipes visuais recusam `norm`.
+O leitor recusa uma janela gravada em schemas 1–4, que não permitem preservar
+esse campo em versões anteriores do editor.

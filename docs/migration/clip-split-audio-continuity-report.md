@@ -1,5 +1,10 @@
 # Continuidade de áudio ao cortar clipes em grade fracionária (F017 / BL081.5) — relatório de entrega
 
+> Registro histórico: as recusas de corte dentro de fades descritas nesta rodada
+> foram superadas pela expansão BL081.2. Contrato atual e provas por versão em
+> [clip-split-fades-report.md](clip-split-fades-report.md) e [split](../features/split.md).
+
+
 Contrato: [split.md](../features/split.md) ("Áudio em grade fracionária"), [audio-fades.md](../features/audio-fades.md)
 ("Relógio absoluto"), [core-architecture.md](../core-architecture.md). Este relatório registra o modelo, as invariantes, a
 compatibilidade e as evidências executadas. Status e atribuição vivem só em [backlog.md](../backlog.md) (não editado aqui:

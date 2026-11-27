@@ -5,6 +5,7 @@
 
 use serde_json::{Value, json};
 
+use super::envelope::FadeWindow;
 use super::error::CommandError;
 use crate::camera_keys::CameraKey;
 use crate::content::{Camera, TextSpec};
@@ -139,6 +140,9 @@ pub struct Clip {
     /// Keyframes of the clip's position, zoom, rotation and opacity over its own time (F073), one
     /// track per property in the inspector's order; empty = the inspector values hold.
     pub keys: Vec<KeyTrack>,
+    /// BL081.2: where the fades are measured when a cut left this clip a piece of a ramp.
+    /// Empty (the default) measures them on the clip's own edges. See `state::envelope`.
+    pub fade_window: FadeWindow,
 }
 
 impl Clip {
@@ -314,6 +318,7 @@ impl Timeline {
                     camera_keys: Vec::new(),
                     camera_push_in: None,
                     keys: Vec::new(),
+                    fade_window: FadeWindow::default(),
                 }
             };
         let mut title = clip(
@@ -744,6 +749,16 @@ impl Timeline {
                 "A clip must contain at least one frame",
             ));
         }
+        clip.fade_window
+            .trimmed(start - clip.start, clip.end() - end)
+            .filter(|window| window.checked_frames(end - start).is_some())
+            .ok_or_else(|| {
+                CommandError::new(
+                    "invalid_time",
+                    "The trim exceeds the fade window limit; nothing changed",
+                )
+                .target(format!("clip:{id}"))
+            })?;
         // WHY: reuse placement validation so trimming and moving have the same overlap policy.
         let mut draft = self.clone();
         let entry = draft
@@ -799,6 +814,26 @@ impl Timeline {
                     .target(format!("clip:{id}"))
                 })?
         };
+        // BL081.2: an inherited fade ramp stays where it is in the sequence while its edge moves
+        // (see `state::envelope`); computed before any mutation, like the source time.
+        let fade_window = clip
+            .fade_window
+            .trimmed(head_shift, clip.end() - plan.end)
+            .ok_or_else(|| {
+                CommandError::new(
+                    "invalid_time",
+                    "The trim overflows the clip's fade window; nothing changed",
+                )
+                .target(format!("clip:{id}"))
+            })?;
+        if fade_window.checked_frames(plan.end - plan.start).is_none() {
+            return Err(CommandError::new(
+                "invalid_time",
+                "The trim exceeds the fade window limit; nothing changed",
+            )
+            .target(format!("clip:{id}")));
+        }
+        clip.fade_window = fade_window;
         clip.source_start = source_start;
         clip.start = plan.start;
         clip.duration = plan.end - plan.start;

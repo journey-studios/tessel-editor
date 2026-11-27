@@ -7,6 +7,7 @@
 pub mod camera_edit;
 pub mod camera_push_in;
 pub mod clip_key_edit;
+pub mod envelope;
 pub mod error;
 pub mod group_edit;
 pub mod history;
@@ -797,6 +798,12 @@ impl EditorState {
     pub(crate) fn apply(&mut self, command: Command) -> Result<Value, CommandError> {
         let outcome = self.apply_command(command);
         self.prune_fx_target();
+        // BL081.2: a fade the command edited takes its ramp off the inherited window. A slider
+        // that is still previewing is left alone: cancelling it must be able to put the ramp back
+        // (the commit sweeps).
+        if outcome.is_ok() && self.history.gesture.is_none() {
+            self.sweep_fade_windows();
+        }
         outcome
     }
 
@@ -1860,6 +1867,7 @@ impl EditorState {
             camera_keys: Vec::new(),
             camera_push_in: None,
             keys: Vec::new(),
+            fade_window: Default::default(),
         });
         let mut outcome = outcome?;
         self.subject = Subject::Clip;

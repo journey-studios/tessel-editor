@@ -20,6 +20,7 @@ use crate::group::Prop;
 use crate::id::Id;
 use crate::reveal::{Reveal, RevealSettings};
 use crate::shape::ShapeSpec;
+use crate::state::envelope;
 use crate::state::inspector::{self, Value as PropertyValue};
 use crate::state::library::MediaItem;
 use crate::state::timeline::{Clip, ClipKind, TrackKind};
@@ -599,10 +600,13 @@ impl Resolver<'_> {
 
     /// Fade ramps apply to opacity, evaluated at the frame being drawn.
     fn opacity(&self, clip: &Clip, frame: i64) -> f64 {
-        let local = (frame - clip.start) as f64;
-        let remaining = (clip.duration - (frame - clip.start)) as f64;
         let fade_in = self.number(clip, "fade_in");
         let fade_out = self.number(clip, "fade_out");
+        // BL081.2: the ramps are measured on the fade window (the clip itself unless a cut left
+        // this clip a piece of a ramp), so a half reads the value the whole clip had.
+        let (first, last) = clip.fade_bounds(fade_in, fade_out);
+        let local = (frame - first) as f64;
+        let remaining = (last - frame) as f64;
         let mut opacity = self.state.clip_keyed_value(clip, Prop::Opacity, frame) / 100.0;
         if fade_in > 0.0 {
             opacity *= (local / fade_in).min(1.0);
@@ -1440,31 +1444,77 @@ impl EditorState {
             // measured on the same absolute clock as the segments, so the ramp of a half is
             // the ramp of the whole clip. The fades of a video clip are visual (opacity): its
             // sound does not follow them.
-            let clip_first = absolute(clip.start)?;
-            let clip_end = clip.start.checked_add(clip.duration).ok_or_else(overflow)?;
-            let clip_last = absolute(clip_end)?;
+            //
+            // BL081.2: a ramp a cut left on this clip is *pinned*: it is anchored where it began
+            // (`clip_offset`/`clip_frames` measure from the fade-in anchor to the fade-out
+            // anchor) and shortened by `resolve_fades` on the span and with the peer it had in
+            // the clip that was cut, whatever the other fade is now (BL081.2.2). A ramp without a
+            // pin is on the clip's own edge and is resolved with the other ramp when that has no
+            // pin either, which is what every clip did before.
+            let (fade_in_value, fade_out_value) = (
+                resolver.number(clip, "fade_in"),
+                resolver.number(clip, "fade_out"),
+            );
+            let (pin_in, pin_out) = if embedded {
+                (None, None)
+            } else {
+                clip.fade_window.live_reach(fade_in_value, fade_out_value)
+            };
+            let clip_first = absolute(
+                clip.start
+                    .checked_sub(pin_in.map_or(0, |reach| reach.frames))
+                    .ok_or_else(overflow)?,
+            )?;
+            let clip_last = absolute(
+                clip.end()
+                    .checked_add(pin_out.map_or(0, |reach| reach.frames))
+                    .ok_or_else(overflow)?,
+            )?;
             let clip_frames = u64::try_from(clip_last - clip_first).unwrap_or(0);
             let (fade_in, fade_out) = if embedded {
                 (0, 0)
             } else {
-                let ramp = |property: &str| -> Result<i64, CommandError> {
-                    Ok((resolver.number(clip, property).round() as i64).max(0))
+                let ramps = envelope::audio_ramps(pin_in, pin_out, fade_in_value, fade_out_value);
+                // One ramp, shortened on the span of its group: from `span_first` to
+                // `span_end`, with the fade-in measured from the first and the fade-out from
+                // the end, exactly the legacy `resolve_fades` over the clip.
+                let ramp = |group: &envelope::RampGroup, incoming: bool| {
+                    if group.own == 0 {
+                        return Ok(0);
+                    }
+                    let (first, end) = if incoming {
+                        (
+                            clip.start.checked_sub(group.anchor),
+                            clip.end().checked_add(group.far),
+                        )
+                    } else {
+                        (
+                            clip.start.checked_sub(group.far),
+                            clip.end().checked_add(group.anchor),
+                        )
+                    };
+                    let (first, end) = first.zip(end).ok_or_else(overflow)?;
+                    let (own_in, own_out) = if incoming {
+                        (group.own, group.peer)
+                    } else {
+                        (group.peer, group.own)
+                    };
+                    let span_first = absolute(first)?;
+                    let span_end = absolute(end)?;
+                    let ramp_in = absolute(first.checked_add(own_in).ok_or_else(overflow)?)?;
+                    let ramp_out = absolute(end.checked_sub(own_out).ok_or_else(overflow)?)?;
+                    let (shortened_in, shortened_out) = resolve_fades(
+                        u64::try_from(ramp_in - span_first).unwrap_or(0),
+                        u64::try_from(span_end - ramp_out).unwrap_or(0),
+                        u64::try_from(span_end - span_first).unwrap_or(0),
+                    );
+                    Ok::<u64, CommandError>(if incoming {
+                        shortened_in
+                    } else {
+                        shortened_out
+                    })
                 };
-                let fade_in = absolute(
-                    clip.start
-                        .checked_add(ramp("fade_in")?)
-                        .ok_or_else(overflow)?,
-                )?;
-                let fade_out = absolute(
-                    clip_end
-                        .checked_sub(ramp("fade_out")?)
-                        .ok_or_else(overflow)?,
-                )?;
-                resolve_fades(
-                    u64::try_from(fade_in - clip_first).unwrap_or(0),
-                    u64::try_from(clip_last - fade_out).unwrap_or(0),
-                    clip_frames,
-                )
+                (ramp(&ramps.fade_in, true)?, ramp(&ramps.fade_out, false)?)
             };
             segments.push(AudioSegment {
                 clip: clip.id,

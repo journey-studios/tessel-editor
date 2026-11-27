@@ -329,16 +329,20 @@ pub struct AudioSegment {
     pub gain: f32,
     /// `-1.0` left .. `1.0` right.
     pub pan: f32,
-    /// Fade-in length in output sample frames, from the clip's first sample. Already resolved
-    /// against the clip length by [`resolve_fades`]; `0` is no fade.
+    /// Fade-in length in output sample frames, from the fade-in anchor (the clip's first sample
+    /// unless a cut left it a ramp that began before it, BL081.2). Already resolved against the
+    /// span the ramp is normalized on by [`resolve_fades`]; `0` is no fade.
     pub fade_in: u64,
-    /// Fade-out length in output sample frames, up to the clip's last sample.
+    /// Fade-out length in output sample frames, up to the fade-out anchor (the clip's last
+    /// sample unless a cut left it a ramp that ends after it).
     pub fade_out: u64,
-    /// Output sample frames from the clip's first sample to this segment's first sample. A
-    /// segment is only the part of a clip inside the requested interval, so the fades are
-    /// placed by the clip, never by the interval: a mix in chunks is the mix in one piece.
+    /// Output sample frames from the fade-in anchor to this segment's first sample. A segment is
+    /// only the part of a clip inside the requested interval, so the fades are placed by the
+    /// clip, never by the interval: a mix in chunks is the mix in one piece.
     pub clip_offset: u64,
-    /// Output sample frames of the whole clip (its fades are relative to this length).
+    /// Output sample frames from the fade-in anchor to the fade-out anchor: the clip itself,
+    /// extended to wherever its ramps began and end (BL081.2.2: each ramp is anchored on its own,
+    /// and normalized in the span and with the peer it had when it was cut).
     pub clip_frames: u64,
 }
 

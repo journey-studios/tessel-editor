@@ -39,6 +39,7 @@ mod scene_panel;
 mod scene_ui;
 mod shape_inspector;
 mod slider_gesture;
+mod split_shortcut;
 mod status_bar;
 mod timeline_panel;
 mod tokens;
@@ -551,6 +552,7 @@ impl Workstation {
             self.adopt_scene(node);
             self.adopt_perf(node);
             self.adopt_perf_history(node);
+            self.adopt_split_shortcut(node);
         }
         // The scene inspector and the scene monitor seam are window state too.
         nodes.extend(self.scene_nodes());
@@ -581,6 +583,7 @@ impl Workstation {
         self.adopt_scene(&mut node);
         self.adopt_perf(&mut node);
         self.adopt_perf_history(&mut node);
+        self.adopt_split_shortcut(&mut node);
         Some(node)
     }
 
@@ -869,7 +872,7 @@ impl Render for Workstation {
         let status = self.render_status(&t, strip);
         div()
             .id("workstation")
-            .key_context("Workstation")
+            .key_context(split_shortcut::SCOPE)
             .track_focus(&self.focus)
             .flex()
             .flex_col()
@@ -878,6 +881,8 @@ impl Render for Workstation {
             .bg(t.app)
             .text_color(t.text)
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
+                // BL081.1.1: Cmd+B / Ctrl+B cuts the selected clip at the playhead (F017).
+                this.on_split_shortcut(event, window, cx);
                 // GPUI keeps a drag alive until it is stopped, so Escape both
                 // ends the framework drag and drops our preview.
                 if event.keystroke.key == "escape" {
@@ -967,6 +972,8 @@ mod shape_clip_tests;
 mod sharp_capture_tests;
 #[cfg(test)]
 mod slider_gesture_tests;
+#[cfg(test)]
+mod split_shortcut_tests;
 #[cfg(test)]
 mod split_tests;
 #[cfg(test)]

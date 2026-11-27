@@ -819,6 +819,10 @@ fn build_timeline(state: &EditorState, nodes: &mut Vec<Node>) {
                 .state("track", format!("track:{}", clip.track))
                 .state("start", clip.start)
                 .state("duration", clip.duration)
+                .state(
+                    "fade_window",
+                    clip.fade_window.to_json().unwrap_or(Value::Null),
+                )
                 .state("end", clip.end())
                 .state("start_timecode", timeline.timecode(clip.start))
                 .state("media", clip.media.map(|media| format!("media:{media}")))

@@ -250,6 +250,10 @@ impl EditorState {
         };
         let current = self.inspector.value(open.clip, open.definition);
         let changed = current != open.original;
+        if changed {
+            // BL081.2: the committed value is an edit: an edited fade leaves the inherited window.
+            self.sweep_fade_windows();
+        }
         // Inside a batch `transaction` the batch owns the one entry; a gesture committed in
         // its body only contributes its value.
         let recorded = changed && self.history.is_recording();
