@@ -466,6 +466,35 @@ pub fn parse_op(state: &EditorState, request: &Value) -> Result<Option<Op>, Comm
             };
             return Ok(Some(Op::RenderTrace { since, limit }));
         }
+        "localization.resolve" => Command::Localization(crate::localization::Edit::Resolve {
+            locale: string(request, "locale")?.to_string(),
+            sequence: optional_string(request, "sequence")?,
+        }),
+        "localization.status" => Command::Localization(crate::localization::Edit::Status),
+        "localization.add"
+        | "localization.select"
+        | "localization.remove"
+        | "localization.approve" => {
+            use crate::localization::Edit;
+            let locale = string(request, "locale")?.to_string();
+            Command::Localization(match op {
+                "localization.add" => Edit::Add(locale),
+                "localization.select" => Edit::Select(locale),
+                "localization.remove" => Edit::Remove(locale),
+                _ => Edit::Approve(locale),
+            })
+        }
+        "localization.get" => Command::Localization(crate::localization::Edit::Get {
+            locale: string(request, "locale")?.to_string(),
+            sequence: optional_string(request, "sequence")?
+                .unwrap_or_else(|| state.timeline.id.to_string()),
+        }),
+        "localization.set" => Command::Localization(crate::localization::Edit::Set {
+            locale: string(request, "locale")?.to_string(),
+            sequence: optional_string(request, "sequence")?
+                .unwrap_or_else(|| state.timeline.id.to_string()),
+            overrides: crate::localization::SequencePatch::from_json(&request["overrides"])?,
+        }),
         "project.create" => return Ok(Some(Op::CreateProject(project_create(request)?))),
         "asset.add" => asset_add(request)?,
         "track.add" => Command::CreateTrack {

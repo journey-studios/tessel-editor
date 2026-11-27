@@ -515,11 +515,8 @@ impl Resolver<'_> {
             .unwrap_or_default()
     }
 
-    /// Playback speed of a clip as a ratio (`100 %` is 1): the one place the picture and the sound
-    /// read it, so they cannot drift apart.
     fn speed_ratio(&self, clip: &Clip) -> Ratio {
-        let percent = self.number(clip, "speed").round() as i64;
-        Ratio::new(percent.max(1), 100).unwrap_or(Ratio::from_int(1))
+        clip_playback_speed(&self.state.inspector, clip.id)
     }
 
     fn source_time(&self, clip: &Clip, frame: i64) -> Ratio {
@@ -725,6 +722,16 @@ impl Resolver<'_> {
             text_visible: None,
         })
     }
+}
+
+/// The same playback clock is used for rendering, trim and validation of localized media.
+pub(crate) fn clip_playback_speed(inspector: &inspector::Inspector, clip: Id) -> Ratio {
+    let percent =
+        inspector::property_def("speed").map_or(100.0, |def| match inspector.value(clip, def) {
+            PropertyValue::Number(value) => value,
+            _ => 100.0,
+        });
+    Ratio::new((percent.round() as i64).max(1), 100).unwrap_or(Ratio::from_int(1))
 }
 
 impl EditorState {

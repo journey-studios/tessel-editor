@@ -1,4 +1,4 @@
-//! The persistent project document (`*.tessel.json`), schemas v1 and v2.
+//! The persistent project document (`*.tessel.json`), schemas v1–v4.
 //!
 //! The document is a projection of the editor model, never a dump of its structs: IDs are
 //! strings (the interner is not serialized), time and rates are rationals, paths of managed
@@ -27,7 +27,8 @@ use crate::time::{Rate, Ratio};
 
 pub const FORMAT: &str = "tessel-project";
 /// Latest document version this reader supports.
-pub const SCHEMA_VERSION: u64 = PUSH_IN_SCHEMA_VERSION;
+pub const SCHEMA_VERSION: u64 = LOCALIZATION_SCHEMA_VERSION;
+const LOCALIZATION_SCHEMA_VERSION: u64 = 4;
 const PUSH_IN_SCHEMA_VERSION: u64 = 3;
 const SCENE_SCHEMA_VERSION: u64 = 2;
 /// Projects without directed-scene data keep the legacy encoding.
@@ -143,7 +144,7 @@ fn meta_json(meta: &Meta) -> Value {
     Value::Object(map)
 }
 
-fn asset_json(asset: &Asset, base: Option<&Path>) -> Value {
+pub(crate) fn asset_json(asset: &Asset, base: Option<&Path>) -> Value {
     let source = match &asset.source {
         Source::Demo(image) => json!({ "type": "demo", "name": image.file_name() }),
         Source::File { path } => json!({ "type": "file", "path": encode_path(base, path) }),
@@ -228,7 +229,7 @@ fn clip_json(clip: &crate::state::timeline::Clip) -> Value {
     Value::Object(map)
 }
 
-fn sequence_json(timeline: &Timeline) -> Value {
+pub(crate) fn sequence_json(timeline: &Timeline) -> Value {
     json!({
         "id": timeline.id, "name": timeline.name,
         "rate": rate_json(timeline.rate), "length": timeline.length,
@@ -241,9 +242,28 @@ fn sequence_json(timeline: &Timeline) -> Value {
     })
 }
 
+pub(crate) fn property_document(overrides: &crate::state::inspector::Overrides) -> Value {
+    use std::collections::BTreeMap;
+    let sorted: BTreeMap<_, _> = overrides
+        .iter()
+        .filter(|(_, values)| !values.is_empty())
+        .map(|(clip, values)| {
+            let properties: BTreeMap<_, _> = values
+                .iter()
+                .map(|(name, value)| (*name, value.to_json()))
+                .collect();
+            (clip, properties)
+        })
+        .collect();
+    json!(sorted)
+}
+
 impl EditorState {
     /// Smallest schema that can preserve this project's data when it is saved.
     pub fn document_schema_version(&self) -> u64 {
+        if self.localization.is_some() {
+            return LOCALIZATION_SCHEMA_VERSION;
+        }
         if self.all_sequences().any(|timeline| {
             timeline
                 .clips
@@ -329,20 +349,6 @@ impl EditorState {
                 Value::Object(map)
             })
             .collect();
-        let overrides: Map<String, Value> = {
-            let mut grouped: std::collections::BTreeMap<String, Map<String, Value>> =
-                std::collections::BTreeMap::new();
-            for (clip, property, value) in self.inspector.overrides_sorted() {
-                grouped
-                    .entry(clip)
-                    .or_default()
-                    .insert(property.to_string(), value.to_json());
-            }
-            grouped
-                .into_iter()
-                .map(|(clip, values)| (clip, Value::Object(values)))
-                .collect()
-        };
         let presentation: Map<String, Value> = self
             .all_sequences()
             .map(|timeline| {
@@ -362,9 +368,9 @@ impl EditorState {
                 "requires": { "spark": SPARK_VERSION, "three": THREE_VERSION },
             },
             "library": { "folders": folders, "assets": assets },
-            "sequences": self.all_sequences().map(sequence_json).collect::<Vec<_>>(),
+            "sequences": self.base_sequences().map(sequence_json).collect::<Vec<_>>(),
             "active_sequence": self.timeline.id,
-            "clip_properties": Value::Object(overrides),
+            "clip_properties": property_document(&self.base_properties()),
             "export": {
                 "preset": self.project.export_preset,
                 "user_presets": self.project.user_presets,
@@ -379,6 +385,9 @@ impl EditorState {
         // Same rule for the groups block (F069): absent while the project defines none.
         if let Some(groups) = self.groups.to_json() {
             document["groups"] = groups;
+        }
+        if let Some(localization) = &self.localization {
+            document["localization"] = localization.to_json();
         }
         document
     }
@@ -512,6 +521,10 @@ impl EditorState {
             }
         }
 
+        let localization = doc
+            .get("localization")
+            .map(crate::localization::Localization::from_json)
+            .transpose()?;
         let selected_media = library.items.first().map(|item| item.id);
         Ok(Self {
             project_name: name.trim().to_string(),
@@ -531,6 +544,9 @@ impl EditorState {
             groups,
             scene_interaction: Default::default(),
             thumbnails: Default::default(),
+            localization,
+            active_locale: None,
+            localization_base: None,
         })
     }
 }
@@ -784,7 +800,7 @@ fn parse_asset(value: &Value, id: Id, base: Option<&Path>) -> Result<Asset, Comm
     })
 }
 
-fn parse_sequence(value: &Value, library: &Library) -> Result<Timeline, CommandError> {
+pub(crate) fn parse_sequence(value: &Value, library: &Library) -> Result<Timeline, CommandError> {
     let id = id_of(value, "id", "A sequence")?;
     let rate = value
         .get("rate")
@@ -1093,6 +1109,9 @@ pub fn migrate(doc: Value) -> Result<Value, CommandError> {
             ),
         )
         .details(json!({ "found": version, "supported": SCHEMA_VERSION })));
+    }
+    if version < LOCALIZATION_SCHEMA_VERSION && doc.get("localization").is_some() {
+        return Err(invalid("Localization requires project schema 4"));
     }
     if version < PUSH_IN_SCHEMA_VERSION
         && doc["sequences"]

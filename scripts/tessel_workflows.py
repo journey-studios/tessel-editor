@@ -117,6 +117,12 @@ def export(args):
 
     def run(process):
         request(process, "project.open", path=project)
+        if args.locale is not None:
+            fields["locale"] = args.locale
+        elif args.range is None and args.clip is None:
+            status = request(process, "localization.status")
+            if status["enabled"]:
+                fields["all_locales"] = True
         return run_job(process, "export.start", **fields)
 
     if args.renderer is None:
@@ -181,6 +187,7 @@ def parser(default_renderer):
     video.add_argument("--renderer", type=Path, default=default_renderer)
     video.add_argument("--preset", help="Export preset ID (fullhd by default for whole videos and ranges)")
     video.add_argument("--sequence", help="Sequence ID")
+    video.add_argument("--locale", help="Export only this locale (default: all for a localized full export)")
     video.add_argument("--gl", choices=("gpu", "swiftshader"), default="gpu")
     interval = video.add_mutually_exclusive_group()
     interval.add_argument("--range", type=int, nargs=2, metavar=("START", "END"), help="Half-open sequence frame range")

@@ -22,6 +22,8 @@ pub enum FlowKind {
     ImportProject,
     Package,
     Export,
+    AddLanguage,
+    LanguageOverrides,
     ExportScene,
     /// F043: `scene.attach.start` of a render-bundle (a job), then adopt (with a resource folder),
     /// load, select and show it. See `scene_import.rs`.
@@ -31,7 +33,7 @@ pub enum FlowKind {
 }
 
 impl FlowKind {
-    pub const ALL: [FlowKind; 10] = [
+    pub const ALL: [FlowKind; 12] = [
         Self::Open,
         Self::SaveAs,
         Self::Recover,
@@ -39,6 +41,8 @@ impl FlowKind {
         Self::ImportProject,
         Self::Package,
         Self::Export,
+        Self::AddLanguage,
+        Self::LanguageOverrides,
         Self::ExportScene,
         Self::AttachScene,
         Self::SceneResources,
@@ -54,6 +58,8 @@ impl FlowKind {
             Self::ImportProject => "import_project",
             Self::Package => "package",
             Self::Export => "export",
+            Self::AddLanguage => "language_add",
+            Self::LanguageOverrides => "language_overrides",
             Self::ExportScene => "export_scene",
             Self::AttachScene => "attach_scene",
             Self::SceneResources => "scene_resources",
@@ -73,6 +79,8 @@ impl FlowKind {
             Self::ImportProject => "Importar de outro projeto",
             Self::Package => "Empacotar projeto",
             Self::Export => "Exportar vídeo",
+            Self::AddLanguage => "Adicionar idioma",
+            Self::LanguageOverrides => "Ajustes do idioma",
             Self::ExportScene => "Exportar cena",
             Self::AttachScene => "Anexar cena",
             Self::SceneResources => "Recursos da cena",
@@ -88,6 +96,8 @@ impl FlowKind {
             Self::ImportProject => "Importar",
             Self::Package => "Empacotar",
             Self::Export => "Exportar",
+            Self::AddLanguage => "Adicionar",
+            Self::LanguageOverrides => "Aplicar",
             Self::ExportScene => "Exportar cena",
             Self::AttachScene => "Anexar",
             Self::SceneResources => "Carregar",
@@ -103,6 +113,8 @@ impl FlowKind {
             Self::ImportProject => &[SOURCE],
             Self::Package => &[PACKAGE_PATH, PACKAGE_FORMAT],
             Self::Export => &[PRESET, DESTINATION],
+            Self::AddLanguage => &[LANGUAGE],
+            Self::LanguageOverrides => &[LANGUAGE, LANGUAGE_PATCH],
             Self::ExportScene => &[
                 SCENE,
                 PRESET,
@@ -208,6 +220,20 @@ const PRESET: FieldSpec = FieldSpec {
     picker: Picker::None,
     // The built-ins; the dialog appends the project's own presets when it opens.
     options: &BUILTIN_IDS,
+};
+const LANGUAGE: FieldSpec = FieldSpec {
+    name: "locale",
+    label: "Código do idioma",
+    placeholder: "pt-BR, en, es…",
+    picker: Picker::None,
+    options: &[],
+};
+const LANGUAGE_PATCH: FieldSpec = FieldSpec {
+    name: "overrides",
+    label: "Ajustes da sequência em JSON",
+    placeholder: r#"{"clips":{"voz":{"audio":"voz-en"}}}"#,
+    picker: Picker::None,
+    options: &[],
 };
 const DESTINATION: FieldSpec = FieldSpec {
     name: "destination",
@@ -356,6 +382,14 @@ pub fn build_request(kind: FlowKind, values: &[(&str, String)]) -> Result<Value,
         FlowKind::Package => {
             let format = value("format");
             json!({ "op": "project.package", "path": required("path")?, "format": if format.is_empty() { "archive".to_string() } else { format } })
+        }
+        FlowKind::AddLanguage => json!({ "op": "localization.add", "locale": required("locale")? }),
+        FlowKind::LanguageOverrides => {
+            let overrides: Value =
+                serde_json::from_str(&required("overrides")?).map_err(|error| {
+                    CommandError::new("invalid_localization", format!("JSON inválido: {error}"))
+                })?;
+            json!({ "op": "localization.set", "locale": required("locale")?, "overrides": overrides })
         }
         FlowKind::Export => {
             json!({ "op": "export.start", "preset": required("preset")?, "destination": required("destination")? })

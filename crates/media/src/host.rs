@@ -32,7 +32,7 @@
 //! decoded frames/audio, so nobody has to know the `media.prepare` command.
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, Weak};
 use std::time::{Duration, Instant};
 
@@ -390,6 +390,66 @@ fn asset_of(state: &EditorState, id: &str) -> Result<(MediaKind, Asset), Command
         )
     })?;
     Ok((item.kind, asset))
+}
+
+struct LocalizedExport {
+    snapshot: EditorState,
+    export: ExportRequest,
+    review: Option<Value>,
+}
+
+impl LocalizedExport {
+    fn locale(&self) -> &str {
+        self.review
+            .as_ref()
+            .and_then(|review| review["locale"].as_str())
+            .unwrap_or_default()
+    }
+
+    fn preflight(
+        &self,
+        tools: &Tools,
+        capabilities: Option<&tessel_editor_core::backend::Capabilities>,
+    ) -> Value {
+        let mut report = export::preflight(&self.snapshot, &self.export, tools, capabilities);
+        if let Some(review) = &self.review {
+            report["locale"] = json!(self.locale());
+            report["localization_review"] = review.clone();
+            let status = review["status"].as_str().unwrap_or_default();
+            if status != "source"
+                && status != "approved"
+                && let Some(warnings) = report["warnings"].as_array_mut()
+            {
+                warnings.push(json!({ "code": "localization_review", "message": format!("{}: {status}", self.locale()) }));
+            }
+        }
+        report
+    }
+}
+
+fn preflight_reports(exports: &[LocalizedExport], mut reports: Vec<Value>) -> Value {
+    if exports[0].review.is_none() {
+        return reports.remove(0);
+    }
+    let collect = |field: &str| {
+        reports
+            .iter()
+            .flat_map(|report| {
+                report[field]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .cloned()
+                    .map(|mut entry| {
+                        entry["locale"] = report["locale"].clone();
+                        entry
+                    })
+            })
+            .collect::<Vec<_>>()
+    };
+    let blockers = collect("blockers");
+    json!({ "ok": blockers.is_empty(), "blockers": blockers, "warnings": collect("warnings"),
+        "exports": reports })
 }
 
 impl MediaHost {
@@ -1869,6 +1929,67 @@ impl MediaHost {
         self.finish(state, request, id, slot)
     }
 
+    fn export_requests(
+        state: &EditorState,
+        request: &Value,
+    ) -> Result<Vec<LocalizedExport>, CommandError> {
+        if !flag(request, "all_locales", false) {
+            let (snapshot, export) = Self::export_request(state, request)?;
+            return Ok(vec![LocalizedExport {
+                snapshot,
+                export,
+                review: None,
+            }]);
+        }
+        for key in ["locale", "camera_preview", "range"] {
+            if request.get(key).is_some_and(|value| !value.is_null()) {
+                return Err(invalid(format!("Choose `all_locales` or `{key}`")));
+            }
+        }
+        let destination = Path::new(text(request, "destination")?);
+        let stem = destination
+            .file_stem()
+            .and_then(|name| name.to_str())
+            .filter(|_| {
+                destination
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("mp4"))
+            })
+            .ok_or_else(|| invalid("A localized batch destination must end in .mp4"))?;
+        let status = state.localization_status();
+        let languages = status["languages"]
+            .as_array()
+            .filter(|codes| !codes.is_empty())
+            .ok_or_else(|| invalid("Add a source language before exporting all languages"))?;
+        languages
+            .iter()
+            .map(|review| {
+                let locale = review["locale"]
+                    .as_str()
+                    .ok_or_else(|| invalid("Expected language code"))?;
+                if review["status"] == "conflict" {
+                    return Err(CommandError::new(
+                        "localization_conflict",
+                        format!(
+                            "Resolve the conflicts for `{locale}` before exporting all languages"
+                        ),
+                    )
+                    .details(review.clone()));
+                }
+                let mut request = request.clone();
+                request["locale"] = json!(locale);
+                request["destination"] =
+                    json!(destination.with_file_name(format!("{stem}.{locale}.mp4")));
+                let (snapshot, export) = Self::export_request(state, &request)?;
+                Ok(LocalizedExport {
+                    snapshot,
+                    export,
+                    review: Some(review.clone()),
+                })
+            })
+            .collect()
+    }
+
     fn export_request(
         state: &EditorState,
         request: &Value,
@@ -1877,11 +1998,20 @@ impl MediaHost {
         if camera_preview.is_some() && request.get("range").is_some_and(|range| !range.is_null()) {
             return Err(invalid("Choose either `camera_preview` or `range`"));
         }
+        let locale = optional_text(request, "locale")?;
         let mut snapshot = state.clone();
+        if locale.is_some() {
+            snapshot.detach_localized_view();
+        }
         if let Some(sequence) = optional_text(request, "sequence")? {
             snapshot.execute(Command::ActivateSequence {
                 sequence: sequence.to_string(),
             })?;
+        }
+        if let Some(locale) = locale {
+            snapshot.execute(Command::Localization(
+                tessel_editor_core::localization::Edit::Select(locale.to_string()),
+            ))?;
         }
         let preset = match request.get("preset") {
             Some(Value::String(id)) => preset::find(id, &state.project.user_presets)?,
@@ -1941,7 +2071,7 @@ impl MediaHost {
         request: &Value,
     ) -> Result<Value, CommandError> {
         let tools = self.tools.clone();
-        let (snapshot, export) = Self::export_request(state, request)?;
+        let exports = Self::export_requests(state, request)?;
         let factory = self.renderer.clone();
         let probes_renderer = factory.is_some();
         if probes_renderer {
@@ -1959,10 +2089,14 @@ impl MediaHost {
                 .transpose()?
                 .flatten();
             ctx.advance(1);
-            ctx.stage("checks", 1);
-            ctx.check()?;
-            let report = export::preflight(&snapshot, &export, &tools, capabilities.as_ref());
-            ctx.advance(1);
+            ctx.stage("checks", exports.len() as u64);
+            let mut reports = Vec::with_capacity(exports.len());
+            for item in &exports {
+                ctx.check()?;
+                reports.push(item.preflight(&tools, capabilities.as_ref()));
+                ctx.advance(1);
+            }
+            let report = preflight_reports(&exports, reports);
             Ok((None, report))
         });
         if probes_renderer {
@@ -1983,14 +2117,45 @@ impl MediaHost {
                 "No renderer is attached: exports need `./scripts/render` or the desktop app",
             )
         })?;
-        let (snapshot, export) = Self::export_request(state, request)?;
+        let exports = Self::export_requests(state, request)?;
         self.admit_export(state, Claimant::Export)?;
         let (id, slot) = self.start(JobKind::VideoExport, "Export video", move |ctx| {
             let tools = tools.get()?;
             let mut renderer = factory()?;
-            let report = export::run(&snapshot, &export, &tools, renderer.as_mut(), ctx);
-            renderer.reset_project();
-            Ok((None, report?))
+            if exports[0].review.is_none() {
+                let item = &exports[0];
+                let report = export::run(&item.snapshot, &item.export, &tools, renderer.as_mut(), ctx);
+                renderer.reset_project();
+                return Ok((None, report?));
+            }
+
+            let capabilities = renderer.capabilities().ok();
+            ctx.stage("checks", exports.len() as u64);
+            for item in &exports {
+                ctx.check()?;
+                let preflight = item.preflight(&tools, capabilities.as_ref());
+                if preflight["ok"] != true {
+                    return Err(JobError::new("preflight_failed",
+                        format!("Export blocked for {}", item.locale()))
+                        .with_details(preflight));
+                }
+                ctx.advance(1);
+            }
+            let mut finished = Vec::with_capacity(exports.len());
+            for item in &exports {
+                let locale = item.locale();
+                let stage = ctx.with_stage_prefix(locale);
+                let result = export::run(&item.snapshot, &item.export, &tools, renderer.as_mut(), &stage);
+                renderer.reset_project();
+                let mut report = result.map_err(|error| {
+                    JobError::new(error.code, format!("{locale}: {}", error.message))
+                        .with_details(json!({ "failed_locale": locale, "error": error.details, "completed": finished }))
+                })?;
+                report["locale"] = json!(locale);
+                report["localization_review"] = json!(item.review);
+                finished.push(report);
+            }
+            Ok((None, json!({ "exports": finished })))
         });
         self.finish(state, request, id, slot)
     }

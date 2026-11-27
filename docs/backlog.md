@@ -1,5 +1,14 @@
 # Backlog compartilhado do Tessel Editor
 
+## BL170 — localização de projetos
+
+| ID | Bloco | Pendência | Estado | Depende de | Responsável | Critério de aceite |
+|---|---|---|---|---|---|---|
+| BL170 | Localização | Editar e exportar vários idiomas a partir de uma composição compartilhada | Validado localmente | F018, F023, F029, F077 | Edição local | [F078](features/localization.md). Core e JSONL com persistência, histórico e revisão. Janela nativa por socket semântico e export real de três vídeos com textos, áudio e durações próprios. Evidências no contrato F078. |
+| BL170.1 | Migração de conteúdo | Consolidar os três projetos anteriores de Como funciona | Validado localmente | BL170 | Edição local | Um documento com 226 clipes equivalentes por idioma, quatro tomadas SHARP e biblioteca local. Seletor conferido na janela do Mac. Seis exports nas duas proporções, decodificação completa, durações e pacotes AAC iguais aos aprovados e comparação de quadros entre 42,5 e 72,6 dB ou idêntica. Evidências no projeto de conteúdo local. |
+| BL170.2 | Intercâmbio | Remapear ajustes localizados ao copiar parte de um projeto | Pendente | BL170, F026 | — | Provar pacote parcial e importação de sequências com IDs remapeados, preservando os dados e a revisão por idioma. |
+| BL170.3 | Janela | Editar voz e resolver conflitos pela UI sem editar JSON | Pendente | BL170 | — | Trocar a voz com seletor de assets da biblioteca e abrir os ajustes de uma variante em conflito a partir da base. |
+
 ## BL169 — projeto local de apresentação (2026-11-17)
 
 | ID | Bloco | Pendência | Estado | Depende de | Responsável | Critério de aceite |

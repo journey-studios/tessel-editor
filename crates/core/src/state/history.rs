@@ -44,6 +44,7 @@ pub struct Snapshot {
     scenes: SceneBook,
     /// Group definitions and text styles (F069); clips of every sequence refer to them.
     groups: GroupBook,
+    localization: Option<crate::localization::Localization>,
 }
 
 #[derive(Debug, Clone)]
@@ -130,11 +131,12 @@ impl EditorState {
             project_name: self.project_name.clone(),
             folders: self.library.folders.clone(),
             items: self.library.items.clone(),
-            active: self.timeline.clone(),
+            active: self.base_timeline().clone(),
             others: self.sequences.clone(),
-            overrides: self.inspector.overrides_snapshot(),
+            overrides: self.base_properties(),
             scenes: self.scenes.clone(),
             groups: self.groups.clone(),
+            localization: self.localization.clone(),
         }
     }
 
@@ -173,6 +175,10 @@ impl EditorState {
         self.inspector.restore_overrides(snapshot.overrides);
         self.scenes = snapshot.scenes;
         self.groups = snapshot.groups;
+        self.localization = snapshot.localization;
+        let locale = self.active_locale.take();
+        self.localization_base = None;
+        self.restore_localized_view(locale.as_deref());
         let dropped = self.scene_interaction.selection.prune(&self.scenes);
         // F061: `undo()`/`redo()` and a rolled-back transaction do not pass through `apply`.
         self.prune_fx_target();
@@ -197,6 +203,7 @@ impl EditorState {
         // A gesture settles BEFORE the snapshot, so its entry stays separate from this batch.
         self.settle_property_gesture();
         let before = self.snapshot();
+        let before_locale = self.active_locale.clone();
         self.history.depth += 1;
         let outcome = body(self);
         self.history.depth -= 1;
@@ -211,7 +218,7 @@ impl EditorState {
             Err(error) => {
                 // WHY restore even though commands validate first: a body may run several
                 // commands, and the first ones already mutated when a later one fails.
-                self.restore_exact(before);
+                self.restore_exact(before, before_locale.as_deref());
                 Err(error)
             }
         }
@@ -219,10 +226,12 @@ impl EditorState {
 
     /// Like [`restore`](Self::restore) but also resets presentation: used to roll back a
     /// failed transaction, where nothing the user did should survive.
-    fn restore_exact(&mut self, snapshot: Snapshot) {
+    fn restore_exact(&mut self, snapshot: Snapshot, locale: Option<&str>) {
         let selected_media = self.selected_media;
         let playhead = self.timeline.playhead;
+        self.detach_localized_view();
         self.restore(snapshot);
+        self.restore_localized_view(locale);
         self.selected_media = selected_media.filter(|media| self.library.item(media).is_some());
         self.timeline.playhead = playhead.min(self.timeline.length);
     }

@@ -287,6 +287,14 @@ pub fn preflight(
             format!("`{}` already exists", request.destination.display()),
         ));
     }
+    if !request.replace
+        && let Some(path) = conflicting_sidecar(state, request, &schedule)
+    {
+        blockers.push(blocker(
+            "destination_exists",
+            format!("`{}` already exists", path.display()),
+        ));
+    }
     if let Some(parent) = request
         .destination
         .parent()
@@ -1212,6 +1220,18 @@ fn sidecar_paths(
 
 /// Runs the whole export on a snapshot of `state`. The renderer must be dedicated to this
 /// export: it is driven frame by frame and shares nothing with the live monitor.
+fn conflicting_sidecar(
+    state: &EditorState,
+    request: &ExportRequest,
+    schedule: &Schedule,
+) -> Option<PathBuf> {
+    let captions = state.unburned_caption_sidecars(schedule.from, schedule.to);
+    sidecar_paths(&request.destination, &captions)
+        .into_iter()
+        .map(|(path, _)| path)
+        .find(|path| path.exists())
+}
+
 pub fn run(
     state: &EditorState,
     request: &ExportRequest,

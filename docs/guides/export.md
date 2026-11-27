@@ -15,3 +15,6 @@ O projeto precisa estar salvo. Rode `./scripts/tessel setup --check` para confer
 - `--gl gpu` é o padrão. Use `--gl swiftshader` para render por software. `--renderer CAMINHO` usa um binário já compilado.
 
 O progresso aparece em stderr e o relatório JSON final sai em stdout. Pressione Ctrl+C para pedir o cancelamento ao job e aguardar a limpeza. [Opções de exportação](../features/video-export.md)
+
+Em um [projeto localizado](localization.md), o export integral produz um MP4 por idioma.
+Use `--locale en` para produzir apenas a versão em inglês.

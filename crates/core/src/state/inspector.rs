@@ -775,7 +775,7 @@ impl Inspector {
         })
     }
 
-    fn lookup(
+    pub(crate) fn lookup(
         kind: ClipKind,
         id: &str,
     ) -> Result<(&'static PropertyDef, &'static SectionDef), CommandError> {

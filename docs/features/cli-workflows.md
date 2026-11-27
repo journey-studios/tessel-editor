@@ -27,7 +27,9 @@ uma falha do backend com 1 e um job cancelado por Ctrl+C com 130.
   salva (`camera_preview`). Os dois seletores são exclusivos. O padrão é
   `fullhd` para vídeo ou intervalo e o preset de prévia da câmera para clipe.
   `--preset`, `--sequence`, `--gl`, `--renderer` e `--replace` são opcionais.
-  [F029](video-export.md) · [F075](camera-push-in.md)
+  Projetos com localização exportam todos os idiomas no export integral. Use
+  `--locale` para exportar uma variante, inclusive com `--range` ou `--clip`.
+  [F029](video-export.md) · [F075](camera-push-in.md) · [F078](localization.md)
 - **Setup.** Executa o setup do runtime do repositório e consulta `tessel render
   --check`. Esta rota usa `Tools::discover`, executa `ffprobe -version` e obtém
   as capacidades do renderer via handshake real do Chrome com WebGL. O

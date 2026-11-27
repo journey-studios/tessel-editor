@@ -998,6 +998,7 @@ impl Workstation {
         let mode_bar = command_tabs(cx, "workspace-tabs", TabStyle::Pill, modes);
         let editing = active == WorkspaceTab::Edit;
         let toolbar = self.render_timeline_toolbar(t, window, cx);
+        let languages = self.render_language_controls(t, window, cx);
         let body = if editing {
             self.render_timeline_body(t, cx).into_any_element()
         } else {
@@ -1012,6 +1013,7 @@ impl Workstation {
             .bg(t.panel)
             .child(self.geometry.probe("region:timeline"))
             .child(toolbar)
+            .child(languages)
             .child(body)
             .child(
                 div()

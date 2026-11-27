@@ -117,7 +117,12 @@ impl Command {
     /// excluded on purpose (see the module docs); `Undo`/`Redo` settle inside themselves so
     /// the direct library calls follow the same rule.
     pub(super) fn settles_property_gesture(&self) -> bool {
-        self.history_label().is_some() || matches!(self, Self::ActivateSequence { .. })
+        self.history_label().is_some()
+            || matches!(
+                self,
+                Self::ActivateSequence { .. }
+                    | Self::Localization(crate::localization::Edit::Select(_))
+            )
     }
 }
 
@@ -155,6 +160,9 @@ impl EditorState {
         clip: Option<&str>,
         property: &str,
     ) -> Result<Value, CommandError> {
+        if self.is_localized_view() {
+            return Err(self.shared_edit_error());
+        }
         let (clip, kind) = match clip {
             Some(id) => self.clip_ref(id)?,
             None => self.require_clip()?,
