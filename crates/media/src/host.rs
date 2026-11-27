@@ -1298,6 +1298,7 @@ impl MediaHost {
                     ));
                 }
                 Ok(Placement {
+                    sequence: state.timeline.id,
                     id: optional_text(place, "id")?.map(str::to_owned),
                     track: text(place, "track")?.to_owned(),
                     start,

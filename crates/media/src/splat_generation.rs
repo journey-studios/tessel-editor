@@ -12,7 +12,7 @@ use tessel_editor_core::assets::MediaKind;
 use tessel_editor_core::jobs::{JobContext, JobError};
 use tessel_editor_core::sharp::Choice;
 use tessel_editor_core::state::{Command as EditCommand, ProjectSession};
-use tessel_editor_core::{CommandError, EditorState};
+use tessel_editor_core::{CommandError, EditorState, Id};
 
 use crate::derive::wait_cancellable;
 use crate::fsx::{Staging, io_error};
@@ -21,6 +21,7 @@ use crate::probe;
 use crate::tools::Tools;
 
 pub(crate) struct Placement {
+    pub sequence: Id,
     pub id: Option<String>,
     pub track: String,
     pub start: i64,
@@ -161,6 +162,16 @@ impl Generated {
             return Err(CommandError::new(
                 "stale_result",
                 "The project changed while SHARP was running",
+            ));
+        }
+        if self
+            .placement
+            .as_ref()
+            .is_some_and(|place| place.sequence != state.timeline.id)
+        {
+            return Err(CommandError::new(
+                "stale_result",
+                "The target sequence is no longer active. Generate the splat on that sequence again.",
             ));
         }
         let mut item = self.item;

@@ -4,7 +4,7 @@
 mod common;
 
 use std::fs;
-use std::io::Write;
+use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::process::{Command, Stdio};
 
@@ -63,23 +63,41 @@ cp "$SHARP_FIXTURE" "$5/${name%.*}.ply"
         json!({"op":"project.open","path":document}),
         json!({"op":"plan","frame":0}),
     ];
-    {
-        let mut stdin = cli.stdin.take().unwrap();
-        for request in requests {
-            writeln!(&mut stdin, "{request}").unwrap();
-        }
-    }
-    let output = cli.wait_with_output().unwrap();
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "Two requests intentionally fail"
+    let mut stdin = cli.stdin.take().unwrap();
+    let mut stdout = BufReader::new(cli.stdout.take().unwrap());
+    let mut request = |message: Value| -> Value {
+        writeln!(stdin, "{message}").unwrap();
+        stdin.flush().unwrap();
+        let mut response = String::new();
+        stdout.read_line(&mut response).unwrap();
+        serde_json::from_str(&response).unwrap()
+    };
+    let replies: Vec<_> = requests.into_iter().map(&mut request).collect();
+
+    // Both sequences have a "video" track. A job taken after the switch must not write to it.
+    let job = request(
+        json!({"op":"media.splat.generate","path":image,"wait":false,
+        "place":{"id":"late-shot","track":"video","start":24,"duration":24}}),
     );
-    let replies: Vec<Value> = std::str::from_utf8(&output.stdout)
-        .unwrap()
-        .lines()
-        .map(|line| serde_json::from_str(line).unwrap())
-        .collect();
+    assert_eq!(job["ok"], true, "{job}");
+    let job = job["result"]["job"].as_str().unwrap();
+    for message in [
+        json!({"op":"sequence.add","id":"other","name":"Other"}),
+        json!({"op":"sequence.activate","sequence":"other"}),
+        json!({"op":"track.add","id":"video","name":"Video","kind":"video"}),
+        json!({"op":"job.wait","job":job}),
+    ] {
+        let reply = request(message);
+        assert_eq!(reply["ok"], true, "{reply}");
+    }
+    let before = request(json!({"op":"history.status"}));
+    let commit = request(json!({"op":"job.commit","job":job}));
+    assert_eq!(commit["error"]["code"], "stale_result", "{commit}");
+    assert_eq!(request(json!({"op":"history.status"})), before);
+    let plan = request(json!({"op":"plan","frame":24}));
+    assert_eq!(plan["result"]["layers"], json!([]), "{plan}");
+    drop(stdin);
+    assert_eq!(cli.wait().unwrap().code(), Some(1), "Intentional refusals");
     assert_eq!(replies.len(), 10, "{replies:?}");
     assert_eq!(replies[2]["error"]["code"], "sharp_failed");
     assert_eq!(replies[3]["ok"], false);

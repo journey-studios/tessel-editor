@@ -1,5 +1,7 @@
 """Regression checks for the command adapter without starting Chrome."""
+from pathlib import Path
 import signal
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -19,6 +21,13 @@ class WorkflowsTests(unittest.TestCase):
         self.assertEqual(job.call_args.kwargs["camera_preview"], "take")
         self.assertNotIn("preset", job.call_args.kwargs)
         self.assertNotIn("range", job.call_args.kwargs)
+
+    def test_missing_renderer_explains_how_to_build_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            renderer = Path(directory) / "tessel-render"
+            options = cli.parser(renderer).parse_args(["export", "project.json", "out.mp4"])
+            with self.assertRaisesRegex(FileNotFoundError, "./scripts/cargo build --locked"):
+                cli.export(options)
 
     def test_late_interrupt_keeps_the_already_published_result(self):
         def reply(_process, operation, **_fields):

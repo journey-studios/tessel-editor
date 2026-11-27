@@ -14,8 +14,9 @@ publicação ficam nos mesmos backends usados pela janela e por JSONL.
 ./scripts/tessel restore aventura.tesselpack aventura-restaurada
 ```
 
-Use `tessel help export`, `help setup`, `help package` ou `help restore`
-para ler os guias. `tessel <comando> --help` mostra a sintaxe e opções.
+Use `./scripts/tessel help export`, `./scripts/tessel help setup`,
+`./scripts/tessel help package` ou `./scripts/tessel help restore` para ler os guias.
+`./scripts/tessel <comando> --help` mostra a sintaxe e as opções.
 Caminhos relativos são resolvidos na pasta do chamador. O resultado em JSON
 vai para stdout e o progresso ou erro para stderr. Um erro de uso sai com 2,
 uma falha do backend com 1 e um job cancelado por Ctrl+C com 130.
@@ -27,6 +28,7 @@ uma falha do backend com 1 e um job cancelado por Ctrl+C com 130.
   salva (`camera_preview`). Os dois seletores são exclusivos. O padrão é
   `fullhd` para vídeo ou intervalo e o preset de prévia da câmera para clipe.
   `--preset`, `--sequence`, `--gl`, `--renderer` e `--replace` são opcionais.
+  Ao informar um renderer, a CLI verifica se o binário existe e indica como compilá-lo.
   Projetos com localização exportam todos os idiomas no export integral. Use
   `--locale` para exportar uma variante, inclusive com `--range` ou `--clip`.
   [F029](video-export.md) · [F075](camera-push-in.md) · [F078](localization.md)

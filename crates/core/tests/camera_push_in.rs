@@ -7,9 +7,26 @@ fn run(state: &mut EditorState, request: Value) -> Value {
     headless::execute(state, &request).unwrap_or_else(|error| panic!("{request}: {error:?}"))
 }
 
-fn scene(tag: &str) -> EditorState {
-    let dir = std::env::temp_dir().join(format!("tessel-push-in-{tag}-{}", std::process::id()));
-    let fixtures = write_standard_set(&dir).unwrap();
+struct Scratch(std::path::PathBuf);
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn scene(tag: &str) -> (EditorState, Scratch) {
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let dir = std::env::temp_dir().join(format!(
+        "tessel-push-in-{tag}-{}-{timestamp}",
+        std::process::id()
+    ));
+    std::fs::create_dir(&dir).unwrap();
+    let scratch = Scratch(dir);
+    let fixtures = write_standard_set(&scratch.0).unwrap();
     let mut state = EditorState::demo();
     for request in proof_requests(&fixtures) {
         run(&mut state, request);
@@ -22,7 +39,7 @@ fn scene(tag: &str) -> EditorState {
             "start":72, "duration":72, "source_start":2
         }),
     );
-    state
+    (state, scratch)
 }
 
 fn camera(state: &EditorState, frame: i64) -> tessel_editor_core::content::Camera {
@@ -31,7 +48,7 @@ fn camera(state: &EditorState, frame: i64) -> tessel_editor_core::content::Camer
 
 #[test]
 fn motion_uses_the_orbit_and_target_at_each_frame_and_is_scale_independent() {
-    let mut state = scene("orbit");
+    let (mut state, _scratch) = scene("orbit");
     for scale in [0.002, 2400.0] {
         run(
             &mut state,
@@ -76,7 +93,7 @@ fn motion_uses_the_orbit_and_target_at_each_frame_and_is_scale_independent() {
 
 #[test]
 fn preserves_keys_with_retime_persists_and_undoes_as_one_edit() {
-    let mut state = scene("keyed");
+    let (mut state, _scratch) = scene("keyed");
     run(
         &mut state,
         json!({"op":"clip.property","clip":"splat","property":"speed","value":200}),
@@ -123,7 +140,7 @@ fn preserves_keys_with_retime_persists_and_undoes_as_one_edit() {
 
 #[test]
 fn rejected_edits_are_atomic_and_replacing_reports_the_whole_changed_range() {
-    let mut state = scene("replace");
+    let (mut state, _scratch) = scene("replace");
     run(
         &mut state,
         json!({"op":"clip.camera.push_in","clip":"splat","frames":48}),
