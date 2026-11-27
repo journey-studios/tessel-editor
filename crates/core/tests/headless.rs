@@ -110,3 +110,82 @@ fn the_host_trace_belongs_to_the_window_and_the_headless_session_says_so_without
         headless::execute(&mut state, &json!({"op":"render.trace","since":"x"})).unwrap_err();
     assert_eq!(error.code, "invalid_request");
 }
+
+#[test]
+fn help_returns_the_packaged_guides_without_changing_the_session() {
+    let mut state = EditorState::default();
+    let before = state.summary();
+    let index = headless::execute(&mut state, &json!({"op":"help"})).unwrap();
+    assert_eq!(
+        index["markdown"],
+        include_str!("../../../docs/guides/README.md")
+    );
+
+    for (position, (topic, expected)) in [
+        ("splat", include_str!("../../../docs/guides/splat.md")),
+        ("camera", include_str!("../../../docs/guides/camera.md")),
+        ("preview", include_str!("../../../docs/guides/preview.md")),
+        (
+            "video",
+            include_str!("../../../.agents/skills/tessel-video-editing/SKILL.md")
+                .strip_prefix("---\n")
+                .unwrap()
+                .split_once("\n---\n")
+                .unwrap()
+                .1
+                .trim_start(),
+        ),
+        (
+            "localization",
+            include_str!("../../../docs/guides/localization.md"),
+        ),
+        ("export", include_str!("../../../docs/guides/export.md")),
+        ("setup", include_str!("../../../docs/guides/setup.md")),
+        ("package", include_str!("../../../docs/guides/package.md")),
+        ("restore", include_str!("../../../docs/guides/restore.md")),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        assert_eq!(index["topics"][position]["id"], topic);
+        let result = headless::execute(&mut state, &json!({"op":"help","topic":topic})).unwrap();
+        assert_eq!(result, json!({"topic":topic,"markdown":expected}));
+    }
+    let error = headless::execute(&mut state, &json!({"op":"help","topic":"missing"})).unwrap_err();
+    assert_eq!(error.code, "unknown_topic");
+    assert_eq!(error.details.unwrap()["topics"], index["topics"]);
+    assert_eq!(state.summary(), before);
+}
+
+#[test]
+fn standalone_help_exits_with_the_guide_or_reports_the_unknown_topic() {
+    let binary = env!("CARGO_BIN_EXE_tessel-headless");
+    let output = Process::new(binary)
+        .args(["help", "camera"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert_eq!(
+        std::str::from_utf8(&output.stdout).unwrap(),
+        include_str!("../../../docs/guides/camera.md")
+    );
+
+    let output = Process::new(binary).arg("--help").output().unwrap();
+    assert!(output.status.success());
+    assert!(
+        String::from_utf8(output.stdout)
+            .unwrap()
+            .contains("Guias de uso do Tessel Editor")
+    );
+
+    let output = Process::new(binary)
+        .args(["help", "missing"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(
+        String::from_utf8(output.stderr)
+            .unwrap()
+            .contains("Unknown help topic")
+    );
+}

@@ -28,6 +28,9 @@ inspetor; leia `EditorState::inspector` pela lib para consultas detalhadas de pr
 ## UI e CLI da janela
 
 O controle correspondente na biblioteca/inspetor/timeline traduz o gesto para o mesmo comando.
+Na timeline, a roda vertical e a barra lateral percorrem as trilhas. Cabeçalhos e clipes
+se deslocam juntos. O eixo horizontal percorre o tempo mantendo os cabeçalhos à esquerda.
+A rolagem pertence à janela e não altera a sequência nem seu histórico.
 Com a janela aberta:
 
 ```sh
@@ -39,3 +42,6 @@ Com a janela aberta:
 Regras cobertas por testes em `crates/core/src/state/timeline.rs`. Parser compartilhado: `crates/core/src/commands.rs`.
 Ver [matriz](README.md) para distinguir o caminho implementado da validação específica.
 Os testes GPUI do desktop não substituem a inspeção de cada interação na janela nativa.
+
+BL169.5: teste GPUI de rolagem vertical sobre clipes e cabeçalhos, visibilidade
+da última trilha, alinhamento e rolagem horizontal sem deslocar os cabeçalhos.

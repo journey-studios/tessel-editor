@@ -118,7 +118,7 @@ fn a_sound_window_the_editor_could_not_have_written_is_refused_whole() {
     set(&mut state, "main", "fade_out", json!(30));
     split(&mut state, "main", 40);
     let doc = state.to_document(None);
-    assert_eq!(doc["schema_version"], 3);
+    assert_eq!(doc["schema_version"], 5);
     let clips = doc["sequences"][0]["clips"].as_array().unwrap();
     let index = clips
         .iter()
@@ -260,12 +260,12 @@ fn assert_reopens_document(state: &EditorState) {
 }
 
 #[test]
-fn a_short_half_can_require_schema_three_to_keep_a_future_fade_edit_independent() {
+fn a_short_half_can_require_schema_five_to_keep_a_future_fade_edit_independent() {
     let mut state = whole((24, 1), 48_000, false, 5, 0);
     assert_eq!(state.document_schema_version(), 1);
     split(&mut state, "main", 33);
     let pinned = window_of(&state, "main").lead.unwrap();
     assert_eq!(pinned.frames, 0);
     assert!(pinned.norm.is_some());
-    assert_eq!(state.document_schema_version(), 3);
+    assert_eq!(state.document_schema_version(), 5);
 }

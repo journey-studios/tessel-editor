@@ -6,15 +6,21 @@
 //! ./scripts/media [--empty] < requests.jsonl
 //! ```
 use std::io::{self, BufWriter};
+use std::process::ExitCode;
 
 use tessel_editor_core::state::ProjectSettings;
 use tessel_editor_core::{EditorState, headless};
 use tessel_editor_media::host::MediaHost;
 
-fn main() {
+const USAGE: &str = "Usage: tessel-media [--empty]  (JSON Lines on stdin)";
+
+fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if let Some(exit) = tessel_editor_core::help::cli(&args, USAGE) {
+        return exit;
+    }
     if args.iter().any(|arg| arg != "--empty") {
-        eprintln!("Usage: tessel-media [--empty]  (JSON Lines on stdin)");
+        eprintln!("{USAGE}");
         std::process::exit(2);
     }
     let mut state = if args.is_empty() {
@@ -42,11 +48,11 @@ fn main() {
     // when a request failed (exit code 1).
     drop(media);
     match outcome {
-        Ok(false) => {}
-        Ok(true) => std::process::exit(1),
+        Ok(false) => ExitCode::SUCCESS,
+        Ok(true) => ExitCode::FAILURE,
         Err(error) => {
             eprintln!("I/O failed: {error}");
-            std::process::exit(1);
+            ExitCode::FAILURE
         }
     }
 }

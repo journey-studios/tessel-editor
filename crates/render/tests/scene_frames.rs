@@ -141,7 +141,7 @@ fn png_size(path: &std::path::Path) -> (u32, u32) {
 }
 
 #[test]
-fn the_runtime_advertises_public_capabilities_but_not_the_core_only_transition() {
+fn the_runtime_advertises_every_drawable_capability_and_keeps_transitions_reserved() {
     let Some(mut renderer) = renderer() else {
         return;
     };
@@ -159,15 +159,14 @@ fn the_runtime_advertises_public_capabilities_but_not_the_core_only_transition()
         })
         .collect();
     advertised.sort_by_key(|c| c.as_str());
-    // S1b adds fxTransition to the internal Rust model while S2/runtime and public
-    // admission remain closed (F064). Do not claim support for an unimplemented renderer.
-    assert!(!advertised.contains(&Capability::FxTransition));
-    let mut public: Vec<_> = Capability::ALL
+    // BL168.11 / P4b: the core can describe transitions internally, but the public gate
+    // and this runtime still refuse them. Every other capability must be advertised exactly.
+    let mut drawable: Vec<_> = Capability::ALL
         .into_iter()
         .filter(|capability| *capability != Capability::FxTransition)
         .collect();
-    public.sort_by_key(|c| c.as_str());
-    assert_eq!(advertised, public);
+    drawable.sort_by_key(|c| c.as_str());
+    assert_eq!(advertised, drawable);
     // The feature list, not `layers` (the kinds of the ordinary plan), is what gates the messages.
     assert!(capabilities.supports("directed_scene"));
     // BL102b: the runtime of this repository lists `asset.identity` and the renderer negotiated it.

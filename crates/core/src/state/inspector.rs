@@ -9,6 +9,8 @@ use serde_json::{Value as Json, json};
 
 use super::error::{CommandError, Raw};
 use super::timeline::ClipKind;
+use crate::easing::KeyEasing;
+use crate::reveal::REVEAL_MODES;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum InspectorTab {
@@ -72,6 +74,19 @@ pub enum Applies {
     Audio,
     /// Only title clips (the text of a title).
     Title,
+    /// Only shape clips (size, fill, contour, shadow and path).
+    Shape,
+    /// Only group clips (the group they show, its children, keys and texts; F069).
+    Group,
+    /// Only player clips (the waveform, progress bar and timer; F071).
+    Player,
+    /// Only subtitle clips (the cues, their style and the burn-in choice; F071).
+    Subtitles,
+    /// The visual clips that are one picture a crop can cut: not a group, a player or a caption
+    /// track, whose parts are several layers with a geometry of their own.
+    Framed,
+    /// Only clips that show a picture or a video (the mask, F068); not titles, shapes or scenes.
+    Media,
     /// The fades of a clip that is only sound: the same properties as the visual fades.
     SoundClip,
     /// Scene clips only (their camera keyframes, BL140).
@@ -81,10 +96,28 @@ pub enum Applies {
 impl Applies {
     pub fn includes(self, kind: ClipKind) -> bool {
         match self {
-            Self::Visual => matches!(kind, ClipKind::Video | ClipKind::Title | ClipKind::Scene),
+            Self::Visual => matches!(
+                kind,
+                ClipKind::Video
+                    | ClipKind::Title
+                    | ClipKind::Scene
+                    | ClipKind::Shape
+                    | ClipKind::Group
+                    | ClipKind::Player
+                    | ClipKind::Subtitles
+            ),
+            Self::Framed => matches!(
+                kind,
+                ClipKind::Video | ClipKind::Title | ClipKind::Scene | ClipKind::Shape
+            ),
             // A video clip carries its own sound: its levels are the same controls as an audio clip's.
             Self::Audio => matches!(kind, ClipKind::Audio | ClipKind::Video),
             Self::Title => kind == ClipKind::Title,
+            Self::Shape => kind == ClipKind::Shape,
+            Self::Group => kind == ClipKind::Group,
+            Self::Player => kind == ClipKind::Player,
+            Self::Subtitles => kind == ClipKind::Subtitles,
+            Self::Media => kind == ClipKind::Video,
             Self::SoundClip => kind == ClipKind::Audio,
             Self::Scene => kind == ClipKind::Scene,
         }
@@ -92,8 +125,14 @@ impl Applies {
 
     fn label(self) -> &'static str {
         match self {
-            Self::Visual => "video and title clips",
+            Self::Visual => "video, title, shape, group, player, subtitle and scene clips",
+            Self::Framed => "video, title, shape and scene clips",
+            Self::Group => "group clips",
+            Self::Player => "player clips",
+            Self::Subtitles => "subtitle clips",
             Self::Title => "title clips",
+            Self::Shape => "shape clips",
+            Self::Media => "image and video clips",
             Self::Audio => "audio and video clips",
             Self::SoundClip => "audio clips",
             Self::Scene => "scene clips",
@@ -125,6 +164,10 @@ pub const BLEND_MODES: &[&str] = &[
     "normal", "multiply", "screen", "overlay", "darken", "lighten",
 ];
 
+/// `none` is the default (no mask). `rounded` rounds the corners of the cropped picture by
+/// `mask_radius`; `ellipse` cuts the ellipse inscribed in it (F068).
+pub const MASK_SHAPES: &[&str] = &["none", "rounded", "ellipse"];
+
 const fn slider(min: f64, max: f64, step: f64, decimals: u32, unit: &'static str) -> PropertyKind {
     PropertyKind::Slider {
         min,
@@ -144,6 +187,34 @@ pub const SECTIONS: &[SectionDef] = &[
         expanded: true,
     },
     SectionDef {
+        id: "shape",
+        label: "Forma",
+        tab: InspectorTab::Video,
+        applies: Applies::Shape,
+        expanded: true,
+    },
+    SectionDef {
+        id: "group",
+        label: "Grupo",
+        tab: InspectorTab::Video,
+        applies: Applies::Group,
+        expanded: true,
+    },
+    SectionDef {
+        id: "player",
+        label: "Player",
+        tab: InspectorTab::Video,
+        applies: Applies::Player,
+        expanded: true,
+    },
+    SectionDef {
+        id: "subtitles",
+        label: "Legendas",
+        tab: InspectorTab::Video,
+        applies: Applies::Subtitles,
+        expanded: true,
+    },
+    SectionDef {
         id: "transform",
         label: "Transformar",
         tab: InspectorTab::Video,
@@ -157,9 +228,32 @@ pub const SECTIONS: &[SectionDef] = &[
         applies: Applies::Visual,
         expanded: true,
     },
+    // No properties of its own: it keys the ones above (position, zoom, rotation, opacity) over
+    // the clip's time (F073). Its nodes are built from `Clip::keys`, like the camera's.
+    SectionDef {
+        id: "keys",
+        label: "Quadros-chave",
+        tab: InspectorTab::Video,
+        applies: Applies::Framed,
+        expanded: false,
+    },
     SectionDef {
         id: "cropping",
         label: "Recorte",
+        tab: InspectorTab::Video,
+        applies: Applies::Framed,
+        expanded: false,
+    },
+    SectionDef {
+        id: "mask",
+        label: "Máscara",
+        tab: InspectorTab::Video,
+        applies: Applies::Media,
+        expanded: false,
+    },
+    SectionDef {
+        id: "reveal",
+        label: "Revelação",
         tab: InspectorTab::Video,
         applies: Applies::Visual,
         expanded: false,
@@ -304,11 +398,102 @@ pub const PROPERTIES: &[PropertyDef] = &[
         requires: None,
     },
     PropertyDef {
+        id: "mask_shape",
+        label: "Máscara",
+        section: "mask",
+        kind: PropertyKind::Select {
+            options: MASK_SHAPES,
+        },
+        default: Value::Choice("none"),
+        requires: None,
+    },
+    PropertyDef {
+        id: "mask_radius",
+        label: "Raio",
+        section: "mask",
+        kind: slider(0.0, 50.0, 1.0, 0, "%"),
+        default: Value::Number(10.0),
+        requires: None,
+    },
+    // The reveal (F072): an edge that sweeps across the canvas and uncovers the clip. The sweep
+    // is timed from the clip's first frame, so it needs no keys of its own.
+    PropertyDef {
+        id: "reveal_mode",
+        label: "Revelação",
+        section: "reveal",
+        kind: PropertyKind::Select {
+            options: REVEAL_MODES,
+        },
+        default: Value::Choice("none"),
+        requires: None,
+    },
+    PropertyDef {
+        id: "reveal_from",
+        label: "Início",
+        section: "reveal",
+        kind: slider(-100.0, 200.0, 0.5, 3, "%"),
+        default: Value::Number(-20.0),
+        requires: None,
+    },
+    PropertyDef {
+        id: "reveal_to",
+        label: "Fim",
+        section: "reveal",
+        kind: slider(-100.0, 200.0, 0.5, 3, "%"),
+        default: Value::Number(120.0),
+        requires: None,
+    },
+    PropertyDef {
+        id: "reveal_angle",
+        label: "Inclinação",
+        section: "reveal",
+        kind: slider(-80.0, 80.0, 0.5, 2, "°"),
+        default: Value::Number(0.0),
+        requires: None,
+    },
+    PropertyDef {
+        id: "reveal_duration",
+        label: "Duração",
+        section: "reveal",
+        kind: slider(1.0, 240.0, 1.0, 0, "fr"),
+        default: Value::Number(9.0),
+        requires: None,
+    },
+    PropertyDef {
+        id: "reveal_offset",
+        label: "Atraso",
+        section: "reveal",
+        kind: slider(-240.0, 240.0, 1.0, 0, "fr"),
+        default: Value::Number(0.0),
+        requires: None,
+    },
+    PropertyDef {
+        id: "reveal_easing",
+        label: "Curva",
+        section: "reveal",
+        kind: PropertyKind::Select {
+            options: KeyEasing::OPTIONS,
+        },
+        default: Value::Choice("smoothStep"),
+        requires: None,
+    },
+    PropertyDef {
         id: "speed",
         label: "Velocidade",
         section: "timing",
         kind: slider(25.0, 400.0, 5.0, 0, "%"),
         default: Value::Number(100.0),
+        requires: None,
+    },
+    // A video, GIF or image sequence that repeats from `source_start` when its source ends, so a
+    // 3 s animation can fill a 10 s clip (F073). A still has nothing to repeat; the sound of a
+    // container video is not repeated (the plan warns).
+    PropertyDef {
+        id: "loop",
+        label: "Repetir",
+        section: "timing",
+        kind: PropertyKind::Toggle,
+        default: Value::Bool(false),
         requires: None,
     },
     PropertyDef {
@@ -590,7 +775,7 @@ impl Inspector {
         })
     }
 
-    fn lookup(
+    pub(crate) fn lookup(
         kind: ClipKind,
         id: &str,
     ) -> Result<(&'static PropertyDef, &'static SectionDef), CommandError> {

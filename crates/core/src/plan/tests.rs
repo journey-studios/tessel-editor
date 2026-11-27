@@ -95,7 +95,12 @@ mod occlusion {
             transform: Transform::default(),
             opacity: 1.0,
             blend: "normal".to_string(),
+            grading: Grading::default(),
+            mask: None,
+            reveal: None,
             occluded: false,
+            text_reveal: None,
+            text_visible: None,
         }
     }
 
@@ -176,6 +181,10 @@ mod occlusion {
             flags(&state, vec![base.clone(), top])[0]
         };
         assert!(covers(&|_| {}), "the control covers");
+        assert!(
+            covers(&|top| top.grading.brightness = -100.0),
+            "grading changes colour, never alpha"
+        );
         assert!(!covers(&|top| top.opacity = 0.99), "translucent");
         assert!(
             !covers(&|top| top.blend = "multiply".into()),
@@ -202,6 +211,25 @@ mod occlusion {
         assert!(
             !covers(&|top| top.transform.crop = [0.0, 0.5, 0.0, 0.0]),
             "cropped"
+        );
+        assert!(
+            !covers(&|top| {
+                top.mask = Some(Mask {
+                    shape: MaskShape::Rounded,
+                    radius: 1.0,
+                })
+            }),
+            "a mask cuts the corners, so the picture no longer reaches every pixel"
+        );
+        assert!(
+            !covers(&|top| {
+                top.reveal = Some(Reveal {
+                    edge: 50.0,
+                    angle: 0.0,
+                    rightward: true,
+                })
+            }),
+            "a sweeping edge leaves part of the canvas to what lies below"
         );
         assert!(!covers(&|top| top.opacity = f64::NAN), "not a number");
         assert!(!covers(&|top| top.transform.scale = f64::NAN));
@@ -293,11 +321,106 @@ mod occlusion {
     }
 
     #[test]
+    fn colour_correction_reaches_the_layer_and_stays_out_of_an_untouched_plan() {
+        use crate::state::Raw;
+        use crate::state::timeline::TrackKind;
+        let mut state = state();
+        state
+            .execute(Command::CreateTrack {
+                id: Some("v1".into()),
+                name: "v1".into(),
+                kind: TrackKind::Video,
+            })
+            .unwrap();
+        for (clip, start) in [("graded", 0), ("plain", 48)] {
+            state
+                .execute(Command::AddClip {
+                    id: Some(clip.into()),
+                    name: None,
+                    track: "v1".into(),
+                    asset: Some("clip".into()),
+                    start,
+                    duration: 48,
+                    source_start: None,
+                    text: None,
+                    camera: None,
+                    properties: vec![],
+                })
+                .unwrap();
+        }
+        let at = |state: &EditorState, frame| {
+            state
+                .plan(&PlanRequest {
+                    intent: PreviewIntent::Sequence,
+                    at: PlanTime::Frame(frame),
+                })
+                .unwrap()
+        };
+        let untouched = at(&state, 10).to_json();
+        assert!(
+            untouched["layers"][0].get("grading").is_none(),
+            "{untouched}"
+        );
+        for (property, value) in [
+            ("brightness", 40.0),
+            ("contrast", -25.0),
+            ("saturation", -100.0),
+        ] {
+            state
+                .execute(Command::SetClipProperty {
+                    clip: "graded".into(),
+                    property: property.into(),
+                    value: Raw::Number(value),
+                })
+                .unwrap();
+        }
+        let plan = at(&state, 10);
+        assert_eq!(
+            plan.layers[0].grading,
+            Grading {
+                brightness: 40.0,
+                contrast: -25.0,
+                saturation: -100.0
+            }
+        );
+        assert_eq!(
+            plan.to_json()["layers"][0]["grading"],
+            json!({ "brightness": 40.0, "contrast": -25.0, "saturation": -100.0 })
+        );
+        // Another clip keeps its own (identity) grading: nothing leaks between clips.
+        let other = at(&state, 60);
+        assert!(other.layers[0].grading.is_identity());
+        assert!(other.to_json()["layers"][0].get("grading").is_none());
+    }
+
+    #[test]
     fn the_flag_reaches_the_plan_json_only_when_set() {
         let state = state();
         let mut layers = vec![layer("art", Content::Image), video("clip")];
         state.mark_occluded(&mut layers, 1280, 720);
-        assert_eq!(layer_json(&layers[0])["occluded"], true);
-        assert!(layer_json(&layers[1]).get("occluded").is_none());
+        assert_eq!(layer_json(&layers[0], 1280, 720)["occluded"], true);
+        assert!(layer_json(&layers[1], 1280, 720).get("occluded").is_none());
     }
+}
+
+#[test]
+fn a_loop_wraps_source_time_exactly_inside_one_repetition() {
+    let span = Ratio::new(3, 10).unwrap();
+    let at = |num, den| wrap(Ratio::new(num, den).unwrap(), span);
+    assert_eq!(at(0, 1), Ratio::ZERO);
+    assert_eq!(at(1, 10), Ratio::new(1, 10).unwrap());
+    // Exactly one repetition later is the first picture again, never the last of the pass.
+    assert_eq!(at(3, 10), Ratio::ZERO);
+    assert_eq!(at(7, 10), Ratio::new(1, 10).unwrap());
+    // 1 s at 24 fps is not a whole number of milliseconds; the wrap stays exact.
+    assert_eq!(
+        at(25, 24),
+        Ratio::new(25, 24)
+            .unwrap()
+            .sub(span.mul_int(3).unwrap())
+            .unwrap()
+    );
+    assert!(at(25, 24) < span);
+    // A negative time (never produced by a clip) is left alone instead of wrapped wrongly.
+    assert!(wrap(Ratio::new(-1, 10).unwrap(), span).is_negative());
 }

@@ -32,6 +32,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+import portable  # BL168.8: Windows socket, UTF-8, tools
 
 ROOT = Path(__file__).resolve().parent.parent
 BUNDLE = ROOT / 'scripts/directed-scene-proof/corpus/bundle.json'
@@ -136,8 +137,8 @@ class Native:
 
     def __init__(self, binary, home):
         self.binary = binary
-        self.env = {**os.environ, 'HOME': home}
-        self.socket = os.path.join(home, '.cache/tessel-editor/ui.sock')
+        self.socket = portable.window_socket(home)
+        self.env = {**os.environ, 'HOME': home, **portable.window_env(self.socket)}
         self.home = home
         self.log_path = os.path.join(home, 'editor.log')
         self.log = open(self.log_path, 'w')
@@ -177,12 +178,15 @@ class Native:
         raise RuntimeError('the window never answered on its socket')
 
     def stop(self):
-        self.process.terminate()
-        try:
-            self.process.wait(15)
-        except subprocess.TimeoutExpired:
-            self.process.kill()
-            self.process.wait()
+        if portable.WINDOWS:
+            portable.kill_tree(self.process)  # terminate() is a kill there: the WebView2 helpers go with it
+        else:
+            self.process.terminate()
+            try:
+                self.process.wait(15)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+                self.process.wait()
         self.log.close()
 
 
@@ -364,7 +368,7 @@ def native_inspector(surface, check, scratch, context):
 
 
 def run_surface(factory, binary, report, free_gib):
-    home = tempfile.mkdtemp(prefix='te-s6-', dir='/tmp')
+    home = tempfile.mkdtemp(prefix='te-s6-', dir=portable.TEMP)
     scratch = Path(home) / 'scratch'
     scratch.mkdir()
     surface = factory(binary, home)
@@ -394,9 +398,10 @@ def main():
     parser.add_argument('--allow-dirty', action='store_true',
                         help='skip the clean-tracked-tree requirement (development only; never final evidence)')
     args = parser.parse_args()
+    args.editor, args.headless = portable.executable(args.editor), portable.executable(args.headless)
 
     def free_gib():
-        return shutil.disk_usage('/tmp').free / 1024 ** 3
+        return shutil.disk_usage(portable.TEMP).free / 1024 ** 3
 
     clean, status = clean_tracked_tree()
     head = subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=ROOT, capture_output=True, text=True, check=True).stdout.strip()

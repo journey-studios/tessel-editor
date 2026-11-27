@@ -325,3 +325,38 @@ a 40):
 * *A suíte completa repetida (o aceite de BL128):* 3 execuções completas seguidas no head da PR #53, 384/384 cada (584 s, 378 s e
   363 s, máquina compartilhada com load de 30 a 65), e mais uma na `main` `bc0c3ea` (a mescla da PR #53), 384/384; o teste
   é o `ok 368` de todas.
+
+## União de recursos no host (BL082.4.4, S2-H)
+
+`SceneResourceMap::from_root`, `SceneSlots` e `scene_operation::approved_map` percorrem a união
+calculada por `ScenePlan::resource_union()`, inclusive os recursos exclusivos do vizinho. Aprovação
+continua por cena anexada e assetId; cada uso é qualificado por deck. Recursos compartilhados
+custam uma vez em bytes/slots e cada uso de splat conta no teto do quadro. Custos e somas não
+representáveis são recusados antes de mutar o livro, mesmo com orçamento `u64::MAX`; a eviction
+só mantém recursos antigos se a soma verificada couber. Erros de recurso preservam código e
+trazem `details.resource`; os tetos globais não inventam atribuição.
+
+O host interno aceitar um plano tipado nos testes não habilita `crossDissolve` no runtime ou
+nas entradas públicas. Refuse permanece fechado; evidências por head e limites no
+[relatório H](../migration/p4b-s2-host-resource-report.md). Não é prova de render de transição.
+
+## Desenho dirigido em módulo próprio (BL082.4.4, S2-R1a)
+
+`prepareDirectedScene` e `sceneMaterial` saíram de `runtime/src/compositor.js` para
+`runtime/src/directed-deck-draw.js` (funções que recebem o compositor dono como `host`); a classe
+`Compositor` mantém os dois métodos, com as mesmas assinaturas, como wrappers finos (`compositor.js`
+de 1166 para 1054 linhas na entrega original; na integração com a main `805a0c6`, de 1192 para 1080). É uma extração mecânica: corpos idênticos depois de tirar a indentação e
+trocar `this.` por `host.` (SHA-256 normalizado igual), mesma ordem de preflight, mesmas chaves
+`ds:<order>`, `ds:<order>:<alpha>:<index>` e `dsfx:<order>:<slot>`, mesma telemetria e o mesmo dono
+para o que o quadro constrói (`frame.keep` até o fim, leases incluídos). Planos simples desenham a
+mesma imagem; planos com transição seguem recusados. Cinco controles de borda
+(`runtime/test/directed-scene-draw-seam.test.mjs`) passam na base `7d88545` e depois da extração.
+Sem mudança de produto, de capacidades (JS13/Rust14) ou de pixels; limites, observação preexistente
+de `scene_frames` (BL168.11 corrigido só no teste, mantendo `FxTransition` reservada) e evidências por head no
+[relatório R1a](../migration/p4b-s2-r1a-draw-extraction-report.md).
+
+Integração R1a com main `805a0c6`, head `e14dc51`: Mac nativo validou Node195/browser74
+(inclui grading/títulos), render44 com runtime real, core216/10/5/8/1 nos dois perfis,
+fmt/check/clippy/no-run/build. BL168.11 mantém a lista anunciada JS13 e exige igualdade exata
+com o conjunto do core menos FxTransition reservada; scene_frames8/8. Revisão Windows
+independente aprovada em e14dc51 (Node195/browser71+3/render44+9, core e estáticos verdes); sem workspace global, pixels de transição, GPU física ou desempenho.

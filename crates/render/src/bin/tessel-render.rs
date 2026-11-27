@@ -8,24 +8,75 @@
 //! even when the runtime is not installed; `render.frame` then answers `backend_unavailable`
 //! with the setup command. `scene.render` and `scene.export` (a directed scene as an MP4, F042)
 //! go through `SceneHost`; without the runtime `scene.export` answers `backend_unavailable`.
+use std::error::Error;
 use std::io::{self, BufWriter};
+use std::process::{Command, ExitCode, Stdio};
 use std::sync::Arc;
 
+use serde_json::{Value, json};
+use tessel_editor_core::backend::BackendError;
 use tessel_editor_core::state::ProjectSettings;
 use tessel_editor_core::{EditorState, headless};
 use tessel_editor_media::host::MediaHost;
+use tessel_editor_media::tools::Tools;
 use tessel_editor_render::{RuntimeConfig, session};
 
-const USAGE: &str = "Usage: tessel-render [--demo] [--gl swiftshader|gpu]  (JSON Lines on stdin)";
+const USAGE: &str =
+    "Usage: tessel-render [--demo] [--gl swiftshader|gpu] [--check]  (JSON Lines on stdin)";
 
-fn main() {
-    let mut args = std::env::args().skip(1);
+/// Uses the same tool discovery and Chrome handshake as a real export.
+fn check_backend(gl: Option<String>) -> Result<Value, Box<dyn Error>> {
+    let tools = Tools::discover()?;
+    let probe = Command::new(&tools.ffprobe)
+        .arg("-version")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .status()?;
+    if !probe.success() {
+        return Err(BackendError::new(
+            "tool_unavailable",
+            format!(
+                "ffprobe at `{}` exited with {probe}",
+                tools.ffprobe.display()
+            ),
+        )
+        .into());
+    }
+
+    let mut config = RuntimeConfig::discover().map_err(BackendError::from)?;
+    config.gl = gl.or(config.gl);
+    let mut renderer = session(&config);
+    let capabilities = renderer.capabilities().map(|caps| caps.to_json());
+    renderer.shutdown();
+    Ok(json!({
+        "ok": true,
+        "media": tools.to_json(),
+        "node": config.node,
+        "runtime": config.runtime_dir,
+        "renderer": capabilities?,
+    }))
+}
+
+fn main() -> ExitCode {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if let Some(exit) = tessel_editor_core::help::cli(&args, USAGE) {
+        return exit;
+    }
+    let mut args = args.into_iter();
     let mut demo = false;
+    let mut check = false;
     let mut gl = None;
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--demo" => demo = true,
-            "--gl" => gl = args.next(),
+            "--check" => check = true,
+            "--gl" => {
+                gl = args.next();
+                if gl.is_none() {
+                    eprintln!("{USAGE}");
+                    return ExitCode::from(2);
+                }
+            }
             _ => {
                 eprintln!("{USAGE}");
                 std::process::exit(2);
@@ -38,6 +89,19 @@ fn main() {
     {
         eprintln!("{USAGE}");
         std::process::exit(2);
+    }
+
+    if check {
+        return match check_backend(gl) {
+            Ok(report) => {
+                println!("{report}");
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("Setup check failed: {error}");
+                ExitCode::FAILURE
+            }
+        };
     }
 
     let mut state = if demo {
@@ -90,11 +154,11 @@ fn main() {
         }
     };
     match result {
-        Ok(false) => {}
-        Ok(true) => std::process::exit(1),
+        Ok(false) => ExitCode::SUCCESS,
+        Ok(true) => ExitCode::FAILURE,
         Err(error) => {
             eprintln!("I/O failed: {error}");
-            std::process::exit(1);
+            ExitCode::FAILURE
         }
     }
 }

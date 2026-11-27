@@ -107,6 +107,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent))
 import harness  # noqa: E402
 import proof_surface  # noqa: E402
+import portable  # noqa: E402  (BL168.8: Windows socket)
 
 ROOT = harness.ROOT
 FIXTURES = ROOT / 'docs/migration/fixtures/gizmo-perf'
@@ -528,9 +529,7 @@ class Window:
 
     def send(self, request, timeout=90):
         self.check_deadline()
-        with socket.socket(socket.AF_UNIX) as conn:
-            conn.settimeout(timeout)
-            conn.connect(self.socket)
+        with portable.connect_ui(self.socket, timeout) as conn:
             conn.sendall((json.dumps({'version': 1, **request}) + '\n').encode())
             data = b''
             while not data.endswith(b'\n'):
@@ -759,7 +758,7 @@ def author_saved_project(binary, variables, corpus_name, scratch, cleanup_errors
     close) is appended to `cleanup_errors`, the corpus result's own list, so the check "the editor process ended without
     cleanup problems" fails for the authoring process too; it used to be thrown away. The temporary HOME is removed
     whatever happened, and a failing stop never replaces the authoring error that is already on its way up."""
-    home = tempfile.mkdtemp(prefix='gp-author-', dir='/tmp')
+    home = tempfile.mkdtemp(prefix='gp-author-', dir=portable.TEMP)
     window = None
     try:
         window = Window(binary, home)
@@ -791,8 +790,8 @@ def run_corpus(binary, journey, golden, name, out, notes):
     variables = {'scene': journey['scene'], 'scene_b': journey['scene_b'], 'frame': journey['frame'],
                  'bundle': str(ROOT / corpus['bundle']), 'bundle_b': str(ROOT / corpus['bundle_b']), 'base': base,
                  'node': corpus['node'], 'node_b': corpus['node_b'], 'other': corpus['other']}
-    scratch = tempfile.mkdtemp(prefix='gp-scratch-', dir='/tmp')
-    home = tempfile.mkdtemp(prefix='gp-', dir='/tmp')
+    scratch = tempfile.mkdtemp(prefix='gp-scratch-', dir=portable.TEMP)
+    home = tempfile.mkdtemp(prefix='gp-', dir=portable.TEMP)
     window = None
     result = {'corpus': name, 'checks': [], 'samples': [], 'steps': {}, 'pictures': [], 'overlay_drawn': [],
               'captures': [], 'cleanup_errors': [], 'pixel_expectations': PIXEL_EXPECTATIONS.get(name)}
@@ -1223,7 +1222,7 @@ def main(argv=None):
     parser.add_argument('--phase', choices=['build', 'run'], default='run')
     parser.add_argument('--binary', help='the editor binary (default: the one `build.json` recorded)')
     parser.add_argument('--build-record', help='`build.json` of the build phase (default: --out/build.json)')
-    parser.add_argument('--out', default='/tmp/gizmo-perf-native')
+    parser.add_argument('--out', default=portable.temp_path('gizmo-perf-native'))
     parser.add_argument('--corpora', nargs='*', default=['small', 'dense', 'deep'])
     parser.add_argument('--allow-dirty', action='store_true',
                         help='run with a dirty tree (recorded; the binary cannot be claimed for HEAD)')
@@ -1264,7 +1263,7 @@ def run_phase(args, out):
     record_path = Path(args.build_record) if args.build_record else out / 'build.json'
     record = json.loads(record_path.read_text()) if record_path.exists() else None
     recorded = (record or {}).get('binary')  # relative to the directory of `build.json`: an absolute path is redacted on write
-    binary = args.binary or str(record_path.parent / recorded if recorded else ROOT / 'target/release/tessel-editor')
+    binary = portable.executable(args.binary or str(record_path.parent / recorded if recorded else ROOT / 'target/release/tessel-editor'))
     manifest['binary'] = binary
     if not Path(binary).exists() or not (ROOT / 'runtime/dist/runtime.js').exists():
         manifest.update(status='PREREQUISITE_MISSING',

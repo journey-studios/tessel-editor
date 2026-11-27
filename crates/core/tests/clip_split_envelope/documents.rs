@@ -16,8 +16,8 @@ fn undo_redo_save_and_reopen_keep_the_envelope() {
     persist::save(&mut state, &path).unwrap();
     let document: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
     assert_eq!(
-        document["schema_version"], 3,
-        "schema-2 readers must reject this document"
+        document["schema_version"], 5,
+        "schema-4 readers must reject this document"
     );
     let reopened = persist::load(&path).unwrap();
     for clip in &cut_clips {
@@ -115,15 +115,14 @@ fn old_documents_have_no_window_and_a_bad_window_is_refused_whole() {
 // ---- edits after a cut ----------------------------------------------------------------------
 
 #[test]
-fn windows_require_schema_three_but_other_projects_keep_their_old_version() {
+fn windows_require_schema_five_but_other_projects_keep_their_old_version() {
     let mut state = visual_project((24, 1));
     assert_eq!(state.document_schema_version(), 1);
     set(&mut state, "t", "fade_in", json!(30));
     split(&mut state, "t", 20);
     let doc = state.to_document(None);
-    // The base reader's migrate rejects version > its SCHEMA_VERSION (2), before parsing clips.
-    assert!(doc["schema_version"].as_u64().unwrap() > 2);
-    for version in [1, 2] {
+    assert_eq!(doc["schema_version"], 5);
+    for version in 1..5 {
         let mut stale = doc.clone();
         stale["schema_version"] = json!(version);
         assert_eq!(

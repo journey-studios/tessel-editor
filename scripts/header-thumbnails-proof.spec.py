@@ -274,10 +274,11 @@ class FakeSurface:
 
 
 class Dead(helper.Headless):
-    """A headless that exits at once (a crashed binary): the first request meets the end of its output."""
+    """A headless that exits at once (a crashed binary): the first request meets the end of its output.
+    It is `false` in Python (status 1, nothing read or written), so it exists on every OS."""
 
     def __init__(self, binary, home=None, extra=()):
-        super().__init__('/usr/bin/false', None, (), timeout=5)
+        super().__init__(sys.executable, None, ('-c', 'import sys; sys.exit(1)'), timeout=5)
 
 
 class Hung(helper.Headless):

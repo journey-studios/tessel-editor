@@ -32,7 +32,7 @@ import tempfile
 import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from proof_surface import MIN_FREE_GIB, Headless, Native, ProofFailure, Recorder, free_gib, run_surface  # noqa: E402
+from proof_surface import MIN_FREE_GIB, Headless, Native, ProofFailure, Recorder, free_gib, run_surface, script_command  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 PHRASE = 'Coração: não é só açaí, ÀS ÔNIBUS Ü'
@@ -87,6 +87,18 @@ class Picture:
         assert self.lit, f'{path}: the title drew nothing'
         xs, ys = [p[0] for p in self.lit], [p[1] for p in self.lit]
         self.box = (min(xs), max(xs), min(ys), max(ys))
+
+    def bands(self, gap=3):
+        """Runs of lit rows separated by at least `gap` blank rows: one per line of text (an accent
+        sits a row from its letter, two lines are several rows apart)."""
+        rows = sorted({y for _, y in self.lit})
+        bands = [[rows[0], rows[0]]]
+        for y in rows[1:]:
+            if y - bands[-1][1] > gap:
+                bands.append([y, y])
+            else:
+                bands[-1][1] = y
+        return bands
 
 
 def scenario(surface, check, scratch, fixtures):
@@ -151,12 +163,30 @@ def scenario(surface, check, scratch, fixtures):
     # --- refused text changes nothing --------------------------------------------------------------------------
     before_doc, before_history = document()[0], history()
     for bad, code in [('preço €5', 'unsupported_text'), ('日本', 'unsupported_text'),
-                      ('duas\nlinhas', 'unsupported_text'), ('a\u0307', 'unsupported_text'),
+                      ('duas\tcolunas', 'unsupported_text'), ('duas\r\nlinhas', 'unsupported_text'),
+                      ('a\u0307', 'unsupported_text'),
                       ('\u0301', 'unsupported_text'), ('', 'invalid_value')]:
         refused(set_text(bad), code)
     check('refused texts leave the document, revision and undo depth untouched',
           document()[0] == before_doc and history() == before_history)
     refused(set_text('AÇÃO', clip='c-img'), 'not_applicable')
+
+    # --- BL141.1: a line break is text, and a title wider than the frame is wrapped by the core --------------
+    def planned_text():
+        layers = ok({'op': 'plan', 'frame': 0})['layers']
+        return next(layer for layer in layers if layer['kind'] == 'text')['text']
+
+    ok(set_text('duas\nlinhas'))
+    broken = planned_text()
+    check('an explicit line break is kept and planned as two lines (BL141.1)',
+          broken['content'] == 'duas\nlinhas' and broken.get('lines') == ['duas', 'linhas'], broken)
+    ok(set_text('ACAO'))
+    check('a title that fits is planned as before: no lines, no scale', set(planned_text()) == {'content', 'size', 'color'},
+          planned_text())
+    ok(set_text(PHRASE))
+    wrapped = planned_text()
+    check('a title wider than the frame is planned in several lines, no word lost (BL141.1)',
+          len(wrapped.get('lines', [])) >= 2 and ' '.join(wrapped['lines']) == PHRASE, wrapped)
 
     # --- target vocabulary (the same command as the inspector input) -------------------------------------------
     # The window serves a node only for the selected title, so it is selected first (headless: same call).
@@ -211,7 +241,22 @@ def scenario(surface, check, scratch, fixtures):
     check('a decomposed spelling draws the same picture', frame('nfd', 'Ac\u0327a\u0303o').digest == accented.digest)
     check('acute is not tilde', frame('acute', 'AÇÁO').digest != accented.digest)
 
-    # A title is one line and is not wrapped: this one fits the 320 px canvas at 14 %.
+    # BL141.1: the same phrase that the plan wraps is drawn in lines, inside the frame, in the window too.
+    wrapped = frame('wrapped', PHRASE)
+    margin_x, margin_y = int(0.05 * wrapped.width), int(0.05 * wrapped.height)
+    check('the window draws a long title in several lines (BL141.1)', len(wrapped.bands()) >= 2, wrapped.bands())
+    # This project's title sits in the lower third (`position_y` 38): the block grows upwards, away
+    # from the bottom edge, so every planned line is drawn and nothing is cut (BL141.1 anchoring).
+    planned_lines = len(planned_text().get('lines', [PHRASE]))
+    check('every line of the wrapped title is drawn, none cut by the bottom edge (BL141.1)',
+          len(wrapped.bands()) == planned_lines and wrapped.box[2] > 0 and wrapped.box[3] < wrapped.height - 1,
+          (wrapped.bands(), planned_lines, wrapped.box))
+    check('and it fits the title-safe width (BL141.1)',
+          wrapped.box[0] + 1 >= margin_x and wrapped.box[1] <= wrapped.width - margin_x,
+          (wrapped.box, wrapped.width))
+    check('a title that fits stays one line', len(frame('one-line', 'AÇÃO').bands()) == 1)
+
+    # This one fits the 320 px canvas at 14 % on one line.
     ok(set_text('Não é só açaí'))
     for section in ('transform', 'composite', 'timing'):
         surface.set(f'inspector.{section}', 'expanded', 'false')
@@ -252,7 +297,7 @@ def main():
     try:
         out.mkdir(parents=True, exist_ok=True)
         shutil.rmtree(fixtures, ignore_errors=True)
-        subprocess.run([str(ROOT / 'scripts/fixtures'), str(fixtures)], check=True, capture_output=True,
+        subprocess.run(script_command(ROOT / 'scripts/fixtures', fixtures), check=True, capture_output=True,
                        timeout=600)
     except (OSError, subprocess.SubprocessError) as error:
         report['error'] = f'fixtures: {type(error).__name__}: {error}'

@@ -108,7 +108,7 @@ fn a_cut_inside_a_ramp_keeps_both_fades_and_writes_the_window() {
         outcome["fade_window"],
         json!({"left": null, "right": {"lead": {"frames": 4, "fade": 12.0}}})
     );
-    assert_eq!(state.document_schema_version(), 3);
+    assert_eq!(state.document_schema_version(), 5);
     // The refused-before frames: 11 = last still-ramping frame of the fade-in, 26 = frame whose
     // left half would still fade out. Both are accepted now.
     let mut state = visual_project((24, 1));

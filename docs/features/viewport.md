@@ -184,7 +184,7 @@ Na sessão sem disputa o scrub fica em 41–49,5 imagens/s e o crossfade não pe
 Escolha 0 em vez de 2: 2 amostras não fecham o aceite (scrub < 40 imagens/s e quadros perdidos no take A e no crossfade),
 e 0 é indistinguível de 4 neste conteúdo: diferença máxima por canal de 3–8/255, nenhum pixel acima de 16/255, PSNR ≈ 66 dB
 em relação ao MSAA 4 (2 amostras: 66,5–66,8 dB). Gaussians translúcidas não têm silhueta dura, então a redução só custa
-o raster. Imagens em `/Users/wallyssonnunes/www/tessel-video-splat/previews/perf-bl129/`, fora do repositório.
+o raster. Imagens em `~/www/tessel-video-splat/previews/perf-bl129/`, fora do repositório.
 
 - `render.frame` explícito e export idênticos: hash dos quadros 5, 60, 100, 193, 300 e 450 igual antes e depois, e 6 quadros
   de crossfade exportados (190–195, `fullhd`, medido antes da fusão do BL131) com o mesmo MD5 decodificado antes e depois.
@@ -275,6 +275,11 @@ favor deles. Resultados medidos no relatório [viewport-performance-splat-projec
   retângulo (fit "contain" × escala, corte e deslocamento) contendo o canvas. O runtime não prepara nem desenha camada
   `occluded` (`frame.done.source.occluded_layers`); os pixels são os de desenhá-la (teste
   `runtime/test/occlusion-browser.test.mjs`). `requires` não muda (o asset continua carregado).
+- **Correção de cor (BL168.1).** `layers[].grading = {brightness, contrast, saturation}` (aditivo, só quando algum valor ≠ 0)
+  é aplicada pelo runtime no texel da camada, antes de opacidade e mistura (`runtime/src/grading.js`; fórmula em
+  [F005](properties.md)). Não muda o alfa, então não muda `occluded`.
+- **Layout de título (BL141.1).** `layers[].text.lines` e `text.scale` (aditivos, só quando o título não é uma linha em tamanho
+  cheio) vêm do core (`text::layout`); o runtime desenha as linhas centradas sem decidir quebra nem tamanho ([F050](accented-titles.md)).
 - **Proxy pendente (BL149).** `PreviewPolicy::coverage(state)` conta, uma vez por asset, os vídeos da sequência com proxy
   pronto, pendente (ausente ou velho) e sem frames decodificados ainda. Enquanto houver pendente, o cabeçalho do monitor
   acrescenta ` · gerando proxy (N)` (sem proxy, 4 vídeos 720p custam 105 ms por quadro contra 31 ms com proxy);

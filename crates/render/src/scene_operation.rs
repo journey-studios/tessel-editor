@@ -1,4 +1,5 @@
 //! Shared directed-scene request preparation for headless and native-window adapters.
+use crate::resource_union::{attribute_command, union_failure_command, union_of};
 use crate::{FrameOptions, ResolvedResource, SceneResourceMap};
 use serde_json::{Value, json};
 use tessel_editor_core::headless::backend_error;
@@ -8,16 +9,23 @@ use tessel_editor_core::{CommandError, EditorState};
 use tessel_editor_media::scene_resources::{ResourceResolver, SceneResourceSession};
 
 /// Maps only files that the media adapter has already verified. No file hashing on the UI thread.
+///
+/// Walks the union of both decks of a transition plan, keyed by `scene` (the scene ATTACHED to the
+/// project, never a source `sceneDefinitionId`) and the asset id. A refusal keeps the resolver's
+/// own code (`ResolveError::code`) and names the asset and its decks in `details.resource`.
 pub fn approved_map(
     plan: &ScenePlan,
     scene: &str,
     session: &SceneResourceSession,
 ) -> Result<SceneResourceMap, CommandError> {
     let mut map = SceneResourceMap::new(session.generation().0);
-    for resource in &plan.resources {
+    let union = union_of(plan).map_err(|failure| union_failure_command(plan, &failure))?;
+    for resource in &union {
         let approved = session
             .resolve_asset(scene, &resource.asset_id)
-            .map_err(|error| CommandError::new(error.code(), error.to_string()))?;
+            .map_err(|error| {
+                attribute_command(CommandError::new(error.code(), error.to_string()), resource)
+            })?;
         map.insert(
             resource.asset_id.clone(),
             ResolvedResource {
@@ -26,7 +34,7 @@ pub fn approved_map(
                 path: approved.path,
             },
         )
-        .map_err(backend_error)?;
+        .map_err(|error| attribute_command(backend_error(error), resource))?;
     }
     Ok(map)
 }

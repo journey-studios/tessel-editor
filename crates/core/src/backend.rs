@@ -161,6 +161,16 @@ impl AssetDescriptor {
             .as_ref()
             .and_then(|decoded| decoded.frames.as_ref());
         let source = match (&asset.source, decoded_frames) {
+            // A still the runtime cannot read (TIFF, ...) is drawn from the one PNG derived from it.
+            (Source::File { .. }, Some(frames)) if item.kind == MediaKind::Still => {
+                let derived = expand_pattern(&frames.pattern, frames.first).ok_or_else(|| {
+                    BackendError::new(
+                        "asset_unreadable",
+                        format!("`{}` has a derived picture with no number", item.id),
+                    )
+                })?;
+                json!({ "type": "file", "path": absolute(&derived) })
+            }
             // A decoded container video is drawn from its frame cache, see `Asset::decoded`.
             (Source::File { .. }, Some(frames)) => json!({ "type": "frame_sequence",
                 "pattern": absolute(&frames.pattern), "first": frames.first, "count": frames.count }),

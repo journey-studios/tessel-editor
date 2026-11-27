@@ -50,12 +50,12 @@ import json
 import math
 import os
 import shutil
-import socket
 import subprocess
 import sys
 import tempfile
 import time
 import traceback
+import portable  # BL168.8: Windows socket, UTF-8, tools
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 NODE = "toolbar.perf_meter"
@@ -83,15 +83,13 @@ def check(name, condition, detail=""):
 
 class Editor:
     def __init__(self, binary, home, extra_env=None):
-        self.socket_path = os.path.join(home, ".cache/tessel-editor/ui.sock")
+        self.socket_path = portable.window_socket(home)
         self.log_path = os.path.join(home, "editor.log")
         self.log = open(self.log_path, "w")
-        self.process = subprocess.Popen([binary], env={**os.environ, "HOME": home, **(extra_env or {})}, stdout=self.log, stderr=self.log, start_new_session=True)
+        self.process = subprocess.Popen([binary], env={**os.environ, "HOME": home, **portable.window_env(self.socket_path), **(extra_env or {})}, stdout=self.log, stderr=self.log, start_new_session=True)
 
     def send(self, request, timeout=120):
-        with socket.socket(socket.AF_UNIX) as conn:
-            conn.settimeout(timeout)
-            conn.connect(self.socket_path)
+        with portable.connect_ui(self.socket_path, timeout) as conn:
             conn.sendall((json.dumps(request) + "\n").encode())
             data = b""
             while not data.endswith(b"\n"):
@@ -156,6 +154,11 @@ class Editor:
         os.makedirs(directory, exist_ok=True)
         self.invoke("window.activate")
         time.sleep(0.8)
+        if portable.WINDOWS:
+            path = os.path.join(directory, f"{name}.png")
+            captured, reason = portable.capture_window(self.process.pid, path)
+            check(f"screenshot {name}: captured", captured is not None, reason)
+            return captured
         window = self.window_id()
         if not window:
             check(f"screenshot {name}: the window of this process was found", False, "no on-screen window id")
@@ -212,7 +215,7 @@ def private_copy(document, destination):
     for entry in sorted(os.listdir(folder)):
         if entry == os.path.basename(source) or entry in EDITOR_OWNED:
             continue
-        os.symlink(os.path.join(folder, entry), os.path.join(destination, entry))
+        portable.link(os.path.join(folder, entry), os.path.join(destination, entry))
     return copied
 
 
@@ -247,11 +250,15 @@ def media_resolution(editor, base):
 
 
 def wait_job(editor, job, timeout=120.0, sleep=time.sleep, now=time.monotonic):
-    """`job.wait` answers while the job still runs (a bounded wait), so ask again until it ends."""
+    """`job.wait` answers while the job still runs (a bounded wait), so ask again until it ends, and
+    until a finished job's result is applied: the window applies it on its next tick, so right after
+    `succeeded` it can still be `pending` (seen on a slower debug build, BL168.8)."""
     deadline = now() + timeout
     while True:
         info = editor.op({"op": "job.wait", "job": job}).get("data") or {}
-        if info.get("state") not in ("queued", "running") or now() >= deadline:
+        running = info.get("state") in ("queued", "running")
+        unapplied = info.get("state") == "succeeded" and info.get("result_state") == "pending"
+        if not (running or unapplied) or now() >= deadline:
             return info
         sleep(0.25)
 
@@ -276,7 +283,7 @@ def synthetic_project(editor, work, frames):
     clip = os.path.join(folder, "media", "clip.mp4")
     document = os.path.join(folder, "perf.tessel.json")
     made = subprocess.run(
-        ["ffmpeg", "-nostdin", "-v", "error", "-y", "-f", "lavfi", "-i", f"testsrc2=size=1280x720:rate={FPS}:duration={frames / FPS + 2:.3f}",
+        [portable.ffmpeg(), "-nostdin", "-v", "error", "-y", "-f", "lavfi", "-i", f"testsrc2=size=1280x720:rate={FPS}:duration={frames / FPS + 2:.3f}",
          "-frames:v", str(frames), "-c:v", "libx264", "-crf", "20", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-g", str(FPS),
          "-movflags", "+faststart", clip],
         capture_output=True, text=True,
@@ -454,7 +461,7 @@ def conclude(editor, work, keep_all, log_tail=2000):
 
 def main():
     project = arg("--project")
-    binary = os.path.abspath(arg("--binary", os.path.join(ROOT, "target/release/tessel-editor")))
+    binary = portable.executable(arg("--binary", os.path.join(ROOT, "target/release/tessel-editor")))
     shots = arg("--shots")
     seconds = float(arg("--seconds", "8"))
     rounds = int(arg("--rounds", "3"))
@@ -467,7 +474,7 @@ def main():
     except ValueError as error:
         print(error)
         return 2
-    work = tempfile.mkdtemp(prefix="pmp-", dir="/tmp")
+    work = tempfile.mkdtemp(prefix="pmp-", dir=portable.TEMP)
     home = os.path.join(work, "home")
     os.makedirs(home)
     # --paint-probe: only for a build that logs `PAINT <ms>` per window paint (a local, uncommitted

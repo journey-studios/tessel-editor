@@ -12,12 +12,12 @@ Salvar, estado "salvo/não salvo" na barra; `scripts/live-flow-proof.py`).
 inalterado produz os mesmos bytes. Limite de leitura: 256 MiB (`document_too_large`).
 
 ```text
-format "tessel-project", schema_version 1 (base), 2 (cenas/captura/chaves) ou 3 (janela de fade)
+format "tessel-project", schema_version 1 a 5 conforme os recursos usados
 project      { id, name, revision, requires { spark "2.4.0", three "0.187.0" } }
 library      { folders[], assets[] }       identidade (id) e conteúdo (hash) separados
 sequences[]  { id, name, rate {num,den}, length, width, height, tracks[], clips[] }
 active_sequence
-scenes       { version, items[], ... }     opcional, exige schema_version 2
+scenes       { version, items[], ... }     opcional, exige schema_version 2 ou superior
 export       { preset, user_presets[] }    presets do usuário vivem no documento
 presentation { playhead, zoom, snap, ... } opcional; um loader pode ignorar
 ```
@@ -51,25 +51,28 @@ a cada 20 s quando há alterações (`workflow_tick`) e oferece recuperar. IDs e
 
 ## Limites
 
-`presentation` é preservada mas não afeta render. Sem `fade_window`, projetos sem extensões usam schema 1; cenas, captura ou chaves de câmera exigem schema 2. Com `fade_window`, o projeto exige schema 3, tenha cenas ou não. Leitores legados recusam versões acima do seu limite para evitar perda silenciosa desses dados. O desktop não impede
-fechar a janela com alterações não salvas: o autosave é a rede de segurança, não um aviso.
+`presentation` é preservada e afeta apenas a interface. O documento é salvo no menor esquema
+capaz de preservar os recursos do projeto. Ao fechar a janela com alterações pendentes,
+o mecanismo de recuperação é o autosave.
 
 ## Projetos com cenas dirigidas
 
-F036 adiciona o bloco `scenes`. Sem `fade_window`, esse bloco exige schema 2;
-projetos sem cenas ou outras extensões permanecem em schema 1. Com janela de fade,
-mesmo um projeto com cenas exige schema 3. Leitores antigos recusam versões acima
-do seu limite, protegendo esses dados contra perda silenciosa. Save/autosave e pacote conferem os bytes serializados reais
+F036 adiciona o bloco `scenes` no schema 2. F075 acrescenta `camera_push_in` ao clipe
+no [schema 3](camera-push-in.md). Um leitor antigo recusa um esquema mais novo para
+proteger os dados que não consegue ler. Save/autosave e pacote conferem os bytes serializados reais
 contra o limite do loader (256 MiB), antes de escrever ou substituir o arquivo.
 
+## Projetos localizados
 
-## Janela de fade (BL081.2, validado tecnicamente)
+Projetos com idiomas habilitados usam o schema 4 e gravam o bloco `localization`
+com ajustes e aprovações por idioma. A composição-base continua no bloco
+`sequences`. Veja [F078](localization.md).
 
-O campo opcional fade_window em clips[] exige schema3. lead/tail contêm frames
-(âncora) e fade (guarda); em áudio também norm{far,peer}, obrigatório, descrevendo
-a normalização congelada. Não se aceita norm para clipes visuais. Frames são
-não negativos em áudio e positivos em imagem/vídeo; spans e duração obedecem ao
-limite de1000000quadros. Versões1/2 com janela são invalid_document; leitores
-anteriores limitados à versão2 recusam schema3, protegendo o envelope contra
-perda silenciosa. Sem janela, a menor versão necessária continua1 ou2.
-Janelas intermediárias de áudio sem norm não foram publicadas e são recusadas.
+## Janelas de fade herdadas (BL081.2)
+
+O campo opcional `fade_window` em `clips[]` exige schema 5 em qualquer projeto.
+A janela preserva as rampas após um corte. As partes `lead` e `tail` guardam
+a âncora em quadros e o valor de fade da rampa. Em clipes de áudio, `norm` é
+obrigatório e guarda a normalização congelada. Clipes visuais recusam `norm`.
+O leitor recusa uma janela gravada em schemas 1–4, que não permitem preservar
+esse campo em versões anteriores do editor.

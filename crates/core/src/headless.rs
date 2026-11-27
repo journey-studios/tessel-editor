@@ -173,6 +173,7 @@ fn run_op(
     op: Op,
 ) -> Result<Value, CommandError> {
     match op {
+        Op::Help(topic) => crate::help::guide(topic.as_deref()),
         Op::Status => Ok(state.summary()),
         Op::Header => Ok(state.header().to_json()),
         Op::Run(command) => state.execute(command),
@@ -208,7 +209,32 @@ fn run_op(
             frame_report(&summary, &result)
         }
         Op::RenderAudio(audio) => render_audio(state, &audio),
+        Op::SubtitlesExport(export) => subtitles_export(state, &export),
     }
+}
+
+/// `subtitles.export` (F071): the SRT of a caption clip, and the file it was written to.
+/// Shared with the desktop's operation handler so both answer alike.
+pub fn subtitles_export(
+    state: &EditorState,
+    export: &crate::ops::SubtitlesExport,
+) -> Result<Value, CommandError> {
+    let (id, spec) = state.subtitles_of(&export.clip)?;
+    let srt = spec.to_srt();
+    let mut out = None;
+    if let Some(path) = &export.out {
+        std::fs::write(path, &srt).map_err(|error| {
+            CommandError::new(
+                "io_error",
+                format!("Cannot write `{}`: {error}", path.display()),
+            )
+        })?;
+        out = Some(absolute(path));
+    }
+    Ok(
+        json!({ "action": "subtitles.export", "target": format!("clip:{id}"),
+        "cues": spec.cues.len(), "srt": srt, "out": out }),
+    )
 }
 
 /// What `project.open` reports about a loaded candidate. Shared with adapters that load the

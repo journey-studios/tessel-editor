@@ -146,6 +146,18 @@ class FixtureImportTests(unittest.TestCase):
         info = proof.wait_job(Editor(), "job-1", 10, lambda s: state.__setitem__("t", state["t"] + s), lambda: state["t"])
         self.assertEqual(info["state"], "succeeded")
 
+    def test_a_finished_job_is_waited_for_until_its_result_is_applied(self):
+        answers = iter([("succeeded", "pending"), ("succeeded", "pending"), ("succeeded", "applied")])
+
+        class Editor:
+            def op(self, request):
+                state, result = next(answers)
+                return {"ok": True, "data": {"state": state, "result_state": result}}
+
+        state = {"t": 0.0}
+        info = proof.wait_job(Editor(), "job-1", 10, lambda s: state.__setitem__("t", state["t"] + s), lambda: state["t"])
+        self.assertEqual((info["state"], info["result_state"]), ("succeeded", "applied"))
+
     def test_a_job_that_never_ends_is_returned_still_running_and_fails_the_fixture(self):
         class Editor:
             def op(self, request):
@@ -226,7 +238,9 @@ class ScreenshotTests(unittest.TestCase):
         self.editor = SimpleNamespace(invoke=lambda *args: None, window_id=lambda: "42")
 
     def shot(self, run):
-        with patch.object(proof.time, "sleep"), patch.object(proof.subprocess, "run", side_effect=run):
+        # The macOS capture (`screencapture -l`) is what these tests pin down, on any platform.
+        with patch.object(proof.time, "sleep"), patch.object(proof.subprocess, "run", side_effect=run), \
+                patch.object(proof.portable, "WINDOWS", False):
             return proof.Editor.shot(self.editor, self.dir, "meter")
 
     def failed(self):
@@ -527,6 +541,8 @@ class ConcludeTests(unittest.TestCase):
         self.assertEqual(extra["failures"], ["the editor stopped cleanly"])
 
     def test_no_editor_at_all_still_concludes(self):
+        # No editor at all: the log the fixture opened is closed (Windows does not delete an open file).
+        self.editor.log.close()
         with patch.object(proof.tempfile, "gettempdir", lambda: self.tmp):
             extra = proof.conclude(None, self.work, False)
         self.assertIs(extra["ok"], True)

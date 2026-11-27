@@ -191,6 +191,11 @@ impl From<JobError> for CommandError {
             "disk_full" => "disk_full",
             "integrity_error" => "integrity_error",
             "tool_unavailable" => "tool_unavailable",
+            "not_image" => "not_image",
+            "sharp_unavailable" => "sharp_unavailable",
+            "sharp_checkpoint_missing" => "sharp_checkpoint_missing",
+            "sharp_failed" => "sharp_failed",
+            "invalid_splat" => "invalid_splat",
             "unsupported_format" => "unsupported_format",
             "asset_unreadable" => "asset_unreadable",
             "preflight_failed" => "preflight_failed",
@@ -345,6 +350,7 @@ pub struct JobRegistry {
 /// Handle a job body uses to report progress and observe cancellation.
 #[derive(Clone)]
 pub struct JobContext {
+    stage_prefix: String,
     id: JobId,
     token: CancelToken,
     registry: JobRegistry,
@@ -368,9 +374,18 @@ impl JobContext {
         self.token.check()
     }
 
+    pub fn with_stage_prefix(&self, prefix: &str) -> Self {
+        Self {
+            stage_prefix: format!("{}{prefix} · ", self.stage_prefix),
+            id: self.id.clone(),
+            token: self.token.clone(),
+            registry: self.registry.clone(),
+        }
+    }
+
     pub fn stage(&self, stage: &str, total: u64) {
         self.registry.update(&self.id, |info| {
-            info.stage = stage.to_string();
+            info.stage = format!("{}{stage}", self.stage_prefix);
             info.done = 0;
             info.total = total;
         });
@@ -516,6 +531,7 @@ impl JobRegistry {
         let (id, token) = self.register(kind, label);
         let registry = self.clone();
         let context = JobContext {
+            stage_prefix: String::new(),
             id: id.clone(),
             token: token.clone(),
             registry: registry.clone(),
@@ -550,6 +566,7 @@ impl JobRegistry {
     {
         let (id, token) = self.register(kind, label);
         let context = JobContext {
+            stage_prefix: String::new(),
             id: id.clone(),
             token,
             registry: self.clone(),

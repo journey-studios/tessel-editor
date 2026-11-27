@@ -25,6 +25,13 @@ JSONL
 A resposta da operação vem em `result`. `status` é resumo, não snapshot completo do
 inspetor; leia `EditorState::inspector` pela lib para consultas detalhadas de propriedades.
 
+**Snap (BL168.2, 2026-11-14).** Com `timeline.snap` ligado, a borda vai para a borda de outro clipe, o início/fim da
+sequência ou o playhead a até `SNAP_FRAMES` (6) quadros do pedido, como no `move`. A resposta diz isso, como a do `move`:
+`snapped_from` é o quadro pedido quando o snap levou a borda para outro lugar (`null` sem snap) e `changed` diz se a borda
+mudou. Antes, um trim que o snap devolvia para a borda de onde saiu respondia `ok` sem mudar nada e sem nenhum desses campos:
+parecia aplicado. Para um quadro exato, desligue o snap (`{"op":"set","target":"timeline.snap","field":"value","value":false}`).
+Teste: `crates/core/src/state/timeline.rs`, `a_snapped_trim_reports_where_it_was_asked_to_go_and_whether_anything_moved`.
+
 ## UI e CLI da janela
 
 O controle correspondente na biblioteca/inspetor/timeline traduz o gesto para o mesmo comando.

@@ -555,7 +555,7 @@ impl<T: Transport> RenderBackend for BridgeBackend<T> {
 }
 
 /// Kinds of layers a runtime must be able to draw for the plan formats the core produces.
-pub const PLAN_LAYER_KINDS: [&str; 5] = ["image", "video", "text", "scene", "waveform"];
+pub const PLAN_LAYER_KINDS: [&str; 6] = ["image", "video", "text", "scene", "waveform", "shape"];
 
 #[cfg(test)]
 mod tests;

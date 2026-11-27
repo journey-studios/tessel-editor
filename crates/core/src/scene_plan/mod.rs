@@ -46,6 +46,7 @@ mod error;
 mod json;
 mod model;
 pub mod probe;
+mod temporal;
 mod timeline;
 mod transition;
 mod transition_json;
@@ -59,6 +60,7 @@ pub use model::{
     PlanParent, PlanResource, PlanSource, PlanSplat, ScenePlan, UninterpretedField,
     UninterpretedReason, UnsupportedDomain, capabilities,
 };
+pub use temporal::{DeckTiming, TransitionTiming};
 pub use timeline::PlanTimeline;
 pub use transition::{
     DeckRole, DeckUse, MAX_TRANSITION_PLAN_BYTES, MAX_TRANSITION_PLAN_ITEMS, PlanTransition,

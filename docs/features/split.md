@@ -82,7 +82,7 @@ Uma rampa que não alcança a metade continua sendo zerada (sem dado novo). Esto
 atomicamente. **Editar `fade_in`/`fade_out` numa metade redefine só aquela rampa** (medida da borda da metade); a outra rampa herdada
 conserva forma, posição e normalização, também quando o clipe inteiro a encurtava por sobreposição. Aparar a borda além da origem da
 rampa descarta a âncora daquele lado; aparar menos a mantém no lugar da sequência, e o vão de normalização também não muda. O campo é
-salvo em `fade_window` do clipe e exige schema 3 (um clipe de áudio com rampa fixada sem `norm`, ou de imagem com `norm`, é
+salvo em `fade_window` do clipe e exige schema 5 (um clipe de áudio com rampa fixada sem `norm`, ou de imagem com `norm`, é
 `invalid_document`); o resultado do split traz `fade_window.left/right`. Regras completas, operações e evidências:
 [clip-split-fades-report.md](../migration/clip-split-fades-report.md).
 
@@ -217,7 +217,7 @@ a execução conferem o mesmo limite de janela. O nó clip:<id> expõe fade_wind
 (nulo sem janela), incluindo a normalização das rampas de áudio.
 
 Fixação conservadora: um corte de áudio fora da rampa também pode criar janela
-e elevar o documento a schema3 em metades curtas (ex.: clipe60, fade-in5, corte30).
+e elevar o documento a schema 5 em metades curtas (ex.: clipe60, fade-in5, corte30).
 Isso preserva a rampa se o outro fade for editado até48quadros, sem renormalizá-la;
 metades suficientemente longas dispensam janela e mantêm schema1/2. É uma
 limitação intencional da representação, não uma afirmação de compatibilidade
@@ -231,7 +231,7 @@ coordenadas, desempenho, pixels ou áudio ouvido.
 Validação final BL081.2: commit local8901553; Mac core1587 e desktop516,
 prova headless12/12 e janela12/12. Windows envelope44/44 e GPUI split5/fades2;
 headless16/16 e janela27/27, 14 WAVs iguais entre superfícies. Leitor antigo
-real recusa schema3 (unsupported_schema found3/supported2). No Windows, o
+real recusa schema 5 (unsupported_schema found3/supported2). No Windows, o
 harness foi o equivalente PowerShell preservado nos logs, sem executar o
 Python versionado. Sem pixels, ponteiro, áudio ouvido ou desempenho. Ver
 [fechamento técnico](../migration/clip-split-fades-report.md#10-fechamento-técnico-macwindows).

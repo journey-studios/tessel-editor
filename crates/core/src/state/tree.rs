@@ -19,10 +19,18 @@ use super::layout::{Layout, Node as LayoutNode, PanelKind};
 use super::split::SplitAvailability;
 use super::timeline::{ClipKind, TrackKind, ZOOM_MAX, ZOOM_MIN};
 use super::{EditorState, WorkspaceTab};
-use crate::content::TextSpec;
+use crate::content::{MAX_TITLE_ANIMATION_MS, TextSpec, TitleAlignment, TitleAnimation, TitleFont};
 use crate::plan::PreviewIntent;
 use crate::preview::PreviewMode;
 use crate::scene_interaction::{GizmoSpace, GizmoTool};
+use crate::shape::{
+    FillMode, SHAPE_MAX_ANGLE, SHAPE_MAX_BLUR, SHAPE_MAX_EXTENT, SHAPE_MAX_OFFSET,
+    SHAPE_MAX_RADIUS, SHAPE_MAX_STOPS, SHAPE_MAX_STROKE, ShapeKind, ShapeSpec,
+};
+
+mod clip_key_nodes;
+mod group_nodes;
+mod live_nodes;
 
 /// Window-dependent facts the pure state cannot know.
 pub struct TreeContext<'a> {
@@ -653,11 +661,74 @@ fn build_timeline(state: &EditorState, nodes: &mut Vec<Node>) {
     // blocked and says why, like every other control (`disabled_reason`).
     nodes.push(build_split_control(state, edit));
     nodes.push(
+        Node::new("timeline.add_title", "button", "Adicionar título")
+            .parent("region:timeline")
+            .visible(edit)
+            .action("invoke"),
+    );
+    nodes.push(
+        Node::new("timeline.add_shape", "button", "Adicionar retângulo")
+            .parent("region:timeline")
+            .visible(edit)
+            .action("invoke"),
+    );
+    nodes.push(
+        Node::new("timeline.add_group", "button", "Adicionar grupo")
+            .parent("region:timeline")
+            .visible(edit)
+            .action("invoke"),
+    );
+    nodes.push(
+        Node::new("timeline.add_chat", "button", "Adicionar chat")
+            .parent("region:timeline")
+            .visible(edit)
+            .action("invoke"),
+    );
+    nodes.push(
+        Node::new("timeline.add_player", "button", "Adicionar player")
+            .parent("region:timeline")
+            .visible(edit)
+            .action("invoke"),
+    );
+    nodes.push(
+        Node::new("timeline.add_subtitles", "button", "Adicionar legendas")
+            .parent("region:timeline")
+            .visible(edit)
+            .action("invoke"),
+    );
+    nodes.push(
         Node::new("timeline.tool.delete", "icon_button", "Delete clip")
             .parent("region:timeline")
             .disabled(NO_TOOL)
             .action("invoke"),
     );
+    nodes.push(
+        Node::new("flow.language_add", "button", "Adicionar idioma")
+            .parent("region:timeline")
+            .action("invoke"),
+    );
+    if let Some(active) = state.active_language() {
+        let codes = state.language_codes();
+        nodes.push(
+            Node::new("timeline.language", "select", "Idioma")
+                .parent("region:timeline")
+                .state("value", active)
+                .state("options", json!(codes))
+                .field("value", "choice", json!({ "options": codes })),
+        );
+        if state.is_localized_view() {
+            nodes.push(
+                Node::new("flow.language_overrides", "button", "Ajustes do idioma")
+                    .parent("region:timeline")
+                    .action("invoke"),
+            );
+            nodes.push(
+                Node::new("timeline.language.approve", "button", "Aprovar idioma")
+                    .parent("region:timeline")
+                    .action("invoke"),
+            );
+        }
+    }
     let sequence_ids: Vec<&str> = state.all_sequences().map(|t| t.id.as_str()).collect();
     nodes.push(
         Node::new("timeline.sequence", "select", "Sequence")
@@ -841,6 +912,7 @@ fn build_inspector(state: &EditorState, nodes: &mut Vec<Node>) {
         let modified = clip.is_some_and(|clip| {
             inspector.section_modified(clip.id, section.id)
                 || (section.id == "camera" && !clip.camera_keys.is_empty())
+                || (section.id == "keys" && !clip.keys.is_empty())
         });
         let mut node = Node::new(&id, "accordion", section.label)
             .parent("region:inspector")
@@ -850,8 +922,13 @@ fn build_inspector(state: &EditorState, nodes: &mut Vec<Node>) {
             .state("modified", modified)
             .field("expanded", "boolean", json!({}))
             .action("toggle");
-        // The text of a title has no default to go back to: its section has no reset.
-        node = if applicable && section.id != "text" {
+        // The text of a title and the shape of a shape clip have no default to go back to: their
+        // sections have no reset.
+        node = if applicable
+            && !matches!(
+                section.id,
+                "text" | "shape" | "group" | "player" | "subtitles" | "keys"
+            ) {
             node.action("reset")
         } else {
             node
@@ -866,6 +943,27 @@ fn build_inspector(state: &EditorState, nodes: &mut Vec<Node>) {
                 nodes.push(clip_text_node(entry.id.as_ref(), text, &id, visible));
             }
         }
+        if let (true, Some(clip)) = (section.id == "group" && applicable, clip) {
+            let shown = in_tab && inspector.is_expanded(section.id);
+            group_nodes::build_group(state, clip, &id, shown, nodes);
+        }
+        if let (true, Some(clip)) = (section.id == "player" && applicable, clip) {
+            let shown = in_tab && inspector.is_expanded(section.id);
+            live_nodes::build_player(clip, &id, shown, nodes);
+        }
+        if let (true, Some(clip)) = (section.id == "subtitles" && applicable, clip) {
+            let shown = in_tab && inspector.is_expanded(section.id);
+            live_nodes::build_subtitles(clip, &id, shown, nodes);
+        }
+        if section.id == "shape" {
+            let visible = in_tab && applicable && inspector.is_expanded(section.id);
+            let shape = clip
+                .filter(|clip| clip.kind == ClipKind::Shape)
+                .and_then(|entry| entry.shape.as_ref().map(|shape| (entry, shape)));
+            if let Some((entry, shape)) = shape {
+                nodes.push(clip_shape_node(entry.id.as_ref(), shape, &id, visible));
+            }
+        }
         for property in section_properties(section.id) {
             // One node per property: a fade is listed by the section that owns it for the
             // selected clip's kind.
@@ -878,6 +976,10 @@ fn build_inspector(state: &EditorState, nodes: &mut Vec<Node>) {
                 property,
                 in_tab && applicable && inspector.is_expanded(section.id),
             ));
+        }
+        if let (true, Some(clip)) = (section.id == "keys" && applicable, clip) {
+            let shown = in_tab && inspector.is_expanded(section.id);
+            clip_key_nodes::build_clip_keys(state, clip, &id, shown, nodes);
         }
         if let (true, Some(clip)) = (section.id == "camera" && applicable, clip) {
             let shown = in_tab && inspector.is_expanded(section.id);
@@ -904,6 +1006,27 @@ fn build_camera_keys(
 ) {
     let playhead = state.timeline.playhead;
     let inside = playhead >= clip.start && playhead < clip.end();
+    let mut push_in = Node::new("camera.push_in", "button", "Push in and preview")
+        .parent(parent)
+        .visible(shown)
+        .state("clip", clip.id)
+        .state(
+            "current",
+            clip.camera_push_in.map(|effect| effect.to_json()),
+        )
+        .action("invoke");
+    if clip.duration < 2 {
+        push_in = push_in.disabled("The clip needs at least two frames");
+    }
+    nodes.push(push_in);
+    if clip.camera_push_in.is_some() {
+        nodes.push(
+            Node::new("camera.push_in.clear", "button", "Remove camera push-in")
+                .parent(parent)
+                .visible(shown)
+                .action("invoke"),
+        );
+    }
     let mut capture = Node::new("camera_keys.capture", "button", "Add key at playhead")
         .parent(parent)
         .visible(shown)
@@ -988,7 +1111,7 @@ fn build_camera_keys(
     }
 }
 
-/// The text of the selected title: `set clip_text:<clip> content|size|color <value>` is the same
+/// The text of the selected title: `set clip_text:<clip> <field> <value>` is the same
 /// command as the inspector's input (`SetClipTextField`).
 fn clip_text_node(clip: &str, text: &TextSpec, parent: &str, visible: bool) -> Node {
     Node::new(format!("clip_text:{clip}"), "text-input", "Texto do título")
@@ -998,6 +1121,10 @@ fn clip_text_node(clip: &str, text: &TextSpec, parent: &str, visible: bool) -> N
         .state("content", text.content.clone())
         .state("size", text.size)
         .state("color", text.color.clone())
+        .state("font", text.font.as_str())
+        .state("animation", text.animation.as_str())
+        .state("align", text.align.as_str())
+        .state("animation_ms", text.animation_ms)
         .state("normalization", "NFC")
         .field(
             "content",
@@ -1007,8 +1134,88 @@ fn clip_text_node(clip: &str, text: &TextSpec, parent: &str, visible: bool) -> N
         )
         .field("size", "number", json!({ "min": 1, "max": 100, "unit": "% of the canvas height" }))
         .field("color", "text", json!({ "format": "#rrggbb" }))
+        .field("font", "choice", json!({ "options": TitleFont::OPTIONS }))
+        .field("animation", "choice", json!({ "options": TitleAnimation::OPTIONS }))
+        .field("align", "choice", json!({ "options": TitleAlignment::OPTIONS }))
+        .field("animation_ms", "integer", json!({ "min": 1, "max": MAX_TITLE_ANIMATION_MS, "unit": "ms" }))
 }
 
+/// The shape of the selected shape clip: set clip_shape:<clip> <field> <value> is the same
+/// command as the inspector's controls (SetClipShapeField). Every field of the spec is a state
+/// entry and a typed field, so a script reads and writes what the inspector shows.
+fn clip_shape_node(clip: &str, shape: &ShapeSpec, parent: &str, visible: bool) -> Node {
+    let spec = shape.to_json();
+    let mut node = Node::new(format!("clip_shape:{clip}"), "shape-input", "Forma")
+        .parent(parent)
+        .visible(visible)
+        .state("clip", format!("clip:{clip}"));
+    for field in ShapeSpec::FIELDS {
+        node = node.state(field, spec[field].clone());
+    }
+    with_shape_fields(node)
+}
+
+/// The typed fields of a shape spec, shared by the shape clip's node and a group's shape child.
+fn with_shape_fields(node: Node) -> Node {
+    let percent =
+        |unit: &'static str, min: f64, max: f64| json!({ "min": min, "max": max, "unit": unit });
+    node.field("kind", "choice", json!({ "options": ShapeKind::OPTIONS }))
+        .field(
+            "width",
+            "number",
+            json!({ "min_exclusive": 0, "max": SHAPE_MAX_EXTENT, "unit": "% of the canvas width" }),
+        )
+        .field(
+            "height",
+            "number",
+            json!({ "min_exclusive": 0, "max": SHAPE_MAX_EXTENT, "unit": "% of the canvas height" }),
+        )
+        .field("fill", "text", json!({ "format": "#rrggbb or #rrggbbaa" }))
+        .field(
+            "radius",
+            "number",
+            percent("% of the canvas height", 0.0, SHAPE_MAX_RADIUS),
+        )
+        .field("fill_mode", "choice", json!({ "options": FillMode::OPTIONS }))
+        .field("fill_to", "text", json!({ "format": "#rrggbb or #rrggbbaa" }))
+        .field(
+            "stops",
+            "text",
+            json!({ "format": "<at> <#rrggbb[aa]> ... with at in (0, 1), increasing", "max_stops": SHAPE_MAX_STOPS }),
+        )
+        .field(
+            "gradient_angle",
+            "number",
+            percent("degrees", -SHAPE_MAX_ANGLE, SHAPE_MAX_ANGLE),
+        )
+        .field("stroke", "text", json!({ "format": "#rrggbb or #rrggbbaa" }))
+        .field(
+            "stroke_width",
+            "number",
+            percent("% of the canvas height", 0.0, SHAPE_MAX_STROKE),
+        )
+        .field("shadow", "text", json!({ "format": "#rrggbb or #rrggbbaa" }))
+        .field(
+            "shadow_blur",
+            "number",
+            percent("% of the canvas height", 0.0, SHAPE_MAX_BLUR),
+        )
+        .field(
+            "shadow_x",
+            "number",
+            percent("% of the canvas width", -SHAPE_MAX_OFFSET, SHAPE_MAX_OFFSET),
+        )
+        .field(
+            "shadow_y",
+            "number",
+            percent("% of the canvas height", -SHAPE_MAX_OFFSET, SHAPE_MAX_OFFSET),
+        )
+        .field(
+            "path",
+            "text",
+            json!({ "format": "SVG path data, absolute M L H V C Q Z in a 0..100 box" }),
+        )
+}
 fn property_node(state: &EditorState, parent: &str, property: &PropertyDef, visible: bool) -> Node {
     let inspector = &state.inspector;
     let clip = state.inspector_clip();
@@ -1547,7 +1754,8 @@ mod tests {
         assert_eq!(node["state"]["content"], "Ação");
         assert_eq!(node["state"]["normalization"], "NFC");
         assert_eq!(node["parent"], "inspector.text");
-        assert_eq!(node["fields"].as_array().unwrap().len(), 3);
+        // content, size, color plus the F066 style fields (font, animation, align, animation_ms).
+        assert_eq!(node["fields"].as_array().unwrap().len(), 7);
         let section = found(&state, "inspector.text").unwrap();
         assert_eq!(section["visible"], true);
         assert!(
@@ -1563,6 +1771,163 @@ mod tests {
             json!({"op":"invoke","target":"clip:basalt-cliffs","action":"select"}),
         );
         assert!(found(&state, "clip_text:title-north").is_none());
+    }
+
+    #[test]
+    fn the_shape_is_a_node_only_for_a_selected_shape_and_the_toolbar_adds_one() {
+        let mut state = EditorState::demo();
+        let layout = default_layout();
+        let metrics = HashMap::new();
+        let found = |state: &EditorState, id: &str| {
+            let cx = TreeContext {
+                theme: "dark",
+                metrics: &metrics,
+                layout: &layout,
+                perf_meter: false,
+            };
+            find(state, &cx, id)
+        };
+        let run = |state: &mut EditorState, request: Value| {
+            crate::headless::execute(state, &request).unwrap()
+        };
+        let button = found(&state, "timeline.add_shape").expect("the toolbar has the button");
+        assert_eq!(button["parent"], "region:timeline");
+        assert_eq!(button["actions"][0]["action"], "invoke");
+        assert!(found(&state, "inspector.shape").unwrap()["visible"] == false);
+
+        let added = run(
+            &mut state,
+            json!({"op":"invoke","target":"timeline.add_shape","action":"invoke"}),
+        );
+        let clip = added["target"]
+            .as_str()
+            .unwrap()
+            .strip_prefix("clip:")
+            .unwrap();
+        let node = found(&state, &format!("clip_shape:{clip}"))
+            .expect("a selected shape has a shape node");
+        assert_eq!(node["parent"], "inspector.shape");
+        assert_eq!(node["state"]["kind"], "rect");
+        assert_eq!(node["state"]["fill"], "#4a90e2");
+        // Every spec field is a typed, writable field of the node and a state entry.
+        let fields = node["fields"].as_array().unwrap();
+        assert_eq!(fields.len(), ShapeSpec::FIELDS.len());
+        for name in ShapeSpec::FIELDS {
+            assert!(
+                fields.iter().any(|field| field["field"] == name),
+                "`{name}` is a field"
+            );
+            assert!(!node["state"][name].is_null(), "`{name}` is state");
+        }
+        assert_eq!(node["state"]["fill_mode"], "solid");
+        assert_eq!(node["state"]["stroke_width"], 0.0);
+        let section = found(&state, "inspector.shape").unwrap();
+        assert_eq!(section["visible"], true);
+        assert!(
+            !section["actions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|a| a["action"] == "reset")
+        );
+
+        // A clip that is not a shape has no shape node.
+        run(
+            &mut state,
+            json!({"op":"invoke","target":"clip:basalt-cliffs","action":"select"}),
+        );
+        assert!(found(&state, &format!("clip_shape:{clip}")).is_none());
+    }
+
+    #[test]
+    fn a_group_clip_lists_its_group_keys_texts_and_styles_and_has_no_crop() {
+        let mut state = EditorState::demo();
+        let layout = default_layout();
+        let metrics = HashMap::new();
+        let found = |state: &EditorState, id: &str| {
+            let cx = TreeContext {
+                theme: "dark",
+                metrics: &metrics,
+                layout: &layout,
+                perf_meter: false,
+            };
+            find(state, &cx, id)
+        };
+        let run = |state: &mut EditorState, request: Value| {
+            crate::headless::execute(state, &request).unwrap()
+        };
+        assert!(
+            found(&state, "timeline.add_group").is_some(),
+            "the toolbar has the button"
+        );
+        assert!(found(&state, "inspector.group").unwrap()["visible"] == false);
+
+        let added = run(
+            &mut state,
+            json!({"op":"invoke","target":"timeline.add_group","action":"invoke"}),
+        );
+        let clip = added["target"]
+            .as_str()
+            .unwrap()
+            .strip_prefix("clip:")
+            .unwrap()
+            .to_string();
+        for id in [
+            format!("clip_group:{clip}"),
+            "group_def:group-1".to_string(),
+            "group_child:group-1/panel".to_string(),
+            "group_child:group-1/title".to_string(),
+            "group_track:group-1/panel/opacity".to_string(),
+            "group_key:group-1/panel/opacity/0".to_string(),
+            "group_key:group-1/title/y/1".to_string(),
+            format!("group_text:{clip}/title"),
+            "text_style:title".to_string(),
+        ] {
+            let node = found(&state, &id).unwrap_or_else(|| panic!("`{id}` is a node"));
+            assert_eq!(node["parent"], "inspector.group", "{id}");
+            assert_eq!(node["visible"], true, "{id}");
+        }
+        let panel = found(&state, "group_child:group-1/panel").unwrap();
+        assert_eq!(panel["state"]["child_kind"], "shape");
+        assert_eq!(panel["state"]["width"], 60.0);
+        let section = found(&state, "inspector.group").unwrap();
+        assert_eq!(section["visible"], true);
+        assert!(
+            !section["actions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|a| a["action"] == "reset"),
+            "a group has no default to go back to"
+        );
+        // A group is several layers with their own geometry: the crop of one picture has no
+        // meaning for it.
+        assert_eq!(
+            found(&state, "inspector.cropping").unwrap()["visible"],
+            false
+        );
+
+        // Editing through a node's target is the same command the UI sends.
+        run(
+            &mut state,
+            json!({"op":"set","target":"group_key:group-1/panel/opacity/1","field":"value","value":80}),
+        );
+        let key = found(&state, "group_key:group-1/panel/opacity/1").unwrap();
+        assert_eq!(key["state"]["value"], 80.0);
+        run(
+            &mut state,
+            json!({"op":"set","target":format!("group_text:{clip}/title"),"field":"text","value":"Hi"}),
+        );
+        let text = found(&state, &format!("group_text:{clip}/title")).unwrap();
+        assert_eq!(text["state"]["text"], "Hi");
+        assert_eq!(text["state"]["overridden"], true);
+
+        // A clip that is not a group has none of it.
+        run(
+            &mut state,
+            json!({"op":"invoke","target":"clip:basalt-cliffs","action":"select"}),
+        );
+        assert!(found(&state, &format!("clip_group:{clip}")).is_none());
     }
 
     #[test]

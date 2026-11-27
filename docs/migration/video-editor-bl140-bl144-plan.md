@@ -1,6 +1,6 @@
 # Recursos do editor para o vídeo — BL140–BL144
 
-Autorização: usuário solicitou iniciar câmera com keyframes, títulos com acentos, fades de áudio, importação direta SHARP e miniaturas/cabeçalho, com Cursor Sonnet 5.5. Base verificada: main `11832a9` (PR19 integrada). Projeto: Rust/GPUI em `/Users/wallyssonnunes/www/tessel-editor`, distinto do app RPG em `.t3/projects`.
+Autorização: usuário solicitou iniciar câmera com keyframes, títulos com acentos, fades de áudio, importação direta SHARP e miniaturas/cabeçalho, com Cursor Sonnet 5.5. Base verificada: main `11832a9` (PR19 integrada). Projeto: Rust/GPUI em `~/www/tessel-editor`, distinto do app RPG em `.t3/projects`.
 
 Status e atribuição vivem em [backlog.md](../backlog.md). Este documento define sequência, contratos e aceite; não é fila de execução paralela.
 

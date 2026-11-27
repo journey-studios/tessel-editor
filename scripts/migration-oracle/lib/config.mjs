@@ -19,8 +19,11 @@ export const PINNED_COMMIT = "d6adac15c61f4ef582a7ec259397b2e025d1f059"
 export const PINNED_BRANCH = "feat/image-coverage-r8"
 /** Pacote da origem de onde vêm as funções puras, relativo à raiz do repositório da origem. */
 export const SOURCE_PACKAGE_SUBDIR = "packages/scene-engine"
-const DEFAULT_SOURCE_ROOT =
-  "/Users/wallyssonnunes/www/journeystudios/tesselapp-image-coverage/packages/scene-engine"
+// The origin checkout of the auditing machine, under the home folder (BL164: no personal path in the repository).
+const DEFAULT_SOURCE_ROOT = path.join(
+  os.homedir(),
+  "www/journeystudios/tesselapp-image-coverage/packages/scene-engine",
+)
 
 export const MANIFEST_VERSION = 1
 export const EXPECTED_FORMAT_VERSION = 1

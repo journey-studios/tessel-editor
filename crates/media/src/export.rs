@@ -28,6 +28,7 @@ use tessel_editor_core::plan::{
 };
 use tessel_editor_core::preset::{Fit, Geometry, Preset};
 use tessel_editor_core::session::Renderer;
+use tessel_editor_core::state::live_edit::CaptionSidecar;
 use tessel_editor_core::time::{Rate, Ratio};
 
 use crate::derive::Cache;
@@ -210,6 +211,10 @@ pub fn needs_decoding(kind: MediaKind, asset: &Asset) -> bool {
     match kind {
         // A frame-sequence video is already numbered PNGs; only container files are decoded.
         MediaKind::Video => matches!(asset.source, Source::File { .. }),
+        // A TIFF or JPEG 2000 still is drawn from the PNG derived from it (F073).
+        MediaKind::Still => {
+            matches!(asset.source, Source::File { .. }) && asset.meta.still_needs_png()
+        }
         MediaKind::Audio => asset.meta.format.as_deref() != Some("wav"),
         _ => false,
     }
@@ -280,6 +285,14 @@ pub fn preflight(
         blockers.push(blocker(
             "destination_exists",
             format!("`{}` already exists", request.destination.display()),
+        ));
+    }
+    if !request.replace
+        && let Some(path) = conflicting_sidecar(state, request, &schedule)
+    {
+        blockers.push(blocker(
+            "destination_exists",
+            format!("`{}` already exists", path.display()),
         ));
     }
     if let Some(parent) = request
@@ -1187,8 +1200,38 @@ fn failed(checks: Vec<Value>) -> JobError {
     .with_details(json!({ "checks": checks }))
 }
 
+/// Where each unburned caption track is written: `<video>.srt` for one, `<video>.<clip>.srt` for
+/// several (two files must never claim the same name).
+fn sidecar_paths(
+    destination: &Path,
+    captions: &[CaptionSidecar],
+) -> Vec<(PathBuf, CaptionSidecar)> {
+    captions
+        .iter()
+        .map(|caption| {
+            let path = match captions.len() {
+                1 => destination.with_extension("srt"),
+                _ => destination.with_extension(format!("{}.srt", caption.clip)),
+            };
+            (path, caption.clone())
+        })
+        .collect()
+}
+
 /// Runs the whole export on a snapshot of `state`. The renderer must be dedicated to this
 /// export: it is driven frame by frame and shares nothing with the live monitor.
+fn conflicting_sidecar(
+    state: &EditorState,
+    request: &ExportRequest,
+    schedule: &Schedule,
+) -> Option<PathBuf> {
+    let captions = state.unburned_caption_sidecars(schedule.from, schedule.to);
+    sidecar_paths(&request.destination, &captions)
+        .into_iter()
+        .map(|(path, _)| path)
+        .find(|path| path.exists())
+}
+
 pub fn run(
     state: &EditorState,
     request: &ExportRequest,
@@ -1213,6 +1256,23 @@ pub fn run(
     }
     let schedule = schedule(state, request)?;
     let mut snapshot = state.clone();
+    // Captions whose `burn` is off are not drawn: they leave the snapshot (never the project)
+    // and are written as an SRT beside the video instead (F071).
+    let captions = snapshot.set_aside_unburned_captions(schedule.from, schedule.to);
+    let sidecars = sidecar_paths(&request.destination, &captions);
+    if !request.replace {
+        // Refused before the render, not after it: an hour of frames must not end in a name
+        // clash the request could have been told about at once.
+        if let Some((path, _)) = sidecars.iter().find(|(path, _)| path.exists()) {
+            return Err(JobError::new(
+                "destination_exists",
+                format!(
+                    "`{}` already exists; nothing was overwritten",
+                    path.display()
+                ),
+            ));
+        }
+    }
 
     let assets = used_assets(&snapshot, schedule.from, schedule.to);
     let preparing: Vec<_> = assets
@@ -1267,7 +1327,18 @@ pub fn run(
     let size = fs::metadata(&staged)
         .map_err(|error| io_error(&staged, &error))?
         .len();
+    // The captions go to staging first and are published after the video, so a failed render
+    // leaves no half set of files.
+    let mut staged_captions = Vec::with_capacity(sidecars.len());
+    for (index, (path, caption)) in sidecars.iter().enumerate() {
+        let file = staging.path().join(format!("captions-{index}.srt"));
+        fs::write(&file, &caption.srt).map_err(|error| io_error(&file, &error))?;
+        staged_captions.push((file, path));
+    }
     fsx::publish_file(&staged, &request.destination, request.replace)?;
+    for (file, path) in staged_captions {
+        fsx::publish_file(&file, path, request.replace)?;
+    }
 
     let elapsed = started.elapsed().as_secs_f64();
     Ok(json!({
@@ -1281,6 +1352,8 @@ pub fn run(
         "output": { "width": request.preset.width, "height": request.preset.height },
         "audio": audio_report.as_ref().map(|audio| json!({
             "samples": audio.samples, "clipped_samples": audio.clipped, "peak": audio.peak, "rms": audio.rms })),
+        "captions": sidecars.iter().map(|(path, caption)| json!({
+            "clip": caption.clip, "path": path, "cues": caption.cues })).collect::<Vec<_>>(),
         "warnings": report["warnings"],
         "verification": verification,
         "metrics": {

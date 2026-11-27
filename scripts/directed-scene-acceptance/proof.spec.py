@@ -1009,11 +1009,15 @@ class LinkScope(unittest.TestCase):
     def create(self):
         return link.create({"render": self.binary})
 
+    @unittest.skipIf(link.tomllib is None, "Python < 3.11 has no tomllib: link.py scopes nothing and guards every crate "
+                     "(stricter; test_without_a_toml_reader_every_crate_is_an_input covers that path)")
     def test_a_fresh_binary_with_old_sources_is_linked(self):
         ok, reasons = self.create()
         self.assertEqual((ok, reasons), (True, []))
         self.assertEqual(link.render_crates(self.root), ["crates/core", "crates/media", "crates/render"])
 
+    @unittest.skipIf(link.tomllib is None, "Python < 3.11 has no tomllib: link.py scopes nothing and guards every crate "
+                     "(stricter; test_without_a_toml_reader_every_crate_is_an_input covers that path)")
     def test_an_edit_in_a_crate_the_binary_is_not_built_from_does_not_refuse_a_fresh_binary(self):
         """desktop and audio are not render dependencies (a dev-dependency is not part of the binary), and tests are not compiled by `cargo build -p`."""
         for name in ("crates/desktop/src/main.rs", "crates/desktop/tests/ui.rs", "crates/audio/src/lib.rs", "crates/audio/Cargo.toml",
@@ -1036,6 +1040,8 @@ class LinkScope(unittest.TestCase):
                 self.assertEqual(link.older_than_inputs(self.binary), (True, name))
                 self.settle()
 
+    @unittest.skipIf(link.tomllib is None, "Python < 3.11 has no tomllib: link.py scopes nothing and guards every crate "
+                     "(stricter; test_without_a_toml_reader_every_crate_is_an_input covers that path)")
     def test_a_dependency_added_later_widens_the_inputs(self):
         """The inputs come from the manifests, not from a fixed list: once core depends on audio, an audio edit makes the binary stale."""
         core = self.root / "crates/core/Cargo.toml"
@@ -1047,6 +1053,18 @@ class LinkScope(unittest.TestCase):
         ok, reasons = self.create()
         self.assertFalse(ok)
         self.assertTrue(any("crates/audio/src/lib.rs" in r for r in reasons), reasons)
+
+    def test_without_a_toml_reader_every_crate_is_an_input(self):
+        """Python < 3.11 (the system Python of macOS is 3.9) has no `tomllib`: the closure is unknown, so the old, wider guard applies.
+        Runs on every Python: the reader is taken away here."""
+        from unittest.mock import patch
+        with patch.object(link, "tomllib", None):
+            self.assertIsNone(link.render_crates(self.root))
+            self.assertEqual(self.create(), (True, []), "a fresh binary over old sources is still linked")
+            self.touch("crates/desktop/src/main.rs")
+            ok, reasons = self.create()
+        self.assertFalse(ok, "an edit in a crate the binary is not built from refuses: stricter, never looser")
+        self.assertTrue(any("crates/desktop/src/main.rs" in r for r in reasons), reasons)
 
     def test_a_manifest_that_cannot_be_read_falls_back_to_every_crate(self):
         """Fail closed: when the closure is unknown the old, wider guard applies."""
@@ -1087,6 +1105,9 @@ class LinkScope(unittest.TestCase):
             shims = pathlib.Path(folder) / "shims"
             shims.mkdir()
             for tool in ("rustc", "node"):
+                if os.name == "nt":  # no `sh` script runs by name on Windows: a `.cmd` that prints its working directory
+                    (shims / f"{tool}.cmd").write_text("@echo %CD%\n")
+                    continue
                 shim = shims / tool
                 shim.write_text('#!/bin/sh\necho "$(pwd -P)"\n')
                 shim.chmod(0o755)
@@ -1094,9 +1115,11 @@ class LinkScope(unittest.TestCase):
             outside.mkdir()
             here = os.getcwd()
             os.chdir(outside)
-            self.addCleanup(os.chdir, here)
-            with patch.dict(os.environ, {"PATH": f"{shims}:{os.environ['PATH']}"}):
-                tools = link.tool_versions()
+            try:
+                with patch.dict(os.environ, {"PATH": f"{shims}{os.pathsep}{os.environ['PATH']}"}):
+                    tools = link.tool_versions()
+            finally:
+                os.chdir(here)  # before the folder is removed: Windows cannot remove a working directory
         self.assertEqual(tools, {"rustc": str(link.ROOT.resolve()), "node": str(link.ROOT.resolve())})
 
 
@@ -1510,12 +1533,23 @@ class ToolsAbsent(unittest.TestCase):
         self.tmp = pathlib.Path(tempfile.mkdtemp(prefix="s10-no-tools-")).resolve()
         self.addCleanup(shutil.rmtree, self.tmp, True)
         (self.tmp / "bin").mkdir()
-        (self.tmp / "bin" / "git").symlink_to(shutil.which("git"))  # the only tool on PATH: no node, no ffmpeg
+        git = shutil.which("git")
+        self.path = str(self.tmp / "bin")
+        if os.name == "nt":
+            # A symlink needs a privilege there and a copy of `git.exe` cannot find its installation: PATH takes Git's own folder
+            # instead, which must hold no node, ffmpeg or ffprobe, so git is still the only tool on PATH.
+            folder = str(pathlib.Path(git).parent)
+            self.assertEqual([t for t in ("node", "ffmpeg", "ffprobe") if shutil.which(t, path=folder)], [], folder)
+            self.path = os.pathsep.join([self.path, folder])
+        else:
+            (self.tmp / "bin" / "git").symlink_to(git)  # the only tool on PATH: no node, no ffmpeg
         (self.tmp / "main.py").write_text(ABSENT_TOOLS_MAIN.format(acc=str(HERE)))
 
     def main(self, phases):
         report = self.tmp / "report.json"
-        env = {"PATH": str(self.tmp / "bin"), "PYTHONDONTWRITEBYTECODE": "1", "HOME": os.environ.get("HOME", str(self.tmp))}
+        env = {"PATH": self.path, "PYTHONDONTWRITEBYTECODE": "1", "HOME": os.environ.get("HOME", str(self.tmp))}
+        if os.name == "nt":  # Python itself needs these there (random seed, temp folder)
+            env.update({name: os.environ[name] for name in ("SYSTEMROOT", "TEMP", "TMP") if name in os.environ})
         # `--gpu-lock-held`: this test runs without a GPU, and a phase that (wrongly) started would otherwise wait for the shared lock that
         # the caller may hold; the timeout turns any such hang into a failure instead of a stalled run.
         result = subprocess.run([sys.executable, "-B", str(self.tmp / "main.py"), "--gpu-lock-held", "--phases", phases, "--report", str(report)],
@@ -1598,6 +1632,8 @@ class BytecodeFree(unittest.TestCase):
     def caches(root):
         return sorted(str(p.relative_to(root)) for p in pathlib.Path(root).rglob("*") if p.name == "__pycache__" or p.suffix == ".pyc")
 
+    @unittest.skipIf(getattr(sys, "pycache_prefix", None), "sys.pycache_prefix sends bytecode elsewhere (the "
+                     "Python of macOS): no __pycache__ can appear in the copy, so the control below cannot fail")
     def test_the_spec_and_its_children_in_a_copy_create_no_pycache(self):
         with tempfile.TemporaryDirectory(prefix="s10-bytecode-") as folder:
             copy = pathlib.Path(folder).resolve() / "repo"

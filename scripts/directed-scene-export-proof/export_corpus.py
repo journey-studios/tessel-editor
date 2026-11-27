@@ -503,8 +503,8 @@ def check(target):
             problems.append(f"differs {name}")
     if target.exists():
         for path in target.rglob("*"):
-            if path.is_file() and str(path.relative_to(target)) not in files:
-                problems.append(f"unexpected {path.relative_to(target)}")
+            if path.is_file() and path.relative_to(target).as_posix() not in files:
+                problems.append(f"unexpected {path.relative_to(target).as_posix()}")
     return problems
 
 

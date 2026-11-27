@@ -36,7 +36,12 @@ impl Workstation {
         let title_card = (state.subject == Subject::Clip)
             .then(|| state.selected_clip())
             .flatten()
-            .filter(|clip| clip.kind == ClipKind::Title);
+            .filter(|clip| {
+                matches!(
+                    clip.kind,
+                    ClipKind::Title | ClipKind::Shape | ClipKind::Group
+                )
+            });
 
         let heading = match (media, title_card) {
             (Some(item), _) => format!("{} · {}", item.code, item.name),

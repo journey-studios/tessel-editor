@@ -9,7 +9,12 @@ use super::envelope::FadeWindow;
 use super::error::CommandError;
 use crate::camera_keys::CameraKey;
 use crate::content::{Camera, TextSpec};
+use crate::group::GroupInstance;
+use crate::group::KeyTrack;
 use crate::id::Id;
+use crate::player::PlayerSpec;
+use crate::shape::ShapeSpec;
+use crate::subtitles::SubtitleSpec;
 use crate::time::{Rate, Ratio};
 
 /// Frame rate of the demonstration sequence. Dynamic projects read [`Timeline::rate`].
@@ -47,6 +52,14 @@ pub enum ClipKind {
     Audio,
     /// Three.js scene or Gaussian splat asset.
     Scene,
+    /// An editable vector shape drawn by the compositor, without a media file (F067).
+    Shape,
+    /// An instance of a reusable group of shapes and text, with keyframes (F069).
+    Group,
+    /// A waveform, progress bar and timer tied to an audio clip of the sequence (F071).
+    Player,
+    /// A caption track of timed cues, imported from or exported to SRT (F071).
+    Subtitles,
 }
 
 impl ClipKind {
@@ -56,15 +69,28 @@ impl ClipKind {
             Self::Title => "title",
             Self::Audio => "audio",
             Self::Scene => "scene",
+            Self::Shape => "shape",
+            Self::Group => "group",
+            Self::Player => "player",
+            Self::Subtitles => "subtitles",
         }
     }
 
-    /// Audio never lands on a video track and vice versa. Titles and scenes are visual.
+    /// Audio never lands on a video track and vice versa. Titles, shapes, groups, players, caption
+    /// tracks and scenes are visual.
     pub fn fits(self, track: TrackKind) -> bool {
         matches!(
             (self, track),
-            (Self::Video | Self::Title | Self::Scene, TrackKind::Video)
-                | (Self::Audio, TrackKind::Audio)
+            (
+                Self::Video
+                    | Self::Title
+                    | Self::Scene
+                    | Self::Shape
+                    | Self::Group
+                    | Self::Player
+                    | Self::Subtitles,
+                TrackKind::Video
+            ) | (Self::Audio, TrackKind::Audio)
         )
     }
 }
@@ -98,10 +124,22 @@ pub struct Clip {
     pub source_start: Ratio,
     /// Text of a title clip.
     pub text: Option<TextSpec>,
+    /// Specification of a shape clip.
+    pub shape: Option<ShapeSpec>,
+    /// The group a group clip shows and the texts it changes (F069).
+    pub group: Option<GroupInstance>,
+    /// The player (waveform, progress bar and timer) a player clip draws (F071).
+    pub player: Option<PlayerSpec>,
+    /// The caption track (cues and style) a subtitle clip draws (F071).
+    pub subtitles: Option<SubtitleSpec>,
     /// Camera of a scene clip.
     pub camera: Option<Camera>,
     /// Keyframes of a scene clip's camera (BL140), sorted by scene time; empty = no keyframes.
     pub camera_keys: Vec<CameraKey>,
+    pub camera_push_in: Option<super::camera_push_in::CameraPushIn>,
+    /// Keyframes of the clip's position, zoom, rotation and opacity over its own time (F073), one
+    /// track per property in the inspector's order; empty = the inspector values hold.
+    pub keys: Vec<KeyTrack>,
     /// BL081.2: where the fades are measured when a cut left this clip a piece of a ramp.
     /// Empty (the default) measures them on the clip's own edges. See `state::envelope`.
     pub fade_window: FadeWindow,
@@ -123,6 +161,11 @@ pub enum TrimEdge {
 pub struct TrimPlan {
     pub start: i64,
     pub end: i64,
+    /// The requested frame when snap moved the edge somewhere else (as `MovePlan` reports it).
+    pub snapped_from: Option<i64>,
+    /// Whether the edge lands somewhere new: a trim that snaps back onto the edge it started
+    /// from is accepted and changes nothing, and the reply says so instead of a bare `ok`.
+    pub changed: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -267,8 +310,14 @@ impl Timeline {
                     media: media.map(Id::lit),
                     source_start: Ratio::ZERO,
                     text: None,
+                    shape: None,
+                    group: None,
+                    player: None,
+                    subtitles: None,
                     camera: None,
                     camera_keys: Vec::new(),
+                    camera_push_in: None,
+                    keys: Vec::new(),
                     fade_window: FadeWindow::default(),
                 }
             };
@@ -719,7 +768,12 @@ impl Timeline {
             .ok_or_else(|| CommandError::unknown_element("clip", id))?;
         entry.duration = end - start;
         draft.plan_move(id, None, Some(start), Some(false))?;
-        Ok(TrimPlan { start, end })
+        Ok(TrimPlan {
+            start,
+            end,
+            snapped_from: (resolved != frame).then_some(frame),
+            changed: (start, end) != (clip.start, clip.end()),
+        })
     }
 
     /// Trims one edge of a clip. `speed` is the clip's playback speed as a ratio (`1` is 100 %):
@@ -787,7 +841,8 @@ impl Timeline {
         self.selected_track = Some(clip.track);
         Ok(
             json!({"target":format!("clip:{id}"),"action":"trim","start":plan.start,
-            "end":plan.end,"duration":clip.duration,"previous":previous}),
+            "end":plan.end,"duration":clip.duration,"previous":previous,
+            "snapped_from":plan.snapped_from,"changed":plan.changed}),
         )
     }
 
@@ -1425,6 +1480,43 @@ mod trim_tests {
         assert_eq!(
             t.plan_trim("first-light", TrimEdge::End, 190).unwrap().end,
             192
+        );
+        assert_eq!(t.clips, before);
+    }
+
+    #[test]
+    fn a_snapped_trim_reports_where_it_was_asked_to_go_and_whether_anything_moved() {
+        let mut t = Timeline {
+            snap: false,
+            ..Timeline::default()
+        };
+        let free = t
+            .trim_clip("first-light", TrimEdge::End, 120, Ratio::from_int(1))
+            .unwrap();
+        assert_eq!(
+            (&free["snapped_from"], &free["changed"]),
+            (&Value::Null, &json!(true))
+        );
+        t.snap = true;
+        // 190 is 2 frames from an edge at 192: the edge goes there and the reply says why.
+        let snapped = t
+            .trim_clip("first-light", TrimEdge::End, 190, Ratio::from_int(1))
+            .unwrap();
+        assert_eq!(snapped["end"], 192);
+        assert_eq!(
+            (&snapped["snapped_from"], &snapped["changed"]),
+            (&json!(190), &json!(true))
+        );
+        // Asking for 189 snaps straight back to 192: accepted, nothing moves, and the reply
+        // says so instead of a bare `ok` that looks like the trim happened.
+        let before = t.clips.clone();
+        let back = t
+            .trim_clip("first-light", TrimEdge::End, 189, Ratio::from_int(1))
+            .unwrap();
+        assert_eq!(back["end"], 192);
+        assert_eq!(
+            (&back["snapped_from"], &back["changed"]),
+            (&json!(189), &json!(false))
         );
         assert_eq!(t.clips, before);
     }

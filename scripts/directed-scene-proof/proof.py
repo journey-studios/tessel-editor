@@ -248,7 +248,7 @@ def run_scene_flow(p, op, reopen, workspace, label):
 
 # ---------------------------------------------------------------------------------- phases
 def require_binary(ctx, key, hint):
-    path = ctx.bins[key]
+    path = ctx.bins[key] = h.portable.executable(ctx.bins[key])  # `.exe` on Windows (BL168.8)
     if not pathlib.Path(path).is_file():
         raise Blocked(f"binary not built: {path}", f"build it with the coordinator's serialized helper, e.g. {hint}", "BL019")
     ctx.binaries[key] = h.binary_info(path)
@@ -291,7 +291,7 @@ def phase_model(ctx, p):
 
 
 def phase_headless_flow(ctx, p):
-    binary = require_binary(ctx, "headless", "python3 /Users/wallyssonnunes/.cache/tessel-editor/cargo-serial.py build -p tessel-editor-core --bin tessel-headless --locked")
+    binary = require_binary(ctx, "headless", "./scripts/cargo build -p tessel-editor-core --bin tessel-headless --locked")
     work = ctx.work.sub("headless")
     session = h.JsonlSession(binary, ["--empty"])
     opened = []
@@ -340,7 +340,7 @@ def phase_scene_plan(ctx, p):
 
 def phase_package(ctx, p):
     h.acquire_gpu_lock()
-    binary = require_binary(ctx, "render", "python3 /Users/wallyssonnunes/.cache/tessel-editor/cargo-serial.py build -p tessel-editor-render --locked")
+    binary = require_binary(ctx, "render", "./scripts/cargo build -p tessel-editor-render --locked")
     work = ctx.work.sub("package")
     origin = work / "origin"
     shutil.copytree(CORPUS, origin)
@@ -486,7 +486,7 @@ def phase_context_loss(ctx, p):
 
 
 def phase_socket_flow(ctx, p):
-    binary = require_binary(ctx, "editor", "python3 /Users/wallyssonnunes/.cache/tessel-editor/cargo-serial.py build -p tessel-editor --release --locked")
+    binary = require_binary(ctx, "editor", "./scripts/cargo build -p tessel-editor --release --locked")
     lab = ctx.editor_lab(binary)
     work = ctx.work.sub("socket")
 
@@ -526,7 +526,11 @@ def phase_socket_render(ctx, p):
         if (status.get("last_frame") or {}).get("hash") == expected_hash and (status.get("last_frame") or {}).get("request", 0) > baseline:
             break
         time.sleep(0.03)
-    p.check("interactive scene monitor converges to a new frame with the explicit reference pixels", (status.get("last_frame") or {}).get("hash") == expected_hash and (status.get("last_frame") or {}).get("request", 0) > baseline)
+    last = status.get("last_frame") or {}
+    p.check("interactive scene monitor converges to a new frame with the explicit reference pixels",
+            last.get("hash") == expected_hash and last.get("request", 0) > baseline,
+            {"expected_hash": expected_hash, "baseline_request": baseline,
+             "last_frame": {key: last.get(key) for key in ("hash", "request", "width", "height", "inspected")}})
 
 
 def phase_ui_semantic(ctx, p):

@@ -10,11 +10,12 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use gpui_kit::assets::IconName;
+use gpui_kit::component::button::Button;
 use gpui_kit::component::input::Input;
 use gpui_kit::component::list::ListItem;
 use gpui_kit::component::scroll::ScrollableElement;
 use gpui_kit::component::tree::{TreeItem, tree};
-use gpui_kit::component::{Icon, Sizable};
+use gpui_kit::component::{Disableable, Icon, Sizable};
 use gpui_kit::component::{h_flex, v_flex};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -353,6 +354,16 @@ impl Workstation {
                             .text_color(t.dim)
                             .child(caption),
                     )
+                    .children(self.splat_source().map(|_| {
+                        Button::new("library.generate_splat")
+                            .small()
+                            .outline()
+                            .label("Gerar splat")
+                            .disabled(self.state.project.workspace.is_none())
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                let _ = this.generate_selected_splat(cx);
+                            }))
+                    }))
                     .child(
                         h_flex()
                             .items_center()

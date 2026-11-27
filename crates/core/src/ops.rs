@@ -22,7 +22,9 @@ use crate::scene_interaction::{
     Handle, Point, PointerCommand, SelectMode,
 };
 use crate::scene_project::{CameraAt, FxProbe, SceneCommand, SceneSource};
+use crate::shape::ShapeSpec;
 use crate::state::camera_edit::CameraKeysCommand;
+use crate::state::camera_push_in::PushInOptions;
 use crate::state::timeline::{SequenceSettings, TrackKind};
 use crate::state::{Command, CommandError, EditorState, ProjectSettings, Raw};
 use crate::time::{Rate, Ratio};
@@ -43,6 +45,13 @@ pub struct RenderAudio {
     pub out: Option<PathBuf>,
     /// `(output sample frame, channel)` values to report.
     pub samples: Vec<(u64, usize)>,
+}
+
+/// `subtitles.export` (F071): the SRT of a caption clip, returned and, with `out`, written.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SubtitlesExport {
+    pub clip: String,
+    pub out: Option<PathBuf>,
 }
 
 /// Project-level operations that touch the filesystem (document, autosave, recovery).
@@ -81,6 +90,7 @@ pub const TRACE_EVENTS_MAX: usize = crate::trace::EVENT_WINDOW;
 #[derive(Debug, Clone, PartialEq)]
 pub enum Op {
     Run(Command),
+    Help(Option<String>),
     Project(ProjectOp),
     CreateProject(ProjectSettings),
     Plan(PlanRequest),
@@ -88,6 +98,7 @@ pub enum Op {
     PreviewPolicy,
     RenderFrame(RenderFrame),
     RenderAudio(RenderAudio),
+    SubtitlesExport(SubtitlesExport),
     Capabilities,
     RenderStatus,
     /// The correlation log of the host trace after cursor `since` (BL157.1): events with host-clock stamps, read without
@@ -316,6 +327,58 @@ fn clip_add(request: &Value) -> Result<Command, CommandError> {
             .collect::<Result<_, _>>()?,
         Some(_) => return Err(invalid("`properties` is an object of inspector values")),
     };
+    if let Some(shape) = request.get("shape").filter(|shape| !shape.is_null()) {
+        // A shape has no media, text or camera: naming one beside it is a mistake, not a default.
+        if let Some(field) = ["asset", "text", "camera"]
+            .into_iter()
+            .find(|field| request.get(*field).is_some_and(|value| !value.is_null()))
+        {
+            return Err(invalid(format!(
+                "A shape clip has no `{field}`; give `shape` alone"
+            )));
+        }
+        return Ok(Command::AddShapeClip {
+            id: optional_string(request, "id")?,
+            name: optional_string(request, "name")?,
+            track: string(request, "track")?.to_string(),
+            start: integer(request, "start")?,
+            duration: integer(request, "duration")?,
+            shape: ShapeSpec::from_json(shape)?,
+            properties,
+        });
+    }
+    if request.get("group").is_some_and(|group| !group.is_null()) {
+        // A group clip has no media, text, shape or camera of its own: they belong to the
+        // group's children.
+        if let Some(field) = ["asset", "text", "camera", "shape"]
+            .into_iter()
+            .find(|field| request.get(*field).is_some_and(|value| !value.is_null()))
+        {
+            return Err(invalid(format!(
+                "A group clip has no `{field}`; give `group` alone"
+            )));
+        }
+        return Ok(Command::AddGroupClip {
+            id: optional_string(request, "id")?,
+            name: optional_string(request, "name")?,
+            track: string(request, "track")?.to_string(),
+            start: integer(request, "start")?,
+            duration: integer(request, "duration")?,
+            group: group_ops::instance_field(request)?,
+            properties,
+        });
+    }
+    if let Some(spec) = live_ops::live_spec_field(request)? {
+        return Ok(Command::AddLiveClip {
+            id: optional_string(request, "id")?,
+            name: optional_string(request, "name")?,
+            track: string(request, "track")?.to_string(),
+            start: integer(request, "start")?,
+            duration: integer(request, "duration")?,
+            spec,
+            properties,
+        });
+    }
     Ok(Command::AddClip {
         id: optional_string(request, "id")?,
         name: optional_string(request, "name")?,
@@ -372,8 +435,15 @@ fn project_create(request: &Value) -> Result<ProjectSettings, CommandError> {
 pub fn parse_op(state: &EditorState, request: &Value) -> Result<Option<Op>, CommandError> {
     let op = string(request, "op")?;
     let command = match op {
+        "help" => return Ok(Some(Op::Help(optional_string(request, "topic")?))),
         "status" => return Ok(Some(Op::Status)),
         "project.header" => return Ok(Some(Op::Header)),
+        "subtitles.export" => {
+            return Ok(Some(Op::SubtitlesExport(SubtitlesExport {
+                clip: string(request, "clip")?.to_string(),
+                out: optional_string(request, "out")?.map(PathBuf::from),
+            })));
+        }
         "capabilities" => return Ok(Some(Op::Capabilities)),
         "render.status" => return Ok(Some(Op::RenderStatus)),
         "render.trace" => {
@@ -396,6 +466,35 @@ pub fn parse_op(state: &EditorState, request: &Value) -> Result<Option<Op>, Comm
             };
             return Ok(Some(Op::RenderTrace { since, limit }));
         }
+        "localization.resolve" => Command::Localization(crate::localization::Edit::Resolve {
+            locale: string(request, "locale")?.to_string(),
+            sequence: optional_string(request, "sequence")?,
+        }),
+        "localization.status" => Command::Localization(crate::localization::Edit::Status),
+        "localization.add"
+        | "localization.select"
+        | "localization.remove"
+        | "localization.approve" => {
+            use crate::localization::Edit;
+            let locale = string(request, "locale")?.to_string();
+            Command::Localization(match op {
+                "localization.add" => Edit::Add(locale),
+                "localization.select" => Edit::Select(locale),
+                "localization.remove" => Edit::Remove(locale),
+                _ => Edit::Approve(locale),
+            })
+        }
+        "localization.get" => Command::Localization(crate::localization::Edit::Get {
+            locale: string(request, "locale")?.to_string(),
+            sequence: optional_string(request, "sequence")?
+                .unwrap_or_else(|| state.timeline.id.to_string()),
+        }),
+        "localization.set" => Command::Localization(crate::localization::Edit::Set {
+            locale: string(request, "locale")?.to_string(),
+            sequence: optional_string(request, "sequence")?
+                .unwrap_or_else(|| state.timeline.id.to_string()),
+            overrides: crate::localization::SequencePatch::from_json(&request["overrides"])?,
+        }),
         "project.create" => return Ok(Some(Op::CreateProject(project_create(request)?))),
         "asset.add" => asset_add(request)?,
         "track.add" => Command::CreateTrack {
@@ -404,6 +503,16 @@ pub fn parse_op(state: &EditorState, request: &Value) -> Result<Option<Op>, Comm
             kind: track_kind(request)?,
         },
         "clip.add" => clip_add(request)?,
+        "title.add" => Command::AddTitle,
+        "shape.add" => Command::AddShape,
+        "clip.shape" => Command::SetClipShape {
+            clip: string(request, "clip")?.to_string(),
+            shape: ShapeSpec::from_json(
+                request
+                    .get("shape")
+                    .ok_or_else(|| invalid("Expected object field `shape`"))?,
+            )?,
+        },
         "clip.text" => Command::SetClipText {
             clip: string(request, "clip")?.to_string(),
             text: TextSpec::from_json(
@@ -418,6 +527,14 @@ pub fn parse_op(state: &EditorState, request: &Value) -> Result<Option<Op>, Comm
         },
         "clip.camera_capture" => Command::SetClipCameraFromCapture {
             clip: string(request, "clip")?.to_string(),
+        },
+        "clip.camera.push_in" => Command::SetCameraPushIn {
+            clip: string(request, "clip")?.to_string(),
+            options: Some(PushInOptions::from_json(request)?),
+        },
+        "clip.camera.push_in.clear" => Command::SetCameraPushIn {
+            clip: string(request, "clip")?.to_string(),
+            options: None,
         },
         "clip.camera_key" => Command::CameraKeys(CameraKeysCommand::Set {
             clip: string(request, "clip")?.to_string(),
@@ -636,10 +753,23 @@ pub fn parse_op(state: &EditorState, request: &Value) -> Result<Option<Op>, Comm
         gesture if gesture.starts_with("property.gesture.") => {
             crate::state::property_gesture::parse_op(gesture, request)?
         }
-        _ => return Ok(None),
+        other => match group_ops::group_command(other, request)? {
+            Some(command) => command,
+            None => match live_ops::live_command(other, request)? {
+                Some(command) => command,
+                None => match clip_key_ops::clip_key_command(other, request)? {
+                    Some(command) => command,
+                    None => return Ok(None),
+                },
+            },
+        },
     };
     Ok(Some(Op::Run(command)))
 }
+
+mod clip_key_ops;
+mod group_ops;
+mod live_ops;
 
 /// The `scene.*` vocabulary of F036. Shape only: every rule (IDs, bundle validity, edit gates)
 /// belongs to `scene_project`, `directed_scene` and `scene_edit`, so a request means the same

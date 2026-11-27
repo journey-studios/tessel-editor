@@ -4,15 +4,17 @@
    run-live.py lifecycle --out raw.jsonl                      context loss/reload/project switch through the real host
 Nothing is sampled during a gesture unless the row says so (obs != none). Traces are read once, after it.
 """
-import argparse, json, os, shutil, socket, subprocess, sys, threading, time, signal
+import argparse, json, os, shutil, subprocess, sys, threading, time, signal
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import portable  # noqa: E402  (BL168.8: Windows socket, UTF-8)
 TEV = os.environ.get("TEV", "/tmp/tev")
 BINS = {"debug": f"{TEV}/bin-inst/debug/tessel-editor", "release": f"{TEV}/bin-inst/release/tessel-editor"}
 
 class Ed:
     def __init__(self, path): self.path = path
     def send(self, **f):
-        with socket.socket(socket.AF_UNIX) as s:
-            s.settimeout(120); s.connect(self.path); s.sendall((json.dumps(dict(version=1, **f)) + "\n").encode()); d = b""
+        with portable.connect_ui(self.path, 120) as s:
+            s.sendall((json.dumps(dict(version=1, **f)) + "\n").encode()); d = b""
             while not d.endswith(b"\n"):
                 c = s.recv(1 << 20)
                 if not c: raise RuntimeError("closed")
@@ -29,9 +31,10 @@ class Ed:
 class Instance:
     def __init__(self, binary, variant, tag, env=None):
         self.home = f"{TEV}/homes/{tag}"; shutil.rmtree(self.home, ignore_errors=True); os.makedirs(self.home)
-        e = dict(os.environ, HOME=self.home, TESSEL_RUNTIME_DIR=f"{TEV}/rt/{variant}", **(env or {}))
+        self.sock = portable.window_socket(self.home)
+        e = dict(os.environ, HOME=self.home, TESSEL_RUNTIME_DIR=f"{TEV}/rt/{variant}", **portable.window_env(self.sock), **(env or {}))
         self.p = subprocess.Popen([BINS[binary]], env=e, cwd=f"{TEV}/inst", stdout=subprocess.DEVNULL, stderr=open(f"{TEV}/raw/live-{tag}.log", "w"))
-        self.sock = f"{self.home}/.cache/tessel-editor/ui.sock"; self.ed = Ed(self.sock)
+        self.ed = Ed(self.sock)
         for _ in range(300):
             time.sleep(0.1)
             if os.path.exists(self.sock):

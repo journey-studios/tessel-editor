@@ -64,9 +64,10 @@ pub use model::{
 };
 pub use refs::{Entity, EntityKind, Reference};
 pub use temporal::{
-    CameraEvaluation, CameraPose, CameraState, CameraTimeline, FrameEvaluation, FrameMapping,
-    LAYER_FOV_SWEEP_MAX_FRAMES, NodeAnimation, OffsetEvaluation, SegmentPoses, ShotReach,
-    TemporalError, Unsupported, apply_easing, movement_end_pose, movement_pose_at,
+    CameraEvaluation, CameraPose, CameraState, CameraTimeline, ClockSample, ClockSource,
+    DeckClocks, FrameEvaluation, FrameMapping, LAYER_FOV_SWEEP_MAX_FRAMES, NodeAnimation,
+    OffsetEvaluation, SegmentPoses, ShotReach, TemporalError, Unsupported, apply_easing,
+    frame_start_time, movement_end_pose, movement_pose_at,
 };
 pub use transform::{Mat4, Quat, Transform, Vec3};
 

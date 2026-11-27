@@ -116,6 +116,15 @@ pub fn plan_import(
     source: &EditorState,
     sequences: &[String],
 ) -> Result<ImportPlan, CommandError> {
+    if source.localization.is_some() {
+        return Err(CommandError::new(
+            "localized_project",
+            "Open or package the localized project to keep its language variants",
+        ));
+    }
+    if destination.is_localized_view() {
+        return Err(destination.shared_edit_error());
+    }
     let chosen: Vec<&Timeline> = if sequences.is_empty() {
         source.all_sequences().collect()
     } else {

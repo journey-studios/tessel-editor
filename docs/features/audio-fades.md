@@ -133,7 +133,7 @@ Na integração, `Applies::SoundClip` (fades de áudio) e `Applies::Scene` (câm
 
 Revisão BL081.2: uma rampa fixada em frames=0 acompanha a borda aparada, como
 a nativa; âncora já externa mantém sua posição. Fixações conservadoras também
-podem elevar cortes comuns de clipes curtos a schema3, antecipando edição do
+podem elevar cortes comuns de clipes curtos a schema 5, antecipando edição do
 outro fade até48quadros; sem isso a edição renormalizaria a rampa não editada.
 Exemplo:60quadros, fade-in5, corte30. Sem necessidade de fixação, schema1/2
 permanece. O estado de cada janela é inspecionável no nó do clipe.

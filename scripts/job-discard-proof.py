@@ -41,11 +41,14 @@ import shutil
 import signal
 import socket
 import subprocess
+import sys
 import tempfile
 import threading
 import time
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / 'scripts'))
+import portable  # noqa: E402 — starts a `#!` stand-in of `tessel-media` on Windows too (BL168.8)
 CORPUS = ROOT / 'scripts/directed-scene-proof/corpus'
 spec = importlib.util.spec_from_file_location('video_proof', ROOT / 'scripts/video-live-proof.py')
 video = importlib.util.module_from_spec(spec)
@@ -236,8 +239,8 @@ class Jsonl:
     """A real `tessel-media --empty` process: one request line, one answer line."""
 
     def __init__(self, binary):
-        self.process = subprocess.Popen([binary, '--empty'], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                        text=True, bufsize=1)
+        self.process = subprocess.Popen(portable.program(binary, '--empty'), stdin=subprocess.PIPE,
+                                        stdout=subprocess.PIPE, text=True, bufsize=1)
 
     def op(self, request):
         self.process.stdin.write(json.dumps(request) + '\n')
@@ -573,8 +576,8 @@ def window_phase(binary, work, report, pad_mib):
         # thread is a late answer. No operation of the editor blocks it on purpose (an adoption
         # started with `wait:true` returns at once in the window), so the control suspends OUR
         # window process for 1.5 s and the same timed request must report that stall.
-        resume = threading.Timer(1.5, os.kill, (lab.process.pid, signal.SIGCONT))
-        os.kill(lab.process.pid, signal.SIGSTOP)
+        resume = threading.Timer(1.5, portable.resume, (lab.process.pid,))
+        portable.suspend(lab.process.pid)  # SIGSTOP on Unix; NtSuspendProcess on Windows (BL168.8)
         resume.start()
         started = time.perf_counter()
         send({'command': 'get', 'target': 'jobs'}, timeout=60)
@@ -596,9 +599,9 @@ def window_phase(binary, work, report, pad_mib):
             # A request already in flight when the signal lands is stalled too: the span starts a
             # little before the SIGSTOP so it is counted (a fast request in that margin is harmless).
             stopped = time.monotonic() - 0.05
-            os.kill(lab.process.pid, signal.SIGSTOP)
+            portable.suspend(lab.process.pid)
             time.sleep(1.5)
-            os.kill(lab.process.pid, signal.SIGCONT)
+            portable.resume(lab.process.pid)
             resumed = time.monotonic()
             wait_for(lambda: any(sample.latency_ms >= CONTROL_MIN_STALL_MS for sample in control_probe.samples),
                      30, 'the stalled request is answered')

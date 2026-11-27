@@ -7,7 +7,9 @@
 
 use serde_json::{Value, json};
 use tessel_editor_core::CommandError;
-use tessel_editor_core::headless::{create_project, render_audio, run_project_op};
+use tessel_editor_core::headless::{
+    create_project, render_audio, run_project_op, subtitles_export,
+};
 use tessel_editor_core::ops::{Op, ProjectOp, parse_op};
 
 use super::viewport_host::FrameWaiter;
@@ -70,6 +72,7 @@ impl Workstation {
             ));
         };
         match op {
+            Op::Help(topic) => tessel_editor_core::help::guide(topic.as_deref()).map(OpReply::Done),
             Op::Status => Ok(OpReply::Done(self.state.summary())),
             Op::Header => Ok(OpReply::Done(self.state.header().to_json())),
             Op::Run(command) => self.execute(command, Source::Cli, cx).map(OpReply::Done),
@@ -130,6 +133,9 @@ impl Workstation {
                 Ok(OpReply::Pending(waiter))
             }
             Op::RenderAudio(audio) => Ok(OpReply::Done(render_audio(&self.state, &audio)?)),
+            Op::SubtitlesExport(export) => {
+                Ok(OpReply::Done(subtitles_export(&self.state, &export)?))
+            }
         }
     }
 

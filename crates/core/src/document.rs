@@ -1,4 +1,4 @@
-//! The persistent project document (`*.tessel.json`), schemas v1 and v2.
+//! The persistent project document (`*.tessel.json`), schemas v1–v4.
 //!
 //! The document is a projection of the editor model, never a dump of its structs: IDs are
 //! strings (the interner is not serialized), time and rates are rationals, paths of managed
@@ -15,6 +15,7 @@ use crate::assets::{Asset, AudioStream, DemoImage, Identity, MediaKind, Meta, So
 use crate::content::{Camera, TextSpec};
 use crate::id::Id;
 use crate::scene_project::SceneBook;
+use crate::shape::ShapeSpec;
 use crate::state::history::History;
 use crate::state::inspector::Inspector;
 use crate::state::library::{Folder, FolderIcon, Library, MediaItem};
@@ -26,11 +27,12 @@ use crate::time::{Rate, Ratio};
 
 pub const FORMAT: &str = "tessel-project";
 /// Latest document version this reader supports.
-pub const SCHEMA_VERSION: u64 = 3;
-/// Version required for directed scenes, captures and camera keys.
-pub const SCENE_SCHEMA_VERSION: u64 = 2;
-/// Earlier schema-2 readers silently discard unknown clip fields.
-pub const FADE_WINDOW_SCHEMA_VERSION: u64 = 3;
+pub const SCHEMA_VERSION: u64 = FADE_WINDOW_SCHEMA_VERSION;
+// Readers through schema 4 would silently discard inherited fade windows.
+const FADE_WINDOW_SCHEMA_VERSION: u64 = 5;
+const LOCALIZATION_SCHEMA_VERSION: u64 = 4;
+const PUSH_IN_SCHEMA_VERSION: u64 = 3;
+const SCENE_SCHEMA_VERSION: u64 = 2;
 /// Projects without directed-scene data keep the legacy encoding.
 pub const LEGACY_SCHEMA_VERSION: u64 = 1;
 /// Renderer versions a document was written against, checked by the export preflight.
@@ -144,7 +146,7 @@ fn meta_json(meta: &Meta) -> Value {
     Value::Object(map)
 }
 
-fn asset_json(asset: &Asset, base: Option<&Path>) -> Value {
+pub(crate) fn asset_json(asset: &Asset, base: Option<&Path>) -> Value {
     let source = match &asset.source {
         Source::Demo(image) => json!({ "type": "demo", "name": image.file_name() }),
         Source::File { path } => json!({ "type": "file", "path": encode_path(base, path) }),
@@ -184,8 +186,19 @@ fn clip_json(clip: &crate::state::timeline::Clip) -> Value {
     put_opt(&mut map, "text", clip.text.as_ref().map(TextSpec::to_json));
     put_opt(
         &mut map,
+        "shape",
+        // Only the fields that differ from step 1A's contract are written (`to_document_json`).
+        clip.shape.as_ref().map(ShapeSpec::to_document_json),
+    );
+    put_opt(
+        &mut map,
         "camera",
         clip.camera.as_ref().map(Camera::to_json),
+    );
+    put_opt(
+        &mut map,
+        "camera_push_in",
+        clip.camera_push_in.map(|push_in| push_in.to_json()),
     );
     if !clip.camera_keys.is_empty() {
         map.insert(
@@ -193,13 +206,35 @@ fn clip_json(clip: &crate::state::timeline::Clip) -> Value {
             crate::camera_keys::keys_to_json(&clip.camera_keys),
         );
     }
+    if !clip.keys.is_empty() {
+        map.insert("keys".into(), crate::clip_keys::tracks_to_json(&clip.keys));
+    }
+    put_opt(
+        &mut map,
+        "group",
+        clip.group
+            .as_ref()
+            .map(crate::group::GroupInstance::to_json),
+    );
+    put_opt(
+        &mut map,
+        "player",
+        clip.player.as_ref().map(crate::player::PlayerSpec::to_json),
+    );
+    put_opt(
+        &mut map,
+        "subtitles",
+        clip.subtitles
+            .as_ref()
+            .map(crate::subtitles::SubtitleSpec::to_json),
+    );
     // BL081.2: only a clip cut inside a fade ramp carries one, so every other clip is stored
     // exactly as before.
     put_opt(&mut map, "fade_window", clip.fade_window.to_json());
     Value::Object(map)
 }
 
-fn sequence_json(timeline: &Timeline) -> Value {
+pub(crate) fn sequence_json(timeline: &Timeline) -> Value {
     json!({
         "id": timeline.id, "name": timeline.name,
         "rate": rate_json(timeline.rate), "length": timeline.length,
@@ -210,6 +245,22 @@ fn sequence_json(timeline: &Timeline) -> Value {
         })).collect::<Vec<_>>(),
         "clips": timeline.clips.iter().map(clip_json).collect::<Vec<_>>(),
     })
+}
+
+pub(crate) fn property_document(overrides: &crate::state::inspector::Overrides) -> Value {
+    use std::collections::BTreeMap;
+    let sorted: BTreeMap<_, _> = overrides
+        .iter()
+        .filter(|(_, values)| !values.is_empty())
+        .map(|(clip, values)| {
+            let properties: BTreeMap<_, _> = values
+                .iter()
+                .map(|(name, value)| (*name, value.to_json()))
+                .collect();
+            (clip, properties)
+        })
+        .collect();
+    json!(sorted)
 }
 
 impl EditorState {
@@ -223,7 +274,29 @@ impl EditorState {
         }) {
             return FADE_WINDOW_SCHEMA_VERSION;
         }
+        if self.localization.is_some() {
+            return LOCALIZATION_SCHEMA_VERSION;
+        }
+        if self.all_sequences().any(|timeline| {
+            timeline
+                .clips
+                .iter()
+                .any(|clip| clip.camera_push_in.is_some())
+        }) {
+            return PUSH_IN_SCHEMA_VERSION;
+        }
         if self.scenes.has_document_data()
+            // F069: groups and their text styles are a schema 2 block; an older reader would
+            // drop the block and then refuse (or blank) the group clips that point into it.
+            || !self.groups.is_empty()
+            // F071: player and caption clips are unknown kinds to an older reader, which would
+            // refuse the whole project at the first of them.
+            || self.all_sequences().any(|timeline| {
+                timeline
+                    .clips
+                    .iter()
+                    .any(|clip| matches!(clip.kind, ClipKind::Player | ClipKind::Subtitles))
+            })
             || self.library.items.iter().any(|item| {
                 item.asset
                     .as_ref()
@@ -235,6 +308,16 @@ impl EditorState {
                     .iter()
                     .any(|clip| !clip.camera_keys.is_empty())
             })
+            // F073: clip keys and the `loop` property are unknown to an older reader, which
+            // would refuse the document (unknown property) or play the clip without its motion.
+            || self.all_sequences().any(|timeline| {
+                timeline.clips.iter().any(|clip| !clip.keys.is_empty())
+            })
+            || self
+                .inspector
+                .overrides_sorted()
+                .iter()
+                .any(|(_, property, _)| *property == "loop")
         {
             SCENE_SCHEMA_VERSION
         } else {
@@ -279,20 +362,6 @@ impl EditorState {
                 Value::Object(map)
             })
             .collect();
-        let overrides: Map<String, Value> = {
-            let mut grouped: std::collections::BTreeMap<String, Map<String, Value>> =
-                std::collections::BTreeMap::new();
-            for (clip, property, value) in self.inspector.overrides_sorted() {
-                grouped
-                    .entry(clip)
-                    .or_default()
-                    .insert(property.to_string(), value.to_json());
-            }
-            grouped
-                .into_iter()
-                .map(|(clip, values)| (clip, Value::Object(values)))
-                .collect()
-        };
         let presentation: Map<String, Value> = self
             .all_sequences()
             .map(|timeline| {
@@ -312,9 +381,9 @@ impl EditorState {
                 "requires": { "spark": SPARK_VERSION, "three": THREE_VERSION },
             },
             "library": { "folders": folders, "assets": assets },
-            "sequences": self.all_sequences().map(sequence_json).collect::<Vec<_>>(),
+            "sequences": self.base_sequences().map(sequence_json).collect::<Vec<_>>(),
             "active_sequence": self.timeline.id,
-            "clip_properties": Value::Object(overrides),
+            "clip_properties": property_document(&self.base_properties()),
             "export": {
                 "preset": self.project.export_preset,
                 "user_presets": self.project.user_presets,
@@ -325,6 +394,13 @@ impl EditorState {
         // a project without any is byte-identical to what earlier editors wrote.
         if let Some(scenes) = self.scenes.to_json() {
             document["scenes"] = scenes;
+        }
+        // Same rule for the groups block (F069): absent while the project defines none.
+        if let Some(groups) = self.groups.to_json() {
+            document["groups"] = groups;
+        }
+        if let Some(localization) = &self.localization {
+            document["localization"] = localization.to_json();
         }
         document
     }
@@ -439,6 +515,29 @@ impl EditorState {
             .transpose()?
             .unwrap_or_default();
 
+        // F069: the same all-or-nothing rule. A group clip whose group, or whose text override,
+        // the document does not define is a damaged document, not a clip to draw blank.
+        let groups = doc
+            .get("groups")
+            .map(crate::group::GroupBook::from_json)
+            .transpose()
+            .map_err(|error| invalid(format!("`groups`: {}", error.message)))?
+            .unwrap_or_default();
+        for timeline in std::iter::once(&active_timeline).chain(timelines.iter()) {
+            for clip in &timeline.clips {
+                let Some(instance) = &clip.group else {
+                    continue;
+                };
+                groups.check_instance(instance).map_err(|error| {
+                    invalid(format!("Group clip `{}`: {}", clip.id, error.message))
+                })?;
+            }
+        }
+
+        let localization = doc
+            .get("localization")
+            .map(crate::localization::Localization::from_json)
+            .transpose()?;
         let selected_media = library.items.first().map(|item| item.id);
         let mut state = Self {
             project_name: name.trim().to_string(),
@@ -455,8 +554,12 @@ impl EditorState {
             preview: crate::plan::PreviewIntent::Sequence,
             preview_policy: crate::preview::PreviewPolicy::default(),
             scenes,
+            groups,
             scene_interaction: Default::default(),
             thumbnails: Default::default(),
+            localization,
+            active_locale: None,
+            localization_base: None,
         };
         // BL081.2: a window whose fade was edited in the file (the guard no longer matches the
         // stored property) is not live; it is dropped on open, like it is after an edit.
@@ -714,7 +817,7 @@ fn parse_asset(value: &Value, id: Id, base: Option<&Path>) -> Result<Asset, Comm
     })
 }
 
-fn parse_sequence(value: &Value, library: &Library) -> Result<Timeline, CommandError> {
+pub(crate) fn parse_sequence(value: &Value, library: &Library) -> Result<Timeline, CommandError> {
     let id = id_of(value, "id", "A sequence")?;
     let rate = value
         .get("rate")
@@ -781,6 +884,10 @@ fn parse_sequence(value: &Value, library: &Library) -> Result<Timeline, CommandE
             ClipKind::Title,
             ClipKind::Audio,
             ClipKind::Scene,
+            ClipKind::Shape,
+            ClipKind::Group,
+            ClipKind::Player,
+            ClipKind::Subtitles,
         ]
         .into_iter()
         .find(|kind| Some(kind.label()) == clip["kind"].as_str())
@@ -828,9 +935,83 @@ fn parse_sequence(value: &Value, library: &Library) -> Result<Timeline, CommandE
                 Some(text) => Some(TextSpec::from_json(text).map_err(|e| invalid(e.message))?),
                 None => None,
             },
+            shape: match (kind, clip.get("shape")) {
+                (ClipKind::Shape, Some(shape)) => Some(
+                    ShapeSpec::from_json(shape)
+                        .map_err(|e| invalid(format!("Clip `{clip_id}`: {}", e.message)))?,
+                ),
+                (ClipKind::Shape, None) => {
+                    return Err(invalid(format!("Shape clip `{clip_id}` has no `shape`")));
+                }
+                (_, Some(_)) => {
+                    return Err(invalid(format!(
+                        "Clip `{clip_id}`: only shape clips carry a shape"
+                    )));
+                }
+                (_, None) => None,
+            },
+            group: match (kind, clip.get("group")) {
+                (ClipKind::Group, Some(group)) => Some(
+                    crate::group::GroupInstance::from_json(group)
+                        .map_err(|e| invalid(format!("Clip `{clip_id}`: {}", e.message)))?,
+                ),
+                (ClipKind::Group, None) => {
+                    return Err(invalid(format!("Group clip `{clip_id}` has no `group`")));
+                }
+                (_, Some(_)) => {
+                    return Err(invalid(format!(
+                        "Clip `{clip_id}`: only group clips carry a group"
+                    )));
+                }
+                (_, None) => None,
+            },
+            player: match (kind, clip.get("player")) {
+                (ClipKind::Player, Some(player)) => Some(
+                    crate::player::PlayerSpec::from_json(player)
+                        .map_err(|e| invalid(format!("Clip `{clip_id}`: {}", e.message)))?,
+                ),
+                (ClipKind::Player, None) => {
+                    return Err(invalid(format!("Player clip `{clip_id}` has no `player`")));
+                }
+                (_, Some(_)) => {
+                    return Err(invalid(format!(
+                        "Clip `{clip_id}`: only player clips carry a player"
+                    )));
+                }
+                (_, None) => None,
+            },
+            subtitles: match (kind, clip.get("subtitles")) {
+                (ClipKind::Subtitles, Some(subtitles)) => Some(
+                    crate::subtitles::SubtitleSpec::from_json(subtitles)
+                        .map_err(|e| invalid(format!("Clip `{clip_id}`: {}", e.message)))?,
+                ),
+                (ClipKind::Subtitles, None) => {
+                    return Err(invalid(format!(
+                        "Subtitle clip `{clip_id}` has no `subtitles`"
+                    )));
+                }
+                (_, Some(_)) => {
+                    return Err(invalid(format!(
+                        "Clip `{clip_id}`: only subtitle clips carry subtitles"
+                    )));
+                }
+                (_, None) => None,
+            },
             camera: match clip.get("camera") {
                 Some(camera) => Some(Camera::from_json(camera).map_err(|e| invalid(e.message))?),
                 None => None,
+            },
+            camera_push_in: match (kind, clip.get("camera_push_in")) {
+                (_, None) => None,
+                (ClipKind::Scene, Some(value)) => Some(
+                    crate::state::camera_push_in::CameraPushIn::from_json(value)
+                        .map_err(|error| invalid(format!("Clip `{clip_id}`: {}", error.message)))?,
+                ),
+                (_, Some(_)) => {
+                    return Err(invalid(format!(
+                        "Clip `{clip_id}`: only scene clips carry a camera push-in"
+                    )));
+                }
             },
             camera_keys: match clip.get("camera_keys") {
                 Some(keys) => {
@@ -862,6 +1043,19 @@ fn parse_sequence(value: &Value, library: &Library) -> Result<Timeline, CommandE
                         .target(format!("clip:{clip_id}")));
                     }
                     keys
+                }
+                None => Vec::new(),
+            },
+            keys: match clip.get("keys") {
+                Some(tracks) => {
+                    if !crate::state::inspector::Applies::Framed.includes(kind) {
+                        return Err(invalid(format!(
+                            "Clip `{clip_id}`: a {} clip carries no keys",
+                            kind.label()
+                        )));
+                    }
+                    crate::clip_keys::tracks_from_json(tracks)
+                        .map_err(|e| invalid(format!("Clip `{clip_id}`: {}", e.message)))?
                 }
                 None => Vec::new(),
             },
@@ -904,9 +1098,38 @@ fn has_fade_windows(doc: &Value) -> bool {
     })
 }
 
-/// Validates the supported document versions. V1 has no scene storage; v2 protects it from
-/// legacy readers, which reject versions above 1 instead of silently dropping the block.
-/// The input is never rewritten here; ordinary projects may still be saved as v1.
+/// Whether any clip of any sequence stores a non-empty `keys` list (F073).
+fn has_clip_keys(doc: &Value) -> bool {
+    doc["sequences"].as_array().is_some_and(|sequences| {
+        sequences.iter().any(|sequence| {
+            sequence["clips"].as_array().is_some_and(|clips| {
+                clips.iter().any(|clip| {
+                    clip.get("keys")
+                        .and_then(Value::as_array)
+                        .is_some_and(|keys| !keys.is_empty())
+                })
+            })
+        })
+    })
+}
+
+/// Whether any clip of any sequence is of one of the document `kinds` (F071).
+fn has_clip_kind(doc: &Value, kinds: &[&str]) -> bool {
+    doc["sequences"].as_array().is_some_and(|sequences| {
+        sequences.iter().any(|sequence| {
+            sequence["clips"].as_array().is_some_and(|clips| {
+                clips.iter().any(|clip| {
+                    clip["kind"]
+                        .as_str()
+                        .is_some_and(|kind| kinds.contains(&kind))
+                })
+            })
+        })
+    })
+}
+
+/// Validates supported versions without rewriting the input. Each version protects its
+/// additional fields from older readers that would silently drop them.
 pub fn migrate(doc: Value) -> Result<Value, CommandError> {
     if doc["format"] != FORMAT {
         return Err(CommandError::new(
@@ -927,6 +1150,24 @@ pub fn migrate(doc: Value) -> Result<Value, CommandError> {
         )
         .details(json!({ "found": version, "supported": SCHEMA_VERSION })));
     }
+    if version < LOCALIZATION_SCHEMA_VERSION && doc.get("localization").is_some() {
+        return Err(invalid("Localization requires project schema 4"));
+    }
+    if version < PUSH_IN_SCHEMA_VERSION
+        && doc["sequences"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|sequence| {
+                sequence["clips"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .any(|clip| clip.get("camera_push_in").is_some())
+            })
+    {
+        return Err(invalid("Camera push-ins require project schema 3"));
+    }
     if version == LEGACY_SCHEMA_VERSION && doc.get("scenes").is_some() {
         return Err(invalid(
             "Directed scenes require project schema 2; schema 1 readers would discard them",
@@ -939,7 +1180,22 @@ pub fn migrate(doc: Value) -> Result<Value, CommandError> {
     }
     if version < FADE_WINDOW_SCHEMA_VERSION && has_fade_windows(&doc) {
         return Err(invalid(
-            "Fade windows require project schema 3; earlier readers would discard them",
+            "Fade windows require project schema 5; earlier readers would discard them",
+        ));
+    }
+    if version == LEGACY_SCHEMA_VERSION && has_clip_keys(&doc) {
+        return Err(invalid(
+            "Clip keys require project schema 2; schema 1 readers would discard them",
+        ));
+    }
+    if version == LEGACY_SCHEMA_VERSION && doc.get("groups").is_some() {
+        return Err(invalid(
+            "Groups require project schema 2; schema 1 readers would discard them",
+        ));
+    }
+    if version == LEGACY_SCHEMA_VERSION && has_clip_kind(&doc, &["player", "subtitles"]) {
+        return Err(invalid(
+            "Player and subtitle clips require project schema 2; schema 1 readers would refuse them",
         ));
     }
     if version == 0 {

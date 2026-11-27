@@ -34,10 +34,12 @@ pub(in crate::directed_scene) use camera::distance;
 pub use camera::{
     CameraPose, CameraState, CameraTimeline, SegmentPoses, movement_end_pose, movement_pose_at,
 };
-pub use frame::{CameraEvaluation, FrameEvaluation, FrameMapping, NodeAnimation, Unsupported};
+pub use frame::{
+    CameraEvaluation, FrameEvaluation, FrameMapping, NodeAnimation, Unsupported, frame_start_time,
+};
 pub use gate::LAYER_FOV_SWEEP_MAX_FRAMES;
 pub(in crate::directed_scene) use gate::layered_fov_issues;
-pub use shot_offset::{OffsetEvaluation, ShotReach};
+pub use shot_offset::{ClockSample, ClockSource, DeckClocks, OffsetEvaluation, ShotReach};
 
 /// Why a frame could not be evaluated. Nothing here panics: a bundle the importer accepted never
 /// reaches the structural variants (`Unresolved`, `NoShotAtFrame`, ...) but the API stays total,

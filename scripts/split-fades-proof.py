@@ -47,7 +47,7 @@ def scenario(surface,check,scratch):
         check(edited+': redo restores edit and untouched ramp',wav(*protect)==before and wav(*active)==edge_after)
         path=scratch/(edited+'.tessel.json')
         ok({'op':'project.save','path':str(path)})
-        check(edited+': envelope saved as schema 3',json.loads(path.read_text())['schema_version']==3)
+        check(edited+': envelope saved as schema 5',json.loads(path.read_text())['schema_version']==5)
         ok({'op':'project.open','path':str(path)})
         check(edited+': reopen retains both ramps',wav(*protect)==before and wav(*active)==edge_after)
     return None

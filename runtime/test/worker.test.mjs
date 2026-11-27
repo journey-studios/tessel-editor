@@ -125,7 +125,7 @@ test('worker: handshake, asset, frame with probes and PNG, stale cancel, version
     worker.send({ type: 'hello' });
     const ready = await worker.until('ready');
     assert.equal(ready.runtime.name, 'tessel-three');
-    assert.deepEqual(ready.capabilities.layers, ['image', 'video', 'text', 'scene', 'waveform']);
+    assert.deepEqual(ready.capabilities.layers, ['image', 'video', 'text', 'scene', 'waveform', 'shape']);
 
     worker.send({ type: 'asset.load', asset: { id: 'img', kind: 'still', source: { type: 'file', path: image }, meta: {} } });
     const loaded = await worker.until('asset.state').then(() => worker.until('asset.state'));

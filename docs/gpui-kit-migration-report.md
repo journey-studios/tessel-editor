@@ -1,6 +1,6 @@
 # Relatório — migração da UI para GPUI Kit
 
-Data: 2026-11-04. Alvo: `/Users/wallyssonnunes/www/tessel-editor`. Plano: [gpui-kit-migration-plan.md](gpui-kit-migration-plan.md).
+Data: 2026-11-04. Alvo: `~/www/tessel-editor`. Plano: [gpui-kit-migration-plan.md](gpui-kit-migration-plan.md).
 Escopo: UI e Dock, local. Sem push, PR, merge, deploy ou publicação; nenhum arquivo do tesselapp foi tocado.
 O repositório continua **sem primeiro commit**: nada foi commitado.
 

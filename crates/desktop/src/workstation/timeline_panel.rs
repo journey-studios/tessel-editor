@@ -4,6 +4,7 @@
 use gpui_kit::assets::IconName;
 use gpui_kit::component::Sizable;
 use gpui_kit::component::h_flex;
+use gpui_kit::component::scroll::ScrollableElement;
 use gpui_kit::component::searchable_list::SearchableVec;
 use gpui_kit::component::select::Select;
 use gpui_kit::component::slider::Slider;
@@ -123,6 +124,76 @@ impl Workstation {
                 .disabled(true),
             )
             .child(split_button)
+            .child(
+                div()
+                    .relative()
+                    .child(self.geometry.probe("control:timeline-add-title"))
+                    .child(
+                        tool_button("timeline-add-title", IconName::Type, "Adicionar título")
+                            .on_click(super::controls::click(cx, Command::AddTitle)),
+                    ),
+            )
+            .child(
+                div()
+                    .relative()
+                    .child(self.geometry.probe("control:timeline-add-shape"))
+                    .child(
+                        tool_button(
+                            "timeline-add-shape",
+                            IconName::Square,
+                            "Adicionar retângulo",
+                        )
+                        .on_click(super::controls::click(cx, Command::AddShape)),
+                    ),
+            )
+            .child(
+                div()
+                    .relative()
+                    .child(self.geometry.probe("control:timeline-add-group"))
+                    .child(
+                        tool_button("timeline-add-group", IconName::Frame, "Adicionar grupo")
+                            .on_click(super::controls::click(cx, Command::AddGroup)),
+                    ),
+            )
+            .child(
+                div()
+                    .relative()
+                    .child(self.geometry.probe("control:timeline-add-player"))
+                    .child(
+                        tool_button(
+                            "timeline-add-player",
+                            IconName::CirclePlay,
+                            "Adicionar player",
+                        )
+                        .on_click(super::controls::click(cx, Command::AddPlayer)),
+                    ),
+            )
+            .child(
+                div()
+                    .relative()
+                    .child(self.geometry.probe("control:timeline-add-subtitles"))
+                    .child(
+                        tool_button(
+                            "timeline-add-subtitles",
+                            IconName::Captions,
+                            "Adicionar legendas",
+                        )
+                        .on_click(super::controls::click(cx, Command::AddSubtitles)),
+                    ),
+            )
+            .child(
+                div()
+                    .relative()
+                    .child(self.geometry.probe("control:timeline-add-chat"))
+                    .child(
+                        tool_button(
+                            "timeline-add-chat",
+                            IconName::MessageSquare,
+                            "Adicionar chat",
+                        )
+                        .on_click(super::controls::click(cx, Command::AddChat)),
+                    ),
+            )
             .child(disabled_tool_button(
                 "timeline-tool-delete",
                 IconName::Trash,
@@ -474,6 +545,12 @@ impl Workstation {
         let (fill, border, label_color, icon) = match clip.kind {
             ClipKind::Video => (t.video_fill, t.video_border, t.video_label, IconName::Film),
             ClipKind::Title => (t.title_fill, t.title_border, t.text, IconName::Type),
+            ClipKind::Shape => (t.shape_fill, t.shape_border, t.text, IconName::Square),
+            ClipKind::Group => (t.group_fill, t.group_border, t.text, IconName::Frame),
+            // A player is built from parts like a group, a caption track is text like a title:
+            // each shares its palette instead of adding colours to the theme.
+            ClipKind::Player => (t.group_fill, t.group_border, t.text, IconName::CirclePlay),
+            ClipKind::Subtitles => (t.title_fill, t.title_border, t.text, IconName::Captions),
             // Scenes are visual clips: they share the video palette with their own glyph.
             ClipKind::Scene => (
                 t.video_fill,
@@ -604,7 +681,12 @@ impl Workstation {
                         .child(waveform(clip.id.as_str(), color, ppf)),
                 );
             }
-            ClipKind::Title | ClipKind::Scene => {}
+            ClipKind::Title
+            | ClipKind::Scene
+            | ClipKind::Shape
+            | ClipKind::Group
+            | ClipKind::Player
+            | ClipKind::Subtitles => {}
         }
         for edge in [TrimEdge::Start, TrimEdge::End] {
             let side = match edge {
@@ -723,6 +805,7 @@ impl Workstation {
         let playhead = self.state.timeline.playhead;
         let content_width = self.state.timeline.length as f32 * ppf + TAIL_PADDING;
         let tracks: Vec<Track> = self.state.timeline.tracks.clone();
+        let row_height = RULER_HEIGHT + tracks.iter().map(|track| track.height).sum::<f32>();
 
         let mut headers = div()
             .relative()
@@ -734,7 +817,6 @@ impl Workstation {
             .border_r_1()
             .border_color(t.border)
             .bg(t.panel)
-            .child(self.geometry.probe("timeline-headers"))
             .child(
                 div()
                     .flex()
@@ -821,26 +903,52 @@ impl Workstation {
             }));
 
         div()
-            .flex()
-            .flex_row()
+            .relative()
             .flex_1()
             .min_h(px(0.))
-            .child(headers)
+            .overflow_hidden()
             .child(
                 div()
-                    .relative()
-                    .flex_1()
-                    .min_w(px(0.))
-                    .h_full()
-                    .overflow_hidden()
-                    .child(self.geometry.probe("timeline-scroll"))
+                    .absolute()
+                    .top_0()
+                    .bottom_0()
+                    .left_0()
+                    .w(px(HEADER_WIDTH))
+                    .child(self.geometry.probe("timeline-headers")),
+            )
+            .child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .bottom_0()
+                    .left(px(HEADER_WIDTH))
+                    .right_0()
+                    .child(self.geometry.probe("timeline-scroll")),
+            )
+            .child(
+                div()
+                    .id("timeline-vertical-scroll")
+                    .size_full()
+                    .restrict_scroll_to_axis()
                     .child(
                         div()
-                            .id("timeline-scroll")
-                            .size_full()
-                            .overflow_x_scroll()
-                            .child(content),
-                    ),
+                            .flex()
+                            .flex_row()
+                            .w_full()
+                            .h(px(row_height))
+                            .child(headers)
+                            .child(
+                                div()
+                                    .id("timeline-horizontal-scroll")
+                                    .flex_1()
+                                    .min_w(px(0.))
+                                    .h_full()
+                                    .restrict_scroll_to_axis()
+                                    .overflow_x_scrollbar()
+                                    .child(content),
+                            ),
+                    )
+                    .overflow_y_scrollbar(),
             )
     }
 
@@ -889,6 +997,7 @@ impl Workstation {
         let mode_bar = command_tabs(cx, "workspace-tabs", TabStyle::Pill, modes);
         let editing = active == WorkspaceTab::Edit;
         let toolbar = self.render_timeline_toolbar(t, window, cx);
+        let languages = self.render_language_controls(t, window, cx);
         let body = if editing {
             self.render_timeline_body(t, cx).into_any_element()
         } else {
@@ -903,6 +1012,7 @@ impl Workstation {
             .bg(t.panel)
             .child(self.geometry.probe("region:timeline"))
             .child(toolbar)
+            .child(languages)
             .child(body)
             .child(
                 div()

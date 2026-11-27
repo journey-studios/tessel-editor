@@ -3,6 +3,7 @@
 //! The core owns the rules (commands, IDs, plans); this crate does the I/O it must never do on a
 //! UI thread and reports through jobs. No GPUI, no window.
 
+pub mod animated;
 pub mod derive;
 pub mod directed_resources;
 pub mod export;
@@ -14,6 +15,7 @@ pub mod package;
 pub mod probe;
 pub mod scene_encoder;
 pub mod scene_resources;
+mod splat_generation;
 pub mod thumbnails;
 pub mod tools;
 pub mod zip;

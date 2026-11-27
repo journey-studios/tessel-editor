@@ -291,6 +291,21 @@ impl EditorState {
                 value: 0.0,
             });
         }
+        // A reveal sweeps from the clip's first frame (F072): the right half would replay it,
+        // so its delay moves back by the frames the left half took, and its first frame is
+        // exactly the frame the whole clip showed at the cut. The slider's floor only clamps
+        // once the sweep (at most as long as the floor) is already over at the cut.
+        let revealing = matches!(
+            property_def("reveal_mode").map(|property| self.inspector.value(clip, property)),
+            Some(PropertyValue::Choice("wipe"))
+        );
+        if revealing {
+            adjustments.push(Adjustment {
+                half: Half::Right,
+                property: "reveal_offset",
+                value: property_number(self, clip, "reveal_offset") - before as f64,
+            });
+        }
         // A still drifts from `zoom` to `end_zoom` over `duration - 1` frames: the left half
         // ends where the whole clip was one frame before the cut, the right half starts where
         // it was at the cut and ends at the original `end_zoom`.

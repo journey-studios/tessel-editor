@@ -14,8 +14,12 @@ use serde_json::{Value, json};
 use crate::assets::{Asset, AudioStream, MediaKind, Source};
 use crate::audio::{AudioPlan, AudioSegment, resolve_fades};
 use crate::audio_clock;
-use crate::content::{Camera, TextSpec};
+use crate::content::{Camera, TextSpec, TitleAlignment, TitleAnimation, TitleFont};
+use crate::easing::KeyEasing;
+use crate::group::Prop;
 use crate::id::Id;
+use crate::reveal::{Reveal, RevealSettings};
+use crate::shape::ShapeSpec;
 use crate::state::envelope;
 use crate::state::inspector::{self, Value as PropertyValue};
 use crate::state::library::MediaItem;
@@ -133,6 +137,8 @@ pub enum Content {
         source_frame: i64,
     },
     Text(TextSpec),
+    /// A shape the compositor draws itself (F067): no asset behind it.
+    Shape(ShapeSpec),
     Scene {
         camera: Camera,
         time: Ratio,
@@ -152,6 +158,7 @@ impl Content {
             Self::Image => "image",
             Self::Video { .. } => "video",
             Self::Text(_) => "text",
+            Self::Shape(_) => "shape",
             Self::Scene { .. } => "scene",
             Self::Waveform { .. } => "waveform",
         }
@@ -167,10 +174,77 @@ pub struct Layer {
     pub transform: Transform,
     pub opacity: f64,
     pub blend: String,
+    /// Colour correction of the layer's own pixels (inspector tab "Correção de cor").
+    pub grading: Grading,
+    /// Rounded or elliptical cut of the picture (images and videos only).
+    pub mask: Option<Mask>,
+    /// The sweeping edge that uncovers the layer while its clip is revealing (F072), already
+    /// evaluated for this frame; `None` once the reveal is over or when it is off. Every layer a
+    /// clip expands into (a group's children, a player's parts) carries the clip's edge.
+    pub reveal: Option<Reveal>,
     /// A layer above this one provably covers the whole canvas with opaque pixels, so nothing of
     /// this layer can reach the picture: a renderer may skip preparing and drawing it. It is a
     /// hint for speed only; ignoring it gives the same pixels. See [`mark_occluded`].
     pub occluded: bool,
+    /// Visible fraction of the text from the bottom edge during a Rise entrance.
+    pub text_reveal: Option<f64>,
+    /// How many leading characters of the text show while it types or reveals line by line
+    /// (F070, group text children); `None` shows all. The lines are those of the whole text, so
+    /// what is already shown never moves.
+    pub text_visible: Option<usize>,
+}
+
+/// What a mask cuts a picture's rectangle into (F068).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MaskShape {
+    /// The rectangle with rounded corners; `Mask::radius` sets the rounding.
+    Rounded,
+    /// The ellipse inscribed in the rectangle (a circle for a square picture).
+    Ellipse,
+}
+
+impl MaskShape {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Rounded => "rounded",
+            Self::Ellipse => "ellipse",
+        }
+    }
+}
+
+/// A mask on an image or video layer (inspector section "Máscara", F068). It cuts the picture
+/// **after** the crop, in the layer's own rotated space, so the rounded corners belong to the
+/// visible rectangle and turn and scale with it. Present in the plan only when a mask is on.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Mask {
+    pub shape: MaskShape,
+    /// Percent of the shorter side of the cropped picture; `50` rounds a square into a circle.
+    /// Meaningful for `Rounded`; an ellipse ignores it.
+    pub radius: f64,
+}
+
+/// Colour correction of one layer, in the inspector's units: each value is `-100..=100` and `0`
+/// leaves the picture untouched. The renderer applies it to the layer's own pixels, before its
+/// opacity and blend, on the encoded (display) values the compositor works in, in this order:
+///
+/// 1. brightness adds `brightness / 200` to every channel (`±100` shifts half the range);
+/// 2. contrast scales the distance from mid grey by `1 + contrast / 100` (`-100` is flat grey);
+/// 3. saturation scales the distance from the Rec. 709 luma by `1 + saturation / 100`
+///    (`-100` is greyscale, `+100` doubles it);
+///
+/// then clamps to `0..=1`. Alpha is never touched, so a graded layer covers what it covered.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct Grading {
+    pub brightness: f64,
+    pub contrast: f64,
+    pub saturation: f64,
+}
+
+impl Grading {
+    /// Whether drawing with this grading gives the ungraded pixels (all three at `0`).
+    pub fn is_identity(&self) -> bool {
+        self.brightness == 0.0 && self.contrast == 0.0 && self.saturation == 0.0
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -206,7 +280,7 @@ impl RenderPlan {
             "frame": self.frame,
             "time": self.time.to_json(),
             "rate": self.rate.to_json(),
-            "layers": self.layers.iter().map(layer_json).collect::<Vec<_>>(),
+            "layers": self.layers.iter().map(|layer| layer_json(layer, self.width, self.height)).collect::<Vec<_>>(),
             "requires": self.requires.iter().map(|id| id.as_str()).collect::<Vec<_>>(),
             "warnings": self.warnings.iter().map(|warning| json!({
                 "code": warning.code, "message": warning.message, "clip": warning.clip,
@@ -215,7 +289,8 @@ impl RenderPlan {
     }
 }
 
-fn layer_json(layer: &Layer) -> Value {
+/// One layer of the plan; `width` and `height` are the canvas a title is laid out in.
+fn layer_json(layer: &Layer, width: u32, height: u32) -> Value {
     let transform = &layer.transform;
     let mut value = json!({
         "id": layer.id,
@@ -229,6 +304,31 @@ fn layer_json(layer: &Layer) -> Value {
             "rotation": transform.rotation, "crop": transform.crop,
         },
     });
+    if !layer.grading.is_identity() {
+        // Additive and only present when it changes the picture, like `occluded`: a plan
+        // without colour correction is byte-for-byte the one it was before grading existed.
+        let grading = layer.grading;
+        value["grading"] = json!({
+            "brightness": grading.brightness,
+            "contrast": grading.contrast,
+            "saturation": grading.saturation,
+        });
+    }
+    if let Some(mask) = layer.mask {
+        // Additive and only present when a mask is on, like `grading`: a plan without one is
+        // byte-for-byte the plan an older runtime understands.
+        value["mask"] = json!({ "shape": mask.shape.as_str(), "radius": mask.radius });
+    }
+    if let Some(reveal) = layer.reveal {
+        // Additive and only present while a reveal is sweeping, like `mask`: a plan without one
+        // is byte-for-byte the plan an older runtime understands. The edge is already eased,
+        // so the runtime holds no clock of its own.
+        value["reveal"] = json!({
+            "edge": reveal.edge,
+            "angle": reveal.angle,
+            "direction": reveal.direction(),
+        });
+    }
     if layer.occluded {
         // Additive and only present when true, so a plan without a hidden layer is byte-for-byte
         // the one an older runtime understands.
@@ -243,7 +343,37 @@ fn layer_json(layer: &Layer) -> Value {
             value["source_time"] = source_time.to_json();
             value["source_frame"] = json!(source_frame);
         }
-        Content::Text(text) => value["text"] = text.to_json(),
+        Content::Text(text) => {
+            value["text"] = text.to_json();
+            // BL141.1: the lines and the size a title is drawn at, laid out by the core. Only
+            // present when they differ from one line at full size, so a title that already fit
+            // keeps the plan (and the picture) it had.
+            if text.font == TitleFont::Bitmap {
+                let layout =
+                    crate::text::layout_in(&text.content, text.size, width, height, text.width);
+                if !layout.is_single_line_of(&text.content) {
+                    value["text"]["lines"] = json!(layout.lines);
+                    value["text"]["scale"] = json!(layout.scale);
+                }
+            } else if text.width > 0.0 {
+                // F070: a sans text with a box is broken into lines here, by the core, so the
+                // runtime draws the lines the reveal counted. A sans title without a box keeps
+                // being wrapped by the runtime, as it always was.
+                value["text"]["lines"] = json!(
+                    crate::text::layout_sans(&text.content, text.size, width, height, text.width)
+                        .lines
+                );
+            }
+            if let Some(reveal) = layer.text_reveal {
+                value["text"]["reveal"] = json!(reveal);
+            }
+            if let Some(visible) = layer.text_visible {
+                value["text"]["visible"] = json!(visible);
+            }
+        }
+        Content::Shape(shape) => {
+            value["shape"] = shape.to_json();
+        }
         Content::Scene {
             camera,
             time,
@@ -261,6 +391,59 @@ fn layer_json(layer: &Layer) -> Value {
         }
     }
     value
+}
+
+/// Evaluated from the edit clock, so preview, export and an out-of-order seek agree.
+fn animate_title(layer: &mut Layer, clip: &Clip, frame: i64, rate: Rate) {
+    let Content::Text(text) = &layer.content else {
+        return;
+    };
+    let half_span = rate.frame_to_time(clip.duration / 2).to_f64();
+    let duration = (f64::from(text.animation_ms) / 1000.0).min(half_span);
+    // A one-frame title must be readable, even with an entrance preset attached.
+    if duration <= 0.0 {
+        return;
+    }
+    let elapsed = rate.frame_to_time(frame - clip.start).to_f64();
+    let progress = (elapsed / duration).clamp(0.0, 1.0);
+    if progress >= 1.0 {
+        return;
+    }
+    let remaining = 1.0 - progress;
+    match text.animation {
+        TitleAnimation::None => {}
+        TitleAnimation::Rise => {
+            let reveal = 1.0 - remaining.powi(4);
+            layer.transform.y += text.size * layer.transform.scale * 0.32 * (1.0 - reveal);
+            layer.opacity *= reveal;
+            layer.text_reveal = Some(reveal);
+        }
+        TitleAnimation::Fade => {
+            layer.opacity *= progress * progress * (3.0 - 2.0 * progress);
+        }
+        TitleAnimation::Pop => {
+            // The small overshoot settles to exactly 100% at the end of the entrance.
+            let scale = 1.0 + 0.18 * (2.4 * (progress - 1.0).powi(3) + 1.4 * remaining.powi(2));
+            layer.transform.scale *= scale;
+            layer.opacity *= 1.0 - remaining.powi(3);
+        }
+    }
+}
+
+/// `time` modulo `span` (both positive, exact): the time inside one repetition of a loop.
+fn wrap(time: Ratio, span: Ratio) -> Ratio {
+    if time.is_negative() {
+        return time;
+    }
+    // floor(time / span) in 128 bits: the numerators and denominators are 64-bit.
+    let whole = i128::from(time.num()) * i128::from(span.den())
+        / (i128::from(time.den()) * i128::from(span.num()));
+    let Ok(whole) = i64::try_from(whole) else {
+        return time;
+    };
+    span.mul_int(whole)
+        .and_then(|repeated| time.sub(repeated))
+        .unwrap_or(time)
 }
 
 fn invalid_time(message: String, details: Value) -> CommandError {
@@ -333,11 +516,8 @@ impl Resolver<'_> {
             .unwrap_or_default()
     }
 
-    /// Playback speed of a clip as a ratio (`100 %` is 1): the one place the picture and the sound
-    /// read it, so they cannot drift apart.
     fn speed_ratio(&self, clip: &Clip) -> Ratio {
-        let percent = self.number(clip, "speed").round() as i64;
-        Ratio::new(percent.max(1), 100).unwrap_or(Ratio::from_int(1))
+        clip_playback_speed(&self.state.inspector, clip.id)
     }
 
     fn source_time(&self, clip: &Clip, frame: i64) -> Ratio {
@@ -345,7 +525,77 @@ impl Resolver<'_> {
         let elapsed = timeline.rate.frame_to_time(frame - clip.start);
         let speed = self.speed_ratio(clip);
         let scaled = elapsed.mul(speed).unwrap_or(elapsed);
+        let scaled = match self.loop_span(clip) {
+            Some(span) => wrap(scaled, span),
+            None => scaled,
+        };
         clip.source_start.add(scaled).unwrap_or(clip.source_start)
+    }
+
+    /// How long a looping clip's source lasts from `source_start`, in seconds of source time:
+    /// the length the picture repeats over. `None` for a clip that plays once or whose source
+    /// has no known length (a still, a scene).
+    fn loop_span(&self, clip: &Clip) -> Option<Ratio> {
+        if clip.kind != ClipKind::Video || !self.flag(clip, "loop") {
+            return None;
+        }
+        let item = clip
+            .media
+            .and_then(|media| self.state.library.item(media))?;
+        if item.kind != MediaKind::Video {
+            return None;
+        }
+        let asset = item.asset.as_ref()?;
+        let total = match (&asset.source, asset.meta.rate) {
+            (Source::FrameSequence { count, .. }, Some(rate)) => rate.frame_to_time(*count),
+            _ => asset.meta.duration?,
+        };
+        let span = total.sub(clip.source_start)?;
+        (!span.is_negative() && span.num() > 0).then_some(span)
+    }
+
+    /// The clip's colour correction (the `grading` section of the inspector).
+    fn grading(&self, clip: &Clip) -> Grading {
+        Grading {
+            brightness: self.number(clip, "brightness"),
+            contrast: self.number(clip, "contrast"),
+            saturation: self.number(clip, "saturation"),
+        }
+    }
+
+    /// The clip's mask (the `mask` section of the inspector), or `None` while it is off.
+    fn mask(&self, clip: &Clip) -> Option<Mask> {
+        let shape = match self.choice(clip, "mask_shape").as_str() {
+            "rounded" => MaskShape::Rounded,
+            "ellipse" => MaskShape::Ellipse,
+            _ => return None,
+        };
+        Some(Mask {
+            shape,
+            radius: self.number(clip, "mask_radius"),
+        })
+    }
+
+    /// The clip's reveal edge at `frame` (the `reveal` section of the inspector), or `None`
+    /// while the reveal is off or already over.
+    fn reveal(&self, clip: &Clip, frame: i64) -> Option<Reveal> {
+        if self.choice(clip, "reveal_mode") != "wipe" {
+            return None;
+        }
+        let settings = RevealSettings {
+            from: self.number(clip, "reveal_from"),
+            to: self.number(clip, "reveal_to"),
+            angle: self.number(clip, "reveal_angle"),
+            duration: self.number(clip, "reveal_duration"),
+            offset: self.number(clip, "reveal_offset"),
+            easing: KeyEasing::parse(&self.choice(clip, "reveal_easing")).unwrap_or_default(),
+        };
+        let timeline = &self.state.timeline;
+        settings.at(
+            frame - clip.start,
+            f64::from(timeline.width),
+            f64::from(timeline.height),
+        )
     }
 
     /// Fade ramps apply to opacity, evaluated at the frame being drawn.
@@ -357,7 +607,7 @@ impl Resolver<'_> {
         let (first, last) = clip.fade_bounds(fade_in, fade_out);
         let local = (frame - first) as f64;
         let remaining = (last - frame) as f64;
-        let mut opacity = self.number(clip, "opacity") / 100.0;
+        let mut opacity = self.state.clip_keyed_value(clip, Prop::Opacity, frame) / 100.0;
         if fade_in > 0.0 {
             opacity *= (local / fade_in).min(1.0);
         }
@@ -368,17 +618,19 @@ impl Resolver<'_> {
     }
 
     fn transform(&self, clip: &Clip, frame: i64, ken_burns: bool) -> Transform {
-        let mut zoom = self.number(clip, "zoom");
-        if ken_burns && self.flag(clip, "ken_burns") {
+        let mut zoom = self.state.clip_keyed_value(clip, Prop::Scale, frame);
+        // A zoom track is the more specific statement of how the zoom moves: it replaces the drift.
+        let zoom_keyed = clip.keys.iter().any(|track| track.prop == Prop::Scale);
+        if ken_burns && !zoom_keyed && self.flag(clip, "ken_burns") {
             let span = (clip.duration - 1).max(1) as f64;
             let progress = ((frame - clip.start) as f64 / span).clamp(0.0, 1.0);
             zoom += (self.number(clip, "end_zoom") - zoom) * progress;
         }
         Transform {
-            x: self.number(clip, "position_x"),
-            y: self.number(clip, "position_y"),
+            x: self.state.clip_keyed_value(clip, Prop::X, frame),
+            y: self.state.clip_keyed_value(clip, Prop::Y, frame),
             scale: zoom / 100.0,
-            rotation: self.number(clip, "rotation"),
+            rotation: self.state.clip_keyed_value(clip, Prop::Rotation, frame),
             crop: [
                 self.number(clip, "crop_left"),
                 self.number(clip, "crop_right"),
@@ -466,9 +718,24 @@ impl Resolver<'_> {
             transform: Transform::default(),
             opacity: 1.0,
             blend: "normal".to_string(),
+            grading: Grading::default(),
+            mask: None,
+            reveal: None,
             occluded: false,
+            text_reveal: None,
+            text_visible: None,
         })
     }
+}
+
+/// The same playback clock is used for rendering, trim and validation of localized media.
+pub(crate) fn clip_playback_speed(inspector: &inspector::Inspector, clip: Id) -> Ratio {
+    let percent =
+        inspector::property_def("speed").map_or(100.0, |def| match inspector.value(clip, def) {
+            PropertyValue::Number(value) => value,
+            _ => 100.0,
+        });
+    Ratio::new((percent.round() as i64).max(1), 100).unwrap_or(Ratio::from_int(1))
 }
 
 impl EditorState {
@@ -557,8 +824,30 @@ impl EditorState {
             else {
                 continue;
             };
-            if let Some(layer) = self.clip_layer(&mut resolver, clip, frame)? {
-                layers.push(layer);
+            let first = layers.len();
+            match clip.kind {
+                // A group is several layers (F069); the compositor never sees the group itself.
+                ClipKind::Group => {
+                    layers.extend(self.group_layers(&mut resolver, clip, frame)?);
+                }
+                // Neither does it see a player or a caption track (F071).
+                ClipKind::Player => {
+                    layers.extend(self.player_layers(&mut resolver, clip, frame));
+                }
+                ClipKind::Subtitles => {
+                    layers.extend(self.subtitle_layers(&mut resolver, clip, frame));
+                }
+                _ => {
+                    if let Some(layer) = self.clip_layer(&mut resolver, clip, frame)? {
+                        layers.push(layer);
+                    }
+                }
+            }
+            // One edge for the whole clip, whatever it expanded into (F072).
+            if let Some(reveal) = resolver.reveal(clip, frame) {
+                for layer in &mut layers[first..] {
+                    layer.reveal = Some(reveal);
+                }
             }
         }
         self.mark_occluded(&mut layers, timeline.width, timeline.height);
@@ -601,6 +890,14 @@ impl EditorState {
     fn covers_canvas(&self, layer: &Layer, canvas_w: f64, canvas_h: f64) -> bool {
         // NaN is not "fully opaque".
         if layer.opacity.is_nan() || layer.opacity < 1.0 || layer.blend != "normal" {
+            return false;
+        }
+        // A mask cuts the corners (or the whole rectangle): the picture no longer reaches every pixel.
+        if layer.mask.is_some() {
+            return false;
+        }
+        // A sweeping edge leaves part of the canvas to what lies below (F072).
+        if layer.reveal.is_some() {
             return false;
         }
         let transform = &layer.transform;
@@ -680,10 +977,55 @@ impl EditorState {
                     transform: Transform::default(),
                     opacity: 1.0,
                     blend: "normal".to_string(),
+                    grading: Grading::default(),
+                    mask: None,
+                    reveal: None,
                     occluded: false,
+                    text_reveal: None,
+                    text_visible: None,
+                }
+            }
+            ClipKind::Shape => {
+                let Some(shape) = clip.shape.clone() else {
+                    resolver.warnings.push(Warning {
+                        code: "shape_without_spec",
+                        message: format!("Shape `{}` has no specification and is skipped", clip.id),
+                        clip: Some(clip.id),
+                    });
+                    return Ok(None);
+                };
+                if !shape.draws_anything() {
+                    // No fill and no contour thickness: nothing to draw, and saying so beats a
+                    // clip that is on the timeline but invisible for no stated reason.
+                    resolver.warnings.push(Warning {
+                        code: "shape_draws_nothing",
+                        message: format!(
+                            "Shape `{}` has no fill and no contour thickness and is skipped",
+                            clip.id
+                        ),
+                        clip: Some(clip.id),
+                    });
+                    return Ok(None);
+                }
+                Layer {
+                    id: layer_id,
+                    clip: Some(clip.id),
+                    asset: None,
+                    content: Content::Shape(shape),
+                    transform: Transform::default(),
+                    opacity: 1.0,
+                    blend: "normal".to_string(),
+                    grading: Grading::default(),
+                    mask: None,
+                    reveal: None,
+                    occluded: false,
+                    text_reveal: None,
+                    text_visible: None,
                 }
             }
             ClipKind::Audio => return Ok(None),
+            // A group is several layers: `group_layers` resolves it before this is reached.
+            ClipKind::Group | ClipKind::Player | ClipKind::Subtitles => return Ok(None),
             ClipKind::Video | ClipKind::Scene => {
                 let item = clip
                     .media
@@ -706,6 +1048,19 @@ impl EditorState {
                     });
                     return Ok(None);
                 };
+                if resolver.loop_span(clip).is_some()
+                    && !asset.meta.audio_streams.is_empty()
+                    && !resolver.flag(clip, "audio_muted")
+                {
+                    resolver.warnings.push(Warning {
+                        code: "loop_audio_not_repeated",
+                        message: format!(
+                            "`{}` repeats its picture but its sound plays once; mute the clip or use a picture-only source",
+                            clip.id
+                        ),
+                        clip: Some(clip.id),
+                    });
+                }
                 let camera = clip.camera.unwrap_or_default();
                 let source_time = resolver.source_time(clip, frame);
                 let mut layer =
@@ -718,9 +1073,39 @@ impl EditorState {
         };
         let still = matches!(layer.content, Content::Image);
         layer.transform = resolver.transform(clip, frame, still);
+        self.anchor_text(&mut layer);
         layer.opacity = resolver.opacity(clip, frame);
+        animate_title(&mut layer, clip, frame, self.timeline.rate);
         layer.blend = resolver.choice(clip, "blend");
+        layer.grading = resolver.grading(clip);
+        // The mask is a picture's: titles, shapes and scenes keep their own geometry.
+        if matches!(layer.content, Content::Image | Content::Video { .. }) {
+            layer.mask = resolver.mask(clip);
+        }
         Ok(Some(layer))
+    }
+
+    /// Moves the transform of a centred bitmap title so that several lines grow away from the
+    /// nearest edge. Shared by title clips and group text children: both are titles to the
+    /// compositor, so the same text must land on the same pixels in either.
+    fn anchor_text(&self, layer: &mut Layer) {
+        if let Content::Text(text) = &layer.content
+            && text.font == TitleFont::Bitmap
+            && text.align == TitleAlignment::Center
+        {
+            // BL141.1: a title of several lines grows away from the nearest edge (text::anchor_offset).
+            let (width, height) = (self.timeline.width, self.timeline.height);
+            let layout =
+                crate::text::layout_in(&text.content, text.size, width, height, text.width);
+            layer.transform.y += crate::text::anchor_offset(
+                &layout,
+                &text.content,
+                text.size,
+                height,
+                layer.transform.y,
+                layer.transform.scale,
+            );
+        }
     }
 
     /// Scene time (exact seconds) a clip reads at sequence `frame`: `source_start` plus the
@@ -745,10 +1130,17 @@ impl EditorState {
         .speed_ratio(clip)
     }
 
-    /// The camera a scene clip shows at sequence `frame`: its keyframes (BL140) at scene time, or
-    /// without keys the still/orbiting camera counted from the clip start. One function for the
-    /// plan (so preview and export agree) and for capturing a key at the playhead.
+    /// The authored camera with the push-in applied, shared by the monitor and export plans.
     pub fn clip_camera_at(&self, clip: &Clip, frame: i64) -> Camera {
+        let base = self.clip_base_camera_at(clip, frame);
+        match clip.camera_push_in {
+            Some(push_in) => push_in.apply(base, self.clip_scene_time(clip, frame)),
+            None => base,
+        }
+    }
+
+    /// Capture edits the underlying key track so a push-in is never applied twice.
+    pub(crate) fn clip_base_camera_at(&self, clip: &Clip, frame: i64) -> Camera {
         let source_time = self.clip_source_time(clip, frame);
         if let Some(camera) = crate::camera_keys::evaluate(&clip.camera_keys, source_time.to_f64())
         {
@@ -824,7 +1216,12 @@ impl EditorState {
                 transform: Transform::default(),
                 opacity: 1.0,
                 blend: "normal".to_string(),
+                grading: Grading::default(),
+                mask: None,
+                reveal: None,
                 occluded: false,
+                text_reveal: None,
+                text_visible: None,
             }
         } else {
             // A SHARP splat is previewed from the camera that took its picture (BL143).
@@ -1148,6 +1545,9 @@ impl EditorState {
         })
     }
 }
+
+mod group_layers;
+mod live_layers;
 
 #[cfg(test)]
 mod tests;

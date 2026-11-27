@@ -13,8 +13,11 @@ mod drag;
 mod env_mode;
 mod flows;
 mod geometry;
+mod group_inspector;
 mod inspector_panel;
 mod library_panel;
+mod live_inspector;
+mod localization;
 mod media;
 mod monitor;
 mod ops;
@@ -34,6 +37,7 @@ mod scene_model;
 mod scene_monitor;
 mod scene_panel;
 mod scene_ui;
+mod shape_inspector;
 mod slider_gesture;
 mod split_shortcut;
 mod status_bar;
@@ -49,7 +53,7 @@ use std::collections::HashMap;
 
 use gpui_kit::component::IndexPath;
 use gpui_kit::component::dock::{DockEvent, DockToggleEvent};
-use gpui_kit::component::input::{InputEvent, InputState};
+use gpui_kit::component::input::{InputEvent, InputState, TextareaState};
 use gpui_kit::component::searchable_list::SearchableVec;
 use gpui_kit::component::select::{SelectEvent, SelectState};
 use gpui_kit::component::slider::{SliderEvent, SliderState};
@@ -100,8 +104,14 @@ pub struct Workstation {
     /// The text input of the inspector's "Texto" section (title clips). Like the search box it
     /// follows the model: `title_text_shown` is the `(clip, content)` last pushed into it, so the
     /// model is written back only when it changed, never over what is being typed.
-    title_text: Entity<InputState>,
+    title_text: Entity<TextareaState>,
     title_text_shown: Option<(String, String)>,
+    /// The inputs of the inspector's "Forma" section (shape clips); see `shape_inspector.rs`.
+    shape_inputs: shape_inspector::ShapeInputs,
+    /// The inputs of the inspector's "Grupo" section (group clips); see group_inspector.rs.
+    group_inputs: group_inspector::GroupInputs,
+    /// The inputs of the inspector's "Player" and "Legendas" sections (F071); see live_inspector.rs.
+    live_inputs: live_inspector::LiveInputs,
     sliders: HashMap<&'static str, Entity<SliderState>>,
     selects: HashMap<&'static str, OptionSelect>,
     library_tree: Entity<TreeState>,
@@ -110,6 +120,7 @@ pub struct Workstation {
     /// (`sequence_choices` is what it currently lists) and only dispatches `ActivateSequence`.
     sequence_select: Entity<SelectState<SearchableVec<String>>>,
     sequence_choices: Vec<(String, String)>,
+    language_controls: localization::LanguageControls,
     /// Folder IDs, expansion and selection last pushed into `library_tree`, so
     /// the tree is only rebuilt when the model really changed (rebuilding
     /// resets the tree's own selection).
@@ -150,19 +161,31 @@ impl Workstation {
         })
         .detach();
 
-        let title_text = cx.new(|cx| InputState::new(window, cx).placeholder("Texto do título"));
+        let title_text = cx.new(|cx| {
+            TextareaState::new(window, cx)
+                .rows(2)
+                .submit_on_enter(true)
+                .placeholder("Texto do título")
+        });
         // Enter or leaving the field commits ONE `SetClipTextField` (one undo entry), never one
         // per keystroke; a refused text (a character the font cannot draw) puts the model's back.
         cx.subscribe_in(
             &title_text,
             window,
             |this, input, event: &InputEvent, _window, cx| {
-                if matches!(event, InputEvent::PressEnter { .. } | InputEvent::Blur) {
+                if matches!(
+                    event,
+                    InputEvent::PressEnter { shift: false, .. } | InputEvent::Blur
+                ) {
                     this.commit_title_text(input, cx);
                 }
             },
         )
         .detach();
+
+        let shape_inputs = shape_inspector::ShapeInputs::new(window, cx);
+        let group_inputs = group_inspector::GroupInputs::new();
+        let live_inputs = live_inspector::LiveInputs::new(window, cx);
 
         let mut sliders = HashMap::new();
         let mut selects = HashMap::new();
@@ -334,12 +357,16 @@ impl Workstation {
             search,
             title_text,
             title_text_shown: None,
+            shape_inputs,
+            group_inputs,
+            live_inputs,
             sliders,
             selects,
             library_tree,
             zoom_slider,
             sequence_select,
             sequence_choices: Vec::new(),
+            language_controls: localization::LanguageControls::new(window, cx),
             library_signature: Vec::new(),
             preview: None,
             clip_grab_px: 0.0,
@@ -369,7 +396,32 @@ impl Workstation {
         source: Source,
         cx: &mut Context<Self>,
     ) -> Result<Value, CommandError> {
+        if matches!(
+            &command,
+            Command::Localization(
+                tessel_editor_core::localization::Edit::Get { .. }
+                    | tessel_editor_core::localization::Edit::Resolve { .. }
+                    | tessel_editor_core::localization::Edit::Status
+            )
+        ) {
+            return self.state.execute(command);
+        }
+        let switches_language = matches!(
+            &command,
+            Command::Localization(
+                tessel_editor_core::localization::Edit::Select(_)
+                    | tessel_editor_core::localization::Edit::Remove(_)
+            )
+        );
         let ordinary_preview = matches!(command, Command::SetPreview { .. });
+        let camera_edit = matches!(command, Command::SetCameraPushIn { .. });
+        let camera_preview = matches!(
+            command,
+            Command::SetCameraPushIn {
+                options: Some(_),
+                ..
+            }
+        );
         let moved_playhead = matches!(
             command,
             Command::SetPlayhead { .. }
@@ -379,6 +431,10 @@ impl Workstation {
         if result.is_ok() && moved_playhead {
             // The history's event line: a gesture or `ui set` moved the playhead on purpose.
             self.perf_playhead_moved();
+        }
+        if result.is_ok() && switches_language {
+            self.playback_stop(cx);
+            self.viewport.leave_directed();
         }
         if result.is_ok() && ordinary_preview {
             self.viewport.leave_directed();
@@ -390,14 +446,29 @@ impl Workstation {
             // reuses it instead of planning the scene again for the same state.
             self.overlay_adopt(outcome);
         }
-        if result.is_ok() {
+        let mut previewing_camera = false;
+        if camera_edit && let Ok(outcome) = &result {
+            self.playback_stop(cx);
+            if camera_preview
+                && let (Some(from), Some(end)) =
+                    (outcome["range"][0].as_i64(), outcome["range"][1].as_i64())
+            {
+                self.playback_camera_preview(from, end, cx);
+                previewing_camera = true;
+            }
+        }
+        if result.is_ok() && !previewing_camera {
             // After a failed command the state is untouched, so the picture stays as it was.
             self.viewport_sync(cx);
         }
         self.activity = Some(match &result {
             Ok(outcome) => Activity {
                 source,
-                text: describe(outcome),
+                text: if previewing_camera {
+                    "Prévia da aproximação (sem som)".into()
+                } else {
+                    describe(outcome)
+                },
                 error: false,
             },
             Err(error) => Activity {
@@ -854,13 +925,19 @@ mod audio_fades_tests;
 #[cfg(test)]
 mod camera_keys_tests;
 #[cfg(test)]
+mod clip_keys_tests;
+#[cfg(test)]
 mod dock_tests;
 #[cfg(test)]
 mod env_mode_tests;
 #[cfg(test)]
+mod group_clip_tests;
+#[cfg(test)]
 mod identity_tests;
 #[cfg(test)]
 mod input_tests;
+#[cfg(test)]
+mod live_clip_tests;
 #[cfg(test)]
 mod perf_history_tests;
 #[cfg(test)]
@@ -889,6 +966,8 @@ mod scene_gizmo_tests;
 mod scene_light_tests;
 #[cfg(test)]
 mod scene_tests;
+#[cfg(test)]
+mod shape_clip_tests;
 #[cfg(test)]
 mod sharp_capture_tests;
 #[cfg(test)]

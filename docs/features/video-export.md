@@ -12,6 +12,8 @@ WinGet, Program Files, `LOCALAPPDATA`); `TESSEL_FFMPEG`/`TESSEL_FFPROBE` inváli
 (`export.start` real com FFmpeg 9.0.2, sem overrides): [media-setup](../media-setup.md#descoberta-dos-executáveis) e
 [relatório](../migration/windows-tool-discovery-report.md). Só o Windows foi provado nesta entrega.
 
+[Guia de prévias por trecho](../guides/preview.md) · `./scripts/tessel help preview`
+
 ## Pipeline
 
 `snapshot imutável → preflight → prepare (decode) → mix WAV em blocos de 10 s → frame PNG a frame → FFmpeg
@@ -21,8 +23,12 @@ cruza o pipe, o áudio vai direto para arquivo.
 
 | `op` | Campos | Notas |
 |---|---|---|
-| `export.preflight` | `preset?`, `destination`, `sequence?`, `range?` | `{ok, blockers[], warnings[], summary}` (`summary`: faixa, tamanhos de render/saída, áudio, `estimate` de bytes de saída/staging/memória, espaço livre, encoder, versão do FFmpeg, capacidades do renderer) |
+| `export.preflight` | `preset?`, `destination`, `sequence?`, `range?`, `camera_preview?` | `{ok, blockers[], warnings[], summary}` (`summary`: faixa, tamanhos de render/saída, áudio, `estimate` de bytes de saída/staging/memória, espaço livre, encoder, versão do FFmpeg, capacidades do renderer) |
 | `export.start` | idem + `replace?`, `wait?` | job `video_export`; `range` = `[início, fim)` em frames |
+
+`camera_preview` recebe o ID de um clipe e calcula o intervalo da
+[aproximação visível](camera-push-in.md). Use um único seletor de intervalo por operação.
+Sem preset explícito, a prévia é um MP4 sem áudio com até 640 px no lado maior.
 
 Blockers: `invalid_preset`, `invalid_destination`, `destination_exists`, `disk_full`, `encoder_unavailable`,
 `asset_missing`, `asset_changed`, `no_workspace` (mídia a decodificar sem workspace), `render_too_large`,
@@ -44,6 +50,12 @@ inclusive negativo), e `speed` é varispeed (muda altura). Um vídeo sem áudio 
 export (`video_audio.rs`: trim, offset, speed, mute, stream ausente) e análise espectral dos arquivos 1080p e 4K gerados
 pelas três superfícies.
 `export.start` roda o preflight e falha com os mesmos blockers.
+
+Para automação de conteúdo, `./scripts/tessel export projeto.tessel.json saida.mp4 --range 675 735`
+abre o projeto e acompanha o job nativo. Use `--clip ID` para exportar só a aproximação
+salva ou omita o seletor para exportar a sequência. O progresso sai em stderr e o
+relatório final em stdout. `--renderer` aceita um build específico.
+[Guia de exportação](../guides/export.md) · [Contrato do CLI](cli-workflows.md)
 
 Verificação final (ffprobe lê o arquivo de volta e o compara com o plano): codec h264, resolução, `yuv420p`, taxa de frames, nº de frames e duração do vídeo e do áudio; qualquer divergência falha o job e nada é publicado (exit 0 do encoder não basta). Cancelar remove o staging e não deixa arquivo no destino; falha de disco idem. A prova com um volume cheio de verdade (`export.rs::a_full_disk_ends_the_export_with_disk_full_and_leaves_the_volume_clean`, imagem HFS+ de 40 MB) pula com `skipped: hdiutil attach failed` onde o sistema nega o `hdiutil attach` (sandboxes) e apaga a imagem ao soltar o volume (BL082.47).
 

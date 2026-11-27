@@ -227,3 +227,25 @@ fn capture_is_disabled_with_a_reason_while_the_camera_orbits_and_its_button_matc
     assert_eq!(error.code, "camera_orbit_conflict");
     assert_eq!(keys(&view, cx), 0);
 }
+
+#[gpui_kit::test]
+fn push_in_action_plays_only_the_edited_range_and_leaves_its_last_frame(cx: &mut TestAppContext) {
+    let (view, cx) = fixture(cx);
+    scene_project(&view, cx, "push-in");
+    invoke(&view, cx, "clip:c-scene", "select").unwrap();
+    assert_eq!(node(&view, cx, "camera.push_in").unwrap()["enabled"], true);
+    let result = invoke(&view, cx, "camera.push_in", "invoke").unwrap();
+    assert_eq!(result["range"], json!([18, 48]));
+    let playback = op(&view, cx, json!({"op":"playback.status"})).unwrap();
+    assert_eq!(playback["range"], result["range"]);
+    assert_eq!(playback["audio"]["status"], "muted");
+    let _clock = crate::workstation::playback::script_wall_clock(&[48.0]);
+    view.update(cx, |view, cx| {
+        view.playback_tick(cx, std::time::Instant::now(), std::time::Duration::ZERO);
+        assert_eq!(view.state.timeline.playhead, 47);
+        assert!(!view.playback.is_playing());
+    });
+    assert!(node(&view, cx, "camera.push_in.clear").is_some());
+    invoke(&view, cx, "camera.push_in.clear", "invoke").unwrap();
+    assert!(node(&view, cx, "camera.push_in.clear").is_none());
+}

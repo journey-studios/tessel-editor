@@ -559,6 +559,68 @@ impl Cache {
         ))
     }
 
+    /// The one PNG (RGBA) a still the runtime cannot read (TIFF, JPEG 2000, ...) is drawn from,
+    /// as a single numbered frame so it travels the same cache and descriptor path as a video's
+    /// frames. FFmpeg keeps the alpha channel the format has; the original is never touched.
+    pub fn decode_still(
+        &self,
+        tools: &Tools,
+        asset: &Asset,
+        ctx: &JobContext,
+    ) -> Result<(DecodedFrames, bool), JobError> {
+        let source = file_path(asset)?.to_string();
+        let params = json!({ "format": "png-rgba", "still": true });
+        let (dir, reused, _) = self.ensure(
+            asset,
+            "still",
+            fingerprint(tools, asset, &params),
+            |staging| {
+                let frames = staging.join("frames");
+                fs::create_dir_all(&frames).map_err(|error| io_error(&frames, &error))?;
+                let mut child = Command::new(&tools.ffmpeg)
+                    .args(["-v", "error", "-nostdin", "-y", "-i"])
+                    .arg(&source)
+                    .args([
+                        "-an",
+                        "-frames:v",
+                        "1",
+                        "-vf",
+                        "format=rgba",
+                        "-compression_level",
+                        "1",
+                        "-start_number",
+                        "0",
+                    ])
+                    .arg(frames.join("f%06d.png"))
+                    .stderr(Stdio::piped())
+                    .spawn()
+                    .map_err(|error| {
+                        JobError::new("tool_unavailable", format!("ffmpeg: {error}"))
+                    })?;
+                wait_cancellable(&mut child, ctx, "decode")?;
+                if !frames.join("f000000.png").is_file() {
+                    return Err(JobError::new(
+                        "decode_failed",
+                        "FFmpeg could not decode the picture",
+                    ));
+                }
+                Ok(json!({ "count": 1 }))
+            },
+        )?;
+        Ok((
+            DecodedFrames {
+                pattern: dir
+                    .join("frames")
+                    .join("f%06d.png")
+                    .to_string_lossy()
+                    .into_owned(),
+                first: 0,
+                count: 1,
+            },
+            reused,
+        ))
+    }
+
     /// Smaller numbered frames derived from the decoded `frames`, for interactive preview only
     /// (export always reads the original, see `Derived::for_export`). Same numbering and count as
     /// the source, scaled to exactly `height` rows; a frame count that differs is an error, not
@@ -745,6 +807,14 @@ impl Cache {
                 Ok(Some(Decoded {
                     frames: Some(frames),
                     audio: self.decode_streams(tools, asset, ctx)?,
+                    proxy: None,
+                }))
+            }
+            MediaKind::Still if asset.meta.still_needs_png() => {
+                let (frames, _) = self.decode_still(tools, asset, ctx)?;
+                Ok(Some(Decoded {
+                    frames: Some(frames),
+                    audio: Vec::new(),
                     proxy: None,
                 }))
             }

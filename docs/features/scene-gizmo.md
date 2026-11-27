@@ -859,7 +859,7 @@ Isso não altera o status de G1 (**a validar**): ponteiro físico, desempenho do
 
 Status: **a validar** (revisão independente do coordenador, ponteiro físico e desempenho pendentes). Evidências pequenas
 em [`docs/migration/g12-scale/`](../migration/g12-scale/). Datas em UTC (2026-11-10), diretório
-`/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-3902d1d1`, ramo `t3/gizmo-node-scaling`, base `origin/main`
+`~/.t3/worktrees/tessel-editor/t3-3902d1d1`, ramo `t3/gizmo-node-scaling`, base `origin/main`
 `308f1a2`; cargo por `./scripts/cargo` (MBX, alvo padrão, `-j 3`), disco livre ≥ 25 GiB durante os gates.
 
 **Cobertura escrita junto do código**
@@ -1012,7 +1012,7 @@ evicção automática de cache durante o clippy e eu nunca rodei `clean`/`gc`).
 ### Integração com a `main` viva (merge `5906713`; gates no merge local `3ed7f8b`, a validar)
 
 Status: **a validar** (nova revisão independente do coordenador pendente). Datas em UTC (2026-11-11), checkout T3
-`/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-2b5276ea`, ramo local `t3/integrate-main-validate-pr43`. Cabeça da PR no início: `8a18811`;
+`~/.t3/worktrees/tessel-editor/t3-2b5276ea`, ramo local `t3/integrate-main-validate-pr43`. Cabeça da PR no início: `8a18811`;
 `main`: `bf4347d` (P3: chaves de FX e grão animado, PR #42). Enquanto esta rodada fazia o próprio **merge commit** local (`3ed7f8b`,
 sem rebase, não publicado), outro agente publicou na PR o merge `5906713` e o `aae8747`. As duas árvores diferem **só** em
 `docs/backlog.md` (ordem de dois blocos; `git diff --stat 3ed7f8b 5906713`), portanto os gates abaixo, rodados em `3ed7f8b`, valem para o
@@ -1065,7 +1065,7 @@ começou depois de uma medição nova de 21,6 GiB (reserva 16) e terminou com 13
 ### Achado matemático da base normalizada por volume (código `0ee2d14`, a validar)
 
 Status: **a validar** (revisão independente do coordenador pendente). Datas em UTC (2026-11-11), checkout T3
-`/Users/wallyssonnunes/.t3/worktrees/tessel-editor/t3-02ba3f94` (ramo local `t3/scale-frame-math-fixes`, avançado por fast-forward para a
+`~/.t3/worktrees/tessel-editor/t3-02ba3f94` (ramo local `t3/scale-frame-math-fixes`, avançado por fast-forward para a
 cabeça da PR `78f8994` e publicado em `t3/gizmo-node-scaling` sem force). `origin/main` conferida viva: `bf4347d`. Os pushes de outro
 agente (`5906713`, `aae8747`) estão no histórico e não foram tocados. Evidência pequena em
 [`docs/migration/g12-scale/head-0ee2d14/`](../migration/g12-scale/head-0ee2d14/) (`gates.json`, `mutation-report-math.json`).

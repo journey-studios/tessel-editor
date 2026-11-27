@@ -29,7 +29,7 @@ pub enum CameraKeysCommand {
     Remove { clip: String, time: Ratio },
     /// Replaces every key (an empty list removes them all).
     Replace { clip: String, keys: Vec<CameraKey> },
-    /// Records the camera the clip shows at the playhead as a key at that scene time. `easing`
+    /// Records the clip's base camera at the playhead as a key at that scene time. `easing`
     /// `None` keeps the easing of the key already there, or is linear for a new key.
     Capture {
         clip: String,
@@ -113,7 +113,7 @@ impl EditorState {
         self.clip_source_time(clip, frame)
     }
 
-    fn scene_clip(&self, clip: &str) -> Result<&Clip, CommandError> {
+    pub(super) fn scene_clip(&self, clip: &str) -> Result<&Clip, CommandError> {
         let entry = self
             .timeline
             .clip(clip)
@@ -182,7 +182,7 @@ impl EditorState {
                     .target(format!("clip:{}", entry.id)));
                 }
                 let time = self.clip_scene_time(entry, frame);
-                let camera = self.clip_camera_at(entry, frame);
+                let camera = self.clip_base_camera_at(entry, frame);
                 let mut keys = entry.camera_keys.clone();
                 let easing = easing.unwrap_or_else(|| {
                     keys.iter()

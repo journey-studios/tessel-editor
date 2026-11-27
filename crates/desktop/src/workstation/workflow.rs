@@ -255,6 +255,28 @@ impl Workflow {
 impl Workstation {
     // ---- operations outside the core vocabulary (media.*, export.*, job.*, project.package…) ----
 
+    pub(super) fn splat_source(&self) -> Option<String> {
+        use tessel_editor_core::assets::{MediaKind, Source as AssetSource};
+        let item = self.state.library.item(self.state.selected_media?)?;
+        if item.kind == MediaKind::Still
+            && matches!(item.asset.as_ref()?.source, AssetSource::File { .. })
+        {
+            return Some(item.id.to_string());
+        }
+        None
+    }
+
+    pub(super) fn generate_selected_splat(
+        &mut self,
+        cx: &mut Context<Self>,
+    ) -> Result<Value, CommandError> {
+        let image = self
+            .splat_source()
+            .ok_or_else(|| CommandError::new("not_image", "Selecione uma imagem na biblioteca"))?;
+        self.run_media_op(&json!({ "op": "media.splat.generate", "image": image }), cx)
+            .expect("media operation is handled by MediaHost")
+    }
+
     /// Runs `request` on the media host when it is one of its operations.
     pub(super) fn run_media_op(
         &mut self,
@@ -483,6 +505,15 @@ impl Workstation {
             .clone()
             .unwrap_or_else(std::env::temp_dir);
         match kind {
+            FlowKind::LanguageOverrides => {
+                if let Some(locale) = self.state.active_language().map(str::to_string) {
+                    let patch = self
+                        .state
+                        .localization_overrides(self.state.timeline.id.as_str());
+                    self.flow_prefill("locale", &locale, window, cx);
+                    self.flow_prefill("overrides", &patch.to_string(), window, cx);
+                }
+            }
             FlowKind::Export => self.flow_prefill(
                 "destination",
                 &base.join(format!("{default_name}.mp4")).to_string_lossy(),
@@ -654,9 +685,10 @@ impl Workstation {
         let Some(kind) = self.workflow.flow.as_ref().map(|flow| flow.kind) else {
             return;
         };
-        let Some(request) = flows::report_request(kind, &self.flow_values(cx)) else {
+        let Some(mut request) = flows::report_request(kind, &self.flow_values(cx)) else {
             return;
         };
+        self.apply_export_language_scope(kind, &mut request);
         self.flow_cancel_report();
         if let Some(flow) = &mut self.workflow.flow {
             flow.retry = None;
@@ -755,8 +787,10 @@ impl Workstation {
             // A chain of jobs rather than one operation: see `scene_import.rs`.
             self.scene_import_submit(kind, &values, cx)
         } else {
-            flows::build_request(kind, &values)
-                .and_then(|request| self.run_flow_request(&request, window, cx))
+            flows::build_request(kind, &values).and_then(|mut request| {
+                self.apply_export_language_scope(kind, &mut request);
+                self.run_flow_request(&request, window, cx)
+            })
         };
         match &outcome {
             Ok(_) => {
@@ -785,6 +819,12 @@ impl Workstation {
         });
         cx.notify();
         outcome
+    }
+
+    fn apply_export_language_scope(&self, kind: FlowKind, request: &mut Value) {
+        if kind == FlowKind::Export && self.state.localization.is_some() {
+            request["all_locales"] = json!(true);
+        }
     }
 
     fn run_flow_request(
@@ -926,6 +966,16 @@ impl Workstation {
             "children": [], "enabled": true, "visible": true, "fields": [], "actions": [],
             "state": self.jobs_report(),
         }));
+        let source = self.splat_source();
+        let ready = source.is_some() && self.state.project.workspace.is_some();
+        nodes.push(json!({
+            "id": "library.generate_splat", "kind": "button", "label": "Gerar splat",
+            "parent": "region:library", "children": [], "visible": source.is_some(),
+            "enabled": ready,
+            "disabled_reason": if source.is_none() { Some("Selecione uma imagem na biblioteca") }
+                else if !ready { Some("Salve o projeto para gerar um splat") } else { None },
+            "fields": [], "actions": [{ "action": "generate", "label": "Gerar splat" }],
+        }));
         nodes.extend(self.scene_import_nodes());
         let Some(flow) = &self.workflow.flow else {
             return nodes;
@@ -993,6 +1043,7 @@ impl Workstation {
             (_, Some(kind)) => self.open_flow(kind, window, cx),
             ("flow.save" | "node:19", _) => self.save_project(window, cx),
             ("flow.jobs" | "node:21", _) => self.open_jobs(window, cx),
+            ("library.generate_splat", _) => self.generate_selected_splat(cx),
             ("monitor.play", _) => self.playback_toggle(cx),
             ("node:9", _) => self.undo(cx),
             ("node:11", _) => self.redo(cx),
@@ -1068,6 +1119,17 @@ impl Render for FlowView {
         let Some(flow) = &workstation.read(cx).workflow.flow else {
             return div().into_any_element();
         };
+        let export_languages = (flow.kind == FlowKind::Export)
+            .then(|| workstation.read(cx).state.language_codes().join(", "))
+            .filter(|codes| !codes.is_empty())
+            .map(|codes| {
+                div()
+                    .text_size(px(11.))
+                    .text_color(colors.muted_foreground)
+                    .child(format!(
+                        "Um MP4 por idioma ({codes}). O código entra antes de .mp4."
+                    ))
+            });
         let rows = flow.fields.iter().map(|field| {
             let name = field.spec.name;
             let picker = field.spec.picker;
@@ -1127,6 +1189,7 @@ impl Render for FlowView {
         });
         v_flex()
             .gap_3()
+            .children(export_languages)
             .children(rows)
             .child(
                 h_flex()

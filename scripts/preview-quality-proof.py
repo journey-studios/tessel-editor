@@ -38,13 +38,13 @@ import json
 import os
 import re
 import shutil
-import socket
 import statistics
 import subprocess
 import sys
 import tempfile
 import threading
 import time
+import portable  # BL168.8: Windows socket, UTF-8, tools
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FPS = 24.0
@@ -67,6 +67,8 @@ def summary(values, digits=2):
 
 
 def gpu_util():
+    if shutil.which("ioreg") is None:
+        return None  # macOS only (IOAccelerator); elsewhere the utilization is not known (BL168.8)
     out = subprocess.run(["ioreg", "-r", "-d", "1", "-w0", "-c", "IOAccelerator"], capture_output=True, text=True).stdout
     match = re.search(r'"Device Utilization %"=(\d+)', out)
     return int(match.group(1)) if match else None
@@ -98,7 +100,10 @@ class GpuSampler:
 
 
 def wait_quiet_gpu(limit=22, timeout=60):
-    """The GPU may be shared with other work: start a run when two samples in a row are quiet."""
+    """The GPU may be shared with other work: start a run when two samples in a row are quiet.
+    `None` at once when this OS gives no utilization to read (nothing is known, nothing is waited for)."""
+    if gpu_util() is None:
+        return None
     deadline = time.time() + timeout
     quiet = 0
     while time.time() < deadline:
@@ -113,8 +118,8 @@ def wait_quiet_gpu(limit=22, timeout=60):
 class Editor:
     def __init__(self, binary, runtime_dir, env):
         self.home = tempfile.mkdtemp(prefix="tpq")
-        self.socket_path = os.path.join(self.home, ".cache/tessel-editor/ui.sock")
-        environment = {**os.environ, "HOME": self.home, "TESSEL_VIEWPORT_TRACE": "1", **env}
+        self.socket_path = portable.window_socket(self.home)
+        environment = {**os.environ, "HOME": self.home, "TESSEL_VIEWPORT_TRACE": "1", **portable.window_env(self.socket_path), **env}
         if runtime_dir:
             environment["TESSEL_RUNTIME_DIR"] = runtime_dir
         self.log_path = os.path.join(self.home, "editor.log")
@@ -122,9 +127,7 @@ class Editor:
         self.process = subprocess.Popen([binary], env=environment, stdout=self.log, stderr=self.log, start_new_session=True)
 
     def send(self, request, timeout=300):
-        with socket.socket(socket.AF_UNIX) as conn:
-            conn.settimeout(timeout)
-            conn.connect(self.socket_path)
+        with portable.connect_ui(self.socket_path, timeout) as conn:
             conn.sendall((json.dumps({"version": 1, **request}) + "\n").encode())
             data = b""
             while not data.endswith(b"\n"):
@@ -201,14 +204,17 @@ class Editor:
         return False
 
     def stop(self):
-        try:
-            os.killpg(self.process.pid, 15)
-            self.process.wait(10)
-        except Exception:
+        if portable.WINDOWS:
+            portable.kill_tree(self.process)  # no process group there: the tree, WebView2 helpers included
+        else:
             try:
-                os.killpg(self.process.pid, 9)
+                os.killpg(self.process.pid, 15)
+                self.process.wait(10)
             except Exception:
-                pass
+                try:
+                    os.killpg(self.process.pid, 9)
+                except Exception:
+                    pass
         self.log.close()
         shutil.rmtree(self.home, ignore_errors=True)
 
@@ -326,7 +332,7 @@ def playback_run(editor, start, frames, xfades, inspect):
             seen.add(f["shown_frame"])
             interactive.append(f)
     result = {"start": start, "frames_asked": frames, "end_frame": end, "passed": True, "gpu": gpu.report(), "gpu_quiet_before": quiet,
-              "load_avg": round(os.getloadavg()[0], 1), "converge_ms": converge_ms, "regions": {},
+              "load_avg": (round(portable.loadavg()[0], 1) if portable.loadavg() else None), "converge_ms": converge_ms, "regions": {},
               "refined_frames": status["session"]["stats"]["refined"] - base["session"]["stats"]["refined"],
               "playback": {k: report.get(k) for k in ("elapsed_ms", "frame", "lag_frames", "skipped_frames")}}
     result["pictures"] = [[f["shown_frame"], f["done_ms"], f["runtime_render_ms"]] for f in interactive]
@@ -368,7 +374,7 @@ def scrub_run(editor, name, origin, span, hz, label, inspect=False):
     except Exception:
         return {"name": name, "error": (proc.stdout + proc.stderr)[-400:]}
     result = {"name": name, "hz": hz, "span": span, "gpu": gpu.report(), "gpu_quiet_before": quiet,
-            "load_avg": round(os.getloadavg()[0], 1),
+            "load_avg": (round(portable.loadavg()[0], 1) if portable.loadavg() else None),
             "presentations_in_window": report.get("presentations_in_window"),
             "pictures_per_s": round(report["presentations_in_window"] / 2.0, 1) if report.get("presentations_in_window") is not None else None,
             "present_gap_ms": report.get("present_gap_ms"), "lag_frames": report.get("lag_frames"),
@@ -416,6 +422,7 @@ def main():
     if args.inspect:
         env["TESSEL_VIEWPORT_INSPECT"] = "1"
     xfades = [tuple(int(v) for v in item.split(":")) for item in args.xfades.split(",") if item]
+    args.binary = portable.executable(args.binary)
     editor = Editor(args.binary, args.runtime_dir, env)
     report = {"label": args.label, "binary": args.binary, "env": env, "playback": [], "scrub": [], "hashes": {}}
     try:

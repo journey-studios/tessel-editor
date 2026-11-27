@@ -102,7 +102,9 @@ agulha. `other` não aninha (profundidade 1): um vizinho com `transition` é rec
 antes de ser lido. A saída (`fx` de escopo `output`) age uma vez, no topo, e não é duplicada em `other`.
 
 `resource_union()` é **derivada, não serializada**: por `assetId`, com `used_by` qualificado por deck (`primary`,
-depois `other`); o mesmo `assetId` com conteúdo diferente é inválido em `/transition/other/resources/N`. `requires`
+depois `other`); o mesmo `assetId` com conteúdo diferente é inválido em `/transition/other/resources/N`. Os quatro
+carregadores do host (`from_root`, `SceneSlots`, `approved_map`, `resource_map`) consomem esta união, não `resources`
+(S2-H, BL082.4.4; [fx-transitions.md](fx-transitions.md)). `requires`
 ganha `fxTransition` (14ª `Capability`, **ausente** da lista `SCENE_CAPABILITIES` do JS até a S2) e a união das
 capacidades dos dois decks. Tetos: 4 194 304 bytes, 20 000 itens e profundidade 1.
 O teto de bytes é verificado antes do parse quando a chave `transition` está literal; uma chave com escape
@@ -113,10 +115,52 @@ não mede bytes de texto. Os planos reais do corpus têm ~6 KB.
 A relação `editFrame = startFrame + frameInWindow` exige conversão e soma representáveis; dois overflows
 não são igualdade. Erros do vizinho na validação/leitura têm ponteiro `/transition/other` (versão: `planVersion`, transformação
 de splat: `nodes`), inclusive em planos montados à mão; estes erros são `Invalid`, e o erro de splat do
-topo preserva o contrato existente. O construtor escolhe `primary` pelo corte. O validador isolado confere
-os shotIds dos decks e a cabeça presa, mas não recebe o quadro C do corte nem os comprimentos dos clipes;
-não prova a coerência temporal completa de `primary` ou da cauda. A S2 precisa fechar esse contrato antes
-que um runtime aceite planos externos (BL082.4.20).
+topo preserva o contrato existente. O construtor escolhe `primary` pelo corte.
+
+#### `alignment` e `timing` (S2-C0b, BL082.4.4/.20/.23 — interno, sem admissão pública)
+
+Todo plano **com** `transition` carrega, além do acima, `alignment` (`center|start|end`) e um bloco `timing`
+**obrigatório** (sem padrão: um plano do wire anterior é recusado em `/transition/alignment`):
+
+```json
+"alignment": "center",
+"timing": {
+  "editDurationFrames": 144,
+  "from": { "shotStartFrame": 0, "shotEndFrameExclusive": 48, "instanceStartFrame": 20,
+            "instanceDurationFrames": 200, "cameraInFrame": 0, "cameraClipDurationFrames": 48,
+            "sampledInstanceFrame": 64, "sampledCameraClipFrame": 44 },
+  "to":   { "shotStartFrame": 48, "shotEndFrameExclusive": 96, "...": "idem" }
+}
+```
+
+Os inteiros são `u64` sem float, bool, string ou `null`; chaves extras são recusadas com o próprio ponteiro. O corte
+`C` é o `shotStartFrame` do `to`. Os ids ficam onde já estão (`fromShotId`/`toShotId`, `source.sceneInstanceId` de
+cada deck, `frame.cameraClipId`). `PLAN_VERSION` continua 1 e planos sem `transition` não mudam um byte. Os relógios vêm
+de **uma só regra** (`directed_scene::DeckClocks`): `bruto = inícioNoClipe + (f − inícioDoShot)`, `amostrado =
+clamp(bruto, 0, L−1)`, `preso = L == 0 ∨ amostrado ≠ bruto` (o último quadro real não é preso; o primeiro quadro
+real, `bruto = 0`, também não); `L` da câmera é o da maior faixa, principal ou camada. O deck de cima guarda os quadros
+**brutos** (`frame.instanceFrame`/`cameraClipFrame`), o vizinho os **amostrados**; `PlanTransition::clocks(side)` devolve
+bruto, amostrado e preso dos dois decks (o `preso` do primário não é serializado: é essa regra).
+
+O validador (mesma porta para `validate`, `from_json` e `from_json_str`, e para os dois construtores) confere, com
+aritmética verificada e na ordem: números representáveis em `i64`; shots não vazios dentro da edição; o corte único; `primary`
+= `from` antes de `C` e `to` a partir dele; o quadro dentro do shot primário; a janela de `(C, durationFrames, alignment,
+editDurationFrames)` e o `startFrame`; instância e clipe de câmera compartilhados entre decks com **um** comprimento; a instância
+de cada lado cobrindo todo o próprio shot, inclusive quando é o vizinho
+(`instanceStartFrame + shotEndFrameExclusive − shotStartFrame <= instanceDurationFrames`);
+as amostras; os quadros legados; os `held*`; e os tempos `Ratio` exatos de cada contador. Cada
+recusa é `invalid` com o ponteiro do campo errado (`/transition/timing/<deck>/<campo>` ou o campo legado). Mede coerência,
+não procedência. Um plano externo válido pode ter até os tetos acima; isso não significa que um bundle o produza.
+
+#### Leitura no runtime (S2-R0, BL082.4.4 — interna, sem produto)
+
+O runtime lê este wire com `parseTransitionPlan`/`parseTransitionPlanText` (`runtime/src/directed-transition*.js`), um
+leitor puro que **não** está ligado a compositor, bridge nem `hello`: `SCENE_CAPABILITIES` segue com 13 nomes, sem
+`fxTransition`, e `parseDirectedLayer` recusa todo plano com `transition` (`unsupported` com `missing: ["fxTransition"]`, ou
+`invalid_plan` em `/requires` se o plano não o exigir). Tetos no JS, os mesmos do core: 20 000 itens (os dois decks, por
+comprimento) e profundidade 1 nas duas portas; 4 194 304 bytes só na porta de texto, medidos em UTF-8 sobre o texto
+recebido. `raw 41 / sample 39` (câmera de 40 quadros) continua sendo `{raw: 41, sampled: 39, held: true}` no primário. Ver
+[fx-transitions.md](fx-transitions.md) e o [relatório](../migration/p4b-s2-r0-parser-report.md).
 
 ### Políticas
 

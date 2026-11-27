@@ -8,6 +8,7 @@
 pub mod asset_io;
 pub mod host;
 mod process;
+mod resource_union;
 mod runtime;
 pub mod scene;
 pub mod scene_export;

@@ -1,6 +1,10 @@
 # Documentação do Tessel Editor
 
-Comece pela [matriz de features](features/README.md): ela registra o contrato e o estado de
+Para editar pela janela ou pelo terminal, comece pelos
+[guias de uso](guides/README.md). Eles cobrem geração de splat, câmera, prévia, exportação, setup e pacotes.
+O terminal também mostra esses guias com `./scripts/tessel help`.
+
+A [matriz de features](features/README.md) registra o contrato e o estado de
 cada acesso pela UI, CLI com UI, CLI headless e biblioteca Rust.
 
 - [Piloto de efeitos, planos e Studio: tudo para portar](migration/pilot-fx-shots-studio-features.md): 59 efeitos, comandos, gestos, inspector, runtime, timeline e CLI do branch `t3/scene-engine-pilot`, com ordem sugerida para o Rust.
@@ -9,6 +13,12 @@ cada acesso pela UI, CLI com UI, CLI headless e biblioteca Rust.
 - [Próxima entrega — dez frentes](migration/next-delivery-ten-agents.md): contratos e ownership; status e delegações no backlog comum.
 - [Integração M/N/O/P](migration/round-mnop-report.md): renderer, recursos portáteis, inspector e provas do fluxo dirigido.
 - [Títulos com acentos em português (BL141)](features/accented-titles.md): NFC, marcas compostas na grade 5×7, recusa fora da cobertura; monitor, quadro e export iguais.
+- [Retângulo editável na timeline (F067, BL169.6)](features/shape-clips.md): clipe sem arquivo com tamanho, cor e raio; botão da timeline, seção Forma do inspetor, CLI, plano, quadro e export iguais.
+- [Formas com estilo e máscara de imagem (F068, BL169.6)](features/shape-style.md): elipse, caminho, gradientes linear e radial, contorno, sombra e máscara arredondada de imagem; inspetor, CLI, plano, quadro e export iguais.
+- [Digitação, revelação por linha e preset de chat (F070, BL169.6)](features/chat-typing.md): `reveal` e `step_ms` por filho de texto, `after` e `delay_ms` na agenda, caixa de texto com quebra decidida pelo core, `chat.add` e botão da timeline; PNG e MP4 com a mesma sequência.
+- [Player de áudio e legendas SRT (F071, BL169.6)](features/player-subtitles.md): `player` (onda dos picos reais, progresso e cronômetro presos à timeline) e `subtitles` (cues importáveis e editáveis, estilo, `burn` e `.srt` ao lado do vídeo); PNG e MP4 com áudio sintético.
+- [Revelação diagonal e feixe de luz (F072, BL169.6)](features/reveal-beam.md): `reveal_*` (aresta inclinada animada de qualquer clipe visual), `stops` nos gradientes e o feixe como grupo comum; PNG e MP4 antes/durante/depois e demonstração privada dos 23 s.
+- [Grupos reutilizáveis, estilos de texto e quadros-chave (F069, BL169.6)](features/groups-keyframes.md): grupos com filhos editáveis, estilos de texto do projeto, chaves com easing, entradas escalonadas e repetição; botão da timeline, seção Grupo do inspetor, CLI, plano, quadro e export iguais.
 - [Keyframes da câmera de clipe de cena (BL140)](features/camera-keys.md): chaves de posição/alvo/FOV com easing, tempo de cena, lib/JSONL/UI e export igual ao monitor.
 - [PLY do SHARP direto, com a câmera da captura (BL143)](features/sharp-import.md): eixos OpenCV, FOV das intrínsecas, recusa de metadado ambíguo, câmera restaurável, pixels reais na janela e no export.
 - [Renderer de cenas dirigidas](features/scene-renderer.md): scene.plan/scene.render, lib/JSONL e monitor com mapas verificados.
@@ -18,12 +28,17 @@ cada acesso pela UI, CLI com UI, CLI headless e biblioteca Rust.
 - [Spark sob concorrência](features/spark-concurrency.md): diagnóstico da corrida do harness e gate determinístico de cancelamento; runtime intocado.
 - [P4b S3a — edição de transições no core](migration/p4b-s3a-editing-report.md): operações, diagnósticos localizados, predicado de janela e dica de cabeça; admissão pública fechada.
 - [P4b S2-C0a — pré-requisitos do core](migration/p4b-s2-c0a-report.md): proveniência por geração, erros do vizinho por deck e reparo da cauda; admissão pública fechada.
+- [P4b S2-C0b — relógios e estado dos dois decks](migration/p4b-s2-c0b-report.md): timing/alignment, limites de plano e consumidor X de estado; admissão pública fechada.
+- [P4b S2-H — união de recursos no host](migration/p4b-s2-host-resource-report.md): quatro carregadores, erros por deck e orçamentos; H interna aceita (PR73), com limites por plataforma, admissão pública fechada.
+- [P4b S2-R0 — leitor interno do plano de dois decks](migration/p4b-s2-r0-parser-report.md): parser interno aceito pela R2 Windows (a3c357b), recusa pública fechada; sem desenho ou ativação.
+- [P4b S2-R1a — extração do desenho dirigido](migration/p4b-s2-r1a-draw-extraction-report.md): módulo próprio, controles de borda e integração com grading/layout; Mac validou e14dc51, revisão Windows independente aprovada em e14dc51; sem desenho de transição.
 - [Backlog compartilhado](backlog.md): registro único de pendências, responsáveis, dependências e aceite; obrigatório para todos os agentes.
 - [Inventário de migração do Scene Studio](migration/README.md): 121 itens classificados,
   evidências na origem, diferenças do branch piloto, matriz de migração e fatias sugeridas.
 - [Triagem dos docs do piloto](migration/pilot-docs-triage-2026-11-11.md): 52 documentos avaliados, o que veio, o que ficou de fora e por quê.
 - [Especificações da origem](migration/origin-specs/README.md): dez documentos do piloto copiados literalmente (efeitos, comandos de câmera, ripple, fronteira Studio/core, glossário), somente leitura.
 - [Projetos locais](../projects/README.md): `projects/<nome>/` guarda projetos privados ou pesados e é ignorado pelo Git.
+- [Skill de edição de vídeo pela CLI](../.agents/skills/tessel-video-editing/SKILL.md): revisão de cortes, tipografia, ilustrações, cenários SHARP e export com progresso.
 - [Fade de entrada e saída em clipe de áudio (BL142)](features/audio-fades.md): rampa linear de ganho relativa ao clipe, mix em blocos = mix inteiro, sobreposição encurtada.
 - [Recursos da cena dirigida](features/scene-resources.md): manifesto, preflight e materialização inicial; identidade por assetId, transporte parcial e pacote ainda protegido pelas guardas.
 - [Interação de cenas dirigidas](features/scene-interaction.md): seleção, árvore, avaliação e gestos via comandos; gate local da rodada passou; inspector parcial em F039-UI.
@@ -83,6 +98,7 @@ plano/relatório continuam como histórico; o contrato atual fica em `features/`
 - [Inspector neutro de efeitos e o `fade` (F057)](features/fx-inspector.md) e o [smoke de integração antes/depois de P2](migration/p2-integration-smoke-2026-11-10.md).
 - [P4a — efeitos no escopo de plano `shot`](migration/p4a-shot-scope-fx-plan.md): brief da entrega (BL082.3), composição em etapas e a costura para as transições (P4b).
 - [P4b — crossDissolve entre dois decks](migration/p4b-cross-dissolve-plan.md): plano revisado e fases com portão de ativação; S0/S1a internas concluídas; S1b em revisão independente; transições públicas recusadas até S2A.
+- [P5 — duração e cortes dos planos](migration/p5-shot-duration-plan.md): plano revisado (R1) de `trim_shot`, `move_cut`, `set_shot_duration` e `set_edit_duration` com ripple/roll, o que acompanha cada camada e as fatias S0–S5 (BL082.5); nenhum código ainda.
 - [Contrato e corpus das transições (F064)](features/fx-transitions.md): S0/S1a internas aprovadas, S1b em revisão; produto lib/JSONL/UI pendente e nenhuma transição pública habilitada.
 
 G1 (PR #40): rotação local/mundo implementada, **a validar** no head final;
