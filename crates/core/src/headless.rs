@@ -176,7 +176,7 @@ fn run_op(
         Op::Help(topic) => crate::help::guide(topic.as_deref()),
         Op::Status => Ok(state.summary()),
         Op::Header => Ok(state.header().to_json()),
-        Op::Run(command) => state.execute(command),
+        Op::Run(command) => state.execute(*command),
         Op::Project(op) => run_project_op(state, renderer, op),
         Op::CreateProject(settings) => create_project(state, renderer, &settings),
         Op::Plan(request) => Ok(state.plan(&request)?.to_json()),

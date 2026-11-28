@@ -89,7 +89,7 @@ pub const TRACE_EVENTS_MAX: usize = crate::trace::EVENT_WINDOW;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Op {
-    Run(Command),
+    Run(Box<Command>),
     Help(Option<String>),
     Project(ProjectOp),
     CreateProject(ProjectSettings),
@@ -764,7 +764,7 @@ pub fn parse_op(state: &EditorState, request: &Value) -> Result<Option<Op>, Comm
             },
         },
     };
-    Ok(Some(Op::Run(command)))
+    Ok(Some(Op::Run(Box::new(command))))
 }
 
 mod clip_key_ops;

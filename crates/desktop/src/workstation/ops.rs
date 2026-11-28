@@ -75,7 +75,7 @@ impl Workstation {
             Op::Help(topic) => tessel_editor_core::help::guide(topic.as_deref()).map(OpReply::Done),
             Op::Status => Ok(OpReply::Done(self.state.summary())),
             Op::Header => Ok(OpReply::Done(self.state.header().to_json())),
-            Op::Run(command) => self.execute(command, Source::Cli, cx).map(OpReply::Done),
+            Op::Run(command) => self.execute(*command, Source::Cli, cx).map(OpReply::Done),
             Op::CreateProject(settings) => {
                 // Build first, swap after (inside `create_project`): a rejected setting keeps
                 // the session and the viewport as they were.
