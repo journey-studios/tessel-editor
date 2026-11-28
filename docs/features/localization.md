@@ -60,6 +60,8 @@ A seleção de idioma é uma ação de visualização.
   mesma composição capturada para o lote. Cada MP4 e suas legendas externas usam
   o código no nome. Uma falha de render posterior preserva as entregas concluídas.
   JSONL aceita `all_locales:true` ou `locale` para uma versão específica.
+  A configuração sempre inclui o idioma-base. O diálogo de exportação integral
+  oferece só destino e preset. Para faixa, clipe ou idioma específico, use a CLI.
 
 ## Limites deste incremento
 

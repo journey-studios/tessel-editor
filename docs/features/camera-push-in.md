@@ -29,7 +29,9 @@ Envie estas linhas à mesma sessão de `./scripts/tessel render`, depois de `pro
 
 ## Janela e automação
 
-Selecione um clipe de cena, abra **Câmera** e clique em **Aproximar e pré-visualizar**. O equivalente é `./scripts/tessel ui invoke camera.push_in`. O botão tem o nó `camera.push_in.clear` para remoção. `playback.status` expõe o intervalo da prévia e o estado do monitor. A prévia pode ser interrompida pelo controle de reprodução.
+Selecione um clipe de cena, abra **Câmera** e clique em **Aproximar e pré-visualizar**. O equivalente é `./scripts/tessel ui invoke camera.push_in`. O botão tem o nó `camera.push_in.clear` para remoção. `playback.status` expõe o intervalo da prévia e o estado do monitor. A prévia pode ser pausada ou interrompida pelo controle de reprodução. Enquanto
+o monitor ainda aguarda o primeiro quadro, o tempo em pausa não consome os
+15 segundos de espera.
 
 ## Evidências locais
 

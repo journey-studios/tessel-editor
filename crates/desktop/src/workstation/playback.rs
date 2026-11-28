@@ -128,11 +128,43 @@ pub(super) enum Tick {
     Continue { next: Duration, clock: Option<f64> },
 }
 
+struct PictureWait {
+    since: Option<Instant>,
+    elapsed: Duration,
+}
+
+impl PictureWait {
+    const TIMEOUT: Duration = Duration::from_secs(15);
+
+    fn new(now: Instant) -> Self {
+        Self {
+            since: Some(now),
+            elapsed: Duration::ZERO,
+        }
+    }
+
+    fn pause(&mut self, now: Instant) {
+        if let Some(since) = self.since.take() {
+            self.elapsed += now.saturating_duration_since(since);
+        }
+    }
+
+    fn resume(&mut self, now: Instant) {
+        self.since.get_or_insert(now);
+    }
+
+    fn expired(&self, now: Instant) -> bool {
+        self.since.is_some_and(|since| {
+            self.elapsed + now.saturating_duration_since(since) >= Self::TIMEOUT
+        })
+    }
+}
+
 pub struct Playback {
     anchor: Instant,
     from: i64,
     end: Option<i64>,
-    waiting_for_picture: bool,
+    picture_wait: Option<PictureWait>,
     fps: f64,
     audio: Audio,
     wall: WallClock,
@@ -333,7 +365,7 @@ impl PlaybackState {
             .map_or(active.frame, |frame| frame.floor() as i64);
         json!({
             "state": if active.paused { "paused" }
-                else if active.waiting_for_picture { "preparing" } else { "playing" },
+                else if active.picture_wait.is_some() { "preparing" } else { "playing" },
             "from": active.from, "frame": active.frame, "fps": active.fps,
             "clock": active.clock_name(),
             // How the clock is polled (`TESSEL_PLAYBACK_POLL`): `fixed` (half a frame after each answer) or `deadline`.
@@ -444,7 +476,7 @@ impl Workstation {
             anchor: Instant::now(),
             from,
             end,
-            waiting_for_picture,
+            picture_wait: waiting_for_picture.then(|| PictureWait::new(Instant::now())),
             fps,
             audio,
             wall: WallClock {
@@ -544,11 +576,11 @@ impl Workstation {
             return Tick::Stop;
         };
         let fps = active.fps;
-        if active.waiting_for_picture {
+        if let Some(wait) = &active.picture_wait {
             if self.viewport.presented_frame() == Some(active.from) {
-                active.waiting_for_picture = false;
+                active.picture_wait = None;
                 active.wall.seek(active.from as f64);
-            } else if active.anchor.elapsed() >= Duration::from_secs(15) {
+            } else if wait.expired(Instant::now()) {
                 self.playback_stop(cx);
                 self.activity = Some(Activity {
                     source: Origin::Gesture,
@@ -683,6 +715,9 @@ impl Workstation {
         }
         let fps = active.fps;
         active.wall.pause(fps);
+        if let Some(wait) = &mut active.picture_wait {
+            wait.pause(Instant::now());
+        }
         active.paused = true;
         // Nothing is expected while paused: silence is a rest, not a stall (F049).
         self.perf_playback_stopped();
@@ -696,6 +731,9 @@ impl Workstation {
             shared.resume();
         }
         active.wall.resume();
+        if let Some(wait) = &mut active.picture_wait {
+            wait.resume(Instant::now());
+        }
         active.paused = false;
         let frame = active.frame;
         // The run restarts from the frame on screen; the pause is not a gap (F049). The meter
@@ -727,7 +765,7 @@ impl Workstation {
                 format!("Seek must stay inside the preview ({}..{end})", active.from),
             ));
         }
-        active.waiting_for_picture = false;
+        active.picture_wait = None;
         if let Some(shared) = active.shared() {
             let audio_frame = frame as f64 / active.fps * f64::from(shared.sample_rate());
             shared.seek(audio_frame as u64);
@@ -766,5 +804,25 @@ impl Workstation {
             _ => return None,
         };
         Some(result)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Duration, Instant, PictureWait};
+
+    #[test]
+    fn a_paused_picture_wait_does_not_spend_its_time_budget() {
+        let start = Instant::now();
+        let after = |seconds| start + Duration::from_secs(seconds);
+        let mut wait = PictureWait::new(start);
+        assert!(!wait.expired(after(8)));
+        wait.pause(after(8));
+        wait.pause(after(9));
+        assert!(!wait.expired(after(50)));
+        wait.resume(after(50));
+        wait.resume(after(53));
+        assert!(!wait.expired(after(56)));
+        assert!(wait.expired(after(57)));
     }
 }

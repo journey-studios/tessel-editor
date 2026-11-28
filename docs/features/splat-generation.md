@@ -44,8 +44,9 @@ A trilha já deve existir.
 A API Rust usa `tessel_editor_core::headless::execute_ext` com `MediaHost` de
 `tessel-editor-media`. O core continua responsável pelo registro de mídia, clipes e
 transações. A inferência e a cópia passam pelo job de mídia. O comando espera e aplica
-por padrão na CLI. Com `wait:false`, use `job.wait` e `job.commit`. `job.cancel`
-interrompe o processo SHARP e aguarda a limpeza do diretório temporário.
+por padrão na CLI. Com `wait:false`, use `job.wait` e `job.commit`. `job.cancel` solicita a interrupção do processo SHARP e retorna. Confirme o estado
+terminal antes de remover o workspace ou considerar a limpeza concluída. Na CLI,
+use `job.wait` e trate o timeout. Na janela, acompanhe por `job.get`.
 
 ## Biblioteca da janela
 
@@ -57,6 +58,9 @@ ao terminar e mostra o ativo na biblioteca. O comando semântico é
 
 Mídia e clipe entram em uma única operação de undo. A falha de inferência, captura
 inválida, erro de inserção ou troca de projeto antes da aplicação preservam o documento.
+Com `place`, o job captura a sequência ativa e recusa o resultado com `stale_result`
+se outra sequência estiver ativa na aplicação. Sem `place`, o ativo entra na biblioteca
+compartilhada do projeto mesmo após uma troca de sequência.
 O importador pode manter no disco um PLY gerenciado já validado para reutilização.
 Um resultado com bytes e captura iguais aos de um splat já importado devolve o mesmo
 ID. Com outra captura para os mesmos bytes, a operação devolve `capture_conflict`.

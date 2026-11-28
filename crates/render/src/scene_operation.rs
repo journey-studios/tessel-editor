@@ -54,7 +54,7 @@ pub fn prepare(
             "Expected a scene frame request",
         ));
     };
-    let answer = state.execute(command)?;
+    let answer = state.execute(*command)?;
     let plan = ScenePlan::from_json(&answer["plan"])?;
     let scene = request["scene"]
         .as_str()

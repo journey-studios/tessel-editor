@@ -128,7 +128,15 @@ def export(args):
     if args.renderer is None:
         command = backend_command("render", "--gl", args.gl)
     else:
-        command = [str(args.renderer.resolve()), "--gl", args.gl]
+        renderer = args.renderer.resolve()
+        if not renderer.is_file():
+            raise FileNotFoundError(
+                f"Renderer not found: {renderer}. Build it with "
+                "./scripts/cargo build --locked -p tessel-editor-render --bin tessel-render, "
+                "then point --renderer to the built binary. "
+                "Or run ./scripts/tessel export without --renderer to build it automatically."
+            )
+        command = [str(renderer), "--gl", args.gl]
     return with_backend(command, run)
 
 
